@@ -142,7 +142,7 @@ export function VersionDiff({ versionA, versionB }: Props) {
                   <tr key={f.key} className="border-t border-border/40">
                     <td className="whitespace-nowrap py-1 pr-3 font-mono">{t(f.label)}</td>
                     <td className="whitespace-nowrap py-1 pr-3 font-mono text-destructive">{String(f.a)}</td>
-                    <td className="whitespace-nowrap py-1 font-mono text-emerald-600">{String(f.b)}</td>
+                    <td className="whitespace-nowrap py-1 font-mono text-indigo-600">{String(f.b)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -175,7 +175,7 @@ export function VersionDiff({ versionA, versionB }: Props) {
               {String(versionA.followup?.enabled ?? false)}
             </span>{" "}
             →{" "}
-            <span className="font-mono text-emerald-600">
+            <span className="font-mono text-indigo-600">
               {String(versionB.followup?.enabled ?? false)}
             </span>
           </p>
@@ -185,7 +185,7 @@ export function VersionDiff({ versionA, versionB }: Props) {
             {t("Retornos marcados pelo agente habilitados:")}{" "}
             <span className="font-mono text-destructive">{String(callbackEnabledA)}</span>
             {" → "}
-            <span className="font-mono text-emerald-600">{String(callbackEnabledB)}</span>
+            <span className="font-mono text-indigo-600">{String(callbackEnabledB)}</span>
           </p>
         ) : null}
         <Pills label={t("Fluxos adicionados")} tone="add" items={followupFlows.added} />
@@ -203,7 +203,7 @@ export function VersionDiff({ versionA, versionB }: Props) {
           {lines.map((l, idx) => {
             const cls =
               l.kind === "add"
-                ? "block bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                ? "block bg-indigo-500/10 text-indigo-700 dark:text-indigo-400"
                 : l.kind === "del"
                   ? "block bg-destructive/10 text-destructive"
                   : "block";
@@ -251,7 +251,7 @@ function Pills({
           variant="outline"
           className={
             tone === "add"
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+              ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400"
               : "border-destructive/40 bg-destructive/10 text-destructive"
           }
         >

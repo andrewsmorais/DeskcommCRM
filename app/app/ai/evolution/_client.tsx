@@ -245,13 +245,13 @@ function GraficoDiario({
                 <XAxis
                   dataKey="day"
                   tickFormatter={(v) => diaCurto(v, tagDoIdioma)}
-                  tick={{ fontSize: 11 }}
+                  tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
                   tickLine={false}
                   axisLine={false}
                   interval="preserveStartEnd"
                 />
                 <YAxis
-                  tick={{ fontSize: 11 }}
+                  tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
                   tickLine={false}
                   axisLine={false}
                   allowDecimals={false}
@@ -263,8 +263,9 @@ function GraficoDiario({
                   contentStyle={{
                     borderRadius: "8px",
                     fontSize: "12px",
-                    border: "1px solid hsl(var(--border))",
-                    background: "hsl(var(--popover))",
+                    border: "1px solid var(--border)",
+                    background: "var(--popover)",
+                    color: "var(--popover-foreground)",
                   }}
                 />
                 <Line type="monotone" dataKey="value" stroke={cor} strokeWidth={2} dot={false} />
@@ -482,7 +483,7 @@ function Conteudo({ payload }: { payload: NonNullable<ReturnType<typeof useEvolu
               "Quantas vezes o agente puxou uma habilidade especializada para dar conta da conversa.",
             )}
             dados={activity.series.skill_activations}
-            cor="hsl(262 83% 58%)"
+            cor="var(--color-accent)"
             vazio={
               <Vazio
                 texto={t(
@@ -498,7 +499,7 @@ function Conteudo({ payload }: { payload: NonNullable<ReturnType<typeof useEvolu
               "Quantas vezes o sistema leu o que o cliente queria e escolheu qual atendimento devia responder.",
             )}
             dados={activity.series.router_decisions}
-            cor="hsl(199 89% 48%)"
+            cor="var(--color-info)"
             vazio={
               <Vazio
                 texto={t(
@@ -514,7 +515,7 @@ function Conteudo({ payload }: { payload: NonNullable<ReturnType<typeof useEvolu
               "Quantas vezes o agente foi procurar a resposta no que você escreveu, em vez de improvisar.",
             )}
             dados={activity.series.knowledge_searches}
-            cor="hsl(142 76% 36%)"
+            cor="var(--color-success)"
             vazio={
               <Vazio
                 texto={t(

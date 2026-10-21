@@ -19,8 +19,7 @@ import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
-const SELECT_COLS =
-  "id, name, prefix, scopes, last_used_at, expires_at, revoked_at, created_at";
+const SELECT_COLS = "id, name, prefix, scopes, last_used_at, expires_at, revoked_at, created_at";
 
 export async function GET(_req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
@@ -43,7 +42,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (supportDenied) return supportDenied;
 
   const requestId = randomUUID();
-  const authz = await requireRole("admin", { requestId, resource: "api_tokens" });
+  const authz = await requireRole("admin", { requestId, resource: "api_tokens", plano: "api" });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org: activeOrg } = authz;

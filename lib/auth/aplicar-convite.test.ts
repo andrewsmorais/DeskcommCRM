@@ -132,3 +132,4 @@ describe("aplicarConvite consulta a LINHA, não só o token", () => {
     });
   });
 });
+vi.mock("@/lib/billing/equipe", () => ({ comCotaDeEquipe: async (_db: unknown, _org: string, _alvo: unknown, op: () => Promise<unknown>) => op(), ErroDaCotaDeEquipe: class extends Error {} }));

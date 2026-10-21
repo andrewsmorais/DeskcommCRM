@@ -175,9 +175,9 @@ export function BasesDoAgente({ materiais, value, onChange, disabled = false }: 
       {arquivadosMarcados.length > 0 ? (
         <p data-testid="agente-base-arquivada-marcada" className="text-xs text-warning-fg">
           {arquivadosMarcados.length === 1
-            ? t("Um material marcado aqui foi arquivado no acervo — o agente não lê mais ele.")
+            ? t("Um material marcado aqui foi arquivado no acervo — o agente não o consulta mais.")
             : t(
-                "Materiais marcados aqui foram arquivados no acervo — o agente não lê mais eles.",
+                "Materiais marcados aqui foram arquivados no acervo — o agente não os consulta mais.",
               )}{" "}
           <button
             type="button"

@@ -424,3 +424,4 @@ describe("idempotência da marcação", () => {
     });
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

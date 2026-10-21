@@ -1,3 +1,4 @@
+import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
 /**
  * GET|POST /api/v1/webhooks/meta/[token] — webhook da WhatsApp Cloud API.
  *

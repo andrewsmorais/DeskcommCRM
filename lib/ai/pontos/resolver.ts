@@ -202,6 +202,16 @@ export function decidirBinding(entrada: EntradaDaDecisao): DecisaoDeBinding {
   // Modelo de conversa não transcreve áudio: anunciar um ali manda quem opera
   // caçar um problema que não existe, ou trocar o modelo errado.
   if (ponto?.fixo?.usa) {
+    if (
+      ponto.exige.embeddingDims !== undefined &&
+      entrada.binding?.is_enabled &&
+      !/embed/i.test(entrada.binding.model_id)
+    ) {
+      avisos.push(
+        `O modelo de embedding é fixo (${ponto.fixo.usa.modelId}); ` +
+          `a escolha "${entrada.binding.model_id}" não altera o modelo usado para indexar e buscar.`,
+      );
+    }
     return {
       provider: ponto.fixo.usa.provider,
       modelId: ponto.fixo.usa.modelId,

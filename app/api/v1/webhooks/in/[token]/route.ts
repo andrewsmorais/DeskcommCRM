@@ -16,7 +16,10 @@ import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
-import { classificarLeadInicial, type ResultadoClassificacaoInicial } from "@/lib/leads/classificacao-inicial";
+import {
+  classificarLeadInicial,
+  type ResultadoClassificacaoInicial,
+} from "@/lib/leads/classificacao-inicial";
 import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
 import { encontrarContatoPorTelefoneComNome } from "@/lib/channels/contato-por-telefone";
@@ -39,6 +42,7 @@ import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { ApiError } from "@/lib/api/types";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -53,9 +57,19 @@ const RATE_LIMIT_PER_MIN = 60;
 // duplicated (not exported there) only so the route can flag a phone-looking
 // field that failed normalizePhoneBR, for observability. Keep in sync if that
 // list changes.
-const PHONE_ALIASES_FOR_LOGGING = ["phone", "telefone", "whatsapp", "celular", "phone_number", "tel"];
+const PHONE_ALIASES_FOR_LOGGING = [
+  "phone",
+  "telefone",
+  "whatsapp",
+  "celular",
+  "phone_number",
+  "tel",
+];
 
-function findRawPhoneIfUnnormalized(payload: Record<string, unknown>, fieldMap: FieldMap): string | null {
+function findRawPhoneIfUnnormalized(
+  payload: Record<string, unknown>,
+  fieldMap: FieldMap,
+): string | null {
   const aliases = [...(fieldMap.phone ?? []), ...PHONE_ALIASES_FOR_LOGGING];
   const lowered = new Map(Object.keys(payload).map((k) => [k.toLowerCase(), k]));
   for (const alias of aliases) {
@@ -86,13 +100,18 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const admin = createAdminClient();
   const { data: source, error: srcErr } = await admin
     .from("webhook_sources")
-    .select("id, name, organization_id, secret_encrypted, default_pipeline_id, default_stage_id, field_map, redirect_to, is_active")
+    .select(
+      "id, name, organization_id, secret_encrypted, default_pipeline_id, default_stage_id, field_map, redirect_to, is_active",
+    )
     .eq("path_token", token)
     .maybeSingle();
   if (srcErr) return fail("internal_error", srcErr.message, 500, { requestId });
   if (!source || !source.is_active) {
     return fail("not_found", "unknown webhook token", 404, { requestId });
   }
+
+  const recusado = await exigirRecursoDoPlano(source.organization_id, "webhooks", { requestId });
+  if (recusado) return recusado;
 
   const rawBody = await req.text();
   const contentType = req.headers.get("content-type") ?? "";
@@ -124,7 +143,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     sourceName: (source.name as string) ?? "Fonte sem nome",
   };
 
-  const sigHeader = req.headers.get("x-deskcomm-signature");
+  const sigHeader = req.headers.get("x-ChatAI Online-signature");
   // secret cifrado at-rest (migration 0041). Decrypt falhou (chave da GUC
   // ausente/trocada)? Precedente WAHA: pula a validação em vez de derrubar a
   // captação — secret aqui é defesa opcional, não gate de disponibilidade.
@@ -134,7 +153,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     sourceSecret = await decryptWebhookSecret(admin, source.secret_encrypted as unknown as string);
     if (sourceSecret === null) hmacSkipped = true;
   }
-  const validSignature = sourceSecret ? verifyInboundSignature(rawBody, sigHeader, sourceSecret) : null;
+  const validSignature = sourceSecret
+    ? verifyInboundSignature(rawBody, sigHeader, sourceSecret)
+    : null;
   if (sourceSecret && !validSignature) {
     await audit({
       action: "webhook.inbound_invalid_signature",
@@ -189,9 +210,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // o idempotency key e o mapeamento de campos abaixo. Respondi tem
   // precedência: um payload nunca é dos dois.
   const rdStationMapped: RdStationMapped | null =
-    respondiMapped === null && isRdStationPayload(payload)
-      ? mapRdStationPayload(payload)
-      : null;
+    respondiMapped === null && isRdStationPayload(payload) ? mapRdStationPayload(payload) : null;
 
   // Idempotência (spec §5): `external_id` é campo reservado do envio — quem
   // integra via sistema (Zapier/n8n/loja) manda o ID único do disparo e o
@@ -204,18 +223,18 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const externalId =
     typeof externalIdRaw === "string" && externalIdRaw.trim()
       ? externalIdRaw.trim().slice(0, 255)
-      // O MESMO corte do ramo acima. A assimetria era de uma linha e o desfecho
-      // não: `uniq_crm_leads_org_source_external` é btree, e btree recusa chave
-      // que não caiba em ~2.704 bytes. Medido em Postgres 17 real, com conteúdo
-      // INCOMPRESSÍVEL (o pglz comprime `repeat('a')` e mascara o limite): a
-      // partir de ~2.669 bytes o INSERT sai com sqlstate 54000, o handler
-      // devolve 500 e NENHUM lead entra.
-      //
-      // Não é alcançável pelo Respondi real — o `respondent_id` do formulário é
-      // uuid de 36 chars, ~60× abaixo do limiar. É higiene de simetria: dois
-      // ramos do mesmo `?:` produzindo a mesma coluna com regras diferentes é o
-      // tipo de coisa que só aparece quando alguém manda um corpo fabricado.
-      : (respondiMapped?.externalId?.slice(0, 255) ??
+      : // O MESMO corte do ramo acima. A assimetria era de uma linha e o desfecho
+        // não: `uniq_crm_leads_org_source_external` é btree, e btree recusa chave
+        // que não caiba em ~2.704 bytes. Medido em Postgres 17 real, com conteúdo
+        // INCOMPRESSÍVEL (o pglz comprime `repeat('a')` e mascara o limite): a
+        // partir de ~2.669 bytes o INSERT sai com sqlstate 54000, o handler
+        // devolve 500 e NENHUM lead entra.
+        //
+        // Não é alcançável pelo Respondi real — o `respondent_id` do formulário é
+        // uuid de 36 chars, ~60× abaixo do limiar. É higiene de simetria: dois
+        // ramos do mesmo `?:` produzindo a mesma coluna com regras diferentes é o
+        // tipo de coisa que só aparece quando alguém manda um corpo fabricado.
+        (respondiMapped?.externalId?.slice(0, 255) ??
         rdStationMapped?.externalId?.slice(0, 255) ??
         null);
 
@@ -231,7 +250,10 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // `contact_id` — uma captação `duplicado` gravada sem ele guarda nome,
   // telefone e o formulário inteiro de alguém que pediu anonimização, por 365
   // dias, enquanto o produto afirma que a pessoa foi anonimizada.
-  const findLeadByExternalId = async (): Promise<{ id: string; contactId: string | null } | null> => {
+  const findLeadByExternalId = async (): Promise<{
+    id: string;
+    contactId: string | null;
+  } | null> => {
     if (!externalId) return null;
     const { data } = await admin
       .from("crm_leads")
@@ -305,7 +327,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       outcome: "recusado",
       rejectReason: "sem_campo_mapeavel",
     });
-    return fail("invalid_request", "Nenhum campo mapeável (nome/telefone/email).", 400, { requestId });
+    return fail("invalid_request", "Nenhum campo mapeável (nome/telefone/email).", 400, {
+      requestId,
+    });
   }
 
   // Contato: upsert por telefone (se houver) — reusa a coluna E.164 canônica.
@@ -355,11 +379,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     // no cadastro errado, o follow-up não a reconhecia, e a mesma pergunta saía
     // de novo.
     const selectActiveByPhone = async (): Promise<ContatoAchado> => ({
-      data: await encontrarContatoPorTelefoneComNome(
-        admin,
-        source.organization_id,
-        mapped.phone!,
-      ),
+      data: await encontrarContatoPorTelefoneComNome(admin, source.organization_id, mapped.phone!),
     });
 
     // uniq_contacts_org_email (baseline.sql) é um SEGUNDO índice único parcial,
@@ -618,7 +638,8 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // atividade própria: o valor já fica visível em custom_fields, e uma
   // classificação normal não é um evento que precisa de linha na timeline.
   if (classificacaoInicial && classificacaoInicial.status !== "classificado") {
-    const tipo = classificacaoInicial.status === "desqualificado" ? "lead_disqualified" : "lead_needs_review";
+    const tipo =
+      classificacaoInicial.status === "desqualificado" ? "lead_disqualified" : "lead_needs_review";
     const atividadeClassificacao = await emitLeadActivity(admin, {
       organizationId: source.organization_id,
       leadId: String(lead.id),
@@ -674,9 +695,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // Sem isto, numa instalação sem cron de 1 min (relógio HTTP), o gatilho fica pending.
   await kickLocalPipeline(
     admin,
-    contactId
-      ? { organizationId: source.organization_id, contactId }
-      : undefined,
+    contactId ? { organizationId: source.organization_id, contactId } : undefined,
   );
 
   return respondWithLead(String(lead.id));

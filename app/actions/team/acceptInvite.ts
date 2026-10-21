@@ -54,7 +54,7 @@ export async function acceptInviteAction(token: string): Promise<AcceptInviteRes
   // dentro de `aplicarConvite`, e não aqui: `/auth/confirm` chama a MESMA função
   // e precisa das duas coisas. Ver o cabeçalho de `lib/auth/aplicar-convite.ts`.
   const resultado = await aplicarConvite({ userId: user.id, payload });
-  if (!resultado.ok) return { ok: false, error: resultado.motivo };
+  if (!resultado.ok) return { ok: false, error: resultado.motivo, message: resultado.message };
 
   redirect("/app");
 }

@@ -85,11 +85,11 @@ export function PipelinePageClient({
       // que media a coluna mais comprida, e a barra de rolagem horizontal ficava
       // no pé dele — com uma etapa cheia, era preciso descer até o fim para
       // conseguir andar para o lado, e no caminho o nome da etapa sumia do alto.
-      // Com a altura da área visível (100dvh menos a barra do topo, h-14, e o
+      // Com a altura da área visível (100dvh menos a barra do topo, h-16, e o
       // p-6 do <main>), quem rola é o quadro: a barra horizontal fica sempre no
       // pé da tela e o cabeçalho de cada etapa fica preso em cima. O piso de
       // 28rem é para tela baixa demais, onde a página volta a rolar.
-      className="flex h-[calc(100dvh-3.5rem-3rem)] min-h-[28rem] flex-col gap-4"
+      className="flex h-[calc(100dvh-var(--space-16)-3rem)] min-h-[28rem] flex-col gap-4"
       // OBSERVÁVEL de propósito, e é a razão de existir desta linha: "a
       // assinatura morreu" e "nada aconteceu" produzem o MESMO silêncio na
       // tela, e sem este valor nem o produto nem o teste conseguem separar as

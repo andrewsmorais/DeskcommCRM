@@ -41,6 +41,9 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { traduzir } from "@/lib/i18n/dicionario";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { comCotaDeEquipe, ErroDaCotaDeEquipe } from "@/lib/billing/equipe";
+import { ErroDaReservaDeCota } from "@/lib/billing/reserva";
 
 export const dynamic = "force-dynamic";
 
@@ -77,21 +80,36 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString();
-  const { error: updErr } = await supabase
-    .from("user_organizations")
-    .update({ revoked_at: null, updated_at: nowIso })
-    .eq("id", target.id);
-  if (updErr) return fail("internal_error", updErr.message, 500, { requestId });
+  try {
+    return await comCotaDeEquipe(
+      createAdminClient(),
+      activeOrg.orgId,
+      { userId: targetUserId },
+      async () => {
+        const { error: updErr } = await supabase
+          .from("user_organizations")
+          .update({ revoked_at: null, updated_at: nowIso })
+          .eq("id", target.id);
+        if (updErr) return fail("internal_error", updErr.message, 500, { requestId });
 
-  await audit({
-    action: "member.reactivated",
-    actorUserId: authUser.id,
-    organizationId: activeOrg.orgId,
-    resourceType: "membership",
-    resourceId: target.id,
-    requestId,
-    metadata: { target_user_id: targetUserId, restored_role: target.role },
-  });
+        await audit({
+          action: "member.reactivated",
+          actorUserId: authUser.id,
+          organizationId: activeOrg.orgId,
+          resourceType: "membership",
+          resourceId: target.id,
+          requestId,
+          metadata: { target_user_id: targetUserId, restored_role: target.role },
+        });
 
-  return ok({ user_id: targetUserId, reactivated_at: nowIso }, { requestId });
+        return ok({ user_id: targetUserId, reactivated_at: nowIso }, { requestId });
+      },
+    );
+  } catch (error) {
+    if (error instanceof ErroDaCotaDeEquipe)
+      return fail(error.code, error.message, error.status, { requestId });
+    if (error instanceof ErroDaReservaDeCota)
+      return fail("billing_unavailable", error.message, error.status, { requestId });
+    return fail("internal_error", "Não foi possível reativar o membro.", 500, { requestId });
+  }
 }

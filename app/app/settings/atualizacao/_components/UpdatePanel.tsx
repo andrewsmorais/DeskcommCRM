@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { useT } from "@/hooks/i18n/useT";
 
 // Sem `cd <pasta>`: o instalador não fixa o nome da pasta do clone
-// (REPO_DIR é configurável, default "deskcommcrm" minúsculo) — quem tem
+// (REPO_DIR é configurável, default "ChatAI Online" minúsculo) — quem tem
 // acesso ao servidor já sabe entrar na pasta onde instalou.
 const COMANDO_MANUAL = "bash hostgator-setup-kit/update.sh";
 

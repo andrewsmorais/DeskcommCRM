@@ -35,6 +35,8 @@ function fixture(linha: Partial<typeof channel> & { phone_number?: string | null
         is(coluna: string, valor: unknown) { casa &&= ((noBanco as Record<string, unknown>)[coluna] ?? null) === valor; return builder; },
         neq(coluna: string, valor: unknown) { casa &&= (noBanco as Record<string, unknown>)[coluna] !== valor; return builder; },
         select() { return builder; },
+        in() { return builder; },
+        then(resolve: (value: { count: number; error: null }) => unknown) { return Promise.resolve({ count: 0, error: null }).then(resolve); },
         async maybeSingle() {
           if (casa && pendente) renomeios.push(pendente.waha_session_name as string);
           return { data: casa ? { id: noBanco.id } : null, error: null };
@@ -223,3 +225,5 @@ describe("I1: conectar/reativar ressincroniza o filtro de grupos", () => {
       .toBeLessThan(definirRecebimentoDeGrupos.mock.invocationCallOrder[0]!);
   });
 });
+vi.mock("@/lib/billing/reserva", () => ({ comReservaDeCota: async (_org: string, _recurso: string, op: () => Promise<unknown>) => op(), ErroDaReservaDeCota: class extends Error {} }));
+vi.mock("@/lib/billing", () => ({ getOrganizationBilling: vi.fn(async () => ({ ok: true, billing: { is_active: true, limits: { whatsapp: -1 } } })), canUse: vi.fn(() => ({ ok: true, limite: -1 })) }));

@@ -13,6 +13,7 @@
  * não na primeira mensagem que não sai — com o lead do outro lado esperando.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { comCotaDeCanal } from "./cota-do-plano";
 import { metadataInicialDoCanal } from "@/lib/ai/elegibilidade/pre-go-live";
 
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "./archived";
@@ -211,24 +212,36 @@ export async function savePartnerSession(
     displayName: string;
   },
 ): Promise<{ error: string | null }> {
-  const linha = {
-    organization_id: input.organizationId,
-    provider: PARTNER_CHANNEL_PROVIDER,
-    zernio_account_id: input.accountId,
-    zernio_token_encrypted: input.apiKeyEncrypted,
-    webhook_path_token: input.webhookPathToken,
-    webhook_secret_encrypted: input.webhookSecretEncrypted,
-    phone_number: input.phoneNumber,
-    display_name: input.displayName,
-    status: "WORKING",
-    archived_at: null,
-  };
+  return comCotaDeCanal(
+    admin,
+    input.organizationId,
+    input.existingId,
+    async () => {
+      const linha = {
+        organization_id: input.organizationId,
+        provider: PARTNER_CHANNEL_PROVIDER,
+        zernio_account_id: input.accountId,
+        zernio_token_encrypted: input.apiKeyEncrypted,
+        webhook_path_token: input.webhookPathToken,
+        webhook_secret_encrypted: input.webhookSecretEncrypted,
+        phone_number: input.phoneNumber,
+        display_name: input.displayName,
+        status: "WORKING",
+        archived_at: null,
+      };
 
-  const { error } = input.existingId
-    ? await admin.from("channel_sessions").update(linha).eq("id", input.existingId)
-    : await admin
-        .from("channel_sessions")
-        .insert({ ...linha, metadata: metadataInicialDoCanal() });
+      const { error } = input.existingId
+        ? await admin
+            .from("channel_sessions")
+            .update(linha)
+            .eq("organization_id", input.organizationId)
+            .eq("id", input.existingId)
+        : await admin
+            .from("channel_sessions")
+            .insert({ ...linha, metadata: metadataInicialDoCanal() });
 
-  return { error: error?.message ?? null };
+      return { error: error?.message ?? null };
+    },
+    (message) => ({ error: message }),
+  );
 }

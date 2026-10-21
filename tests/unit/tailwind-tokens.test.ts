@@ -237,7 +237,9 @@ describe("Tailwind 4 — utilitários que mudaram de significado", () => {
     // Não dá para consertar pelo `@theme`: o `.shadow` do v4 é embutido com
     // valor literal e o embutido vence — igual ao `rounded`.
     const culpados = ocorrencias(ARQUIVOS, /(?<=[\s"'`:])shadow(?=[\s"'`!]|$)/g);
-    expect(culpados, "use `shadow-sm` (o `--shadow-sm` do produto) ou o grau explícito").toEqual([]);
+    expect(culpados, "use `shadow-sm` (o `--shadow-sm` do produto) ou o grau explícito").toEqual(
+      [],
+    );
   });
 
   it("não usa `flex-shrink-*` / `flex-grow-*` — renomeados para `shrink-*` / `grow-*`", () => {
@@ -584,8 +586,10 @@ describe("Tailwind 4 — alpha em cor de texto agora PINTA, então precisa passa
     // Controle positivo: a árvore comprovadamente TEM alphas de cor de texto.
     // Se a contagem de medições zerar, a guarda cegou (regex, paleta renomeada,
     // `bloco()` mudando de forma) e o verde seria falso.
-    expect(medidos, `guarda cega: nenhum alpha medido. Não-medidos: ${naoMedidos.join(", ")}`)
-      .toBeGreaterThan(0);
+    expect(
+      medidos,
+      `guarda cega: nenhum alpha medido. Não-medidos: ${naoMedidos.join(", ")}`,
+    ).toBeGreaterThan(0);
 
     expect(
       [...new Set(reprovados)].sort(),

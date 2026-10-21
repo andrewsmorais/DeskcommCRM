@@ -106,3 +106,4 @@ describe("suspensão × campanha", () => {
 vi.mock("@/lib/agent-engine/db/request-pool", () => ({
   getRequestPool: () => ({ query: async () => ({ rows: [] }) }),
 }));
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

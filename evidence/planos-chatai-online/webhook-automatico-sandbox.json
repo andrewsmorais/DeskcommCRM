@@ -1,0 +1,94 @@
+{
+  "started_at": "2026-10-16T16:59:09.831Z",
+  "environment": "sandbox",
+  "checks": [
+    {
+      "name": "sandbox_contains_only_synthetic_fixtures",
+      "customers": 2,
+      "subscriptions": 1,
+      "payments": 1,
+      "real_contacts": false
+    },
+    {
+      "name": "isolated_tunnel_ready",
+      "root_http": 404,
+      "unauthenticated_http": 401,
+      "crm_exposed": false
+    },
+    {
+      "name": "temporary_sandbox_webhook_created",
+      "webhook_id": "59f5a2ea-bf46-43b2-bed0-3b56a33eeafc"
+    },
+    {
+      "name": "automatic_transport_proven",
+      "manual_replay": false
+    },
+    {
+      "name": "transport_preserved_existing_subscriptions"
+    },
+    {
+      "name": "homologation_reservation_reconciled",
+      "organization_id": "151557dd-38a5-4df7-9225-1ba72141b7ea",
+      "subscription_id": "sub_zfhlsrg81k71a2am",
+      "payment_id": "pay_niq5562pivm83ymo",
+      "status": "trialing",
+      "value": 1287
+    },
+    {
+      "name": "automatic_payment_activated_plan",
+      "status": "active",
+      "period_start": "2026-10-23T00:00:00+00:00",
+      "period_end": "2027-01-23T00:00:00+00:00",
+      "seats": 3,
+      "plan": "impulso",
+      "manual_replay": false,
+      "real_money": false
+    },
+    {
+      "name": "temporary_webhook_disabled",
+      "webhook_id": "59f5a2ea-bf46-43b2-bed0-3b56a33eeafc"
+    },
+    {
+      "name": "transport_description_restored"
+    },
+    {
+      "name": "temporary_tunnel_stopped",
+      "passed": true
+    },
+    {
+      "name": "other_subscriptions_unchanged",
+      "passed": true
+    },
+    {
+      "name": "existing_webhooks_unchanged",
+      "passed": true
+    }
+  ],
+  "events": [
+    {
+      "received_at": "2026-10-16T16:59:31.320Z",
+      "event": "SUBSCRIPTION_UPDATED",
+      "event_id": "evt_d9f532ab6cbfc970702e9acaf430b7d5&22393727",
+      "subscription_id": "sub_6lvh7s7qur4fi9al",
+      "payment_id": null,
+      "body_sha256": "4e077d673e57d32e2792f7c24f5dc37d5f35f16347e553860ae5e0feb3a3f1f2",
+      "handler_status": 200,
+      "elapsed_ms": 281
+    },
+    {
+      "received_at": "2026-10-16T16:59:37.182Z",
+      "event": "PAYMENT_RECEIVED",
+      "event_id": "evt_d26e303b238e509335ac9ba210e51b0f&22393734",
+      "subscription_id": "sub_zfhlsrg81k71a2am",
+      "payment_id": "pay_niq5562pivm83ymo",
+      "body_sha256": "f15624972492e2ee534f1e85f985edf5a5c0e0bfce87128fa65718dcc6c0426f",
+      "handler_status": 200,
+      "elapsed_ms": 375
+    }
+  ],
+  "temporary_webhook_id": "59f5a2ea-bf46-43b2-bed0-3b56a33eeafc",
+  "subscription_id": "sub_zfhlsrg81k71a2am",
+  "payment_id": "pay_niq5562pivm83ymo",
+  "result": "passed",
+  "completed_at": "2026-10-16T16:59:39.039Z"
+}

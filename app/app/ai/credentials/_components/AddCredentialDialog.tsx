@@ -28,7 +28,11 @@ import {
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { credentialsListQueryKey, type CredentialRow } from "@/hooks/ai/useCredentials";
-import { IDS_COM_CHAVE, PROVEDORES_COM_CHAVE, type ProvedorComChave } from "@/lib/ai/pontos/provedores";
+import {
+  IDS_COM_CHAVE,
+  PROVEDORES_COM_CHAVE,
+  type ProvedorComChave,
+} from "@/lib/ai/pontos/provedores";
 import { descreverErroDeValidacao } from "@/lib/ai/credenciais/erro-de-validacao";
 import { useT } from "@/hooks/i18n/useT";
 
@@ -64,7 +68,12 @@ interface Props {
   aoSalvar?: () => void;
 }
 
-export function AddCredentialDialog({ open, onOpenChange, providerInicial = "anthropic", aoSalvar }: Props) {
+export function AddCredentialDialog({
+  open,
+  onOpenChange,
+  providerInicial = "anthropic",
+  aoSalvar,
+}: Props) {
   const t = useT();
   const router = useRouter();
   const qc = useQueryClient();
@@ -74,9 +83,11 @@ export function AddCredentialDialog({ open, onOpenChange, providerInicial = "ant
   /** O endereço da API compatível com a OpenAI — só o provedor personalizado tem. */
   const [baseUrl, setBaseUrl] = useState("");
   /** O resultado do teste de conectividade que roda ANTES de salvar. */
-  const [conexao, setConexao] = useState<{ ok: boolean; modelos: number; erro: string | null } | null>(
-    null,
-  );
+  const [conexao, setConexao] = useState<{
+    ok: boolean;
+    modelos: number;
+    erro: string | null;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
   const provedor = PROVEDORES_COM_CHAVE.find((p) => p.id === provider) ?? PROVEDORES_COM_CHAVE[0];
@@ -143,7 +154,7 @@ export function AddCredentialDialog({ open, onOpenChange, providerInicial = "ant
     }
 
     setSubmitting(true);
-    const validatingToast = toast.loading(t("Credencial salva. Validando…"));
+    const validatingToast = toast.loading(t("Salvando credencial…"));
     try {
       const { base_url, ...semEndereco } = parsed.data;
       const res = await apiClient.post<CreateResponse>("/api/v1/ai/credentials", {
@@ -200,7 +211,9 @@ export function AddCredentialDialog({ open, onOpenChange, providerInicial = "ant
         <DialogHeader>
           <DialogTitle>{t("Adicionar credencial")}</DialogTitle>
           <DialogDescription>
-            {t("A chave é guardada cifrada. Depois de salva, só os quatro últimos caracteres aparecem na tela.")}
+            {t(
+              "A chave é guardada cifrada. Depois de salva, só os quatro últimos caracteres aparecem na tela.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -219,9 +232,7 @@ export function AddCredentialDialog({ open, onOpenChange, providerInicial = "ant
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">{t(provedor.quandoUsar)}</p>
-            {errors.provider && (
-              <p className="text-xs text-destructive">{errors.provider}</p>
-            )}
+            {errors.provider && <p className="text-xs text-destructive">{errors.provider}</p>}
           </div>
 
           {provider === "custom" && (
@@ -266,6 +277,7 @@ export function AddCredentialDialog({ open, onOpenChange, providerInicial = "ant
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder={t("Opcional — ex.: Chave da clínica")}
+              autoComplete="off"
               maxLength={80}
             />
             {errors.label && <p className="text-xs text-destructive">{errors.label}</p>}
@@ -294,12 +306,10 @@ export function AddCredentialDialog({ open, onOpenChange, providerInicial = "ant
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={provedor.prefixoDaChave}
-              autoComplete="off"
+              autoComplete="new-password"
               required
             />
-            {errors.api_key && (
-              <p className="text-xs text-destructive">{errors.api_key}</p>
-            )}
+            {errors.api_key && <p className="text-xs text-destructive">{errors.api_key}</p>}
           </div>
 
           <DialogFooter>

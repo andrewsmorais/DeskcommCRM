@@ -20,6 +20,7 @@ import { registrarFalhaDeToken, tokenFailureLimited } from "@/lib/auth/rate-limi
 import type { Role } from "@/lib/auth/types";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 
 export interface McpAuthResult {
   organizationId: string;
@@ -213,6 +214,11 @@ export async function validateBearerToken(
 
   const role = scopesRole(resolved.scopes);
   const actor = deriveActor(resolved.scopes, resolved.id);
+  // Todo bearer HTTP é integração externa, mesmo que declare ator de IA.
+  // O agente nativo monta seu contexto internamente (edge/crm/mcp-tools),
+  // sem passar por esta porta; suas ferramentas básicas seguem no Essencial.
+  const acesso = await verificarRecursoDoPlano(resolved.organizationId, "api");
+  if (!acesso.ok) throw new McpAuthError(-32002, acesso.status, acesso.message);
 
   return {
     organizationId: resolved.organizationId,

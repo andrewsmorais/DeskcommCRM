@@ -1,3 +1,4 @@
+import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
 /**
  * POST /api/v1/webhooks/waha/[token]
  *
@@ -30,6 +31,7 @@ interface RouteCtx {
 }
 
 export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextResponse> {
+  const rl = await enforceRateLimit(req, "webhook-waha", getIp(req), 60, 60 * 1000); if (rl) return rl as any;
   const requestId = randomUUID();
   const { token } = await ctx.params;
 

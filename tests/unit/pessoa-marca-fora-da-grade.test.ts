@@ -636,3 +636,4 @@ describe("o intervalo antes do atendimento vale na ESCRITA, não só na leitura 
     expect(criados(banco)).toHaveLength(0);
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

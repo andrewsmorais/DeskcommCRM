@@ -117,9 +117,9 @@ export function ModelosDeProposta() {
       <h1 className="text-xl font-semibold">{t("Modelos de proposta")}</h1>
 
       {salvo && !faixaFechada ? (
-        <p role="status" className="flex items-center justify-between gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+        <p role="status" className="flex items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">
           <span>{t("Modelo «{nome}» salvo.").replace("{nome}", salvo)}</span>
-          <button type="button" aria-label={t("Fechar")} onClick={() => setFaixaFechada(true)} className="rounded-md px-2 py-0.5 hover:bg-green-100">
+          <button type="button" aria-label={t("Fechar")} onClick={() => setFaixaFechada(true)} className="rounded-md px-2 py-0.5 hover:bg-indigo-100">
             ×
           </button>
         </p>

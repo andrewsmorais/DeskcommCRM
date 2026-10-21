@@ -217,10 +217,10 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
 
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
           <p className="font-medium text-amber-700 dark:text-amber-400">
-            {t("⚠ Modo teste consome créditos do provider.")}
+            {t("⚠ O modo de teste consome créditos do provedor.")}
           </p>
           <p className="mt-1 text-muted-foreground">
-            {t("Nenhuma mensagem é enviada via WhatsApp. O run é registrado como dry-run.")}
+            {t("Nenhuma mensagem é enviada via WhatsApp. A execução é registrada como simulação.")}
           </p>
         </div>
 
@@ -302,7 +302,7 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
             <RunTrace
               toolCalls={result.tool_calls}
               finalText={result.final_text ?? null}
-              emptyMessage={t("Sem tool calls (resposta direta do LLM).")}
+              emptyMessage={t("Sem chamadas de ferramentas (resposta direta do modelo de IA).")}
             />
 
             {result.candidates ? (

@@ -12,7 +12,7 @@
  * `POST /api/v1/messages`) e uma integração atravessava o modo de teste do
  * canal. Nenhuma das duas aparece como erro de tipo.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { deriveActor } from "./auth";
 
@@ -63,3 +63,4 @@ describe("o que os handlers fazem com este ator", () => {
     expect(pulaOGate(deriveActor(["mcp:write"], TOKEN_ID))).toBe(false);
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })) }));

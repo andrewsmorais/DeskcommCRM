@@ -176,3 +176,4 @@ describe("validateBearerToken: teto de falhas (issue #1447)", () => {
     expect(tentativas[5]).toMatchObject({ tipo: "falha", mcpCode: -32004, httpStatus: 429 });
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })) }));

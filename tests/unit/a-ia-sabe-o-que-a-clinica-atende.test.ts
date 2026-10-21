@@ -308,3 +308,4 @@ describe("crm_find_free_slots — o que o modelo consegue ler e escolher", () =>
     expect(r.ha_mais).toBe(false);
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

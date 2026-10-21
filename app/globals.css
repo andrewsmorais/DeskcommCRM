@@ -25,70 +25,70 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ─────────────────────────────────────────────────────────────────────────
-   DeskcommCRM — Design System tokens (Sage palette · density Aerada)
-   Source of truth: /app/design/lib/tokens.ts (PALETTES.sage)
-   Light + dark drawn separately (NOT inverted).
+   Design system — referência FlowDash, temas claro e escuro.
+   Tokens do produto: este arquivo. Referência: docs/design/flowdash-reference.json.
+   Temas desenhados separadamente, com semânticas de estado preservadas.
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
   /* Surfaces (light) */
-  --color-bg: #faf9f6;
+  --color-bg: #f8fafc;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f5f3ee;
-  --color-overlay: rgba(28, 26, 22, 0.42);
+  --color-surface-elevated: #f1f5f9;
+  --color-overlay: rgba(15, 23, 42, 0.42);
 
   /* Text (light) */
-  --color-text: #1c1a16;
-  --color-text-muted: #5d594f;
-  --color-text-subtle: #7d786c;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-text-subtle: #64748b;
 
   /* Borders (light) */
-  --color-border: #e7e3da;
-  --color-border-strong: #d2cdbf;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
 
-  /* Accent — Sage (11 stops) */
-  --color-accent-50:  #f3f6f1;
-  --color-accent-100: #e4ebe0;
-  --color-accent-200: #c8d6c1;
-  --color-accent-300: #a4ba9a;
-  --color-accent-400: #82a077;
-  --color-accent-500: #67885d;
-  --color-accent-600: #506d48;
-  --color-accent-700: #41573b;
-  --color-accent-800: #374731;
-  --color-accent-900: #2f3c2b;
-  --color-accent-950: #171f15;
+  /* Accent — violeta (11 stops) */
+  --color-accent-50: #f5f3ff;
+  --color-accent-100: #eef2ff;
+  --color-accent-200: #ddd6fe;
+  --color-accent-300: #c4b5fd;
+  --color-accent-400: #a78bfa;
+  --color-accent-500: #8b5cf6;
+  --color-accent-600: #6354df;
+  --color-accent-700: #5141bd;
+  --color-accent-800: #433291;
+  --color-accent-900: #34266d;
+  --color-accent-950: #1e1542;
   --color-accent: var(--color-accent-600);
   --color-accent-fg: #ffffff;
   --color-accent-soft: var(--color-accent-100);
   --color-accent-hover: var(--color-accent-700);
 
-  /* Neutrals — greige (11 stops, light) */
-  --color-neutral-50:  #faf9f6;
-  --color-neutral-100: #f3f1ec;
-  --color-neutral-200: #e7e3da;
-  --color-neutral-300: #d2cdbf;
-  --color-neutral-400: #a9a395;
-  --color-neutral-500: #7d786c;
-  --color-neutral-600: #5d594f;
-  --color-neutral-700: #46433b;
-  --color-neutral-800: #2e2c26;
-  --color-neutral-900: #1c1a16;
-  --color-neutral-950: #0e0d0a;
+  /* Neutrals — slate (11 stops, light) */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
 
   /* States (light) */
-  --color-success: #5a8a5f;
-  --color-success-bg: rgba(90, 138, 95, 0.12);
-  --color-success-fg: #41673f;
-  --color-warning: #b07a2b;
-  --color-warning-bg: rgba(176, 122, 43, 0.12);
-  --color-warning-fg: #875a1a;
-  --color-error: #a94a3c;
-  --color-error-bg: rgba(169, 74, 60, 0.12);
-  --color-error-fg: #8a3a2e;
-  --color-info: #4a7a93;
-  --color-info-bg: rgba(74, 122, 147, 0.12);
-  --color-info-fg: #355d72;
+  --color-success: #059669;
+  --color-success-bg: rgba(16, 185, 129, 0.1);
+  --color-success-fg: #047857;
+  --color-warning: #b45309;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-warning-fg: #92400e;
+  --color-error: #dc2626;
+  --color-error-bg: rgba(239, 68, 68, 0.1);
+  --color-error-fg: #b91c1c;
+  --color-info: #2563eb;
+  --color-info-bg: rgba(59, 130, 246, 0.1);
+  --color-info-fg: #1d4ed8;
 
   /* Spacing (4-base) */
   --space-0: 0px;
@@ -115,11 +115,11 @@
   --radius-full: 9999px;
 
   /* Shadows — desaturated, neutral-based */
-  --shadow-xs: 0 1px 2px 0 rgba(20, 18, 14, 0.04);
-  --shadow-sm: 0 1px 2px 0 rgba(20, 18, 14, 0.05), 0 1px 1px 0 rgba(20, 18, 14, 0.03);
-  --shadow-md: 0 4px 12px -2px rgba(20, 18, 14, 0.06), 0 2px 4px -1px rgba(20, 18, 14, 0.04);
-  --shadow-lg: 0 12px 32px -6px rgba(20, 18, 14, 0.10), 0 4px 12px -2px rgba(20, 18, 14, 0.06);
-  --shadow-xl: 0 24px 48px -12px rgba(20, 18, 14, 0.16), 0 8px 16px -4px rgba(20, 18, 14, 0.08);
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 8px 24px -6px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 24px 64px -16px rgba(15, 23, 42, 0.16);
 
   /* Density — Aerada */
   --density-row: 56px;
@@ -206,14 +206,22 @@
    * não duplicado aqui — assim a relação entre a faixa e o fundo é uma só,
    * e não dois hex que envelhecem separados.
    */
-  --agenda-pessoa-1: #ac4d40;   /* telha */
-  --agenda-pessoa-2: #bd7c20;   /* âmbar */
-  --agenda-pessoa-3: #7e6f01;   /* oliva */
-  --agenda-pessoa-4: #11a19b;   /* turquesa */
-  --agenda-pessoa-5: #0b7a9a;   /* azul */
-  --agenda-pessoa-6: #608bda;   /* índigo */
-  --agenda-pessoa-7: #7b5bad;   /* violeta */
-  --agenda-pessoa-8: #cc77b1;   /* framboesa */
+  --agenda-pessoa-1: #ac4d40; /* telha */
+  --agenda-pessoa-2: #bd7c20; /* âmbar */
+  --agenda-pessoa-3: #7e6f01; /* oliva */
+  --agenda-pessoa-4: #11a19b; /* turquesa */
+  --agenda-pessoa-5: #0b7a9a; /* azul */
+  --agenda-pessoa-6: #608bda; /* índigo */
+  --agenda-pessoa-7: #7b5bad; /* violeta */
+  --agenda-pessoa-8: #cc77b1; /* framboesa */
+  --flow-sidebar-bg: #ffffff;
+  --flow-nav-active-bg: #eef2ff;
+  --flow-nav-active-text: #5141bd;
+  --flow-nav-active-border: transparent;
+  --flow-nav-glow: none;
+  --flow-card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  --flow-auth-glow: rgba(99, 102, 241, 0.08);
+  --flow-control-radius: 10px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -250,47 +258,47 @@
    (lib/branding/css.ts), que só ganha consumidor com a tela de marca.
    ───────────────────────────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --color-bg: #faf9f6;
+  --color-bg: #f8fafc;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f5f3ee;
-  --color-overlay: rgba(28, 26, 22, 0.42);
-  --color-text: #1c1a16;
-  --color-text-muted: #5d594f;
-  --color-text-subtle: #7d786c;
-  --color-border: #e7e3da;
-  --color-border-strong: #d2cdbf;
+  --color-surface-elevated: #f1f5f9;
+  --color-overlay: rgba(15, 23, 42, 0.42);
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-text-subtle: #64748b;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
   --color-accent: var(--color-accent-600);
   --color-accent-fg: #ffffff;
   --color-accent-soft: var(--color-accent-100);
   --color-accent-hover: var(--color-accent-700);
-  --color-neutral-50: #faf9f6;
-  --color-neutral-100: #f3f1ec;
-  --color-neutral-200: #e7e3da;
-  --color-neutral-300: #d2cdbf;
-  --color-neutral-400: #a9a395;
-  --color-neutral-500: #7d786c;
-  --color-neutral-600: #5d594f;
-  --color-neutral-700: #46433b;
-  --color-neutral-800: #2e2c26;
-  --color-neutral-900: #1c1a16;
-  --color-neutral-950: #0e0d0a;
-  --color-success: #5a8a5f;
-  --color-success-bg: rgba(90, 138, 95, 0.12);
-  --color-success-fg: #41673f;
-  --color-warning: #b07a2b;
-  --color-warning-bg: rgba(176, 122, 43, 0.12);
-  --color-warning-fg: #875a1a;
-  --color-error: #a94a3c;
-  --color-error-bg: rgba(169, 74, 60, 0.12);
-  --color-error-fg: #8a3a2e;
-  --color-info: #4a7a93;
-  --color-info-bg: rgba(74, 122, 147, 0.12);
-  --color-info-fg: #355d72;
-  --shadow-xs: 0 1px 2px 0 rgba(20, 18, 14, 0.04);
-  --shadow-sm: 0 1px 2px 0 rgba(20, 18, 14, 0.05), 0 1px 1px 0 rgba(20, 18, 14, 0.03);
-  --shadow-md: 0 4px 12px -2px rgba(20, 18, 14, 0.06), 0 2px 4px -1px rgba(20, 18, 14, 0.04);
-  --shadow-lg: 0 12px 32px -6px rgba(20, 18, 14, 0.10), 0 4px 12px -2px rgba(20, 18, 14, 0.06);
-  --shadow-xl: 0 24px 48px -12px rgba(20, 18, 14, 0.16), 0 8px 16px -4px rgba(20, 18, 14, 0.08);
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+  --color-success: #059669;
+  --color-success-bg: rgba(16, 185, 129, 0.1);
+  --color-success-fg: #047857;
+  --color-warning: #b45309;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-warning-fg: #92400e;
+  --color-error: #dc2626;
+  --color-error-bg: rgba(239, 68, 68, 0.1);
+  --color-error-fg: #b91c1c;
+  --color-info: #2563eb;
+  --color-info-bg: rgba(59, 130, 246, 0.1);
+  --color-info-fg: #1d4ed8;
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 8px 24px -6px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 24px 64px -16px rgba(15, 23, 42, 0.16);
   --background: var(--color-bg);
   --foreground: var(--color-text);
   --card: var(--color-surface);
@@ -316,82 +324,89 @@
    * dentro de página escura herdaria os valores escuros, e a amostra de cor
    * mentiria sobre a cor que a pessoa tem.
    */
-  --agenda-pessoa-1: #ac4d40;   /* telha */
-  --agenda-pessoa-2: #bd7c20;   /* âmbar */
-  --agenda-pessoa-3: #7e6f01;   /* oliva */
-  --agenda-pessoa-4: #11a19b;   /* turquesa */
-  --agenda-pessoa-5: #0b7a9a;   /* azul */
-  --agenda-pessoa-6: #608bda;   /* índigo */
-  --agenda-pessoa-7: #7b5bad;   /* violeta */
-  --agenda-pessoa-8: #cc77b1;   /* framboesa */
+  --agenda-pessoa-1: #ac4d40; /* telha */
+  --agenda-pessoa-2: #bd7c20; /* âmbar */
+  --agenda-pessoa-3: #7e6f01; /* oliva */
+  --agenda-pessoa-4: #11a19b; /* turquesa */
+  --agenda-pessoa-5: #0b7a9a; /* azul */
+  --agenda-pessoa-6: #608bda; /* índigo */
+  --agenda-pessoa-7: #7b5bad; /* violeta */
+  --agenda-pessoa-8: #cc77b1; /* framboesa */
+  --flow-sidebar-bg: #ffffff;
+  --flow-nav-active-bg: #eef2ff;
+  --flow-nav-active-text: #5141bd;
+  --flow-nav-active-border: transparent;
+  --flow-nav-glow: none;
+  --flow-card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  --flow-auth-glow: rgba(99, 102, 241, 0.08);
 }
 
 [data-theme="dark"] {
   /* Surfaces (dark — drawn) */
-  --color-bg: #161510;
-  --color-surface: #1d1c17;
-  --color-surface-elevated: #272620;
-  --color-overlay: rgba(0, 0, 0, 0.55);
+  --color-bg: #090a0f;
+  --color-surface: #12131c;
+  --color-surface-elevated: #181a26;
+  --color-overlay: rgba(0, 0, 0, 0.65);
 
   /* Text (dark) */
-  --color-text: #f5f4ef;
-  --color-text-muted: #8e8b7f;
-  --color-text-subtle: #605e54;
+  --color-text: #f8fafc;
+  --color-text-muted: #94a3b8;
+  --color-text-subtle: #94a3b8;
 
   /* Borders (dark) */
-  --color-border: #33312a;
-  --color-border-strong: #444239;
+  --color-border: #1e2030;
+  --color-border-strong: #34374b;
 
   /* Accent stays same hex stops; default shifts up for dark contrast */
-  --color-accent-50:  #f3f6f1;
-  --color-accent-100: #e4ebe0;
-  --color-accent-200: #c8d6c1;
-  --color-accent-300: #a4ba9a;
-  --color-accent-400: #82a077;
-  --color-accent-500: #67885d;
-  --color-accent-600: #506d48;
-  --color-accent-700: #41573b;
-  --color-accent-800: #374731;
-  --color-accent-900: #2f3c2b;
-  --color-accent-950: #171f15;
+  --color-accent-50: #f5f3ff;
+  --color-accent-100: #eef2ff;
+  --color-accent-200: #ddd6fe;
+  --color-accent-300: #c4b5fd;
+  --color-accent-400: #a78bfa;
+  --color-accent-500: #8b5cf6;
+  --color-accent-600: #6354df;
+  --color-accent-700: #5141bd;
+  --color-accent-800: #433291;
+  --color-accent-900: #34266d;
+  --color-accent-950: #1e1542;
   --color-accent: var(--color-accent-400);
-  --color-accent-fg: #161510;
-  --color-accent-soft: rgba(130, 160, 119, 0.16);
+  --color-accent-fg: #090a0f;
+  --color-accent-soft: rgba(124, 58, 237, 0.15);
   --color-accent-hover: var(--color-accent-300);
 
-  /* Neutrals — greige (11 stops, dark) */
-  --color-neutral-50:  #f5f4ef;
-  --color-neutral-100: #e6e4dc;
-  --color-neutral-200: #bbb8ac;
-  --color-neutral-300: #8e8b7f;
-  --color-neutral-400: #605e54;
-  --color-neutral-500: #444239;
-  --color-neutral-600: #33312a;
-  --color-neutral-700: #272620;
-  --color-neutral-800: #1d1c17;
-  --color-neutral-900: #161510;
-  --color-neutral-950: #0c0b08;
+  /* Neutrals — slate (11 stops, dark) */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #e2e8f0;
+  --color-neutral-200: #cbd5e1;
+  --color-neutral-300: #94a3b8;
+  --color-neutral-400: #64748b;
+  --color-neutral-500: #475569;
+  --color-neutral-600: #34374b;
+  --color-neutral-700: #181a26;
+  --color-neutral-800: #12131c;
+  --color-neutral-900: #090a0f;
+  --color-neutral-950: #050609;
 
   /* States (dark) */
-  --color-success: #82a077;
-  --color-success-bg: rgba(130, 160, 119, 0.18);
-  --color-success-fg: #a4ba9a;
-  --color-warning: #d09455;
-  --color-warning-bg: rgba(208, 148, 85, 0.18);
-  --color-warning-fg: #e0ad77;
-  --color-error: #c87263;
-  --color-error-bg: rgba(200, 114, 99, 0.18);
-  --color-error-fg: #d99182;
-  --color-info: #7da9bf;
-  --color-info-bg: rgba(125, 169, 191, 0.18);
-  --color-info-fg: #9bbfd2;
+  --color-success: #34d399;
+  --color-success-bg: rgba(16, 185, 129, 0.14);
+  --color-success-fg: #6ee7b7;
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(245, 158, 11, 0.14);
+  --color-warning-fg: #fcd34d;
+  --color-error: #f87171;
+  --color-error-bg: rgba(239, 68, 68, 0.14);
+  --color-error-fg: #fca5a5;
+  --color-info: #60a5fa;
+  --color-info-bg: rgba(59, 130, 246, 0.14);
+  --color-info-fg: #93c5fd;
 
   /* Shadows — heavier in dark */
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.30);
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.40), 0 1px 1px 0 rgba(0, 0, 0, 0.20);
-  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 2px 4px -1px rgba(0, 0, 0, 0.30);
-  --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.40);
-  --shadow-xl: 0 24px 48px -12px rgba(0, 0, 0, 0.65), 0 8px 16px -4px rgba(0, 0, 0, 0.50);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 0 25px rgba(139, 92, 246, 0.04);
+  --shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 40px -12px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 24px 64px -16px rgba(0, 0, 0, 0.5);
 
   /* shadcn-compat aliases */
   --background: var(--color-bg);
@@ -424,6 +439,13 @@
   --agenda-pessoa-6: #6c97e7;
   --agenda-pessoa-7: #be9ef6;
   --agenda-pessoa-8: #cc77b1;
+  --flow-sidebar-bg: #0d0e15;
+  --flow-nav-active-bg: linear-gradient(90deg, rgba(124, 58, 237, 0.25), rgba(124, 58, 237, 0.05));
+  --flow-nav-active-text: #ede9fe;
+  --flow-nav-active-border: rgba(139, 92, 246, 0.35);
+  --flow-nav-glow: 0 0 20px rgba(139, 92, 246, 0.12);
+  --flow-card-shadow: 0 0 25px rgba(139, 92, 246, 0.04);
+  --flow-auth-glow: rgba(124, 58, 237, 0.14);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -457,13 +479,14 @@
   --color-bg: var(--color-bg);
   --color-surface: var(--color-surface);
   --color-surface-elevated: var(--color-surface-elevated);
+  --color-surface-muted: var(--color-surface-elevated);
   --color-overlay: var(--color-overlay);
 
   --color-text: var(--color-text);
   --color-text-muted: var(--color-text-muted);
   --color-text-subtle: var(--color-text-subtle);
 
-  /* Accent — Sage */
+  /* Accent — violeta */
   --color-accent: var(--color-accent);
   --color-accent-foreground: var(--color-accent-fg);
   --color-accent-soft: var(--color-accent-soft);
@@ -480,7 +503,7 @@
   --color-accent-900: var(--color-accent-900);
   --color-accent-950: var(--color-accent-950);
 
-  /* Neutrals — greige */
+  /* Neutrals — slate */
   --color-neutral-50: var(--color-neutral-50);
   --color-neutral-100: var(--color-neutral-100);
   --color-neutral-200: var(--color-neutral-200);
@@ -532,14 +555,13 @@
   --color-card-foreground: var(--color-text);
 
   /* Tipografia */
-  --font-sans: var(--font-atkinson), ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", Roboto, sans-serif;
-  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, monospace;
+  --font-sans:
+    var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Espaçamento. Os valores são px LITERAIS (`--space-6` = 24px), não rem — e
      essa diferença é carregada por quem consome: ver o cálculo de altura em
-     `components/inbox/InboxLayout.tsx`, que soma `var(--space-6)` a um `3.5rem`
+     `components/inbox/InboxLayout.tsx`, que soma `var(--space-6)` a `var(--space-16)`
      justamente porque as duas parcelas NÃO estão na mesma unidade.
 
      As paradas fora desta lista (`p-7`, `gap-1.5`, `mt-14`…) continuam
@@ -592,7 +614,6 @@
 @utility duration-slow {
   transition-duration: var(--duration-slow);
 }
-
 
 @layer base {
   /* O preflight do v4 não pinta mais borda por padrão (`border: 0 solid`, cor
@@ -698,17 +719,34 @@
     overflow-x: clip;
     background-color: var(--color-bg);
     color: var(--color-text);
-    font-family: var(--font-atkinson), ui-sans-serif, system-ui, -apple-system,
-      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    font-family:
+      var(--font-jakarta),
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      "Helvetica Neue",
+      Arial,
+      sans-serif;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1,
+      "ss01" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    font-size: 14px;
+    line-height: 1.5;
   }
 
-  code, kbd, pre, samp {
-    font-family: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo,
-      Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family:
+      var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
+      "Courier New", monospace;
     font-variant-numeric: tabular-nums;
   }
 
@@ -721,7 +759,7 @@
     color: var(--color-accent-50);
   }
 
-  /* Focus ring: Sage 500/400, 2px with offset */
+  /* Foco visível nos dois temas, com afastamento de 2px. */
   :focus-visible {
     outline: 2px solid var(--color-accent-500);
     outline-offset: 2px;
@@ -963,4 +1001,74 @@
     transition: none;
     transform: none;
   }
+}
+
+/* Acabamento compartilhado: sem seletores por fragmento de classe, nem
+   sobrescritas globais de SVG, badges ou controles com !important. */
+@layer base {
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  .flow-sidebar {
+    background: var(--flow-sidebar-bg);
+  }
+  .flow-header {
+    background: var(--color-surface);
+  }
+  .flow-sidebar-brand {
+    letter-spacing: -0.02em;
+  }
+  .flow-nav-item {
+    color: var(--color-text-muted);
+    border: 1px solid transparent;
+    min-height: 34px;
+  }
+  .flow-nav-item:hover {
+    background: var(--color-surface-elevated);
+    color: var(--color-text);
+  }
+  .flow-nav-item[aria-current="page"] {
+    color: var(--flow-nav-active-text);
+    background: var(--flow-nav-active-bg);
+    border-color: var(--flow-nav-active-border);
+    box-shadow: var(--flow-nav-glow);
+    font-weight: 600;
+  }
+  .flow-nav-item[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    inset-block: 8px;
+    left: 0;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--color-accent);
+  }
+  [data-theme="dark"] .flow-nav-item[aria-current="page"]::before {
+    background: #c4b5fd;
+    box-shadow:
+      0 0 10px #8b5cf6,
+      0 0 20px rgba(139, 92, 246, 0.4);
+  }
+  .flow-card {
+    box-shadow: var(--flow-card-shadow);
+  }
+  .flow-auth {
+    background:
+      radial-gradient(ellipse at 50% 20%, var(--flow-auth-glow), transparent 65%), var(--color-bg);
+  }
+  .flow-auth-card {
+    box-shadow: var(--shadow-lg), var(--flow-card-shadow);
+  }
+  .flow-theme-toggle {
+    border-radius: var(--flow-control-radius);
+  }
+}
+
+@utility bg-cta {
+  background-image: linear-gradient(135deg, var(--color-accent-600), var(--color-accent-700));
 }

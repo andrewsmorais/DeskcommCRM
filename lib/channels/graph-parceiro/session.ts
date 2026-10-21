@@ -1,3 +1,4 @@
+import { comCotaDeCanal } from "@/lib/channels/cota-do-plano";
 /**
  * Persistência da sessão do canal Datafy — do lado de dentro do seam
  * (recorte do #1130, @vgamkt).
@@ -97,50 +98,58 @@ export async function saveGraphPartnerSession(
     requestId: string;
   },
 ): Promise<{ error: string | null; channelSessionId: string | null }> {
-  const linha = {
-    organization_id: input.organizationId,
-    provider: CHANNEL_PROVIDER_DATAFY,
-    datafy_phone_number_id: input.phoneNumberId,
-    datafy_waba_id: input.wabaId,
-    datafy_token_encrypted: input.tokenEncrypted,
-    phone_number: input.phoneNumber,
-    display_name: input.displayName,
-    status: "WORKING",
-  };
+  return comCotaDeCanal(
+    admin,
+    input.organizationId,
+    input.existente?.id ?? null,
+    async () => {
+      const linha = {
+        organization_id: input.organizationId,
+        provider: CHANNEL_PROVIDER_DATAFY,
+        datafy_phone_number_id: input.phoneNumberId,
+        datafy_waba_id: input.wabaId,
+        datafy_token_encrypted: input.tokenEncrypted,
+        phone_number: input.phoneNumber,
+        display_name: input.displayName,
+        status: "WORKING",
+      };
 
-  if (input.existente) {
-    // Reconectar é RESSUSCITAR: o mesmo update devolve credencial, número e a
-    // linha à vida, e a auditoria da volta sai de `reactivateChannelSession`.
-    const r = await reactivateChannelSession(
-      admin,
-      {
-        organizationId: input.organizationId,
-        channelSessionId: input.existente.id,
-        archivedAt: input.existente.archivedAt,
-      },
-      linha,
-      {
-        userId: input.userId,
-        requestId: input.requestId,
-        metadata: { provider: CHANNEL_PROVIDER_DATAFY, phone_number: input.phoneNumber },
-      },
-    );
-    return { error: r.error?.message ?? null, channelSessionId: input.existente.id };
-  }
+      if (input.existente) {
+        // Reconectar é RESSUSCITAR: o mesmo update devolve credencial, número e a
+        // linha à vida, e a auditoria da volta sai de `reactivateChannelSession`.
+        const r = await reactivateChannelSession(
+          admin,
+          {
+            organizationId: input.organizationId,
+            channelSessionId: input.existente.id,
+            archivedAt: input.existente.archivedAt,
+          },
+          linha,
+          {
+            userId: input.userId,
+            requestId: input.requestId,
+            metadata: { provider: CHANNEL_PROVIDER_DATAFY, phone_number: input.phoneNumber },
+          },
+        );
+        return { error: r.error?.message ?? null, channelSessionId: input.existente.id };
+      }
 
-  const { data, error } = await admin
-    .from("channel_sessions")
-    .insert({
-      ...linha,
-      webhook_secret_encrypted: input.segredoProvisorioCifrado,
-      metadata: metadataInicialDoCanal(),
-    })
-    .select("id")
-    .maybeSingle();
-  return {
-    error: error?.message ?? null,
-    channelSessionId: (data as { id: string } | null)?.id ?? null,
-  };
+      const { data, error } = await admin
+        .from("channel_sessions")
+        .insert({
+          ...linha,
+          webhook_secret_encrypted: input.segredoProvisorioCifrado,
+          metadata: metadataInicialDoCanal(),
+        })
+        .select("id")
+        .maybeSingle();
+      return {
+        error: error?.message ?? null,
+        channelSessionId: (data as { id: string } | null)?.id ?? null,
+      };
+    },
+    (message) => ({ error: message, channelSessionId: null }),
+  );
 }
 
 /** Grava o segredo de assinatura do painel na sessão ATIVA desta organização. */
@@ -175,6 +184,12 @@ export async function graphPartnerRefsDaSessao(
     .eq("id", channelSessionId)
     .maybeSingle();
   if (error) throw new Error(`graph_partner_refs_lookup_failed: ${error.message}`);
-  const row = data as { datafy_phone_number_id?: string | null; datafy_waba_id?: string | null } | null;
-  return { phoneNumberId: row?.datafy_phone_number_id ?? null, wabaId: row?.datafy_waba_id ?? null };
+  const row = data as {
+    datafy_phone_number_id?: string | null;
+    datafy_waba_id?: string | null;
+  } | null;
+  return {
+    phoneNumberId: row?.datafy_phone_number_id ?? null,
+    wabaId: row?.datafy_waba_id ?? null,
+  };
 }

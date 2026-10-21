@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger";
 import { decideRouting } from "@/lib/routing/decide";
 import { loadEligibleAttendants, InvalidRoutingChannel } from "@/lib/routing/eligibles";
 import { routingConfigSchema } from "@/lib/schemas/routing";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const ROUTING_WORKER_KEY = "worker.routing.v1";
 export const ROUTING_EVENT_TYPE = "conversation.routing_requested";
@@ -164,6 +165,16 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
   if (!org) throw new Error("routing_organization_missing");
   const settings = (org?.settings ?? {}) as { routing?: unknown };
   const config = routingConfigSchema.parse(settings.routing ?? {});
+
+  if (config.mode !== "manual") {
+    const acesso = await verificarRecursoDoPlano(orgId, "distribuicao_automatica");
+    if (!acesso.ok) {
+      if (acesso.status === 503) throw new Error("billing_unavailable");
+      await notice(orgId, conversationId, "plano_sem_distribuicao_automatica");
+      await markDone(event, "skipped_manual");
+      return "skipped_manual";
+    }
+  }
 
   const alreadyAssigned = Boolean(conv.assigned_to_user_id);
   let eligibles: Awaited<ReturnType<typeof loadEligibleAttendants>> = [];

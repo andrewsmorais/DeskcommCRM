@@ -42,9 +42,9 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
 
-  if (!existing) return fail("not_found", t("Agent não encontrado."), 404, { requestId });
+  if (!existing) return fail("not_found", t("Agente não encontrado."), 404, { requestId });
   if (existing.archived_at) {
-    return fail("state_conflict", "Agent arquivado.", 409, { requestId });
+    return fail("state_conflict", "Agente arquivado.", 409, { requestId });
   }
 
   const previousVersionId = existing.published_version_id as string | null;
@@ -55,7 +55,7 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
     .eq("id", id)
     .eq("organization_id", activeOrg.orgId);
 
-  if (error) return fail("internal_error", "Erro ao pausar agent.", 500, { requestId });
+  if (error) return fail("internal_error", "Erro ao pausar agente.", 500, { requestId });
 
   void audit({
     action: "ai_agent.paused",

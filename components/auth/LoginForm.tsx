@@ -46,7 +46,7 @@ export function LoginForm({ next }: { next?: string }) {
         return;
       }
       if (res.error === "invalid_credentials") {
-        setServerError(t("Email ou senha incorretos."));
+        setServerError(t("E-mail ou senha incorretos."));
       } else if (res.error === "rate_limited") {
         setServerError(t("Muitas tentativas. Aguarde alguns minutos."));
       } else if (res.error === "validation_error") {
@@ -58,14 +58,17 @@ export function LoginForm({ next }: { next?: string }) {
   };
 
   return (
-    <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-      <div className="space-y-1.5">
-        <Label htmlFor="email">{t("Email")}</Label>
+    <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+      <div className="space-y-2">
+        <Label htmlFor="email" className="text-[13px] font-medium">
+          {t("E-mail")}
+        </Label>
         <Input
           id="email"
           type="email"
           autoComplete="email"
           autoFocus
+          className="h-11 rounded-[10px] bg-background/50"
           aria-invalid={errors.email ? true : undefined}
           {...register("email")}
         />
@@ -73,12 +76,15 @@ export function LoginForm({ next }: { next?: string }) {
           <p className="text-xs text-destructive">{t(errors.email.message ?? "")}</p>
         )}
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="password">{t("Senha")}</Label>
+      <div className="space-y-2">
+        <Label htmlFor="password" className="text-[13px] font-medium">
+          {t("Senha")}
+        </Label>
         <Input
           id="password"
           type="password"
           autoComplete="current-password"
+          className="h-11 rounded-[10px] bg-background/50"
           aria-invalid={errors.password ? true : undefined}
           {...register("password")}
         />
@@ -94,7 +100,12 @@ export function LoginForm({ next }: { next?: string }) {
           {serverError}
         </div>
       )}
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button
+        type="submit"
+        variant="cta"
+        className="h-11 w-full rounded-[10px] font-semibold"
+        disabled={isPending}
+      >
         {isPending ? t("Entrando...") : t("Entrar")}
       </Button>
     </form>

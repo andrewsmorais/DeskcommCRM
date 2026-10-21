@@ -15,7 +15,7 @@ export function AlertsBanner({ alerts }: AlertsBannerProps) {
     return (
       <Card>
         <CardContent className="flex items-center gap-3 py-5">
-          <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" />
+          <CheckCircle className="h-5 w-5 text-indigo-500 shrink-0" />
           <p className="text-sm text-muted-foreground">
             {t("Nenhum alerta crítico no momento. Tudo certo!")}
           </p>

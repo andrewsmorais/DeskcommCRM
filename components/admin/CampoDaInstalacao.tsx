@@ -59,8 +59,8 @@ export function Origem({
   }
   if (fonte === "banco") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-        <span aria-hidden className="size-1.5 rounded-full bg-emerald-500" />
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400">
+        <span aria-hidden className="size-1.5 rounded-full bg-indigo-500" />
         {t("Definido aqui nesta tela")}
       </span>
     );

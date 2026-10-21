@@ -1,3 +1,4 @@
+import { enforceRateLimit } from "@/lib/rate-limit-helper";
 /**
  * GET /api/v1/campaigns — a lista.
  * POST /api/v1/campaigns — cria um rascunho.
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("manager", { requestId, resource: "campaigns" });
   if (!authz.ok) return authz.response;
+  const rl = await enforceRateLimit(req, "campaigns", authz.user.id, 5, 60 * 1000);
+  if (rl) return rl;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
 
   const params = Object.fromEntries(new URL(req.url).searchParams.entries());
@@ -65,7 +68,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (q.cursor) {
     const c = decodificarCursor(q.cursor);
     if (!c) return fail("invalid_cursor", t("Cursor inválido."), 400, { requestId });
-    query = query.or(`created_at.lt.${c.created_at},and(created_at.eq.${c.created_at},id.lt.${c.id})`);
+    query = query.or(
+      `created_at.lt.${c.created_at},and(created_at.eq.${c.created_at},id.lt.${c.id})`,
+    );
   }
 
   const { data, error } = await query;
@@ -90,7 +95,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (negado) return negado;
 
   const requestId = randomUUID();
-  const authz = await requireRole("manager", { requestId, resource: "campaigns" });
+  const authz = await requireRole("manager", {
+    requestId,
+    resource: "campaigns",
+    plano: "campanhas",
+  });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user, org } = authz;
@@ -182,7 +191,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     resourceType: "campaign",
     resourceId: criada.id,
     requestId,
-    metadata: { base_legal: entrada.base_legal, numeros: 1 + (entrada.channel_session_ids ?? []).length },
+    metadata: {
+      base_legal: entrada.base_legal,
+      numeros: 1 + (entrada.channel_session_ids ?? []).length,
+    },
   });
 
   return ok(data, { requestId, status: 201 });

@@ -15,17 +15,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type pg from "pg";
 
 import { moduloLigado } from "@/lib/instalacao/modulos";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 
 import { carregarConexao, type MotivoSemConexao } from "./credenciais";
 import { obterPool } from "./conexao";
 import { validarHostDeBanco } from "./guardas";
 import type { ConexaoExterna } from "./types";
 
-export type MotivoAcesso = MotivoSemConexao | "host_bloqueado" | "dns_falhou" | "modulo_desligado";
+export type MotivoAcesso =
+  | MotivoSemConexao
+  | "host_bloqueado"
+  | "dns_falhou"
+  | "modulo_desligado"
+  | "plano_sem_integracao"
+  | "plano_indisponivel";
 
 export type Acesso =
-  | { ok: true; conexao: ConexaoExterna; pool: pg.Pool }
-  | { ok: false; motivo: MotivoAcesso };
+  { ok: true; conexao: ConexaoExterna; pool: pg.Pool } | { ok: false; motivo: MotivoAcesso };
 
 export async function abrirAcesso(
   admin: SupabaseClient,
@@ -36,7 +42,14 @@ export async function abrirAcesso(
   // banco de outro sistema. Toda leitura passa por aqui — as rotas e as
   // ferramentas do agente —, então o módulo desligado recusa aqui também, e
   // nenhum caminho novo precisa lembrar de perguntar.
-  if (!(await moduloLigado(admin, "banco_externo"))) return { ok: false, motivo: "modulo_desligado" };
+  if (!(await moduloLigado(admin, "banco_externo")))
+    return { ok: false, motivo: "modulo_desligado" };
+  const acesso = await verificarRecursoDoPlano(organizationId, "integracoes_avancadas");
+  if (!acesso.ok)
+    return {
+      ok: false,
+      motivo: acesso.status === 503 ? "plano_indisponivel" : "plano_sem_integracao",
+    };
 
   const leitura = await carregarConexao(admin, organizationId, connectionId);
   if (!leitura.ok) return { ok: false, motivo: leitura.motivo };
@@ -48,7 +61,10 @@ export async function abrirAcesso(
   if (!alvo.ok) {
     return {
       ok: false,
-      motivo: alvo.motivo === "dns_falhou" || alvo.motivo === "dns_vazio" ? "dns_falhou" : "host_bloqueado",
+      motivo:
+        alvo.motivo === "dns_falhou" || alvo.motivo === "dns_vazio"
+          ? "dns_falhou"
+          : "host_bloqueado",
     };
   }
 

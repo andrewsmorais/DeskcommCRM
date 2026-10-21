@@ -202,13 +202,13 @@ export function VersionHistory({ agentId, versions, readOnly }: Props) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t("Uma nova versão idêntica a v")}{revertTarget?.version_number}
-              {t(" será criada e publicada imediatamente. A versão atualmente publicada vira superseded.")}
+              {t(" será criada e publicada imediatamente. A versão atualmente publicada é marcada como substituída.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={reverting}>{t("Cancelar")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleRevert} disabled={reverting}>
-              {reverting ? t("Revertendo…") : t("Confirmar revert")}
+              {reverting ? t("Revertendo…") : t("Confirmar reversão")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -62,6 +62,9 @@ const diasDeRetencao = (nome: string, padrao: number) =>
     });
 
 const schema = z.object({
+  // Cobrança opcional deste fork; não impede o boot sem integração comercial.
+  ASAAS_API_KEY: z.string().default(""),
+  ASAAS_BASE_URL: z.string().default(""),
   // Node
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 

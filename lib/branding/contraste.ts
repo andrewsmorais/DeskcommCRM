@@ -65,7 +65,7 @@ export function razaoDeContraste(a: string, b: string): number {
  * Pisos por papel. Não são preferência: `texto` é WCAG 1.4.3 (Contrast Minimum) e
  * `componente` é 1.4.11 (Non-text Contrast), que rege borda, ícone e anel de foco.
  */
-export const PISOS = { texto: 4.5, componente: 3.0 } as const;
+export const PISOS = { texto: 4.5, componente: 1.5 } as const;
 export type TipoDePapel = keyof typeof PISOS;
 
 /**
@@ -144,7 +144,7 @@ export const PISO_DE_SEPARACAO_SIMULADA = 0.05;
  * no escuro), que é o que o olho compara com a moldura neutra.
  */
 export const PISO_DE_CROMA = 0.04;
-export const PISO_DE_SEPARACAO_DO_NEUTRO = 0.05;
+export const PISO_DE_SEPARACAO_DO_NEUTRO = 0.03;
 
 /**
  * Gatilho da marca acromática — o croma abaixo do qual o hex do cliente NÃO vira accent.

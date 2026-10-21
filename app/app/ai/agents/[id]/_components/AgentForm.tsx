@@ -44,6 +44,7 @@ import { rotuloDoEstadoDoCanal } from "@/lib/channels/estado";
 import { bloqueioDePublicacao } from "@/lib/ai/agents/bloqueio-de-publicacao";
 import { mesmoRascunho } from "@/lib/ai/agents/mesmo-rascunho";
 import { ToolPicker } from "./ToolPicker";
+import { ObjetivoDoAgente } from "./ObjetivoDoAgente";
 import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
 import { HandoffKeywordsInput } from "./HandoffKeywordsInput";
 import { FollowupFlowPicker } from "./FollowupFlowPicker";
@@ -137,6 +138,7 @@ interface EditProps extends BaseProps {
 
 interface CreateProps extends BaseProps {
   mode: "create";
+  nomeDaOrganizacao?: string;
 }
 
 type Props = (EditProps | CreateProps) & {
@@ -492,7 +494,7 @@ export function AgentForm(props: Props) {
    * chave que tinha acabado de escolher.
    */
   const publishBlockReason = React.useMemo(() => {
-    if (!isEdit) return t("Salve o agent antes de publicar.");
+    if (!isEdit) return t("Salve o agente antes de publicar.");
     const motivo = bloqueioDePublicacao({
       temRascunhoVigente: !!props.draft,
       formularioValido: isValid,
@@ -581,7 +583,7 @@ export function AgentForm(props: Props) {
           toast.error(res.message ?? `${t("Erro")}: ${res.error}`);
           return;
         }
-        toast.success(t("Agent criado."));
+        toast.success(t("Agente criado."));
         router.push(`/app/ai/agents/${res.data!.agent_id}`);
       }
     } finally {
@@ -704,6 +706,15 @@ export function AgentForm(props: Props) {
           ) : null}
         </div>
       </div>
+
+      {!isEdit && (
+        <ObjetivoDoAgente
+          nomeDaOrganizacao={props.nomeDaOrganizacao ?? ""}
+          temAlteracoes={dirty}
+          disabled={disabled}
+          onApply={(modelo) => patch(modelo)}
+        />
+      )}
 
       {/*
         O MOTIVO NA TELA, não só no `title` (issue #951).
@@ -1135,7 +1146,7 @@ export function AgentForm(props: Props) {
             </div>
             <p className="text-xs text-muted-foreground">
               {t(
-                "Em vez de um bloco único, a resposta sai em bolhas separadas, espaçadas pelo mesmo ritmo anti-banimento do envio. O agente também é instruído a escrever em parágrafos curtos.",
+                "Em vez de um bloco único, a resposta sai em bolhas separadas, espaçadas pelo mesmo ritmo antibanimento do envio. O agente também é instruído a escrever em parágrafos curtos.",
               )}
             </p>
             {form.split_messages ? (

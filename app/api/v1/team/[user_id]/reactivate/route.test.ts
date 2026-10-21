@@ -148,3 +148,4 @@ describe("reativar membro", () => {
     expect(res.status).toBe(500);
   });
 });
+vi.mock("@/lib/billing/equipe", () => ({ comCotaDeEquipe: async (_db: unknown, _org: string, _alvo: unknown, op: () => Promise<unknown>) => op(), ErroDaCotaDeEquipe: class extends Error {} }));

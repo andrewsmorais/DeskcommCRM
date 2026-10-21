@@ -1,3 +1,4 @@
+import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
 /**
  * GET/POST /api/v1/ai/cases/:id/chat — a consulta interna da equipe à IA que
  * ABRIU o caso (migration 0281).

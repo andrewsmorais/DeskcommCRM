@@ -1,0 +1,285 @@
+{
+  "environment": "sandbox",
+  "temporary_runner_files_removed": true,
+  "development_sales_server_retained": true,
+  "real_money": false,
+  "started_at": "2026-10-17T05:25:10.925Z",
+  "checks": [
+    {
+      "name": "sandbox_synthetic_preflight",
+      "at": "2026-10-17T05:25:11.161Z",
+      "customers": 2,
+      "notifications_disabled": true,
+      "stored_phones": false
+    },
+    {
+      "name": "official_card_fixture_loaded_in_memory",
+      "at": "2026-10-17T05:25:13.194Z"
+    },
+    {
+      "name": "sandbox_tokenization_capability",
+      "at": "2026-10-17T05:25:15.212Z",
+      "status": 200,
+      "enabled": true,
+      "error_codes": []
+    },
+    {
+      "name": "card_local_tokenization",
+      "at": "2026-10-17T05:25:23.927Z",
+      "status": 200,
+      "success": true
+    },
+    {
+      "name": "card_local_checkout",
+      "at": "2026-10-17T05:25:27.214Z",
+      "status": 200,
+      "success": true
+    },
+    {
+      "name": "card_authenticated_payment_lookup",
+      "at": "2026-10-17T05:25:41.686Z",
+      "status": 200,
+      "provider_status": "PENDING",
+      "local_status": "trialing"
+    },
+    {
+      "name": "card_payment_reconciled",
+      "at": "2026-10-17T05:25:45.455Z",
+      "subscription_status": "active",
+      "provider_status": "CONFIRMED",
+      "idempotent": true,
+      "manual_replay": true,
+      "real_money": false
+    },
+    {
+      "name": "pix_local_checkout",
+      "at": "2026-10-17T05:25:49.192Z",
+      "status": 200,
+      "success": true
+    },
+    {
+      "name": "pix_authenticated_payment_lookup",
+      "at": "2026-10-17T05:25:50.496Z",
+      "status": 200,
+      "provider_status": "PENDING",
+      "local_status": "trialing"
+    },
+    {
+      "name": "pix_qr_verification",
+      "at": "2026-10-17T05:25:50.823Z",
+      "status": 200,
+      "qr_present": true,
+      "copy_paste_present": true
+    },
+    {
+      "name": "pix_payment_reconciled",
+      "at": "2026-10-17T05:25:52.714Z",
+      "subscription_status": "active",
+      "provider_status": "RECEIVED",
+      "idempotent": true,
+      "manual_replay": true,
+      "real_money": false
+    },
+    {
+      "name": "protected_subscriptions_unchanged",
+      "at": "2026-10-17T05:25:52.873Z",
+      "passed": true
+    },
+    {
+      "name": "card_own_payment_200",
+      "at": "2026-10-17T05:26:52.898Z",
+      "status": 200,
+      "financial_data_exposed": true
+    },
+    {
+      "name": "pix_own_payment_200",
+      "at": "2026-10-17T05:26:53.609Z",
+      "status": 200,
+      "financial_data_exposed": true
+    },
+    {
+      "name": "card_cannot_read_pix_404",
+      "at": "2026-10-17T05:26:54.387Z",
+      "status": 404,
+      "financial_data_exposed": false
+    },
+    {
+      "name": "pix_cannot_read_card_404",
+      "at": "2026-10-17T05:26:55.117Z",
+      "status": 404,
+      "financial_data_exposed": false
+    },
+    {
+      "name": "unauthenticated_payment_401",
+      "at": "2026-10-17T05:26:55.193Z",
+      "status": 401,
+      "financial_data_exposed": false
+    },
+    {
+      "name": "supabase_integration_confirmed_final_state",
+      "at": "2026-10-17T05:26:55.193Z",
+      "project": "chataionline",
+      "subscriptions": 2,
+      "status": "active",
+      "plan": "essencial",
+      "seats": 2,
+      "billing_cycle": "monthly",
+      "period_end": "2026-11-24T00:00:00+00:00"
+    },
+    {
+      "name": "existing_boleto_fields_readonly_confirmed",
+      "at": "2026-10-17T05:32:21.102Z",
+      "payments": 2,
+      "readonly": true
+    },
+    {
+      "name": "cancellation_fixture_ssr_getuser_verified",
+      "at": "2026-10-17T05:34:43.876Z",
+      "organization_id": "f8a9f162-ae4a-4071-b0a1-c00e49485f35"
+    },
+    {
+      "name": "crm_cancel_handler_response",
+      "at": "2026-10-17T05:34:48.978Z",
+      "status": 200,
+      "json": true
+    },
+    {
+      "name": "crm_cancel_paid_period_preserved",
+      "at": "2026-10-17T05:34:55.309Z",
+      "status": "canceled",
+      "period_preserved": true,
+      "repeated_handler_status": 200,
+      "payment_replay_status": 200,
+      "provider_recurring_deleted": true,
+      "other_subscriptions_unchanged": true,
+      "prepaid_gate_active": true,
+      "prepaid_gate_code": "billing_feature",
+      "audit_once": true,
+      "real_money": false
+    },
+    {
+      "name": "supabase_integration_confirmed_cancellation",
+      "at": "2026-10-17T05:36:02.349Z",
+      "project": "chataionline",
+      "card_status": "canceled",
+      "canceled_at_present": true,
+      "cancellation_audits": 1,
+      "pix_status": "active"
+    }
+  ],
+  "flows": {
+    "card": {
+      "customer_id": "cus_000009535493",
+      "notifications_disabled": true,
+      "customer_has_phone": false,
+      "organization_id": "f8a9f162-ae4a-4071-b0a1-c00e49485f35",
+      "subscription_id": "sub_ec2pp091xz4szo6w",
+      "checkout_status": "trialing",
+      "value": 214,
+      "seats": 2,
+      "billing_cycle": "monthly",
+      "payment_id": "pay_aw7sbw69ejokav52",
+      "billing_type": "CREDIT_CARD",
+      "payment_initial_status": "PENDING",
+      "payment_due_date": "2026-10-24",
+      "confirmation_status": 200,
+      "confirmation_error_codes": [],
+      "payment_final_status": "CONFIRMED",
+      "webhook_manual_replay_status": 200,
+      "manual_replay": true,
+      "subscription_status": "active",
+      "current_period_end": "2026-11-24T00:00:00+00:00",
+      "repeated_webhook_status": 200,
+      "idempotent": true,
+      "result": "passed"
+    },
+    "pix": {
+      "customer_id": "cus_000009535495",
+      "notifications_disabled": true,
+      "customer_has_phone": false,
+      "organization_id": "8856c7de-9483-42f6-83cd-488b9e0732fe",
+      "subscription_id": "sub_crhkymk0skfqc3fs",
+      "checkout_status": "trialing",
+      "value": 214,
+      "seats": 2,
+      "billing_cycle": "monthly",
+      "checkout_qr_present": true,
+      "checkout_copy_paste_present": true,
+      "payment_id": "pay_3pp8t26z8qpat9gp",
+      "billing_type": "PIX",
+      "payment_initial_status": "PENDING",
+      "payment_due_date": "2026-10-24",
+      "qr_status": 200,
+      "qr_present": true,
+      "copy_paste_present": true,
+      "qr_error_codes": [],
+      "confirmation_status": 200,
+      "confirmation_error_codes": [],
+      "payment_final_status": "RECEIVED",
+      "webhook_manual_replay_status": 200,
+      "manual_replay": true,
+      "subscription_status": "active",
+      "current_period_end": "2026-11-24T00:00:00+00:00",
+      "repeated_webhook_status": 200,
+      "idempotent": true,
+      "result": "passed"
+    }
+  },
+  "protected_subscriptions_unchanged": true,
+  "completed_at": "2026-10-17T05:34:55.309Z",
+  "boleto_readonly": [
+    {
+      "payment_id": "pay_niq5562pivm83ymo",
+      "status": 200,
+      "billing_type": "BOLETO",
+      "payment_status": "RECEIVED",
+      "invoice_url_present": true,
+      "bank_slip_url_present": true,
+      "identification_endpoint_status": 200,
+      "identification_field_present": true,
+      "barcode_present": true,
+      "readonly": true
+    },
+    {
+      "payment_id": "pay_vycd46ltivb3rmnb",
+      "status": 200,
+      "billing_type": "BOLETO",
+      "payment_status": "RECEIVED",
+      "invoice_url_present": true,
+      "bank_slip_url_present": true,
+      "identification_endpoint_status": 200,
+      "identification_field_present": true,
+      "barcode_present": true,
+      "readonly": true
+    }
+  ],
+  "cancellation": {
+    "organization_id": "f8a9f162-ae4a-4071-b0a1-c00e49485f35",
+    "subscription_id": "sub_ec2pp091xz4szo6w",
+    "payment_id": "pay_aw7sbw69ejokav52",
+    "real_money": false,
+    "before_status": "active",
+    "before_period_end": "2026-11-24T00:00:00+00:00",
+    "audit_count_before": 0,
+    "handler_status": 200,
+    "handler_content_type": "application/json",
+    "request_id": "7cdbd9cb-a6cb-44ff-8b30-f88db90e136e",
+    "status": "canceled",
+    "canceled_at": "2026-10-17T05:34:48.787+00:00",
+    "current_period_end": "2026-11-24T00:00:00+00:00",
+    "access_until": "2026-11-24T00:00:00+00:00",
+    "provider_after_status": 200,
+    "provider_deleted": true,
+    "payment_replay_status": 200,
+    "manual_replay": true,
+    "repeated_handler_status": 200,
+    "idempotent": true,
+    "prepaid_gate_http": 403,
+    "prepaid_gate_code": "billing_feature",
+    "prepaid_gate_active": true,
+    "audit_count_after": 1,
+    "audit_once": true,
+    "protected_subscriptions_unchanged": true,
+    "result": "passed"
+  }
+}

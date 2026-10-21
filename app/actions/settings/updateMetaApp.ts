@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { randomBytes } from "node:crypto";
 import { headers } from "next/headers";
@@ -46,7 +46,7 @@ export type UpdateMetaAppResult =
  * ── Por que o verify token é gerado AQUI ─────────────────────────────────────
  *
  * O operador não inventa nada: ele cola o que a Meta exige no painel, e um token
- * escolhido à mão ("deskcomm", o nome da empresa) é adivinhável — quem o acerta
+ * escolhido à mão ("ChatAI Online", o nome da empresa) é adivinhável — quem o acerta
  * responde ao handshake e passa a receber o tráfego do webhook. 32 bytes de
  * aleatório do CSPRNG do sistema, em `base64url` porque o valor viaja como query
  * string (`?hub.verify_token=...`), e `+`/`/` de base64 comum virariam `%2B`/`%2F`

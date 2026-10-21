@@ -287,7 +287,7 @@ export default async function ConversoesPage({
             </div>
           )}
           {okDoGoogle && (
-            <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm">
+            <div className="rounded-md border border-indigo-500/40 bg-indigo-500/10 p-4 text-sm">
               {t("Google Ads autorizado. Agora informe a conta e a ação de conversão abaixo.")}
             </div>
           )}

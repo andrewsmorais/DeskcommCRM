@@ -16,6 +16,9 @@ import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { modulosLigados } from "@/lib/instalacao/modulos";
 import { capacidadesLigadas } from "@/lib/organizacao/capacidades";
+import { BillingBanner } from "@/components/app/BillingBanner";
+import { getOrganizationBilling, type BillingReadResult } from "@/lib/billing";
+import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
 import {
   ImpersonateBanner,
 } from "@/components/app/ImpersonateBanner";
@@ -62,8 +65,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let conexoesCaidas: ConexaoCaida[] = [];
   let enrolled = false;
   let needsMfaGate = false;
+  let isBillingActive = true;
+  let falhaDoPlano: Extract<BillingReadResult, { ok: false }> | null = null;
 
   if (activeOrg) {
+    const leituraDoPlano = await getOrganizationBilling(activeOrg.orgId);
+    if (leituraDoPlano.ok) {
+      isBillingActive = leituraDoPlano.billing ? leituraDoPlano.billing.is_active : true;
+    } else {
+      falhaDoPlano = leituraDoPlano;
+    }
     const admin = createAdminClient();
     /**
      * As cinco consultas que TODA página de `/app` paga, disparadas juntas.
@@ -252,6 +263,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       */}
       <div data-marca-org="" className="contents">
         <EstiloDaMarcaDaOrganizacao css={cssDaOrganizacao} />
+        {falhaDoPlano ? <FalhaNaLeituraDoPlano reason={falhaDoPlano.reason} /> :
+          <BillingBanner isActive={isBillingActive} idioma={user.idioma} />}
         <ImpersonateBanner impersonating={impersonating} />
         <ConexaoCaidaBanner caidas={conexoesCaidas} />
         {needsMfaGate ? (

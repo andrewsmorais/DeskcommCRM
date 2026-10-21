@@ -1,3 +1,4 @@
+import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
 import type { JobClaim } from "@/lib/agent-engine/queue/claim";
 import { assertAgendaEffectSupabase } from "@/lib/agenda/efeito";
 import { AgendaDeferredError } from "@/lib/agenda/protecao-followup";
@@ -666,6 +667,17 @@ async function processEnrollment(
 
   const graph = await db.loadFlowGraph(enrollment.organization_id, enrollment.version_id);
   if (!graph) throw new Error("flow_version_not_found");
+  const acesso = await verificarGrafoDoPlano(enrollment.organization_id, graph);
+  if (!acesso.ok) {
+    if (acesso.status === 503) throw new Error("billing_unavailable");
+    const aviso = `Plano: ${acesso.message}`;
+    if (enrollment.last_error !== aviso) await db.insertDeadInboxItem({ organization_id: enrollment.organization_id,
+      title: "Um processo aguarda a revisão do plano", body: acesso.message, ref_id: enrollment.id });
+    await db.updateEnrollment(enrollment.id, enrollment.organization_id, {
+      last_error: aviso, next_eval_at: new Date(clock().getTime() + 86400000).toISOString(), claimed_until: null,
+    });
+    return;
+  }
 
   const node = graph.nodes.find((n) => n.id === enrollment.current_node_id);
   if (!node) throw new Error("node_not_found");

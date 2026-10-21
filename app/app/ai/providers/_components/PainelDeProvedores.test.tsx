@@ -92,6 +92,25 @@ function montar() {
 }
 
 describe("PainelDeProvedores — o Jev no painel", () => {
+  it("chave sem escolha explícita indica seleção automática, sem afirmar que vem da instalação", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const data =
+          url === "/api/v1/ai/jev"
+            ? jev(false)
+            : { ...PROVEDORES, podeEditar: true };
+        return new Response(JSON.stringify({ data }), { status: 200 });
+      }),
+    );
+    montar();
+    await screen.findByTestId("cartao-do-jev");
+    fireEvent.click(screen.getByTestId("avancado-entender"));
+    const seletor = screen.getByTestId("chave-sentiment_classify");
+    expect(seletor).toHaveTextContent("Escolha automática");
+    expect(seletor).not.toHaveTextContent("da instalação");
+  });
+
   it("o cartão do Jev vem logo abaixo do Modelo padrão", async () => {
     montar();
     const jevCartao = await screen.findByTestId("cartao-do-jev");

@@ -1,0 +1,1 @@
+A inclusão de uma credencial agora informa que está salvando enquanto aguarda o servidor. A confirmação de gravação aparece somente após a resposta de sucesso; uma falha mantém o formulário aberto com os campos preenchidos.

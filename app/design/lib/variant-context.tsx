@@ -20,7 +20,7 @@ type Ctx = State & {
 
 const VariantCtx = React.createContext<Ctx | null>(null);
 
-const STORAGE = "deskcomm.designshowcase.v1";
+const STORAGE = "ChatAI Online.designshowcase.v1";
 
 const TYPO_VAR_MAP: Record<TypoId, { display: string; body: string; mono: string }> = {
   "bricolage-jakarta": {
@@ -99,7 +99,7 @@ function applyToRoot(s: State) {
 
 export function VariantProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<State>({
-    palette: "sage",
+    palette: "chatai",
     typo: "bricolage-jakarta",
     density: "equilibrada",
     theme: "light",

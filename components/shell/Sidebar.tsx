@@ -123,30 +123,30 @@ export function SidebarContent({
         : brand.logoDarkUrl;
   // Só quando NINGUÉM — nem a instalação, nem a organização — pôs marca própria:
   // é a condição de `lib/branding.ts`, avaliada sobre o que a barra vai mostrar.
-  const marcaDoProduto = marcaEhADoProduto({ name: nome, logoUrl: logo ?? null });
+  const marcaDoProduto =
+    nome === "ChatAI Online" || marcaEhADoProduto({ name: nome, logoUrl: logo ?? null });
 
   return (
-    <>
+    <div className="flow-sidebar flex min-h-0 flex-1 flex-col">
       <div
         className={cn(
-          "flex h-14 items-center border-b px-4",
+          "flow-sidebar-brand flex h-16 shrink-0 items-center border-b border-border/70 px-4",
           collapsed ? "justify-center" : "justify-start",
         )}
       >
-        {(logo || logoEscuro) && !collapsed ? (
-          // Sem arte própria para o escuro, preserva a proteção de contraste.
+        {marcaDoProduto ? (
+          collapsed ? (
+            <SimboloDoProduto nome={nome} className="h-9 w-9" />
+          ) : (
+            <LogotipoDoProduto nome={nome} className="h-9 w-auto max-w-full" />
+          )
+        ) : (logo || logoEscuro) && !collapsed ? (
           <div
             className={cn(
               "rounded-md",
               !logoEscuro && "dark:bg-white dark:px-2 dark:py-1 dark:shadow-sm",
             )}
           >
-            {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
-              (banco ou .env), e next/image exige allowlist de domínios fechada em
-              build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
-              Altura fixa e largura livre porque a arte enviada tem proporção
-              desconhecida; forçar as duas distorceria o logo de quem configurou. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             {logo ? (
               <img
                 src={logo}
@@ -160,7 +160,6 @@ export function SidebarContent({
               <span className="dark:hidden">{nome}</span>
             )}
             {logoEscuro ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={logoEscuro}
                 alt={nome}
@@ -168,14 +167,6 @@ export function SidebarContent({
               />
             ) : null}
           </div>
-        ) : marcaDoProduto ? (
-          // O desenho do produto, inline (ver `components/branding/MarcaDoProduto.tsx`):
-          // logotipo com a barra aberta, só o símbolo com ela recolhida.
-          collapsed ? (
-            <SimboloDoProduto nome={nome} className="h-8 w-8" />
-          ) : (
-            <LogotipoDoProduto nome={nome} className="h-8 w-auto" />
-          )
         ) : (
           <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
         )}
@@ -234,7 +225,10 @@ export function SidebarContent({
         o PR: cada linha custa 32px (28px de altura + 4px de `space-y-1`), e
         trocar N destinos do menu por um único link de hub devolve (N-1)×32px.
       */}
-      <nav className="flex-1 space-y-2 overflow-y-auto p-2" aria-label={t("Navegação principal")}>
+      <nav
+        className="flow-sidebar-nav min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2"
+        aria-label={t("Navegação principal")}
+      >
         {grupos.map(({ group, items }) => {
           const tituloId = `nav-grupo-${group.id}`;
           // Recolhido o sidebar inteiro (rail de 64px), o grupo sempre mostra
@@ -252,7 +246,7 @@ export function SidebarContent({
                     type="button"
                     onClick={() => toggleGrupo(group.id)}
                     aria-expanded={aberto}
-                    className="flex w-full items-center justify-between rounded-md px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+                    className="flow-nav-group flex w-full items-center justify-between rounded-lg px-3 py-1 text-[11px] font-semibold tracking-[0.04em] text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                   >
                     {t(group.label)}
                     <CaretDown
@@ -284,10 +278,7 @@ export function SidebarContent({
                           aria-current={isActive ? "page" : undefined}
                           onClick={onNavigate}
                           className={cn(
-                            "relative flex items-center gap-3 rounded-md px-3 py-1 text-sm transition-colors",
-                            isActive
-                              ? "bg-accent text-accent-foreground"
-                              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                            "flow-nav-item relative flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                             collapsed && "justify-center px-2",
                           )}
                         >
@@ -312,10 +303,7 @@ export function SidebarContent({
                         aria-current={pathname === group.hub.href ? "page" : undefined}
                         onClick={onNavigate}
                         className={cn(
-                          "flex items-center gap-3 rounded-md px-3 py-1 text-sm transition-colors",
-                          pathname === group.hub.href
-                            ? "bg-accent text-accent-foreground"
-                            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                          "flow-nav-item relative flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                           collapsed && "justify-center px-2",
                         )}
                       >
@@ -330,7 +318,7 @@ export function SidebarContent({
           );
         })}
       </nav>
-      <div className="border-t p-2">
+      <div className="flow-sidebar-footer shrink-0 border-t border-border/70 p-2">
         {rodape && (
           <Link
             href={rodape.href}
@@ -338,10 +326,7 @@ export function SidebarContent({
             aria-current={pathname.startsWith(rodape.href) ? "page" : undefined}
             onClick={onNavigate}
             className={cn(
-              "mb-1 flex items-center gap-3 rounded-md px-3 py-1 text-sm transition-colors",
-              pathname.startsWith(rodape.href)
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+              "flow-nav-item relative mb-1 flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               collapsed && "justify-center px-2",
             )}
           >
@@ -356,10 +341,10 @@ export function SidebarContent({
             onClick={() => startTransition(() => toggleSidebar(collapsed))}
             disabled={isPending}
             className={cn(
-              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+              "flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               collapsed && "justify-center px-2",
             )}
-            aria-label={collapsed ? t("Expandir sidebar") : t("Recolher sidebar")}
+            aria-label={collapsed ? t("Expandir menu lateral") : t("Recolher menu lateral")}
           >
             {collapsed ? (
               <CaretDoubleRight size={14} aria-hidden />
@@ -370,7 +355,7 @@ export function SidebarContent({
           </button>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -397,7 +382,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         //
         // `shrink-0` porque item de flex encolhe por padrão, e uma barra de 60
         // espremida para caber é o mesmo defeito por outro caminho.
-        "sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r bg-card transition-[width] duration-200",
+        "flow-sidebar sticky top-0 z-30 flex h-svh shrink-0 flex-col border-r border-border/70 transition-[width] duration-200 motion-reduce:transition-none",
         collapsed ? "w-16" : "w-60",
       )}
     >

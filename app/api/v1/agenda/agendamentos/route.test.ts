@@ -293,3 +293,4 @@ describe("GET /api/v1/agenda/agendamentos — continua só-sessão", () => {
     expect(createAdminClient).not.toHaveBeenCalled();
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

@@ -12,10 +12,11 @@ que o `next/font/google` baixava.
 
 | Arquivo | Família | Pesos | Cobertura | Origem (fonts.gstatic.com) |
 |---|---|---|---|---|
+| `geist-100-900-latin.woff2` | Geist (disponível para as variações do design) | variável 100-900 | latin | `geist/v5` |
 | `atkinson-hyperlegible-{400,700}-latin-latin-ext.woff2` | Atkinson Hyperlegible | 400, 700 | latin + latin-ext | `atkinsonhyperlegible/v12` |
 | `ibm-plex-mono-{400,500}-latin-latin-ext.woff2` | IBM Plex Mono | 400, 500 | latin + latin-ext | `ibmplexmono/v20` |
 | `bricolage-grotesque-200-800-latin.woff2` | Bricolage Grotesque | variável 200–800 | latin | `bricolagegrotesque/v9` |
-| `plus-jakarta-sans-200-800-latin.woff2` | Plus Jakarta Sans | variável 200–800 | latin | `plusjakartasans/v12` |
+| `plus-jakarta-sans-200-800-latin.woff2` | Plus Jakarta Sans (fonte do CRM e do login, via `--font-jakarta`) | variável 200–800 | latin | `plusjakartasans/v12` |
 | `fraunces-100-900-latin.woff2` | Fraunces | variável 100–900 + `opsz`, `SOFT`, `WONK` | latin | `fraunces/v38` |
 | `manrope-200-800-latin.woff2` | Manrope | variável 200–800 | latin | `manrope/v20` |
 | `source-serif-4-200-900-latin.woff2` | Source Serif 4 | variável 200–900 | latin | `sourceserif4/v14` |

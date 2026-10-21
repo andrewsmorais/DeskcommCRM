@@ -30,7 +30,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const requestId = randomUUID();
 
-  const authz = await requireRole("manager", { requestId, resource: "ai_skills" });
+  const authz = await requireRole("manager", { requestId, resource: "ai_skills", plano: "skills" });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org } = authz;
@@ -41,14 +41,21 @@ export async function POST(req: NextRequest): Promise<Response> {
   const MAX_UPLOAD_BYTES = 6 * 1024 * 1024; // 6MB: teto do envelope multipart (5MB skill + overhead)
   const contentLength = Number(req.headers.get("content-length") ?? "0");
   if (contentLength > MAX_UPLOAD_BYTES) {
-    return fail("skill_upload_too_large", t("O arquivo enviado é grande demais (máx. 5 MB por skill)."), 413, { requestId });
+    return fail(
+      "skill_upload_too_large",
+      t("O arquivo enviado é grande demais (máx. 5 MB por skill)."),
+      413,
+      { requestId },
+    );
   }
 
   let formData: FormData;
   try {
     formData = await req.formData();
   } catch {
-    return fail("invalid_request", t("Falha ao processar multipart/form-data."), 400, { requestId });
+    return fail("invalid_request", t("Falha ao processar multipart/form-data."), 400, {
+      requestId,
+    });
   }
 
   const fileEntry = formData.get("file");

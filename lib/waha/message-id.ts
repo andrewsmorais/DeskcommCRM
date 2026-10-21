@@ -64,7 +64,7 @@ export function bareWaMessageId(id: string): string {
  * ⚠️ LIMITE CONHECIDO, o mesmo nos dois caminhos: se o engine ecoar com um chat
  * diferente do que usamos para enviar (`@lid` de um lado, `@c.us` do outro), o
  * composto construído não casa e a duplicata fica. O conserto de raiz é canonizar
- * o id nas duas pontas — desenho na issue #196 do DeskcommCRM.
+ * o id nas duas pontas — desenho na issue #196 do ChatAI Online.
  */
 export function wahaEchoExternalIds(externalId: string, recipient: string): string[] {
   const bare = bareWaMessageId(externalId);

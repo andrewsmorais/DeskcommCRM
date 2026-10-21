@@ -86,7 +86,7 @@ export function NodeConfigPanel({
           {t(visual.paletteLabel)}
         </h2>
         <p className="text-sm text-text-muted">
-          {t("Alterações aplicam no rascunho ao digitar — salve na barra de publicação.")}
+          {t("As alterações são aplicadas ao rascunho enquanto você digita — salve na barra de publicação.")}
         </p>
       </div>
 

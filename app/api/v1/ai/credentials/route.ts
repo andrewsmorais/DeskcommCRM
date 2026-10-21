@@ -24,8 +24,10 @@ import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
+// Contrato da view segura também nas instalações anteriores ao provedor
+// personalizado. O endereço dele é lido pelo runtime, não por esta lista.
 const SAFE_COLUMNS =
-  "id, organization_id, provider, label, api_key_last4, base_url, validated_at, validation_error, models_available, is_active, created_by, created_at, updated_at";
+  "id, organization_id, provider, label, api_key_last4, validated_at, validation_error, models_available, is_active, created_by, created_at, updated_at";
 
 const createSchema = z.object({
   // Derivado de `lib/ai/pontos/provedores.ts`, a lista única desde a migration
@@ -153,11 +155,25 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // A resposta continua saindo da view segura: ela é quem garante que nenhum
   // campo cifrado atravesse a fronteira HTTP.
-  const { data: created } = await createAdminClient()
+  const { data: created, error: readbackError } = await createAdminClient()
     .from("ai_provider_credentials_safe")
     .select(SAFE_COLUMNS)
     .eq("id", guardado.id)
+    .eq("organization_id", activeOrg.orgId)
     .single();
+
+  if (readbackError || !created) {
+    // Guardar já terminou. Não repetir a escrita nem afirmar que nada foi
+    // salvo: a lista é o próximo passo para evitar credenciais duplicadas.
+    return fail(
+      "internal_error",
+      t(
+        "A credencial pode ter sido salva, mas não foi possível confirmar o retorno. Confira a lista de credenciais antes de tentar cadastrar novamente.",
+      ),
+      503,
+      { requestId },
+    );
+  }
 
   return ok(created, { status: 201, requestId });
 }

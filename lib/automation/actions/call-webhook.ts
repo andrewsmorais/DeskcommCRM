@@ -7,7 +7,7 @@
  *
  * Cabeçalhos de toda entrega (#1529) — o guia de quem recebe é
  * docs/integracao/webhooks-de-saida.md:
- *  - X-Deskcomm-Event: o tipo do evento;
+ *  - X-ChatAI Online-Event: o tipo do evento;
  *  - X-Webhook-Delivery: id da ENTREGA (uuid v5 de evento + regra + posição da ação +
  *    lista de ações). É o mesmo nas retentativas e no botão Reenviar — é a
  *    chave de deduplicação;
@@ -16,7 +16,7 @@
  *  - X-Webhook-Signature (só com segredo): `t=<ts>,v1=<hex>`, HMAC de
  *    "<ts>.<delivery>.<corpo>" — cobre a hora e o id, então uma requisição
  *    capturada e repetida fora da janela do receptor é recusável;
- *  - X-Deskcomm-Signature (só com segredo): o HMAC só do corpo, LEGADO. Continua saindo
+ *  - X-ChatAI Online-Signature (só com segredo): o HMAC só do corpo, LEGADO. Continua saindo
  *    byte a byte igual durante a convivência (contrato de fio, white-label.md);
  *    a saída dele vai ser anunciada com `exige_acao`.
  */
@@ -40,12 +40,12 @@ const RETRY_DELAYS_MS = [1_000, 5_000]; // total 3 tentativas
  * tests/unit/branding.test.ts, lista que só encolhe.
  */
 const CABECALHOS = {
-  evento: "X-Deskcomm-Event",
+  evento: "X-ChatAI Online-Event",
   entrega: "X-Webhook-Delivery",
   tentativa: "X-Webhook-Attempt",
   carimbo: "X-Webhook-Timestamp",
   assinaturaComCarimbo: "X-Webhook-Signature",
-  assinaturaLegada: "X-Deskcomm-Signature",
+  assinaturaLegada: "X-ChatAI Online-Signature",
 } as const;
 
 /**

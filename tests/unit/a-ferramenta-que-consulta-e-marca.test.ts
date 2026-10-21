@@ -392,3 +392,4 @@ describe("temFerramentaDeMarcacao (#831)", () => {
     expect(blocoResidenteDaAgenda(["crm_update_lead_state"])).toBeNull();
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

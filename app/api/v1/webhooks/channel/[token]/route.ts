@@ -1,3 +1,4 @@
+import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
 /**
  * POST /api/v1/webhooks/channel/[token] — entrada por token, para qualquer canal.
  *

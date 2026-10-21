@@ -3,6 +3,8 @@ import { marcaEhADoProduto } from "@/lib/branding";
 import { marcaDaSaida } from "@/lib/branding/saida";
 import { createClient } from "@/lib/supabase/server";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
+import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 /**
  * A casca das telas de acesso — login, cadastro, recuperação, MFA.
@@ -47,12 +49,17 @@ export default async function PublicLayout({ children }: { children: React.React
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const locale = (user?.user_metadata?.locale as string | undefined) ?? null;
+  const locale = await idiomaDoVisitante(
+    (user?.user_metadata?.locale as string | undefined) ?? null,
+  );
 
   return (
     <IdiomaProvider locale={locale}>
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="flow-auth theme-auth-colors relative isolate flex min-h-svh items-center justify-center bg-background px-4 py-20 sm:px-6">
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+          <ThemeToggle className="border border-border bg-card shadow-sm" />
+        </div>
+        <div className="relative w-full max-w-[440px] space-y-8">
           {marca.logoUrl || marca.logoDarkUrl ? (
             <div className="flex justify-center">
               {/*
@@ -71,13 +78,7 @@ export default async function PublicLayout({ children }: { children: React.React
                 "primeira <img> da página", e uma asserção de negação com seletor
                 largo passa sozinha assim que outra imagem entra na tela.
               */}
-              <div
-                className={
-                  marca.logoDarkUrl
-                    ? "rounded-md"
-                    : "rounded-md dark:bg-white dark:px-3 dark:py-2 dark:shadow-sm"
-                }
-              >
+              <div className="rounded-md">
                 {marca.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -109,7 +110,9 @@ export default async function PublicLayout({ children }: { children: React.React
               <LogotipoDoProduto nome={marca.nome} className="h-12 w-auto" />
             </div>
           ) : null}
-          {children}
+          <div className="flow-auth-card rounded-2xl border border-border bg-card p-6 sm:p-8">
+            {children}
+          </div>
         </div>
       </div>
     </IdiomaProvider>

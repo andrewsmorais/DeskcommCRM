@@ -29,6 +29,7 @@
  * `tests/unit/audit-lista-do-painel-e-derivada.test.tsx` reprova quem tentar.
  */
 export const AUDIT_ACTIONS = [
+  "billing.subscription_canceled",
   "ad_tracking_link.saved",
   "auth.login_success",
   "auth.login_failed",

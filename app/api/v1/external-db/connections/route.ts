@@ -64,16 +64,25 @@ export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const desligado = await seModuloDesligado(requestId);
   if (desligado) return desligado;
-  const authz = await requireRole("admin", { requestId, resource: "external_db_connections" });
+  const authz = await requireRole("admin", {
+    requestId,
+    resource: "external_db_connections",
+    plano: "integracoes_avancadas",
+  });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org: activeOrg } = authz;
 
   const limite = await checkRateLimit(`external-db:write:${activeOrg.orgId}`, 30, 60);
   if (!limite.allowed) {
-    return fail("rate_limited", t("Muitas alterações em pouco tempo. Tente de novo em instantes."), 429, {
-      requestId,
-    });
+    return fail(
+      "rate_limited",
+      t("Muitas alterações em pouco tempo. Tente de novo em instantes."),
+      429,
+      {
+        requestId,
+      },
+    );
   }
 
   let rawBody: unknown;
@@ -128,12 +137,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   if (error || !created) {
     if (error?.code === "23505") {
-      return fail(
-        "external_db_label_em_uso",
-        t("Já existe uma conexão com este nome."),
-        409,
-        { requestId },
-      );
+      return fail("external_db_label_em_uso", t("Já existe uma conexão com este nome."), 409, {
+        requestId,
+      });
     }
     return fail("internal_error", "Erro ao criar conexão.", 500, { requestId });
   }

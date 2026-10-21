@@ -96,7 +96,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
 
   const agentCheck = await assertAgentInOrg(id, activeOrg.orgId);
   if (!agentCheck.ok) {
-    return fail("not_found", t("Agent não encontrado."), 404, { requestId });
+    return fail("not_found", t("Agente não encontrado."), 404, { requestId });
   }
 
   const admin = createAdminClient();

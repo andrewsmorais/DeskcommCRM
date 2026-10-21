@@ -84,7 +84,7 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
       ? "bg-red-500"
       : progress >= 0.75
         ? "bg-yellow-500"
-        : "bg-emerald-500";
+        : "bg-indigo-500";
 
   return (
     <div className="space-y-4">
@@ -117,14 +117,14 @@ export function SlaTimeline({ received_at, due_at, request_type }: SlaTimelinePr
         {milestones.map((m, idx) => {
           const dotColor =
             m.status === "completed"
-              ? "bg-emerald-500 border-emerald-500"
+              ? "bg-indigo-500 border-indigo-500"
               : m.status === "current"
                 ? "bg-yellow-500 border-yellow-500 ring-2 ring-yellow-200 dark:ring-yellow-900"
                 : "bg-muted border-border";
 
           const labelColor =
             m.status === "completed"
-              ? "text-emerald-700 dark:text-emerald-400"
+              ? "text-indigo-700 dark:text-indigo-400"
               : m.status === "current"
                 ? "text-yellow-700 dark:text-yellow-400 font-medium"
                 : "text-muted-foreground";

@@ -12,11 +12,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { audit } from "@/lib/audit";
-import { env } from "@/lib/env";
-import { signInviteToken, INVITE_TTL_SECONDS } from "@/lib/auth/invite-token";
-import { buildInviteEmail } from "@/lib/email/templates/invite";
-import { sendEmail } from "@/lib/email/roteador";
-import { marcaDaSaida } from "@/lib/branding/saida";
+import { emitirConvite } from "@/lib/team/convites";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { ErroDaCotaDeEquipe } from "@/lib/billing/equipe";
+import { ErroDaReservaDeCota } from "@/lib/billing/reserva";
 import { inviteOnboardingSchema } from "@/lib/schemas/onboarding";
 import { requireOnboardingCtx, patchOnboardingState, OnboardingError } from "./_shared";
 
@@ -31,7 +30,12 @@ export type SendInvitesResult =
        * de aceite é devolvido para o admin enviar manualmente. */
       undelivered?: { email: string; accept_url: string }[];
     }
-  | { ok: false; error: "auth_required" | "no_active_org" | "invalid_input"; details?: unknown };
+  | {
+      ok: false;
+      error: "auth_required" | "no_active_org" | "invalid_input";
+      message?: string;
+      details?: unknown;
+    };
 
 interface InvitePayload {
   // Convite é para PESSOA: só papel humano. `ai_operator` não entra aqui de
@@ -70,67 +74,41 @@ export async function sendOnboardingInvites(payload: InvitePayload): Promise<Sen
     throw err;
   }
 
-  // env.* é runtime → correto na imagem genérica self-host (ver browser.ts).
-  const baseUrl = env.NEXT_PUBLIC_APP_URL;
   const inviterName = ctx.fullName ?? ctx.email ?? "Um colega";
-  // Fora do laço: a marca é a mesma para o lote inteiro (mesma organização).
-  const marca = await marcaDaSaida(ctx.orgId);
+  const admin = createAdminClient();
 
   let sent = 0;
   let failed = 0;
   const undelivered: { email: string; accept_url: string }[] = [];
-  for (const inv of input.invitations) {
+  for (const inv of [
+    ...new Map(input.invitations.map((inv) => [inv.email.trim().toLowerCase(), inv])).values(),
+  ]) {
     const email = inv.email.trim().toLowerCase();
-    const inviteId = randomUUID();
-    const exp = Math.floor(Date.now() / 1000) + INVITE_TTL_SECONDS;
-    const token = signInviteToken({
-      invite_id: inviteId,
-      email,
-      organization_id: ctx.orgId,
-      role: inv.role,
-      exp,
-    });
-    const acceptUrl = `${baseUrl.replace(/\/$/, "")}/team/accept-invite/${token}`;
-    const expiresAt = new Date(exp * 1000);
-    const { subject, html, text } = buildInviteEmail({
-      inviterName,
-      orgName: ctx.orgName,
-      acceptUrl,
-      role: inv.role,
-      expiresAt,
-      marca,
-    });
-    const result = await sendEmail({
-      to: email,
-      subject,
-      html,
-      text,
-      fromName: marca.nome,
-      tags: [
-        { name: "kind", value: "team_invite" },
-        { name: "src", value: "onboarding" },
-        { name: "org", value: ctx.orgId },
-      ],
-    });
-    if (result.ok) sent += 1;
-    else {
-      failed += 1;
-      undelivered.push({ email, accept_url: acceptUrl });
-    }
-
-    await audit({
-      action: "member.invited",
-      actorUserId: ctx.userId,
-      organizationId: ctx.orgId,
-      resourceType: "membership",
-      resourceId: inviteId,
-      metadata: {
+    try {
+      const result = await emitirConvite(admin, {
         email,
         role: inv.role,
-        email_dispatched: result.ok,
-        source: "onboarding",
-      },
-    });
+        organizationId: ctx.orgId,
+        orgName: ctx.orgName,
+        inviterId: ctx.userId,
+        inviterName,
+        requestId: randomUUID(),
+      });
+      if (result.email_dispatched) sent += 1;
+      else {
+        failed += 1;
+        undelivered.push({ email, accept_url: result.accept_url });
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: "invalid_input",
+        message:
+          error instanceof ErroDaCotaDeEquipe || error instanceof ErroDaReservaDeCota
+            ? error.message
+            : "Não foi possível emitir o convite. Tente novamente.",
+      };
+    }
   }
 
   await patchOnboardingState(ctx.orgId, {

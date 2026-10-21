@@ -1,3 +1,4 @@
+import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
@@ -11,6 +12,7 @@ import { safeNext } from "@/lib/auth/safe-next";
 import { audit } from "@/lib/audit";
 import { marcaDaSaida } from "@/lib/branding/saida";
 import { env } from "@/lib/env";
+import { origemDeRetorno } from "@/lib/auth/origem-de-retorno";
 
 /**
  * GET /auth/callback — a VOLTA da entrada com Google (issue #1388).
@@ -76,12 +78,12 @@ export async function GET(request: NextRequest) {
   const next = url.searchParams.get("next");
   const convite = url.searchParams.get("convite");
   const requestId = request.headers.get("x-request-id");
+  const rl = await enforceRateLimit(request, "auth", getIp(request), 10, 60 * 1000); if (rl) return rl;
 
-  // NUNCA usar url.origin aqui: é derivado do header Host, que o proxy/container
-  // pode entregar como o bind interno (ex.: 0.0.0.0:3000) em vez do domínio
-  // público — o link de recovery quebra silenciosamente para o usuário final.
+  // Produção usa a URL pública; dev preserva o host local que recebeu a sessão.
+  const origin = origemDeRetorno(`${url.protocol}//${request.headers.get("host") ?? url.host}`, env.NEXT_PUBLIC_APP_URL, process.env.NODE_ENV === "development");
   const redirectTo = (path: string) =>
-    NextResponse.redirect(new URL(path, env.NEXT_PUBLIC_APP_URL));
+    NextResponse.redirect(new URL(path, origin));
 
   // A volta para uma tela que EXIGE sessão. Toda saída de sucesso desta rota
   // passa por aqui; o 302 fica reservado para as telas públicas (`/login` e a de

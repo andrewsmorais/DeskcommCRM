@@ -1,6 +1,5 @@
 import type { EmailDeliveryError } from "@/lib/email/roteador";
 import { requireSupportWrite } from "@/lib/impersonate/support";
-import { issueInvite } from "@/lib/auth/issue-invite";
 import { emitirConvite } from "@/lib/team/convites";
 import { isServiceRoleConfigured } from "@/lib/audit";
 /**
@@ -26,6 +25,8 @@ import { ApiError } from "@/lib/api/types";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { inviteMemberSchema, validateRequest } from "@/lib/schemas";
+import { ErroDaCotaDeEquipe } from "@/lib/billing/equipe";
+import { ErroDaReservaDeCota } from "@/lib/billing/reserva";
 
 export const dynamic = "force-dynamic";
 
@@ -97,28 +98,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       continue;
     }
 
-    if (admin) {
-      const { convite, accept_url, email_dispatched, email_error } = await emitirConvite(admin, {
-        email,
-        role: inv.role,
-        interfaceSettings: inv.interface_settings,
-        organizationId: activeOrg.orgId,
-        orgName: activeOrg.name,
-        inviterId: authUser.id,
-        inviterName,
-        requestId,
-      });
-      sent.push({
-        email,
-        invite_id: convite.id,
-        expires_at: convite.expires_at,
-        email_dispatched,
-        email_error,
-        accept_url,
-      });
-    } else {
-      sent.push(
-        await issueInvite({
+    try {
+      if (admin) {
+        const { convite, accept_url, email_dispatched, email_error } = await emitirConvite(admin, {
           email,
           role: inv.role,
           interfaceSettings: inv.interface_settings,
@@ -127,8 +109,29 @@ export async function POST(req: NextRequest): Promise<Response> {
           inviterId: authUser.id,
           inviterName,
           requestId,
-        }),
-      );
+        });
+        sent.push({
+          email,
+          invite_id: convite.id,
+          expires_at: convite.expires_at,
+          email_dispatched,
+          email_error,
+          accept_url,
+        });
+      } else {
+        failed.push({
+          email,
+          reason:
+            "Não foi possível reservar uma vaga da equipe. Confira a configuração da instalação.",
+        });
+      }
+    } catch (error) {
+      if (error instanceof ErroDaCotaDeEquipe || error instanceof ErroDaReservaDeCota) {
+        failed.push({ email, reason: error.message });
+      } else
+        return fail("internal_error", "Não foi possível emitir o convite. Tente novamente.", 500, {
+          requestId,
+        });
     }
   }
 

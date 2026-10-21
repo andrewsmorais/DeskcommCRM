@@ -88,7 +88,7 @@ export function mapInboundPayload(
   };
 }
 
-/** HMAC SHA-256 hex do raw body. Header: X-Deskcomm-Signature. */
+/** HMAC SHA-256 hex do raw body. Header: X-ChatAI Online-Signature. */
 export function verifyInboundSignature(rawBody: string, header: string | null, secret: string): boolean {
   if (!header) return false;
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");

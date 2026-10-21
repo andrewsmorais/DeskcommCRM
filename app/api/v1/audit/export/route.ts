@@ -38,6 +38,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const authz = await requireRole("manager", {
     requestId,
     resource: "audit",
+    plano: "auditoria",
     allowPlatformAdmin: true,
   });
   if (!authz.ok) return authz.response;

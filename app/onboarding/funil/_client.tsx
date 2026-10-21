@@ -86,7 +86,7 @@ export function QuadroClient({
         o primeiro cliente real.
       */}
       {sugestao.origem === "ia" ? (
-        <p className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+        <p className="rounded-md border border-indigo-500/30 bg-indigo-500/5 p-3 text-sm">
           {t(
             "Seu funcionário montou este quadro olhando o que você me contou sobre o negócio. Ajuste o que quiser.",
           )}

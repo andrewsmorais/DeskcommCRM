@@ -75,8 +75,8 @@ describe("executeCallWebhook", () => {
     expect(result.status).toBe("success");
     expect(result.detail?.response_status).toBe(200);
     expect(received).toBeDefined();
-    expect(received!.headers["x-deskcomm-event"]).toBe("lead.created");
-    expect(received!.headers["x-deskcomm-signature"]).toBeUndefined();
+    expect(received!.headers["x-ChatAI Online-event"]).toBe("lead.created");
+    expect(received!.headers["x-ChatAI Online-signature"]).toBeUndefined();
     // Sem segredo não há o que assinar — mas id, tentativa e carimbo saem (#1529).
     expect(received!.headers["x-webhook-signature"]).toBeUndefined();
     expect(received!.headers["x-webhook-delivery"]).toBe(idDaEntrega("evt-1", "rule-1", 0, []));
@@ -159,7 +159,7 @@ describe("executeCallWebhook", () => {
 
     expect(result.status).toBe("success");
     const expectedSig = createHmac("sha256", "s3cr3t").update(received!.body).digest("hex");
-    expect(received!.headers["x-deskcomm-signature"]).toBe(expectedSig);
+    expect(received!.headers["x-ChatAI Online-signature"]).toBe(expectedSig);
 
     await close();
   });
@@ -594,7 +594,7 @@ describe("webhook de saída — entrega identificada e assinatura com carimbo (#
     expect(carimbo).toBeGreaterThanOrEqual(antes);
     expect(carimbo).toBeLessThanOrEqual(depois);
     conferirV2(recebida, VETOR.segredo);
-    expect(cabecalho(recebida, "x-deskcomm-signature")).toBe(
+    expect(cabecalho(recebida, "x-ChatAI Online-signature")).toBe(
       createHmac("sha256", VETOR.segredo).update(recebida.body).digest("hex"),
     );
     // O corpo carrega o mesmo id do cabeçalho.

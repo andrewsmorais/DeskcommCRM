@@ -1,0 +1,43 @@
+import base from "./vitest.planos.config";
+
+/** Regressões focais de IA, com o mesmo isolamento de ambiente da suíte comercial. */
+export default {
+  ...base,
+  test: {
+    ...base.test,
+    include: [
+      "lib/ai/provider-validators*.test.ts",
+      "lib/agent-engine/db/request-pool.test.ts",
+      "app/api/v1/ai/agents/**/test/route.test.ts",
+      "tests/unit/redacao-de-segredo.test.ts",
+      "tests/unit/pontos-de-ia-resolver.test.ts",
+      "app/app/ai/providers/_components/PainelDeProvedores.test.tsx",
+      "lib/ai/credenciais/*.test.ts",
+      "lib/ai/gateway-resolve-model.test.ts",
+      "lib/ai/embeddings/chave.test.ts",
+      "lib/ai/embed.test.ts",
+      "lib/ai/dispatcher/*.test.ts",
+      "app/app/ai/credentials/_components/*.test.tsx",
+      "tests/unit/credenciais-ia-*.test.ts",
+      "tests/unit/credenciais-ia-*.test.tsx",
+      "tests/unit/credencial-nunca-na-url.test.ts",
+      "tests/unit/credencial-de-enfeite-nao-derruba-a-leitura.test.ts",
+      "tests/unit/revalidacao-que-falha-zera-o-catalogo.test.ts",
+      "tests/unit/api-orcamento-de-ia.test.ts",
+      "tests/unit/orcamento-*.test.ts",
+      "tests/unit/budget-*.test.ts",
+      "tests/unit/budget-*.test.tsx",
+      "tests/unit/handoff-por-orcamento.test.ts",
+      "tests/unit/gateway-binding.test.ts",
+      "tests/unit/gateway-destino-por-caminho.test.ts",
+      "tests/unit/openai-esforco-de-raciocinio.test.ts",
+      "tests/unit/preco-openai-codigo-e-tabela-concordam.test.ts",
+      "tests/unit/preview-scenario-reads-security.test.ts",
+      "tests/unit/model-picker-aceita-identificador-manual.test.tsx",
+      "tests/unit/onboarding-chave-da-ia-vale-para-a-empresa.test.ts",
+      "tests/unit/agente-novo-herda-o-provedor-da-organizacao.test.ts",
+      "tests/unit/ai-response-worker-model-routing.test.ts",
+      "tests/unit/worker-responde-com-a-chave-da-instalacao.test.ts",
+    ],
+  },
+};

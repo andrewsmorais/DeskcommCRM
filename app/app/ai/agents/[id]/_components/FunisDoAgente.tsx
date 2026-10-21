@@ -72,7 +72,7 @@ export function FunisDoAgente({ funis, value, onChange, cobertura, disabled = fa
         <h3 className="text-sm font-medium">{t("Em que negócios ele pode mexer")}</h3>
         <p className="text-xs text-muted-foreground">
           {t(
-            "Marque os funis que este assistente cuida. Ele conversa com qualquer cliente, mas só move, edita ou encerra negócio dos funis marcados aqui.",
+            "Marque os funis de que este assistente cuida. Ele conversa com qualquer cliente, mas só move, edita ou encerra negócio dos funis marcados aqui.",
           )}
         </p>
       </div>

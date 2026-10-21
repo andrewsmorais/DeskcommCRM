@@ -194,7 +194,7 @@ function chatIdOf(m: QueuedRow): string | null {
  * e o unique `(organization_id, external_id)` recusa uma segunda linha com o
  * mesmo id. Antes, essa recusa caía no `catch` do laço como "erro transiente —
  * mantida queued", e o cliente recebia a mesma mensagem de novo a cada tick — a
- * armadilha medida na issue #196 do DeskcommCRM. Aqui a mensagem sai `sent` sem
+ * armadilha medida na issue #196 do ChatAI Online. Aqui a mensagem sai `sent` sem
  * o id, e quem o grava é `stampExternalIdAfterEcho`, depois que o eco sai.
  *
  * Qualquer outro erro sobe como antes: sem conseguir escrever no banco, não há

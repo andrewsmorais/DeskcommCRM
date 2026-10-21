@@ -36,7 +36,8 @@ import { testRunSchema } from "@/lib/ai/agents/validation";
 import { avaliarRespostaDeTeste } from "@/lib/ai/agents/avaliar-resposta-de-teste";
 import { testAgentVersion } from "@/lib/agent-engine/agent/sandbox";
 import { requestTurnDeps } from "@/lib/agent-engine/agent/request-deps";
-import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
+import { getRequestPool, RequestPoolNotConfiguredError } from "@/lib/agent-engine/db/request-pool";
+import { redigirMensagemDoProvedor } from "@/lib/agent-engine/edge/llm/run-model-call";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
 
@@ -45,6 +46,14 @@ export const dynamic = "force-dynamic";
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Ctx = { params: Promise<{ id: string; vid: string }> };
+
+/** Mesma redação do motor, somada à remoção de URLs que podem conter credenciais. */
+function mensagemSeguraDoErro(erro: unknown): string {
+  const mensagem = erro instanceof Error ? erro.message : String(erro);
+  return redigirMensagemDoProvedor(
+    mensagem.replace(/\b[a-z][a-z\d+.-]*:\/\/[^\s<>"']+/gi, "[URL]"),
+  );
+}
 
 /**
  * Fecha a linha do run — e RECLAMA se não conseguir.
@@ -74,7 +83,7 @@ async function atualizarRun(
       run_id: runId,
       organization_id: organizationId,
       status_pretendido: campos.status,
-      error: error.message,
+      error: mensagemSeguraDoErro(error.message),
     });
   }
 }
@@ -193,7 +202,8 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     // problema INDIAGNOSTICÁVEL: o teste falhava, a tela dizia uma frase
     // genérica sobre modelo e credencial, e a causa real não existia em lugar
     // nenhum — nem no log, nem na linha do run, nem na resposta.
-    const mensagem = err instanceof Error ? err.message : String(err);
+    const mensagem = mensagemSeguraDoErro(err);
+    const conexaoAusente = err instanceof RequestPoolNotConfiguredError;
     logger.error("[ai.test] o teste do agente falhou", {
       request_id: requestId,
       run_id: runRow.id,
@@ -206,11 +216,21 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       status: "failed",
       completed_at: new Date().toISOString(),
       latency_ms: Date.now() - startedAt.getTime(),
-      error_code: "preview_failed",
-      // Guardado na linha para quem for diagnosticar depois; a resposta ao
-      // operador segue genérica, porque o texto do erro é técnico.
-      error_message: mensagem.slice(0, 2000),
+      error_code: conexaoAusente ? "request_pool_not_configured" : "preview_failed",
+      // A linha guarda somente a mensagem redigida. A resposta usa orientação
+      // específica para configuração ausente e texto genérico nos demais erros.
+      error_message: mensagem,
     });
+    if (conexaoAusente) {
+      return fail(
+        "unavailable",
+        t(
+          "A conexão do motor de IA com o banco ainda não foi configurada nesta instalação. Configure a conexão PostgreSQL da instalação e tente novamente.",
+        ),
+        503,
+        { requestId },
+      );
+    }
     return fail(
       "preview_failed",
       t("Não foi possível executar o teste. Confira modelo, credencial e materiais do agente."),

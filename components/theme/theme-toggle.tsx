@@ -2,7 +2,7 @@
 
 import { useTheme } from "@/lib/theme";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Sun, Moon, MonitorPlay } from "@/lib/ui/icons";
+import { Sun, Moon } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/i18n/useT";
@@ -21,30 +21,34 @@ import { useT } from "@/hooks/i18n/useT";
  */
 export function ThemeToggle({ className }: { className?: string }) {
   const t = useT();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, toggle } = useTheme();
 
-  const cycle = () => {
-    setTheme(theme === "light" ? "dark" : theme === "dark" ? "system" : "light");
-  };
+  const label = resolvedTheme === "dark" ? t("Ativar tema claro") : t("Ativar tema escuro");
 
-  useHotkeys("mod+shift+l", cycle, { preventDefault: true }, [theme]);
+  useHotkeys("mod+shift+l", toggle, { preventDefault: true }, [toggle]);
 
-  const Icon = theme === "dark" ? Moon : theme === "system" ? MonitorPlay : Sun;
+  const Icon = resolvedTheme === "dark" ? Sun : Moon;
 
   return (
     <Button
       variant="ghost"
       size="icon"
-      className={cn(className)}
-      onClick={cycle}
-      aria-label={t(`Tema: ${theme}. Cmd+Shift+L para alternar.`)}
+      type="button"
+      className={cn(
+        "flow-theme-toggle rounded-[10px] text-muted-foreground hover:text-foreground",
+        className,
+      )}
+      onClick={toggle}
+      aria-label={label}
+      aria-keyshortcuts="Control+Shift+L Meta+Shift+L"
+      title={t("Alternar tema")}
       // O servidor não sabe a preferência salva no navegador do usuário --
       // renderiza um valor default e o cliente corrige pro valor real assim
       // que hidrata. É o mismatch ESPERADO de todo seletor de tema; React
       // "corrige" sozinho no primeiro render, só reclamava no console.
       suppressHydrationWarning
     >
-      <Icon size={16} aria-hidden />
+      <Icon size={18} aria-hidden />
     </Button>
   );
 }

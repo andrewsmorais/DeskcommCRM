@@ -86,7 +86,7 @@ export function SecurityClient({
             className={
               "shrink-0 rounded-full px-2 py-0.5 text-xs " +
               (mfaEnrolled
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400"
                 : "bg-muted text-muted-foreground")
             }
           >

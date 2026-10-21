@@ -27,7 +27,7 @@
  *   devolve o texto pela saída padrão. É o caminho do worker, que roda sob `tsx`.
  *
  * Por que o worker não pode importar o pdfjs em processo — MEDIDO, dentro da
- * imagem `deskcomm-worker:1.27.1`, com a fixture `sample-multipagina.pdf` (1 KB):
+ * imagem `ChatAI Online-worker:1.27.1`, com a fixture `sample-multipagina.pdf` (1 KB):
  *
  *   pnpm exec tsx  → heapUsed 117 MB, RSS 320 MB, 1.878 ms
  *   node           → heapUsed  19 MB, RSS  94 MB,   192 ms

@@ -24,12 +24,14 @@ import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK, type ActiveOrg, type AuthUser, type Role } from "@/lib/auth/types";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createClient } from "@/lib/supabase/server";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import type { RecursoDoPlano } from "@/lib/billing/catalogo";
 
 export type RoleCheck =
-  | { ok: true; user: AuthUser; org: ActiveOrg }
-  | { ok: false; response: NextResponse<ApiError> };
+  { ok: true; user: AuthUser; org: ActiveOrg } | { ok: false; response: NextResponse<ApiError> };
 
 interface RequireRoleOpts {
+  plano?: RecursoDoPlano;
   /** Correlaciona a resposta e o audit com o X-Request-Id da rota. */
   requestId?: string;
   /** resource_type gravado no audit `authz.denied` (ex.: "api_tokens"). */
@@ -59,22 +61,32 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   const t = (texto: string) => traduzir(texto, user.idioma);
 
   if (user.support && user.support.status !== "active") {
-    return { ok: false, response: fail("forbidden", "O acompanhamento terminou. Saia para continuar.", 403, { requestId }) };
+    return {
+      ok: false,
+      response: fail("forbidden", "O acompanhamento terminou. Saia para continuar.", 403, {
+        requestId,
+      }),
+    };
   }
   let org: ActiveOrg | null;
   if (organizationId) {
     const membership = user.organizations.find((o) => o.organization_id === organizationId);
-    org = user.support?.organization_id === organizationId
-      ? { orgId: organizationId, name: user.support.name, role: user.support.access_mode === "full" ? "admin" : "viewer" }
-      : membership
-      ? {
-          orgId: membership.organization_id,
-          name: membership.organization_name,
-          role: membership.role,
-        }
-      : allowPlatformAdmin && user.is_platform_admin
-        ? { orgId: organizationId, name: "—", role: "viewer" }
-        : null;
+    org =
+      user.support?.organization_id === organizationId
+        ? {
+            orgId: organizationId,
+            name: user.support.name,
+            role: user.support.access_mode === "full" ? "admin" : "viewer",
+          }
+        : membership
+          ? {
+              orgId: membership.organization_id,
+              name: membership.organization_name,
+              role: membership.role,
+            }
+          : allowPlatformAdmin && user.is_platform_admin
+            ? { orgId: organizationId, name: "—", role: "viewer" }
+            : null;
   } else {
     org = await resolveActiveOrg(user);
   }
@@ -86,6 +98,10 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   }
 
   if (allowPlatformAdmin && user.is_platform_admin && !user.support) {
+    if (opts.plano) {
+      const recusado = await exigirRecursoDoPlano(org.orgId, opts.plano, { requestId });
+      if (recusado) return { ok: false, response: recusado };
+    }
     return { ok: true, user, org };
   }
 
@@ -166,5 +182,9 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
     };
   }
 
+  if (opts.plano) {
+    const recusado = await exigirRecursoDoPlano(org.orgId, opts.plano, { requestId });
+    if (recusado) return { ok: false, response: recusado };
+  }
   return { ok: true, user, org: { ...org, role: effectiveRole as Role } };
 }

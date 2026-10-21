@@ -372,3 +372,4 @@ describe("pela tela, o gatilho chega apesar da RLS de event_log", () => {
     );
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

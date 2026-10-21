@@ -8,6 +8,7 @@ import { modoDeCadastro } from "@/lib/auth/politica-de-cadastro";
 import { aplicarConvite } from "@/lib/auth/aplicar-convite";
 import { audit } from "@/lib/audit";
 import { env } from "@/lib/env";
+import { origemDeRetorno } from "@/lib/auth/origem-de-retorno";
 
 /**
  * GET /auth/confirm — troca o token do e-mail por uma sessão.
@@ -66,10 +67,9 @@ export async function GET(request: NextRequest) {
   const type = url.searchParams.get("type") as EmailOtpType | null;
   const requestId = request.headers.get("x-request-id");
 
-  // NUNCA usar url.origin aqui: é derivado do header Host, que o proxy/container
-  // pode entregar como o bind interno (ex.: 0.0.0.0:3000) em vez do domínio
-  // público — o link de recovery quebra silenciosamente para o usuário final.
-  const redirectTo = (path: string) => NextResponse.redirect(new URL(path, env.NEXT_PUBLIC_APP_URL));
+  // Produção usa a URL pública; dev preserva o host local que recebeu a sessão.
+  const origin = origemDeRetorno(`${url.protocol}//${request.headers.get("host") ?? url.host}`, env.NEXT_PUBLIC_APP_URL, process.env.NODE_ENV === "development");
+  const redirectTo = (path: string) => NextResponse.redirect(new URL(path, origin));
 
   if (!(tokenHash && type) && !code) {
     return redirectTo("/login?error=link_invalido");

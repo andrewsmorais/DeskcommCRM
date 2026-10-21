@@ -12,6 +12,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * se draft_graph ausente ou reprovado na validação estrutural/semântica.
  */
 import { randomUUID } from "node:crypto";
+import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
 import type { NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
@@ -28,7 +29,7 @@ import {
   type RoteiroDoPublish,
 } from "@/lib/followup/validate-publish";
 import { publishFollowupFlowVersion } from "@/lib/followup/publish";
-import type { FlowGraph } from "@/lib/followup/graph-schema";
+import { flowGraphSchema } from "@/lib/followup/graph-schema";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +77,9 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
     if (kind !== "manual") {
       return fail(
         "trigger_kind_not_implemented",
-        t("Roteiro de atendimento começa por palavra-gatilho ou pelo roteador, não por gatilho de follow-up."),
+        t(
+          "Roteiro de atendimento começa por palavra-gatilho ou pelo roteador, não por gatilho de follow-up.",
+        ),
         422,
         { requestId },
       );
@@ -98,7 +101,16 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // `appointment_no_show` (followup-gatilho-presenca.v1, confirmação humana),
   // `inbound_after_silence` (gatilho-retorno, cliente que voltou) e
   // `lead_created` (gatilho-lead, negócio que acabou de nascer).
-  const KINDS_COM_MOTOR = new Set(["manual", "webhook", "silence", "stage_change", "case_opened", "appointment_no_show", "inbound_after_silence", "lead_created"]);
+  const KINDS_COM_MOTOR = new Set([
+    "manual",
+    "webhook",
+    "silence",
+    "stage_change",
+    "case_opened",
+    "appointment_no_show",
+    "inbound_after_silence",
+    "lead_created",
+  ]);
   const trigger = (pointer.trigger_config ?? { kind: "manual" }) as {
     kind?: string;
     params?: { stage_id?: string };
@@ -168,7 +180,14 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
     });
   }
 
-  const graph = pointer.draft_graph as unknown as FlowGraph;
+  const parsedGraph = flowGraphSchema.safeParse(pointer.draft_graph);
+  if (!parsedGraph.success)
+    return fail("validation_failed", "Confira os blocos do fluxo antes de publicar.", 422, {
+      requestId,
+    });
+  const graph = parsedGraph.data;
+  const acesso = await verificarGrafoDoPlano(activeOrg.orgId, graph);
+  if (!acesso.ok) return fail(acesso.code, acesso.message, acesso.status, { requestId });
   // A regra de etapa guarda o `stage_id`, e só o banco diz se a etapa existe e
   // está ativa — sem esta leitura, uma regra que nunca decide publicaria calada.
   const citadas = await carregaEtapasCitadas(admin, activeOrg.orgId, graph.nodes);
@@ -185,7 +204,9 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       .eq("status", "active")
       .neq("id", id);
     if (ativosErr) return fail("internal_error", ativosErr.message, 500, { requestId });
-    const versoes = (ativos ?? []).flatMap((r) => (r.active_version_id ? [r.active_version_id as string] : []));
+    const versoes = (ativos ?? []).flatMap((r) =>
+      r.active_version_id ? [r.active_version_id as string] : [],
+    );
     const grafos = new Map<string, unknown>();
     if (versoes.length > 0) {
       const { data: vs, error: vsErr } = await admin
@@ -201,7 +222,10 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       encadeamentos: new Map(
         (ativos ?? []).map((r) => [
           r.id as string,
-          { nome: r.name as string, proximos: proximosDoGrafo(grafos.get(r.active_version_id as string)) },
+          {
+            nome: r.name as string,
+            proximos: proximosDoGrafo(grafos.get(r.active_version_id as string)),
+          },
         ]),
       ),
     };

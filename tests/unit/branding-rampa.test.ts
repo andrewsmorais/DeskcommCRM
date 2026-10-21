@@ -65,7 +65,7 @@ const distanciaPorCanal = (a: string, b: string): number => {
 
 describe("conversões de cor", () => {
   it("faz ida-e-volta hex → OKLab → hex sem perder mais que 1/255", () => {
-    for (const hex of ["#506d48", "#f5c518", "#0f172a", "#ffffff", "#000000", "#7c3aed"]) {
+    for (const hex of ["#506d48", "#f5c518", "#0f172a", "#ffffff", "#000000", "#211d55"]) {
       const volta = linearParaHex(oklabParaLinear(hexParaOklab(hex)));
       expect(distanciaPorCanal(hex, volta), `${hex} → ${volta}`).toBeLessThanOrEqual(1);
     }
@@ -199,7 +199,7 @@ describe("forma da escada", () => {
   });
 
   it("emite hex normalizado em todos os stops", () => {
-    for (const stop of rampaDeSemente("#7c3aed")) {
+    for (const stop of rampaDeSemente("#211d55")) {
       expect(stop).toMatch(/^#[0-9a-f]{6}$/);
       expect(rgbParaHex(hexParaRgb(stop))).toBe(stop);
     }

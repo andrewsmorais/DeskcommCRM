@@ -44,7 +44,7 @@ export function createAdminClient(): SupabaseClient {
           env.NEXT_PUBLIC_SUPABASE_URL,
         ),
         headers: {
-          "X-Client-Info": "deskcomm-crm/admin",
+          "X-Client-Info": "ChatAI Online-crm/admin",
         },
       },
     },

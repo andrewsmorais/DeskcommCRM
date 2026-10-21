@@ -116,7 +116,7 @@ export function AgentEditor({ agentId, initialData, readOnly = false }: Props) {
   }, [agent]);
 
   if (!agent || !formState || !baselineState) {
-    return <p className="text-sm text-muted-foreground">{t("Carregando agent…")}</p>;
+    return <p className="text-sm text-muted-foreground">{t("Carregando agente…")}</p>;
   }
 
   const dirty = JSON.stringify(formState) !== JSON.stringify(baselineState);
@@ -179,7 +179,7 @@ export function AgentEditor({ agentId, initialData, readOnly = false }: Props) {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">{agent.name}</h2>
           <p className="text-xs text-muted-foreground">
-            {agent.is_default ? `${t("Agent default")} · ` : ""}
+            {agent.is_default ? `${t("Agente padrão")} · ` : ""}
             {t("Criado em")} {new Date(agent.created_at).toLocaleDateString(tagDoIdioma)}
           </p>
         </div>
@@ -223,7 +223,7 @@ export function AgentEditor({ agentId, initialData, readOnly = false }: Props) {
                 disabled={disabled}
                 rows={3}
                 maxLength={500}
-                placeholder={t("Descrição interna do agent")}
+                placeholder={t("Descrição interna do agente")}
               />
             </div>
             <div className="flex items-center gap-3">
@@ -233,7 +233,7 @@ export function AgentEditor({ agentId, initialData, readOnly = false }: Props) {
                 disabled={disabled}
                 id="is_active"
               />
-              <Label htmlFor="is_active">{t("Agent ativo")}</Label>
+              <Label htmlFor="is_active">{t("Agente ativo")}</Label>
             </div>
             <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
               <strong>{t("Default:")}</strong> {agent.is_default ? t("Sim") : t("Não")} ({t("read-only — gerenciado pelo backend")}).

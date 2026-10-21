@@ -40,6 +40,7 @@ import { mesclarSettingsDeAtendimento } from "@/lib/schemas/routing";
 import { DEFAULT_VISIBILITY_MODE, type VisibilityMode } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,8 @@ export async function GET(_req: NextRequest): Promise<Response> {
   // O default é o MESMO de `lib/auth/types.ts`, que é o que a RLS assume quando
   // a chave não existe (`coalesce(..., 'own_and_unassigned')`). Divergir aqui
   // faria a tela mostrar um estado que o banco não pratica.
-  const visibility_mode = (settings.visibility_mode as VisibilityMode | undefined) ?? DEFAULT_VISIBILITY_MODE;
+  const visibility_mode =
+    (settings.visibility_mode as VisibilityMode | undefined) ?? DEFAULT_VISIBILITY_MODE;
   return ok({ ...routing, visibility_mode }, { requestId });
 }
 
@@ -91,25 +93,25 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     throw err;
   }
 
-/**
- * A ESCRITA EM `organizations` VAI PELO ADMIN CLIENT — e não é preguiça.
- *
- * A única policy de escrita da tabela é `orgs_write_platform_admin`, com
- * `USING (fn_is_platform_admin())`. Pelo client de sessão, o UPDATE de quem não
- * é super-admin de plataforma casa ZERO linhas — e o PostgREST devolve sucesso,
- * porque "nenhuma linha casou o filtro" não é erro. Resultado: a tela dizia
- * "salvo", nada era gravado, e recarregar mostrava o estado antigo.
- *
- * Medido em Postgres com o baseline aplicado (issue #144): sob `authenticated`
- * com o JWT de um manager, `update organizations` devolve 0 linhas; sob
- * postgres, 1. Ninguém tinha notado porque o dono do repo e o owner criado pelo
- * `bootstrap-owner.ts` SÃO platform_admin — quem tropeça é o segundo admin
- * convidado e qualquer manager.
- *
- * O gate continua sendo o de cima (papel resolvido de fonte confiável), e o
- * filtro por `organization_id` é explícito, como a doutrina exige de todo
- * handler que usa service role.
- */
+  /**
+   * A ESCRITA EM `organizations` VAI PELO ADMIN CLIENT — e não é preguiça.
+   *
+   * A única policy de escrita da tabela é `orgs_write_platform_admin`, com
+   * `USING (fn_is_platform_admin())`. Pelo client de sessão, o UPDATE de quem não
+   * é super-admin de plataforma casa ZERO linhas — e o PostgREST devolve sucesso,
+   * porque "nenhuma linha casou o filtro" não é erro. Resultado: a tela dizia
+   * "salvo", nada era gravado, e recarregar mostrava o estado antigo.
+   *
+   * Medido em Postgres com o baseline aplicado (issue #144): sob `authenticated`
+   * com o JWT de um manager, `update organizations` devolve 0 linhas; sob
+   * postgres, 1. Ninguém tinha notado porque o dono do repo e o owner criado pelo
+   * `bootstrap-owner.ts` SÃO platform_admin — quem tropeça é o segundo admin
+   * convidado e qualquer manager.
+   *
+   * O gate continua sendo o de cima (papel resolvido de fonte confiável), e o
+   * filtro por `organization_id` é explícito, como a doutrina exige de todo
+   * handler que usa service role.
+   */
   const supabase = createAdminClient();
   const { data: orgRow, error: readErr } = await supabase
     .from("organizations")
@@ -123,6 +125,13 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   // A mescla (não-destrutiva em dois níveis) mora em `lib/schemas/routing.ts`,
   // onde o teste a lê pela mesma função.
   const { settings: nextSettings, routing } = mesclarSettingsDeAtendimento(currentSettings, input);
+
+  if (routing.mode !== "manual") {
+    const recusado = await exigirRecursoDoPlano(activeOrg.orgId, "distribuicao_automatica", {
+      requestId,
+    });
+    if (recusado) return recusado;
+  }
 
   const { error: updErr } = await supabase
     .from("organizations")
@@ -145,7 +154,8 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       ...routing,
       visibility_mode:
         visibility_mode ??
-        ((currentSettings.visibility_mode as VisibilityMode | undefined) ?? DEFAULT_VISIBILITY_MODE),
+        (currentSettings.visibility_mode as VisibilityMode | undefined) ??
+        DEFAULT_VISIBILITY_MODE,
     },
     { requestId },
   );

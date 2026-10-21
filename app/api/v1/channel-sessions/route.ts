@@ -1,3 +1,4 @@
+import { enforceRateLimit } from "@/lib/rate-limit-helper";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
  * GET  /api/v1/channel-sessions — lista os canais WhatsApp da org (do DB).
@@ -8,10 +9,10 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * organization_id resolvido da sessão (cookie) — nunca do body.
  */
 import { randomUUID } from "node:crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { NextRequest } from "next/server";
 
 import { connectWahaChannel, ChannelConnectionError } from "@/lib/channels/connect-waha";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { mfaEmDivida } from "@/lib/auth/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
@@ -77,15 +78,20 @@ export async function POST(req: NextRequest): Promise<Response> {
     allowPlatformAdmin: true,
   });
   if (!authz.ok) return authz.response;
+  const rl = await enforceRateLimit(req, "channel-sessions", authz.user.id, 10, 60 * 1000);
+  if (rl) return rl;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user, org: activeOrg } = authz;
-  if (await mfaEmDivida()) return fail("mfa_required", t("Confirme a verificação em duas etapas."), 403, { requestId });
+  if (await mfaEmDivida())
+    return fail("mfa_required", t("Confirme a verificação em duas etapas."), 403, { requestId });
 
   const waha = getWahaClient();
   if (!waha) {
     return fail(
       "waha_not_configured",
-      t("O WhatsApp (WAHA) não está configurado neste ambiente: faltam WAHA_API_BASE_URL e/ou WAHA_API_KEY. Configure-as e tente de novo."),
+      t(
+        "O WhatsApp (WAHA) não está configurado neste ambiente: faltam WAHA_API_BASE_URL e/ou WAHA_API_KEY. Configure-as e tente de novo.",
+      ),
       503,
       { requestId },
     );
@@ -107,16 +113,35 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   try {
     const result = await connectWahaChannel(await createClient(), createAdminClient(), waha, {
-      organizationId: activeOrg.orgId, idempotencyKey: req.headers.get("Idempotency-Key") ?? "",
-      userId: user.id, requestId, displayName: parsed.data.display_name,
+      organizationId: activeOrg.orgId,
+      idempotencyKey: req.headers.get("Idempotency-Key") ?? "",
+      userId: user.id,
+      requestId,
+      displayName: parsed.data.display_name,
     });
     return ok(result.channel, { requestId, status: result.replay ? 200 : 201 });
   } catch (error) {
-    if (error instanceof ChannelConnectionError) return fail(error.code,
-      error.code === "connection_in_progress" ? t("A conexão ainda está sendo preparada. Aguarde e tente novamente.")
-        : error.code === "connection_session_name_too_long" ? t("O identificador desta conexão passou do limite que o WhatsApp aceita. Nada foi criado no WhatsApp — atualize o sistema e tente novamente.")
-        : t("Não foi possível concluir a conexão. Abra Conexões para tentar novamente ou reparar o número."),
-      error.status, { requestId, details: error.technical });
-    return fail("internal_error", t("Não foi possível concluir a conexão. Tente novamente."), 500, { requestId });
+    if (error instanceof ChannelConnectionError)
+      return fail(
+        error.code,
+        error.code === "billing_limit"
+          ? "O plano não permite adicionar outro WhatsApp. Confira Plano e cobrança."
+          : error.code === "billing_unavailable"
+            ? "Não foi possível confirmar ou reservar a cota do plano. Tente novamente."
+            : error.code === "connection_in_progress"
+              ? t("A conexão ainda está sendo preparada. Aguarde e tente novamente.")
+              : error.code === "connection_session_name_too_long"
+                ? t(
+                    "O identificador desta conexão passou do limite que o WhatsApp aceita. Nada foi criado no WhatsApp — atualize o sistema e tente novamente.",
+                  )
+                : t(
+                    "Não foi possível concluir a conexão. Abra Conexões para tentar novamente ou reparar o número.",
+                  ),
+        error.status,
+        { requestId, details: error.technical },
+      );
+    return fail("internal_error", t("Não foi possível concluir a conexão. Tente novamente."), 500, {
+      requestId,
+    });
   }
 }

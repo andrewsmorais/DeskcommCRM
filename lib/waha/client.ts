@@ -457,7 +457,7 @@ export class WahaClient {
   /**
    * Liga ou desliga o recebimento de grupos NESTA sessão. Só devolve `true` quando o GET
    * seguinte confirma a troca: o WAHA já respondeu 200 para operação que não aconteceu
-   * (medido na issue melgarafael/DeskcommCRM#1428).
+   * (medido na issue melgarafael/ChatAI Online#1428).
    *
    * ─── Por que não chama `startExistingSession` ──────────────────────────────
    *

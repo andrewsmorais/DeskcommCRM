@@ -27,6 +27,7 @@ import {
   type InterfaceSettings,
 } from "@/lib/navigation/interface";
 import type { Role } from "@/lib/schemas/team";
+import { comCotaDeEquipe } from "@/lib/billing/equipe";
 import {
   conviteEstaEmAberto,
   statusConvite,
@@ -107,6 +108,15 @@ export interface ResultadoEmissao {
  * RLS e filtrando `organization_id` da fonte confiável (nunca do body).
  */
 export async function emitirConvite(
+  admin: SupabaseClient,
+  params: EmitirParams,
+): Promise<ResultadoEmissao> {
+  return comCotaDeEquipe(admin, params.organizationId, { email: params.email }, () =>
+    emitirConviteReservado(admin, params),
+  );
+}
+
+async function emitirConviteReservado(
   admin: SupabaseClient,
   params: EmitirParams,
 ): Promise<ResultadoEmissao> {
@@ -197,42 +207,49 @@ export async function reenviarConvite(
     requestId: string;
   },
 ): Promise<ResultadoEmissao | null> {
-  const { convite } = params;
-  const emitido = await issueInvite({
-    email: convite.email,
-    role: convite.role,
-    interfaceSettings: convite.interface_settings,
-    organizationId: convite.organization_id,
-    orgName: params.orgName,
-    inviterId: params.actorId,
-    inviterName: params.actorName,
-    requestId: params.requestId,
-    inviteId: convite.id,
-    issuedAt: Math.floor(Date.now() / 1000),
-  });
+  return comCotaDeEquipe(
+    admin,
+    params.convite.organization_id,
+    { email: params.convite.email },
+    async () => {
+      const { convite } = params;
+      const emitido = await issueInvite({
+        email: convite.email,
+        role: convite.role,
+        interfaceSettings: convite.interface_settings,
+        organizationId: convite.organization_id,
+        orgName: params.orgName,
+        inviterId: params.actorId,
+        inviterName: params.actorName,
+        requestId: params.requestId,
+        inviteId: convite.id,
+        issuedAt: Math.floor(Date.now() / 1000),
+      });
 
-  const { data: row, error } = await admin
-    .from("team_invites")
-    .update({
-      email_dispatched: emitido.email_dispatched,
-      last_sent_at: new Date().toISOString(),
-      expires_at: emitido.expires_at,
-      resend_count: convite.resend_count + 1,
-    })
-    .eq("id", convite.id)
-    .is("accepted_at", null)
-    .is("revoked_at", null)
-    .select("*")
-    .maybeSingle();
+      const { data: row, error } = await admin
+        .from("team_invites")
+        .update({
+          email_dispatched: emitido.email_dispatched,
+          last_sent_at: new Date().toISOString(),
+          expires_at: emitido.expires_at,
+          resend_count: convite.resend_count + 1,
+        })
+        .eq("id", convite.id)
+        .is("accepted_at", null)
+        .is("revoked_at", null)
+        .select("*")
+        .maybeSingle();
 
-  if (error) throw error;
-  if (!row) return null;
+      if (error) throw error;
+      if (!row) return null;
 
-  return {
-    convite: row as ConviteDeTime,
-    accept_url: emitido.accept_url,
-    email_dispatched: emitido.email_dispatched,
-    email_error: emitido.email_error,
-    renovado: true,
-  };
+      return {
+        convite: row as ConviteDeTime,
+        accept_url: emitido.accept_url,
+        email_dispatched: emitido.email_dispatched,
+        email_error: emitido.email_error,
+        renovado: true,
+      };
+    },
+  );
 }

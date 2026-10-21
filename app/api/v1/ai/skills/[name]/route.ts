@@ -43,7 +43,12 @@ const salvarSkillSchema = z
   .object({
     // Uma linha só, como no import: a descrição entra no índice de skills do
     // prefixo do turno, e uma quebra de linha ali monta cabeçalho falso.
-    description: z.string().trim().min(1).max(500).regex(/^[^\r\n]*$/),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .regex(/^[^\r\n]*$/),
     body: z.string().min(1).max(60_000),
     matcher: skillMatcherSchema,
   })
@@ -115,7 +120,7 @@ export async function PUT(
   if (supportDenied) return supportDenied;
 
   const requestId = randomUUID();
-  const authz = await requireRole("manager", { requestId, resource: "ai_skills" });
+  const authz = await requireRole("manager", { requestId, resource: "ai_skills", plano: "skills" });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org } = authz;
@@ -163,7 +168,10 @@ export async function PUT(
     .eq("id", pointer.version_id)
     .maybeSingle();
   if (verErr) {
-    logger.error("ai.skills.put: falha ao ler a versão atual", { requestId, error: verErr.message });
+    logger.error("ai.skills.put: falha ao ler a versão atual", {
+      requestId,
+      error: verErr.message,
+    });
     return fail("internal_error", "Erro ao carregar a skill.", 500, { requestId });
   }
   // Os arquivos do pacote moram no Storage sob o id da VERSÃO
@@ -172,7 +180,9 @@ export async function PUT(
   if (Array.isArray(atual?.manifest) && atual.manifest.length > 0) {
     return fail(
       "state_conflict",
-      t("Esta skill veio de um pacote com arquivos. Para mudar o texto, edite o pacote e envie o .zip de novo."),
+      t(
+        "Esta skill veio de um pacote com arquivos. Para mudar o texto, edite o pacote e envie o .zip de novo.",
+      ),
       409,
       { requestId },
     );

@@ -33,6 +33,8 @@
  * Nunca lança para o cron: uma campanha quebrada não pode derrubar a rodada.
  */
 import { randomUUID } from "node:crypto";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { audit } from "@/lib/audit";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -100,7 +102,10 @@ export async function rodarUmaRodadaDeCampanha(
   // Organização SUSPENSA não prospecta. A decisão é a mesma da fila do agente:
   // `= 'suspended'` e não `<> 'active'`, porque o CHECK aceita também 'redacted'
   // e 'archived', e desligá-los seria mudança que ninguém pediu.
-  const { data: suspensas } = await admin.from("organizations").select("id").eq("status", "suspended");
+  const { data: suspensas } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("status", "suspended");
   const idsSuspensas = (suspensas ?? []).map((o) => (o as { id: string }).id);
 
   const promovidas = await promoverAgendadas(admin, idsSuspensas, agora);
@@ -200,6 +205,28 @@ async function rodarUmaCampanha(
   campanha: CampanhaRow,
   agora: Date,
 ): Promise<{ enviadas: number; pulados: number; concluidas: number; detalhe: string }> {
+  const acesso = await verificarRecursoDoPlano(campanha.organization_id, "campanhas");
+  if (!acesso.ok) {
+    if (acesso.status === 403) {
+      const { data, error } = await admin
+        .from("campaigns")
+        .update({ status: "paused" })
+        .eq("organization_id", campanha.organization_id)
+        .eq("id", campanha.id)
+        .eq("status", "running")
+        .select("id");
+      if (error) throw new Error("billing_pause_failed");
+      if (data?.length)
+        void audit({
+          action: "campaign.paused",
+          organizationId: campanha.organization_id,
+          resourceType: "campaign",
+          resourceId: campanha.id,
+          metadata: { reason: acesso.code },
+        });
+    }
+    return { enviadas: 0, pulados: 0, concluidas: 0, detalhe: acesso.code };
+  }
   const { data: fila } = await admin
     .from("campaign_recipients")
     .select(
@@ -306,7 +333,11 @@ async function rodarUmaCampanha(
   // O fuso da janela da campanha é o do número PRINCIPAL: ela é uma decisão da
   // campanha, e precisa de um relógio só — três números em fusos diferentes
   // fariam a mesma campanha abrir e fechar a janela três vezes.
-  const knobsDoPrincipal = await loadChannelKnobs(pool, campanha.organization_id, campanha.channel_session_id);
+  const knobsDoPrincipal = await loadChannelKnobs(
+    pool,
+    campanha.organization_id,
+    campanha.channel_session_id,
+  );
   // ⚠️ O estado do ritmo é lido DEPOIS dos knobs porque precisa do MESMO fuso
   // que a janela usa. Com `setUTCHours`, o "dia" virava 21h no horário de
   // Brasília — DENTRO da janela de envio —, e uma campanha que já tinha batido
@@ -370,7 +401,10 @@ async function rodarUmaCampanha(
     });
   }
 
-  const escolha = escolherNumero(disponiveis, await numeroDoHistorico(admin, campanha, alvo.contact_id));
+  const escolha = escolherNumero(
+    disponiveis,
+    await numeroDoHistorico(admin, campanha, alvo.contact_id),
+  );
   if (!escolha) {
     // Nenhum número pode agora. Não é falha do destinatário: é o ritmo dos
     // números. Volta para a fila e tenta no próximo tique.

@@ -112,3 +112,4 @@ describe("crm_book_appointment — marcado não é confirmado", () => {
     expect(String(r.mensagem)).not.toContain("RESERVADO");
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

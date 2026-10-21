@@ -392,3 +392,4 @@ describe("validateBearerToken — a tradução para MCP não mudou", () => {
     ).not.toBeInstanceOf(McpAuthError);
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })) }));

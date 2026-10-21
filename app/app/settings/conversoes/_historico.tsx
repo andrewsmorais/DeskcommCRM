@@ -40,7 +40,7 @@ const ROTULO_DA_SITUACAO: Record<Situacao, string> = {
 };
 
 const ESTILO_DA_SITUACAO: Record<Exclude<Situacao, "todas">, string> = {
-  entregue: "border-emerald-500/40 bg-emerald-500/10",
+  entregue: "border-indigo-500/40 bg-indigo-500/10",
   falha: "border-destructive/40 bg-destructive/10",
   aguardando: "border-sky-500/40 bg-sky-500/10",
   nao_enviado: "border-amber-500/40 bg-amber-500/10",

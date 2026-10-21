@@ -1,0 +1,247 @@
+{
+  "project_reference": "FlowDash CRM UI",
+  "design_concept": "Same layout. Different vibe. Dual-theme dashboard architecture (Dark Mode vs Light Mode).",
+  "design_tokens": {
+    "typography": {
+      "font_family": "Inter, Plus Jakarta Sans, or system-ui, sans-serif",
+      "weights": {
+        "regular": 400,
+        "medium": 500,
+        "semibold": 600,
+        "bold": 700
+      }
+    },
+    "layout_metrics": {
+      "card_border_radius": "16px",
+      "button_border_radius": "10px",
+      "sidebar_width": "240px",
+      "grid_gap": "16px"
+    },
+    "themes": {
+      "dark_mode": {
+        "backgrounds": {
+          "app_canvas": "#090A0F",
+          "sidebar": "#0D0E15",
+          "card_surface": "#12131C",
+          "card_elevated_or_hover": "#181A26",
+          "nav_active_item": "linear-gradient(90deg, rgba(124, 58, 237, 0.25) 0%, rgba(124, 58, 237, 0.05) 100%)",
+          "cta_card_gradient": "linear-gradient(145deg, #191530 0%, #11121C 100%)"
+        },
+        "borders": {
+          "subtle_border": "#1E2030",
+          "active_nav_indicator": "#8B5CF6",
+          "glow_effect": "0 0 25px rgba(139, 92, 246, 0.12)"
+        },
+        "text": {
+          "primary": "#FFFFFF",
+          "secondary": "#94A3B8",
+          "muted": "#64748B"
+        },
+        "accents": {
+          "brand_primary": "#7C3AED",
+          "brand_secondary": "#A855F7",
+          "button_primary_bg": "#6D28D9",
+          "button_primary_text": "#FFFFFF",
+          "chart_line": "#A855F7",
+          "chart_area_fill": "linear-gradient(180deg, rgba(168, 85, 247, 0.35) 0%, rgba(168, 85, 247, 0.0) 100%)",
+          "icon_container_bg": "rgba(124, 58, 237, 0.15)",
+          "icon_color": "#A855F7"
+        }
+      },
+      "light_mode": {
+        "backgrounds": {
+          "app_canvas": "#F8FAFC",
+          "sidebar": "#FFFFFF",
+          "card_surface": "#FFFFFF",
+          "card_elevated_or_hover": "#F1F5F9",
+          "nav_active_item": "#EEF2FF",
+          "cta_card_gradient": "linear-gradient(145deg, #F5F3FF 0%, #FFFFFF 100%)"
+        },
+        "borders": {
+          "subtle_border": "#E2E8F0",
+          "active_nav_indicator": "#6366F1",
+          "card_shadow": "0 4px 20px -2px rgba(15, 23, 42, 0.05)"
+        },
+        "text": {
+          "primary": "#0F172A",
+          "secondary": "#64748B",
+          "muted": "#94A3B8"
+        },
+        "accents": {
+          "brand_primary": "#6366F1",
+          "brand_secondary": "#818CF8",
+          "button_primary_bg": "#6366F1",
+          "button_primary_text": "#FFFFFF",
+          "chart_line": "#8B5CF6",
+          "chart_area_fill": "linear-gradient(180deg, rgba(139, 92, 246, 0.18) 0%, rgba(139, 92, 246, 0.0) 100%)",
+          "icon_container_bg": "#EEF2FF",
+          "icon_color": "#6366F1"
+        }
+      },
+      "semantic_status_colors": {
+        "positive_trend": "#10B981",
+        "in_progress": "#6366F1",
+        "completed": "#10B981",
+        "review": "#F59E0B"
+      }
+    }
+  },
+  "layout_structure": {
+    "header": {
+      "brand": {
+        "name": "FlowDash",
+        "logo_style": "Hexagonal purple/indigo geometric icon"
+      },
+      "actions": [
+        {
+          "type": "icon_button",
+          "icon": "search"
+        },
+        {
+          "type": "notification_bell",
+          "badge_count": 3,
+          "badge_color": "#6366F1"
+        },
+        {
+          "type": "user_avatar",
+          "status": "online"
+        }
+      ]
+    },
+    "sidebar": {
+      "navigation": [
+        {
+          "label": "Overview",
+          "icon": "home",
+          "active": true
+        },
+        {
+          "label": "Analytics",
+          "icon": "bar-chart-2",
+          "active": false
+        },
+        {
+          "label": "Projects",
+          "icon": "folder",
+          "active": false
+        },
+        {
+          "label": "Tasks",
+          "icon": "check-square",
+          "active": false
+        },
+        {
+          "label": "Calendar",
+          "icon": "calendar",
+          "active": false
+        },
+        {
+          "label": "Messages",
+          "icon": "mail",
+          "active": false,
+          "badge": 5
+        },
+        {
+          "label": "Team",
+          "icon": "users",
+          "active": false
+        },
+        {
+          "label": "Settings",
+          "icon": "settings",
+          "active": false
+        }
+      ],
+      "promo_card": {
+        "icon": "zap",
+        "title": "Upgrade to Pro",
+        "description": "Unlock all features and analytics.",
+        "cta_text": "Upgrade Now"
+      },
+      "user_profile_footer": {
+        "name": "Alex Morgan",
+        "email": "alex@example.com",
+        "has_dropdown": true
+      }
+    },
+    "main_content": {
+      "top_bar": {
+        "page_title": "Overview",
+        "greeting": "Welcome back, Alex! 👋",
+        "subtitle": "Here's what's happening with your projects.",
+        "filter_dropdown": "This Week"
+      },
+      "kpi_grid": {
+        "columns": 2,
+        "cards": [
+          {
+            "title": "Total Revenue",
+            "value": "$24,580",
+            "trend": "+12.5%",
+            "icon": "dollar-sign"
+          },
+          {
+            "title": "New Users",
+            "value": "1,248",
+            "trend": "+8.3%",
+            "icon": "users"
+          },
+          {
+            "title": "Orders",
+            "value": "3,620",
+            "trend": "+10.1%",
+            "icon": "shopping-cart"
+          },
+          {
+            "title": "Conversion Rate",
+            "value": "4.35%",
+            "trend": "+6.7%",
+            "icon": "trending-up"
+          }
+        ]
+      },
+      "chart_section": {
+        "title": "Revenue Overview",
+        "filter_dropdown": "This Week",
+        "highlighted_metric": "$24,580",
+        "highlighted_trend": "+12.5%",
+        "y_axis": ["10K", "20K", "30K"],
+        "x_axis": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        "active_tooltip": {
+          "day": "Sun",
+          "value": "$24,580"
+        }
+      },
+      "list_section": {
+        "title": "Recent Projects",
+        "action_link": "View All",
+        "items": [
+          {
+            "icon": "smartphone",
+            "name": "Mobile App Redesign",
+            "status": "In Progress",
+            "status_color": "#6366F1"
+          },
+          {
+            "icon": "check-square",
+            "name": "Dashboard UI Kit",
+            "status": "Completed",
+            "status_color": "#10B981"
+          },
+          {
+            "icon": "layout",
+            "name": "Landing Page Design",
+            "status": "Review",
+            "status_color": "#F59E0B"
+          },
+          {
+            "icon": "shopping-bag",
+            "name": "E-commerce Website",
+            "status": "In Progress",
+            "status_color": "#6366F1"
+          }
+        ]
+      }
+    }
+  }
+}

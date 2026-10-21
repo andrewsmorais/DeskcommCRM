@@ -69,7 +69,10 @@ const COLUNAS =
 
 function semSegredo(linha: Record<string, unknown>): FonteVisivel {
   const { secret_encrypted, ...resto } = linha;
-  return { ...(resto as unknown as Omit<FonteVisivel, "has_secret">), has_secret: secret_encrypted !== null };
+  return {
+    ...(resto as unknown as Omit<FonteVisivel, "has_secret">),
+    has_secret: secret_encrypted !== null,
+  };
 }
 
 export async function listarEntradasAutomaticas(
@@ -187,6 +190,9 @@ export async function criarEntradaAutomatica(
   deps: DepsDaOperacao,
   input: NovaEntradaAutomatica,
 ): Promise<FonteVisivel> {
+  const acesso = await verificarRecursoDoPlano(deps.organizationId, "webhooks");
+  if (!acesso.ok)
+    throw new ApiError(acesso.status, acesso.code, undefined, deps.requestId, acesso.message);
   await destinoValido(deps, input.default_pipeline_id, input.default_stage_id);
 
   // `path_token` é a identidade PÚBLICA da URL de captação — mesmo papel que o
@@ -248,6 +254,11 @@ export async function definirEntradaAtiva(
   deps: DepsDaOperacao,
   input: { id: string; ativa: boolean },
 ): Promise<FonteVisivel> {
+  if (input.ativa) {
+    const acesso = await verificarRecursoDoPlano(deps.organizationId, "webhooks");
+    if (!acesso.ok)
+      throw new ApiError(acesso.status, acesso.code, undefined, deps.requestId, acesso.message);
+  }
   const antes = await fonteDaOrg(deps, input.id);
 
   const { data: updated, error } = await deps.supabase
@@ -334,3 +345,4 @@ function chavesDo(payload: unknown): string[] {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
   return Object.keys(payload as Record<string, unknown>);
 }
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";

@@ -75,8 +75,15 @@ function stubSupabase(c: Cenario) {
   };
 }
 
+let ipSequencia = 0;
+
 function requisicao(qs: string) {
-  return new NextRequest(`http://localhost:3000/auth/callback?${qs}`);
+  // Cada caso representa uma tentativa independente; não compartilhe o mesmo
+  // IP fictício, senão os casos de redirecionamento acionam o rate limit entre si.
+  ipSequencia = (ipSequencia % 250) + 1;
+  return new NextRequest(`http://localhost:3000/auth/callback?${qs}`, {
+    headers: { "x-forwarded-for": `198.51.100.${ipSequencia}` },
+  });
 }
 
 /**

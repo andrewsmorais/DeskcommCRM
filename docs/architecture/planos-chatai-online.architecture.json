@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Planos ChatAI Online — contratação e autorização",
+    "subtitle": "O catálogo aprovado alimenta o checkout e o plano efetivo da organização; estado financeiro não apaga histórico",
+    "output": "planos-chatai-online.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    {
+      "id": "pessoa",
+      "label": "Cliente"
+    },
+    {
+      "id": "servidor",
+      "label": "Servidor"
+    },
+    {
+      "id": "dados",
+      "label": "Supabase existente"
+    },
+    {
+      "id": "operacao",
+      "label": "CRM e continuidade"
+    }
+  ],
+  "mainPath": ["oferta", "checkout", "assinatura", "billing", "guardas", "tela"],
+  "nodes": [
+    {
+      "id": "oferta",
+      "lane": "pessoa",
+      "col": 1,
+      "type": "frontend",
+      "label": "Pricing + CheckoutModal",
+      "sublabel": "plano, ciclo, quantidade e total por PLANOS"
+    },
+    {
+      "id": "checkout",
+      "lane": "servidor",
+      "col": 1,
+      "type": "api",
+      "label": "create-payment",
+      "sublabel": "valida catálogo e vínculo; reserva PK antes do Asaas"
+    },
+    {
+      "id": "webhook",
+      "lane": "servidor",
+      "col": 2,
+      "type": "api",
+      "label": "webhook Asaas",
+      "sublabel": "token + assinatura conhecida + CAS; preserva ordem financeira"
+    },
+    {
+      "id": "catalogo",
+      "lane": "dados",
+      "col": 1,
+      "type": "database",
+      "label": "plans",
+      "sublabel": "3 planos aprovados; configuração sem migration"
+    },
+    {
+      "id": "assinatura",
+      "lane": "dados",
+      "col": 2,
+      "type": "database",
+      "label": "subscriptions",
+      "sublabel": "organização, plano, vagas, ciclo e prazo"
+    },
+    {
+      "id": "billing",
+      "lane": "servidor",
+      "col": 3,
+      "type": "service",
+      "label": "billing + acesso",
+      "sublabel": "plano atual, situação, prazo e capacidades"
+    },
+    {
+      "id": "reservas",
+      "lane": "dados",
+      "col": 3,
+      "type": "database",
+      "label": "idempotency_keys",
+      "sublabel": "namespace próprio; lease por organização e recurso"
+    },
+    {
+      "id": "guardas",
+      "lane": "operacao",
+      "col": 3,
+      "type": "service",
+      "label": "REST, MCP e workers",
+      "sublabel": "efeitos premium autorizados e cotas antes de criar"
+    },
+    {
+      "id": "tela",
+      "lane": "pessoa",
+      "col": 4,
+      "type": "frontend",
+      "label": "Plano e cobrança",
+      "sublabel": "situação, vagas, convites, recursos e falha de leitura"
+    },
+    {
+      "id": "continuidade",
+      "lane": "operacao",
+      "col": 4,
+      "type": "frontend",
+      "label": "Inbox e histórico",
+      "sublabel": "avisos, campanhas pausadas e processos pendentes; sem apagar dados"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "oferta",
+      "to": "checkout",
+      "label": "seleção + dados; preço enviado não é autoridade"
+    },
+    {
+      "id": "e2",
+      "from": "checkout",
+      "to": "catalogo",
+      "label": "compara todos os valores e mínimo antes dos efeitos"
+    },
+    {
+      "id": "e3",
+      "from": "checkout",
+      "to": "assinatura",
+      "label": "reserva suspended → trialing após criação externa"
+    },
+    {
+      "id": "e4",
+      "from": "webhook",
+      "to": "assinatura",
+      "label": "confirmação, atraso, cancelamento, estorno/contestação"
+    },
+    {
+      "id": "e5",
+      "from": "assinatura",
+      "to": "billing",
+      "label": "org confiável + assinatura mais recente"
+    },
+    {
+      "id": "e6",
+      "from": "catalogo",
+      "to": "billing",
+      "label": "resolve por id ou slug; sem liberação em falha"
+    },
+    {
+      "id": "e7",
+      "from": "billing",
+      "to": "guardas",
+      "label": "capacidades e prazo da organização"
+    },
+    {
+      "id": "e8",
+      "from": "guardas",
+      "to": "reservas",
+      "label": "reserva distribuída para novas vagas, canais e funis"
+    },
+    {
+      "id": "e9",
+      "from": "reservas",
+      "to": "guardas",
+      "label": "dono exclusivo libera efeito; concorrência 409; erro 503"
+    },
+    {
+      "id": "e10",
+      "from": "billing",
+      "to": "tela",
+      "label": "mostra contrato, prazo e situação real"
+    },
+    {
+      "id": "e11",
+      "from": "guardas",
+      "to": "continuidade",
+      "label": "aviso ou pausa visível; conteúdo existente preservado"
+    },
+    {
+      "id": "e12",
+      "from": "tela",
+      "to": "checkout",
+      "label": "conhecer planos; troca de contrato existente ainda pendente"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Provas pendentes antes da venda pública",
+      "items": [
+        "Jornada autenticada e sessão após atualizar ainda não comprovadas pelo navegador",
+        "Compra em sandbox, destino e segredo do webhook ainda não confrontados",
+        "Multiunidade com contrato compartilhado, Prime/VIP e troca de plano ainda não entregues integralmente",
+        "Policies comerciais do acesso direto ao Supabase não foram alteradas; lease não substitui constraint de cota"
+      ]
+    }
+  ]
+}

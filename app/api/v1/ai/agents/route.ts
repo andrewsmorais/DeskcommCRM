@@ -74,7 +74,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   const { data, error } = await query.order("created_at", { ascending: false });
-  if (error) return fail("internal_error", "Erro ao listar agents.", 500, { requestId });
+  if (error) return fail("internal_error", "Erro ao listar agentes.", 500, { requestId });
 
   return ok(data ?? [], { requestId });
 }
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       .select(AGENT_COLUMNS)
       .single();
     if (agentError || !agentRow)
-      return fail("internal_error", "Erro ao criar agent.", 500, { requestId });
+      return fail("internal_error", "Erro ao criar agente.", 500, { requestId });
     const { data: versionRow, error: versionError } = await admin
       .from("ai_agent_versions")
       .insert(records.version)
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (error || !data) {
-    return fail("internal_error", "Erro ao criar agent.", 500, { requestId });
+    return fail("internal_error", "Erro ao criar agente.", 500, { requestId });
   }
   return ok(data, { status: 201, requestId });
 }

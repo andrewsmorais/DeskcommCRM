@@ -1,3 +1,4 @@
+import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
 /**
  * Fluxo de ATENDIMENTO (surface `atendimento`) — checklist linear em tempo real.
  *
@@ -419,6 +420,7 @@ export async function carregarEstadoDeAtendimento(
 
   const parsed = flowGraphSchema.safeParse(row.graph);
   if (!parsed.success) return null;
+  if (!(await verificarGrafoDoPlano(args.organizationId, parsed.data)).ok) return null;
   const checklist = mapearChecklist(parsed.data);
   if (!checklist.ok) return null;
 
@@ -1019,6 +1021,7 @@ export async function iniciarFluxoDeAtendimento(
   const parsed = flowGraphSchema.safeParse(row.graph);
   if (!parsed.success) return null;
   if (!podeComecarParaOContato(parsed.data.settings, row.ja_concluiu === true)) return null;
+  if (!(await verificarGrafoDoPlano(args.organizationId, parsed.data)).ok) return null;
   const checklist = mapearChecklist(parsed.data);
   if (!checklist.ok) return null;
   const inicio = parsed.data.nodes.find((n) => n.type === "trigger")?.id;

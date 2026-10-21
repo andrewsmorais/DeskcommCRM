@@ -1,3 +1,4 @@
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { prospectingConversationContext } from "@/lib/prospecting/context";
 import { setExecutionAgentOperation } from '@/lib/atendimento/fronteira-server';
 import { TIPOS_DE_CASO, TIPOS_DE_CASO_PARA_A_IA } from "@/lib/ai/case-copy";
@@ -2181,7 +2182,8 @@ async function executarTurnoDoAgente(
   // system do playbook, no prefixo estável org-wide (disclosure progressivo; cacheável F2-17).
   // O CORPO só carrega no match, no sufixo por-lead (mais abaixo). loadSkills resolve os
   // ponteiros a cada run: trocar/rollback de skill = mover o ponteiro, sem restart.
-  const skills = await loadSkills(pool, tenantId);
+  const acessoSkills = await verificarRecursoDoPlano(tenantId, "skills");
+  const skills = acessoSkills.ok ? await loadSkills(pool, tenantId) : [];
   const skillIndex = renderSkillIndex(skills);
   // Fase 1 (harness): memória geral da org — prefixo estável, resolvida a cada
   // turno como o playbook (publicar ⇒ próximo turno vale). composeSystemPrompt já

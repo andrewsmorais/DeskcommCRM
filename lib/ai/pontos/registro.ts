@@ -3,7 +3,7 @@
  *
  * ## Por que este arquivo existe
  *
- * O DeskcommCRM chama modelo de linguagem em 23 lugares. Até aqui, QUAL modelo
+ * O ChatAI Online chama modelo de linguagem em 23 lugares. Até aqui, QUAL modelo
  * cada um usava estava espalhado por três pilhas que não se falavam
  * (`runModelCall` com BYOK por org, `lib/ai/gateway.ts` por variável de
  * ambiente, `lib/ai/runtime/agent.ts` com um terceiro `switch`) e por sete
@@ -470,6 +470,8 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
     exige: { embeddingDims: 1536 },
     emissor: "lib/ai/embed.ts",
     fixo: {
+      // Espelha o pin do runtime em embeddings/chave.ts; o teste compara os dois.
+      usa: { provider: "openai", modelId: "text-embedding-3-small" },
       razao:
         "O material indexado e a busca precisam usar exatamente o mesmo modelo — são coordenadas de um mesmo mapa. Trocar só um dos lados não dá erro: o agente simplesmente para de achar o seu conteúdo, sem avisar. Para mudar de modelo aqui é preciso reindexar tudo de uma vez.",
     },
@@ -490,6 +492,7 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
     exige: { embeddingDims: 1536 },
     emissor: "lib/agent-engine/edge/llm/embed.ts",
     fixo: {
+      usa: { provider: "openai", modelId: "text-embedding-3-small" },
       razao:
         "Precisa usar o mesmo modelo com que o material foi indexado. Se divergir, a busca continua funcionando e devolve resultados errados — falha silenciosa, e por isso a troca é feita junto com a reindexação, não aqui.",
     },

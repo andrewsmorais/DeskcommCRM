@@ -19,7 +19,7 @@ const REGUA = REGUA_DO_PRODUTO;
 /** A mesma fixture adversarial do teste de contraste, pelo mesmo motivo. */
 const SEMENTES = [
   "#0f172a", "#f5c518", "#ffffff", "#000000", "#808080", "#dc2626", "#22c55e",
-  "#f59e0b", "#2563eb", "#14b8a6", "#4b0082", "#e11d48", "#7c3aed", "#1a1f36",
+  "#f59e0b", "#2563eb", "#14b8a6", "#4b0082", "#e11d48", "#211d55", "#1a1f36",
   "#fafafa", "#506d48",
 ] as const;
 

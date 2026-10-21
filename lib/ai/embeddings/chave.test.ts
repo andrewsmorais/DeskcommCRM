@@ -44,7 +44,11 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-import { resolverChaveDeEmbedding } from "@/lib/ai/embeddings/chave";
+import {
+  MODELO_DE_EMBEDDING,
+  resolverChaveDeEmbedding,
+} from "@/lib/ai/embeddings/chave";
+import { decidirBinding } from "@/lib/ai/pontos/resolver";
 
 function credential(overrides: Record<string, unknown>) {
   return {
@@ -71,6 +75,26 @@ beforeEach(() => {
 });
 
 describe("resolverChaveDeEmbedding", () => {
+  it.each(["embedding_indexar", "embedding_consultar"])(
+    "o painel de %s anuncia o modelo de embedding que o runtime usa, mesmo com padrão de conversa",
+    (pontoId) => {
+      const decisao = decidirBinding({
+        pontoId,
+        binding: null,
+        agentePublicado: null,
+        modeloDeAmbiente: undefined,
+        padraoDaOrganizacao: { provider: "openai", defaultModel: "gpt-5.4-nano" },
+      });
+
+      expect(decisao).toMatchObject({
+        provider: "openai",
+        modelId: MODELO_DE_EMBEDDING.replace(/^openai\//, ""),
+        origem: "fixo_do_produto",
+      });
+      expect(decisao.modelId).not.toBe("gpt-5.4-nano");
+    },
+  );
+
   it("credencial OpenRouter validada serve à indexação e à consulta da própria organização", async () => {
     state.credentials = [
       credential({ organization_id: "outra-org", api_key_encrypted: "chave-alheia" }),

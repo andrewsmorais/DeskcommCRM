@@ -10,6 +10,8 @@ import { branding, marcaEhADoProduto } from "@/lib/branding";
 import { passosVisiveis } from "@/lib/onboarding/passos";
 import { env } from "@/lib/env";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
+import { getOrganizationBilling } from "@/lib/billing";
+import { FalhaNaLeituraDoPlano, ResumoDoPlano } from "@/components/app/EstadoDoPlano";
 
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAuth();
@@ -23,6 +25,7 @@ export default async function OnboardingLayout({ children }: { children: React.R
 
   const { state, onboardedAt } = await loadOnboardingState(activeOrg.orgId);
   if (onboardedAt) redirect("/app/inbox");
+  const leituraDoPlano = await getOrganizationBilling(activeOrg.orgId);
 
   // Os passos que ESTA instalação oferece, com o que já foi resolvido. O
   // indicador não decide mais nada sozinho — ele desenha o que recebe.
@@ -69,7 +72,18 @@ export default async function OnboardingLayout({ children }: { children: React.R
             <Stepper passos={passos} />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">{children}</main>
+        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
+          {!leituraDoPlano.ok ? (
+            <FalhaNaLeituraDoPlano reason={leituraDoPlano.reason} />
+          ) : leituraDoPlano.billing ? (
+            <ResumoDoPlano billing={{
+              plan_name: leituraDoPlano.billing.plan_name,
+              billing_cycle: leituraDoPlano.billing.billing_cycle,
+              status: leituraDoPlano.billing.status,
+            }} />
+          ) : null}
+          {children}
+        </main>
       </div>
     </IdiomaProvider>
   );

@@ -3,7 +3,7 @@
  *
  * ═══ POR QUE ESTE LADO, E NÃO O `runModelCall` ═══
  *
- * O relatório em `docs/research/2026-09-19-jev-system-one-no-deskcomm.md` desenhou
+ * O relatório em `docs/research/2026-09-19-jev-system-one-no-ChatAI Online.md` desenhou
  * um `runDecisionCall` espelhando `runModelCall`. Ao implementar, o repo corrigiu o
  * desenho: há DUAS pilhas, e o próprio `lib/ai/gateway-binding.ts` já documenta a
  * divisão — o seam do agente fala `pg.Pool`, e os workers do Next falam Supabase.

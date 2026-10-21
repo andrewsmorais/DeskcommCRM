@@ -632,7 +632,7 @@ function CartaoDoPonto({
             <Label className="text-xs">{t("Chave")}</Label>
             <Select value={credentialId} onValueChange={setCredentialId}>
               <SelectTrigger data-testid={`chave-${ponto.id}`}>
-                <SelectValue placeholder={t("da instalação")} />
+                <SelectValue placeholder={t("Escolha automática")} />
               </SelectTrigger>
               <SelectContent>
                 {credsDoProvider.map((c) => (
