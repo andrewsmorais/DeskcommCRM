@@ -9,6 +9,8 @@ import {
   Scales,
   Warning,
   ChartBar,
+  ChartLineUp,
+  CreditCard,
   Users,
   ShieldCheck,
   CalendarBlank,
@@ -38,6 +40,11 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", icon: Gauge },
+  // O painel do DONO do negócio (receita, clientes, IA, lucro) e a conta de
+  // pagamentos do Asaas ficam logo acima do Inbox, como pedido. O Dashboard de
+  // cima é de OPERAÇÃO (alertas, fila); estes dois são de NEGÓCIO.
+  { href: "/admin/metricas", label: "Métricas", icon: ChartLineUp },
+  { href: "/admin/asaas", label: "Asaas", icon: CreditCard },
   { href: "/admin/inbox", label: "Inbox", icon: ChatsCircle },
   { href: "/admin/tenants", label: "Tenants", icon: Buildings },
   { href: "/admin/audit", label: "Audit", icon: ClipboardText },

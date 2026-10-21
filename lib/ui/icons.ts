@@ -83,6 +83,8 @@ export {
   ClockCountdown,
   // painéis de evolução / aprendizado
   ChartLineUp,
+  // pagamentos (admin da plataforma: /admin/asaas)
+  CreditCard,
   Lightbulb,
   // theme
   Sun,
