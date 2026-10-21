@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { meetPgSupabase } from "../support/meet-pg-supabase";
-import { ehVistoAzul } from "../support/waha-visto-azul";
 import { createAdminClient } from "@/lib/supabase/admin";
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 import { randomUUID } from "node:crypto";
@@ -628,10 +627,6 @@ it("entrega real controlada: fila→gates→ledger→handler→HTTP; replay não
     ).rows[0];
   const bodies: Record<string, unknown>[] = [];
   const receiver = createServer(async (req, res) => {
-    if (ehVistoAzul(req.url)) {
-      res.end("{}");
-      return;
-    }
     let raw = "";
     for await (const chunk of req) raw += String(chunk);
     bodies.push(raw ? JSON.parse(raw) : {});
@@ -897,10 +892,6 @@ it.each(["reclaim", "cancel", "redact"] as const)(
         await pool.query("select fn_lgpd_cascade_redact_contact($1,$2,null)", [f.org, f.contact]);
     };
     const receiver = createServer(async (req, res) => {
-      if (ehVistoAzul(req.url)) {
-        res.end("{}");
-        return;
-      }
       try {
         if (req.method === "GET") {
           if (mode !== "redact" && !mutation) await mutate();
@@ -1201,10 +1192,6 @@ async function controlledDelivery(
   let mutation = false,
     receiverError: unknown;
   const receiver = createServer(async (req, res) => {
-    if (ehVistoAzul(req.url)) {
-      res.end("{}");
-      return;
-    }
     try {
       if (req.method === "GET") {
         if (onResolve && !mutation) {

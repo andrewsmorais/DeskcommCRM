@@ -17,9 +17,6 @@ function conexao(over: Partial<ConexaoExterna> = {}): ConexaoExterna {
     maxRows: 200,
     maxFilters: 20,
     maxResponseBytes: 30_000,
-    chaveDoCliente: null,
-    sourceMode: "all",
-    fontes: [],
     versao: "2026-09-11T00:00:00.000Z",
     ...over,
   };

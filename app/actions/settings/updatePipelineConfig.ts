@@ -11,7 +11,7 @@ import {
   type PipelineConfigPatch,
 } from "@/lib/schemas/settings";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { podeAdministrarEmpresa } from "@/lib/auth/pode-administrar-empresa";
+import { ROLE_RANK } from "@/lib/auth/types";
 
 export type UpdatePipelineConfigResult =
   | { ok: true }
@@ -34,7 +34,7 @@ export async function updatePipelineConfig(
   if (supportWriteError(authUser.support)) return { ok: false, error: "forbidden" };
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return { ok: false, error: "forbidden_tenant" };
-  if (!podeAdministrarEmpresa(authUser, activeOrg)) {
+  if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
   }
 
@@ -64,9 +64,6 @@ export async function updatePipelineConfig(
   if (parsed.data.won_reasons !== undefined) nextSettings.won_reasons = parsed.data.won_reasons;
   if (parsed.data.won_reason_required !== undefined) {
     nextSettings.won_reason_required = parsed.data.won_reason_required;
-  }
-  if (parsed.data.comanda_no_ganho !== undefined) {
-    nextSettings.comanda_no_ganho = parsed.data.comanda_no_ganho;
   }
   if (parsed.data.reabertura !== undefined) nextSettings.reabertura = parsed.data.reabertura;
   if (parsed.data.reabertura_campos !== undefined) {

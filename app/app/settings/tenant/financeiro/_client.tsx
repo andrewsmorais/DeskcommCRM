@@ -33,29 +33,21 @@ const TIPO_DE_CONTA: Record<string, string> = {
   other: "Outra",
 };
 
-function useCatalogo<T>(tipo: string, enabled = true) {
+function useCatalogo<T>(tipo: string) {
   return useQuery({
-    enabled,
     queryKey: ["financeiro", "catalogo", tipo],
     queryFn: async () =>
       (await apiClient.get<{ data: T[] }>(`/api/v1/financeiro/catalogo/${tipo}`)).data,
   });
 }
 
-export function CatalogoFinanceiro({
-  podeEditar,
-  comissaoDisponivel = false,
-}: {
-  podeEditar: boolean;
-  /** Regra de comissão é do módulo `financeiro` (#1907): sem ele, a seção some. */
-  comissaoDisponivel?: boolean;
-}) {
+export function CatalogoFinanceiro({ podeEditar }: { podeEditar: boolean }) {
   const t = useT();
   const qc = useQueryClient();
   const contas = useCatalogo<Conta>("contas");
   const formas = useCatalogo<Forma>("formas_de_pagamento");
   const planos = useCatalogo<Plano>("planos_de_conta");
-  const regras = useCatalogo<Regra>("regras_de_comissao", comissaoDisponivel);
+  const regras = useCatalogo<Regra>("regras_de_comissao");
   const recorrencias = useCatalogo<Recorrencia>("recorrencias");
 
   // A regra guarda IDs; a lista precisa de nomes. Buscar aqui evita que o
@@ -84,25 +76,6 @@ export function CatalogoFinanceiro({
     onSuccess: (_d, v) => invalidar(v.tipo),
     onError: showApiError,
   });
-  /*
-   * EDITAR (#2641): a rota PATCH já existia e validava sozinha — quem não a
-   * chamava era a tela, e o item só tinha "Desativar". O corpo é o MESMO da
-   * criação + o id, então a edição herda a validação e a régua `manager` da
-   * criação sem repetir nenhuma das duas aqui.
-   */
-  const editar = useMutation({
-    mutationFn: ({
-      tipo,
-      id,
-      corpo,
-    }: {
-      tipo: string;
-      id: string;
-      corpo: Record<string, unknown>;
-    }) => apiClient.patch(`/api/v1/financeiro/catalogo/${tipo}`, { ...corpo, id }),
-    onSuccess: (_d, v) => invalidar(v.tipo),
-    onError: showApiError,
-  });
 
   const [nomeConta, setNomeConta] = useState("");
   const [tipoConta, setTipoConta] = useState("cash");
@@ -110,28 +83,6 @@ export function CatalogoFinanceiro({
   const [contaDaForma, setContaDaForma] = useState("");
   const [nomePlano, setNomePlano] = useState("");
   const [direcaoPlano, setDirecaoPlano] = useState<"in" | "out" | "">("");
-
-  // Uma edição por seção, e não uma global: os três formulários são
-  // independentes e podem ficar abertos ao mesmo tempo sem se atropelarem.
-  const [editandoConta, setEditandoConta] = useState<string | null>(null);
-  const [editandoForma, setEditandoForma] = useState<string | null>(null);
-  const [editandoPlano, setEditandoPlano] = useState<string | null>(null);
-
-  const limparConta = () => {
-    setNomeConta("");
-    setTipoConta("cash");
-    setEditandoConta(null);
-  };
-  const limparForma = () => {
-    setNomeForma("");
-    setContaDaForma("");
-    setEditandoForma(null);
-  };
-  const limparPlano = () => {
-    setNomePlano("");
-    setDirecaoPlano("");
-    setEditandoPlano(null);
-  };
 
   const nomeDaConta = (id: string | null) =>
     id ? (contas.data?.find((c) => c.id === id)?.name ?? t("conta removida")) : null;
@@ -169,40 +120,27 @@ export function CatalogoFinanceiro({
             </select>
             <Button
               className="min-h-11"
-              disabled={nomeConta.trim().length < 2 || criar.isPending || editar.isPending}
-              onClick={() => {
-                const corpo = { name: nomeConta.trim(), kind: tipoConta };
-                if (editandoConta) {
-                  editar.mutate(
-                    { tipo: "contas", id: editandoConta, corpo },
-                    { onSuccess: limparConta },
-                  );
-                } else {
-                  criar.mutate({ tipo: "contas", corpo }, { onSuccess: () => setNomeConta("") });
-                }
-              }}
+              disabled={nomeConta.trim().length < 2 || criar.isPending}
+              onClick={() =>
+                criar.mutate(
+                  { tipo: "contas", corpo: { name: nomeConta.trim(), kind: tipoConta } },
+                  { onSuccess: () => setNomeConta("") },
+                )
+              }
             >
-              {editandoConta ? t("Salvar") : t("Adicionar conta")}
+              {t("Adicionar conta")}
             </Button>
-            {editandoConta ? (
-              <Button variant="ghost" className="min-h-11" onClick={limparConta}>
-                {t("Cancelar")}
-              </Button>
-            ) : null}
           </div>
         ) : null}
         <Lista
           carregando={contas.isLoading}
           vazio={t("Nenhuma conta cadastrada.")}
-          itens={contas.data ?? []}
-          rotulo={(c) => `${c.name} · ${t(TIPO_DE_CONTA[c.kind] ?? c.kind)}`}
+          itens={(contas.data ?? []).map((c) => ({
+            id: c.id,
+            texto: `${c.name} · ${t(TIPO_DE_CONTA[c.kind] ?? c.kind)}`,
+          }))}
           podeEditar={podeEditar}
           aoRemover={(id) => inativar.mutate({ tipo: "contas", id })}
-          aoEditar={(c) => {
-            setNomeConta(c.name);
-            setTipoConta(c.kind);
-            setEditandoConta(c.id);
-          }}
         />
       </section>
 
@@ -238,56 +176,35 @@ export function CatalogoFinanceiro({
             </select>
             <Button
               className="min-h-11"
-              disabled={nomeForma.trim().length < 2 || criar.isPending || editar.isPending}
-              onClick={() => {
-                const nome = nomeForma.trim();
-                if (editandoForma) {
-                  // Na edição a conta vai SEMPRE: omiti-la quando a pessoa
-                  // escolhe "Decidir depois" deixaria a conta antiga no lugar.
-                  editar.mutate(
-                    {
-                      tipo: "formas_de_pagamento",
-                      id: editandoForma,
-                      corpo: { name: nome, account_id: contaDaForma || null },
+              disabled={nomeForma.trim().length < 2 || criar.isPending}
+              onClick={() =>
+                criar.mutate(
+                  {
+                    tipo: "formas_de_pagamento",
+                    corpo: {
+                      name: nomeForma.trim(),
+                      ...(contaDaForma ? { account_id: contaDaForma } : {}),
                     },
-                    { onSuccess: limparForma },
-                  );
-                } else {
-                  criar.mutate(
-                    {
-                      tipo: "formas_de_pagamento",
-                      corpo: { name: nome, ...(contaDaForma ? { account_id: contaDaForma } : {}) },
-                    },
-                    { onSuccess: () => setNomeForma("") },
-                  );
-                }
-              }}
+                  },
+                  { onSuccess: () => setNomeForma("") },
+                )
+              }
             >
-              {editandoForma ? t("Salvar") : t("Adicionar forma")}
+              {t("Adicionar forma")}
             </Button>
-            {editandoForma ? (
-              <Button variant="ghost" className="min-h-11" onClick={limparForma}>
-                {t("Cancelar")}
-              </Button>
-            ) : null}
           </div>
         ) : null}
         <Lista
           carregando={formas.isLoading}
           vazio={t("Nenhuma forma de pagamento cadastrada.")}
-          itens={formas.data ?? []}
-          rotulo={(f) =>
+          itens={(formas.data ?? []).map((f) => ({
+            id: f.id,
             // Sem conta é AVISO, não detalhe: essa forma não consegue fechar
             // comanda, e quem cadastrou precisa ver isso sem abrir nada.
-            `${f.name} → ${nomeDaConta(f.account_id) ?? `⚠️ ${t("sem conta definida")}`}`
-          }
+            texto: `${f.name} → ${nomeDaConta(f.account_id) ?? `⚠️ ${t("sem conta definida")}`}`,
+          }))}
           podeEditar={podeEditar}
           aoRemover={(id) => inativar.mutate({ tipo: "formas_de_pagamento", id })}
-          aoEditar={(f) => {
-            setNomeForma(f.name);
-            setContaDaForma(f.account_id ?? "");
-            setEditandoForma(f.id);
-          }}
         />
       </section>
 
@@ -324,67 +241,47 @@ export function CatalogoFinanceiro({
             </select>
             <Button
               className="min-h-11"
-              disabled={
-                nomePlano.trim().length < 2 || !direcaoPlano || criar.isPending || editar.isPending
-              }
-              onClick={() => {
-                const corpo = { name: nomePlano.trim(), direction: direcaoPlano };
-                if (editandoPlano) {
-                  editar.mutate(
-                    { tipo: "planos_de_conta", id: editandoPlano, corpo },
-                    { onSuccess: limparPlano },
-                  );
-                } else {
-                  criar.mutate(
-                    { tipo: "planos_de_conta", corpo },
-                    {
-                      onSuccess: () => {
-                        setNomePlano("");
-                        setDirecaoPlano("");
-                      },
+              disabled={nomePlano.trim().length < 2 || !direcaoPlano || criar.isPending}
+              onClick={() =>
+                criar.mutate(
+                  {
+                    tipo: "planos_de_conta",
+                    corpo: { name: nomePlano.trim(), direction: direcaoPlano },
+                  },
+                  {
+                    onSuccess: () => {
+                      setNomePlano("");
+                      setDirecaoPlano("");
                     },
-                  );
-                }
-              }}
+                  },
+                )
+              }
             >
-              {editandoPlano ? t("Salvar") : t("Adicionar plano")}
+              {t("Adicionar plano")}
             </Button>
-            {editandoPlano ? (
-              <Button variant="ghost" className="min-h-11" onClick={limparPlano}>
-                {t("Cancelar")}
-              </Button>
-            ) : null}
           </div>
         ) : null}
         <Lista
           carregando={planos.isLoading}
           vazio={t("Nenhum plano de contas cadastrado.")}
-          itens={planos.data ?? []}
-          rotulo={(p) => `${p.name} · ${p.direction === "in" ? t("Entrada") : t("Saída")}`}
+          itens={(planos.data ?? []).map((p) => ({
+            id: p.id,
+            texto: `${p.name} · ${p.direction === "in" ? t("Entrada") : t("Saída")}`,
+          }))}
           podeEditar={podeEditar}
           aoRemover={(id) => inativar.mutate({ tipo: "planos_de_conta", id })}
-          aoEditar={(p) => {
-            setNomePlano(p.name);
-            setDirecaoPlano(p.direction);
-            setEditandoPlano(p.id);
-          }}
         />
       </section>
 
-      {comissaoDisponivel && (
-        <RegrasDeComissao
-          regras={regras.data ?? []}
-          pessoas={pessoas.data ?? []}
-          servicos={servicos.data ?? []}
-          podeEditar={podeEditar}
-          carregando={regras.isLoading}
-          onCriar={(corpo) => criar.mutate({ tipo: "regras_de_comissao", corpo })}
-          onEditar={(id, corpo, aoSalvar) =>
-            editar.mutate({ tipo: "regras_de_comissao", id, corpo }, { onSuccess: aoSalvar })
-          }
-          onInativar={(id) => inativar.mutate({ tipo: "regras_de_comissao", id })}
-        />
-      )}
+      <RegrasDeComissao
+        regras={regras.data ?? []}
+        pessoas={pessoas.data ?? []}
+        servicos={servicos.data ?? []}
+        podeEditar={podeEditar}
+        carregando={regras.isLoading}
+        onCriar={(corpo) => criar.mutate({ tipo: "regras_de_comissao", corpo })}
+        onInativar={(id) => inativar.mutate({ tipo: "regras_de_comissao", id })}
+      />
 
       <Recorrencias
         recorrencias={recorrencias.data ?? []}
@@ -392,40 +289,24 @@ export function CatalogoFinanceiro({
         podeEditar={podeEditar}
         carregando={recorrencias.isLoading}
         onCriar={(corpo) => criar.mutate({ tipo: "recorrencias", corpo })}
-        onEditar={(id, corpo, aoSalvar) =>
-          editar.mutate({ tipo: "recorrencias", id, corpo }, { onSuccess: aoSalvar })
-        }
         onInativar={(id) => inativar.mutate({ tipo: "recorrencias", id })}
       />
     </div>
   );
 }
 
-/**
- * A LISTA DE ITENS — e o botão que faltava (#2641).
- *
- * Antes só havia "Desativar": corrigir um nome era desativar e cadastrar de
- * novo, e o catálogo acumulava duplicata inativa. "Editar" preenche o
- * formulário DA SEÇÃO com o item, e o Salvar vai pelo PATCH — mesma
- * validação, mesma régua `manager`, nenhum DELETE no caminho.
- */
-function Lista<T extends { id: string }>({
+function Lista({
   carregando,
   vazio,
   itens,
-  rotulo,
   podeEditar,
   aoRemover,
-  aoEditar,
 }: {
   carregando: boolean;
   vazio: string;
-  itens: T[];
-  /** O texto da linha, montado por quem conhece a entidade (cada uma tem campos diferentes). */
-  rotulo: (item: T) => string;
+  itens: Array<{ id: string; texto: string }>;
   podeEditar: boolean;
   aoRemover: (id: string) => void;
-  aoEditar?: (item: T) => void;
 }) {
   const t = useT();
   if (carregando) return <p>{t("Carregando…")}</p>;
@@ -434,20 +315,13 @@ function Lista<T extends { id: string }>({
     <ul className="space-y-1">
       {itens.map((i) => (
         <li key={i.id} className="flex items-center justify-between gap-2 text-sm">
-          <span>{rotulo(i)}</span>
+          <span>{i.texto}</span>
           {podeEditar ? (
-            <span className="flex items-center gap-1">
-              {aoEditar ? (
-                <Button variant="ghost" className="min-h-11" onClick={() => aoEditar(i)}>
-                  {t("Editar")}
-                </Button>
-              ) : null}
+            <Button variant="ghost" className="min-h-11" onClick={() => aoRemover(i.id)}>
               {/* "Remover" seria mentira: a linha continua, inativa, porque
                   lançamento antigo aponta para ela. */}
-              <Button variant="ghost" className="min-h-11" onClick={() => aoRemover(i.id)}>
-                {t("Desativar")}
-              </Button>
-            </span>
+              {t("Desativar")}
+            </Button>
           ) : null}
         </li>
       ))}

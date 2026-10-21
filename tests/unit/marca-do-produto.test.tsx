@@ -4,11 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import { Sidebar } from "@/components/shell/Sidebar";
-import { CLASSES_DE_COR, LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
+import { LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
 import type { ActiveOrg, AuthUser } from "@/lib/auth/types";
 import { DEFAULT_APP_NAME, marcaEhADoProduto, type Branding } from "@/lib/branding";
 import { MarcaDaInstalacaoProvider } from "@/lib/branding/contexto";
-import { CORES_DA_MARCA } from "@/lib/branding/desenho";
 
 /**
  * A marca do PRODUTO aparece — e SÓ aparece — quando ninguém pôs a sua.
@@ -77,20 +76,21 @@ describe("marcaEhADoProduto", () => {
 });
 
 describe("o desenho na barra lateral", () => {
-  it("aberta e sem marca própria, mostra o logotipo do produto (SVG, não <img>)", () => {
+  it("aberta e sem marca própria, mostra o logotipo personalizado da instalação", () => {
     renderSidebar(PADRAO, false);
     const logotipo = screen.getByRole("img", { name: DEFAULT_APP_NAME });
-    expect(logotipo.tagName.toLowerCase()).toBe("svg");
-    // O e2e `marca-logo.spec.ts` lê "barra sem <img>" como "sem logo do
-    // revendedor"; um <img> do produto aqui faria a spec medir a coisa errada.
-    expect(document.querySelector("img")).toBeNull();
-    // Nem o nome em texto: o logotipo já o escreve.
-    expect(screen.queryByText(DEFAULT_APP_NAME)).toBeNull();
+    expect(logotipo.tagName.toLowerCase()).toBe("img");
+    expect(logotipo.getAttribute("src")).toBe("/logo.png");
+    expect(screen.getByText("Chat")).toBeTruthy();
+    expect(screen.getByText("AI").className).toContain("text-[#6D28D9]");
+    expect(screen.getByText("Online")).toBeTruthy();
   });
 
-  it("recolhida, mostra só o símbolo — e não a inicial em texto", () => {
+  it("recolhida, mostra só o símbolo personalizado — e não a inicial em texto", () => {
     renderSidebar(PADRAO, true);
-    expect(screen.getByRole("img", { name: DEFAULT_APP_NAME }).tagName.toLowerCase()).toBe("svg");
+    const simbolo = screen.getByRole("img", { name: DEFAULT_APP_NAME });
+    expect(simbolo.tagName.toLowerCase()).toBe("img");
+    expect(simbolo.getAttribute("src")).toBe("/logo.png");
     expect(screen.queryByText("D")).toBeNull();
   });
 
@@ -107,32 +107,18 @@ describe("o desenho na barra lateral", () => {
     expect(document.querySelector("svg[role=img]")).toBeNull();
   });
 
-  it("com logo da instalação, a imagem vence o desenho", () => {
+  it("com logo da instalação, a imagem configurada vence a marca do produto", () => {
     renderSidebar({ ...PADRAO, logoUrl: "https://cdn.exemplo.test/logo.png" }, false);
     expect(screen.getByRole("img").tagName.toLowerCase()).toBe("img");
   });
 });
 
-describe("as cores do desenho", () => {
-  it("as classes do componente cobrem exatamente a paleta declarada, nos dois temas", () => {
-    // O Tailwind só gera utilitário para hex LITERAL no fonte, então o
-    // componente repete os valores. Isto é o que impede os dois de divergirem.
-    const nasClasses = Object.values(CLASSES_DE_COR).join(" ").match(/#[0-9a-f]{6}/g) ?? [];
-    const naPaleta = [...Object.values(CORES_DA_MARCA.claro), ...Object.values(CORES_DA_MARCA.escuro)];
-    expect([...nasClasses].sort()).toEqual([...naPaleta].sort());
-  });
-
-  it("cada tema tem a sua classe: `dark:` no escuro, nada no claro", () => {
-    for (const [papel, classes] of Object.entries(CLASSES_DE_COR)) {
-      const chave = papel as keyof typeof CORES_DA_MARCA.claro;
-      expect(classes).toContain(`fill-[${CORES_DA_MARCA.claro[chave]}]`);
-      expect(classes).toContain(`dark:fill-[${CORES_DA_MARCA.escuro[chave]}]`);
-    }
-  });
-
+describe("acessibilidade do logotipo personalizado", () => {
   it("decorativo esconde do leitor de tela; sem isso, nomeia a marca", () => {
     render(<SimboloDoProduto nome="Marca X" decorativo />);
-    expect(document.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    const simbolo = document.querySelector("img");
+    expect(simbolo?.getAttribute("aria-hidden")).toBe("true");
+    expect(simbolo?.getAttribute("alt")).toBe("");
     cleanup();
     render(<LogotipoDoProduto nome="Marca X" />);
     expect(screen.getByRole("img", { name: "Marca X" })).toBeTruthy();
@@ -146,24 +132,5 @@ describe("o favicon segue a mesma regra", () => {
     expect(icone).toMatch(/marcaEhADoProduto\(\{ name: marca\.nome, logoUrl: marca\.logoUrl \}\)/);
     expect(icone).toMatch(/<path d=\{SIMBOLO\.d\}/);
     expect(icone).toMatch(/letraDoIcone\(marca\.nome\)/);
-  });
-});
-
-describe("o cabeçalho do onboarding segue a mesma regra do favicon", () => {
-  const layout = fs.readFileSync(path.join(process.cwd(), "app/onboarding/layout.tsx"), "utf8");
-
-  it("a marca padrão segue com o SVG que acompanha o tema, e o <img> só vale para marca própria", () => {
-    // O `/icon` é um PNG sempre claro: desenhá-lo para a marca padrão punha um
-    // ladrilho creme no tema escuro (PR #1942). A escolha passa pela MESMA regra
-    // de `app/icon.tsx`, e o SVG vem antes do <img>.
-    expect(layout).toMatch(
-      /iconeUrl === ICONE_DESENHADO &&\s*marcaEhADoProduto\(\{ name: marcaDoIcone\.nome, logoUrl: marcaDoIcone\.logoUrl \}\)/,
-    );
-    expect(layout).toMatch(/simboloDoProduto \? \(\s*<SimboloDoProduto[^>]*decorativo/);
-  });
-
-  it("o ícone é decorativo: o nome já está escrito ao lado", () => {
-    const img = layout.slice(layout.indexOf("<img"), layout.indexOf("/>", layout.indexOf("<img")));
-    expect(img).toMatch(/alt=""/);
   });
 });

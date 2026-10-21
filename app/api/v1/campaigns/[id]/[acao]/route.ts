@@ -38,6 +38,7 @@ import { knobsDoCanal } from "@/lib/automation/janela-do-canal";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,11 @@ export async function POST(
 
   if (!ehAcao(acao)) {
     return fail("not_found", t("Ação de campanha desconhecida."), 404, { requestId });
+  }
+
+  if (acao !== "pausar" && acao !== "cancelar") {
+    const recusado = await exigirRecursoDoPlano(authz.org.orgId, "campanhas", { requestId });
+    if (recusado) return recusado;
   }
 
   // Admin client porque duas ações ENVIAM (teste e, por tabela, a preparação

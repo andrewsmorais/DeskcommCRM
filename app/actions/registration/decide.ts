@@ -5,10 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { audit } from "@/lib/audit";
-import { escritaDeAdminOuRecusa } from "@/lib/auth/escritaDeAdminOuRecusa";
-import type { RecusaDeEscritaDeAdmin } from "@/lib/auth/recusa-de-escrita-de-admin";
+import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { ensureTenantForUser } from "@/lib/auth/provision";
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const entradaSchema = z.object({
@@ -18,8 +16,7 @@ const entradaSchema = z.object({
 
 export type DecideRegistrationResult =
   | { ok: true }
-  | { ok: false; error: "invalid_input" | "not_found" | "account_unavailable" | "write_failed" }
-  | RecusaDeEscritaDeAdmin;
+  | { ok: false; error: "invalid_input" | "not_found" | "account_unavailable" | "write_failed" };
 
 /**
  * O administrador da INSTALAÇÃO aprova ou recusa um pedido de empresa nova
@@ -37,9 +34,7 @@ export type DecideRegistrationResult =
 export async function decideRegistrationRequest(
   input: z.input<typeof entradaSchema>,
 ): Promise<DecideRegistrationResult> {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return escrita;
-  const { user } = escrita.ctx;
+  const { user } = await requirePlatformAdmin();
 
   const parsed = entradaSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
@@ -69,14 +64,7 @@ export async function decideRegistrationRequest(
         {
           id: conta.user.id,
           email: conta.user.email,
-          // O plano escolhido no cadastro (#2846) viaja junto: sem ele, a empresa
-          // nasceria no padrão — ou, sem padrão, o gatilho recusaria toda aprovação.
-          user_metadata: {
-            org_name: pedido.requested_organization_name,
-            ...(typeof conta.user.user_metadata?.cobranca_plan_id === "string"
-              ? { cobranca_plan_id: conta.user.user_metadata.cobranca_plan_id }
-              : {}),
-          },
+          user_metadata: { org_name: pedido.requested_organization_name },
         },
         { source: "signup" },
       );
@@ -108,7 +96,7 @@ export async function decideRegistrationRequest(
     resourceId: pedido.id,
     actingAsPlatformAdmin: true,
     requestId: hdrs.get("x-request-id"),
-    ip: ipDoCliente(hdrs),
+    ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
   });
 

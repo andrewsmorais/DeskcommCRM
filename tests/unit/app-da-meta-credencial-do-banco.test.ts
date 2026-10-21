@@ -59,13 +59,11 @@ vi.mock("@/lib/supabase/admin", () => ({
     from: () => ({
       select: () => ({
         eq: () => ({
-          abortSignal: () => ({
-            maybeSingle: async () => {
-              leituras += 1;
-              if (estoura) throw estoura;
-              return { data: linhaDoBanco, error: erroDaLeitura };
-            },
-          }),
+          maybeSingle: async () => {
+            leituras += 1;
+            if (estoura) throw estoura;
+            return { data: linhaDoBanco, error: erroDaLeitura };
+          },
         }),
       }),
     }),

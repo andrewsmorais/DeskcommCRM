@@ -214,3 +214,4 @@ it("Idempotency-Key repetida com outro conteúdo devolve conflito sem gravar", a
   expect(banco.inseridos).toHaveLength(1);
   expect(banco.recibos).toHaveLength(1);
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

@@ -55,7 +55,7 @@ export async function pauseAgentAction(id: string): Promise<ActionResult> {
 
   if (!existing) return { ok: false, error: "not_found" };
   if (existing.archived_at)
-    return { ok: false, error: "state_conflict", message: "Agent arquivado." };
+    return { ok: false, error: "state_conflict", message: "Agente arquivado." };
 
   const requestId = randomUUID();
   const previousVersionId = (existing as { published_version_id: string | null })
@@ -236,9 +236,6 @@ export async function duplicateAgentAction(id: string): Promise<ActionResult<{ n
 
   if (!result.ok) {
     if (result.error === "not_found") return { ok: false, error: "not_found" };
-    if (result.error === "provedor_desligado") {
-      return { ok: false, error: result.error, message: result.message };
-    }
     return { ok: false, error: "internal_error", message: result.message };
   }
 

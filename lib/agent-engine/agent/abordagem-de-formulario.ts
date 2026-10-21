@@ -41,7 +41,6 @@ import type pg from 'pg';
 import type { ModelMessage } from 'ai';
 
 import { loadPublishedAgentConfigById } from './agent-config';
-import { formatarParaWhatsApp } from './formato-whatsapp';
 import { runModelCall, type LlmEdgeConfig } from '../edge/llm/run-model-call';
 
 export interface AbordagemDeFormularioInput {
@@ -250,9 +249,7 @@ export async function gerarAbordagemDeFormulario(
     // pronto. Quem envia é a ação da automação, com janela e opt-out.
   });
 
-  // Mesmo formato do `send_message`: este texto também vai direto ao cliente
-  // (ação `send_ai_message` e prospecção), sem passar pelo turno do agente.
-  const texto = formatarParaWhatsApp(result.text ?? '');
+  const texto = (result.text ?? '').trim();
   if (!texto) return { ok: false, reason: 'texto_vazio' };
   return { ok: true, texto };
 }

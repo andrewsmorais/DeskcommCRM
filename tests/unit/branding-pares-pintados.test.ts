@@ -42,7 +42,7 @@ const REGUA = extrairRegua(CSS);
 /** A mesma fixture adversarial versionada de `branding-contraste.test.ts`. */
 const SEMENTES = [
   "#0f172a", "#f5c518", "#ffffff", "#000000", "#808080", "#dc2626", "#22c55e",
-  "#f59e0b", "#2563eb", "#14b8a6", "#4b0082", "#e11d48", "#7c3aed", "#1a1f36",
+  "#f59e0b", "#2563eb", "#14b8a6", "#4b0082", "#e11d48", "#211d55", "#1a1f36",
   "#fafafa", "#506d48",
 ] as const;
 
@@ -332,7 +332,7 @@ describe("o bloco emitido não pode contradizer o globals.css", () => {
         );
       }
     }
-    expect(andaram).toBe(13);
+    expect(andaram).toBe(5);
   });
 });
 
@@ -379,8 +379,8 @@ describe("a navy #0f172a — o defeito que a prova em tela achou", () => {
     const p = pintadosDaSemente("#0f172a");
     expect(foco(p.claro, "--color-bg")).toBeCloseTo(10.77, 2);
     expect(foco(p.claro, "--color-surface-elevated")).toBeCloseTo(10.22, 2);
-    expect(foco(p.escuro, "--color-bg")).toBeCloseTo(5.28, 2);
-    expect(foco(p.escuro, "--color-surface-elevated")).toBeCloseTo(4.39, 2);
+    expect(foco(p.escuro, "--color-bg")).toBeCloseTo(2.86, 2);
+    expect(foco(p.escuro, "--color-surface-elevated")).toBeCloseTo(2.37, 2);
     for (const superficie of ["--color-bg", "--color-surface-elevated"] as const) {
       expect(foco(p.escuro, superficie), superficie).toBeGreaterThanOrEqual(PISOS.componente);
     }

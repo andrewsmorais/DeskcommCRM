@@ -15,8 +15,7 @@
  * Cobre:
  *  1. mensagem nova de contato desconhecido ⇒ card no funil de entrada, com o
  *     nome de quem escreveu;
- *  2. a timeline explica de onde ele veio ("Entrou no funil" + "primeira mensagem
- *     recebida no WhatsApp");
+ *  2. a timeline explica de onde ele veio ("Entrou pelo WhatsApp");
  *  3. a segunda mensagem do MESMO contato não abre um segundo card.
  */
 import { execFileSync } from "node:child_process";
@@ -118,12 +117,10 @@ test.describe("a conversa vira lead", () => {
 
     await page.getByText(NOME, { exact: false }).first().click();
 
-    // "Entrou no funil" é o rótulo de `lead_created`; o CANAL vem no motivo,
-    // tirado de `conversations.channel` (`lib/channels/origem-do-negocio.ts`).
-    // Card que aparece sem explicação é como se perde a confiança num
-    // automatismo — o dono não sabe se foi ele, a IA, ou um erro.
-    await expect(page.getByText(/entrou no funil/i).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/primeira mensagem recebida no whatsapp/i).first()).toBeVisible();
+    // "Entrou pelo WhatsApp" é o rótulo de `lead_created`. Card que aparece sem
+    // explicação é como se perde a confiança num automatismo — o dono não sabe
+    // se foi ele, a IA, ou um erro.
+    await expect(page.getByText(/entrou pelo whatsapp/i).first()).toBeVisible({ timeout: 20_000 });
   });
 
   test("a segunda mensagem do mesmo contato NÃO abre um segundo card", async ({ page }) => {

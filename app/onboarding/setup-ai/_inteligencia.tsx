@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { salvarChaveDaIa } from "@/app/actions/onboarding/chaveDaIa";
-import { PROVEDOR_POR_ASSINATURA, PROVEDORES } from "@/lib/ai/pontos/provedores";
+import { PROVEDORES } from "@/lib/ai/pontos/provedores";
 import { explicacaoParaQuemInstala } from "@/lib/instalacao/explicacao-da-falha";
 
 /**
@@ -121,8 +121,7 @@ export function InteligenciaDele({ inicial }: { inicial: EstadoDaChave }) {
               onChange={(e) => setProvedor(e.target.value)}
               className="h-9 w-full rounded-md border bg-background px-3 text-sm"
             >
-              {/* A assinatura do ChatGPT nunca: ela não se cola, conecta-se pelo login em Credenciais. */}
-              {PROVEDORES.filter((p) => p.id !== PROVEDOR_POR_ASSINATURA || p.id === provedor).map((p) => (
+              {PROVEDORES.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.rotulo}
                 </option>

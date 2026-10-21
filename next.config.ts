@@ -15,6 +15,9 @@ const nextConfig: NextConfig = {
   // desligado porque Next 16.3 + adapter + standalone quebra o onBuildComplete
   // com ENOENT next-server.js.nft.json (#96646).
   output: process.env.VERCEL ? undefined : "standalone",
+  // O Next registra argumentos de Server Functions em desenvolvimento por
+  // padrão. Login e outras ações recebem segredos; não coletar esses valores.
+  logging: { serverFunctions: false },
   /**
    * O `standalone` copia SÓ o que o file tracing detecta — e ele não detecta
    * tudo de `@swc/helpers`.

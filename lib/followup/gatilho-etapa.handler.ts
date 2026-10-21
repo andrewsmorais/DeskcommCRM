@@ -17,7 +17,6 @@ export const FOLLOWUP_GATILHO_ETAPA_HANDLER_KEY = "followup-gatilho-etapa.v1";
 
 export const followupGatilhoEtapaHandler: EventHandler = {
   key: FOLLOWUP_GATILHO_ETAPA_HANDLER_KEY,
-  naOrgParada: "pula",
   events: [EVENTO_DE_ETAPA],
   async handle(row): Promise<HandlerResult> {
     try {

@@ -60,20 +60,7 @@ vi.mock("@/lib/supabase/admin", () => ({
         },
         update: (patch: Record<string, unknown>) => {
           updateEqMock(patch);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const chain: any = new Proxy(
-            {
-              eq: () => chain,
-              neq: () => chain,
-              select: () => chain,
-              then: (onFulfilled: (v: unknown) => void, onRejected?: (e: unknown) => void) => {
-                const p = Promise.resolve({ data: [messageRow], error: null });
-                return p.then(onFulfilled, onRejected);
-              },
-            },
-            { get: (alvo, prop) => (prop in alvo ? alvo[prop as keyof typeof alvo] : () => chain) },
-          );
-          return chain;
+          return { eq: () => ({ eq: async () => ({ error: null }) }) };
         },
         then: (resolve: (v: unknown) => unknown) =>
           Promise.resolve({ data: linha ? [linha] : [], error: null }).then(resolve),

@@ -42,7 +42,6 @@ import { metadataInicialDoCanal } from "@/lib/ai/elegibilidade/pre-go-live";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { basePublicaDoWebhookMeta } from "@/lib/webhooks/url-publica";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { traduzirLimiteDoPlano } from "@/lib/cobranca/limites";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -69,13 +68,11 @@ interface DesfechoGravado {
  */
 async function lerDesfechoDoWebhook(
   admin: ReturnType<typeof createAdminClient>,
-  orgId: string,
   channelSessionId: string,
 ): Promise<DesfechoGravado | null> {
   const { data, error } = await admin
     .from("channel_sessions")
     .select(COLUNAS_DO_DESFECHO_DO_WEBHOOK)
-    .eq("organization_id", orgId)
     .eq("id", channelSessionId)
     .maybeSingle();
   if (error) return null;
@@ -134,7 +131,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const consultar = () =>
     admin
       .from("channel_sessions")
-      .select("id, meta_phone_number_id, meta_waba_id, meta_token_encrypted, phone_number, display_name, webhook_path_token, status")
+      .select(
+        "id, meta_phone_number_id, meta_waba_id, meta_token_encrypted, phone_number, display_name, webhook_path_token, status",
+      )
       .eq("organization_id", orgId)
       .eq("provider", CHANNEL_PROVIDER_META);
   const { data } = await queryTolerantToMissingArchived(
@@ -143,7 +142,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   );
 
   const base = basePublicaDoWebhookMeta(req);
-  const desfecho = data?.id ? await lerDesfechoDoWebhook(admin, orgId, data.id) : null;
+  const desfecho = data?.id ? await lerDesfechoDoWebhook(admin, data.id) : null;
   return ok({
     connected: Boolean(data),
     channel_session_id: data?.id ?? null,
@@ -169,15 +168,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           // `smb_message_echoes`: o que a empresa manda pelo app WhatsApp Business
           // num número em coexistência. Sem coexistência a Meta não o envia, então
           // assinar é inofensivo para quem não usa.
-          // `smb_app_state_sync`: o que a empresa faz no ENDEREÇO do app (contato
-          // criado/editado), que vira cadastro no CRM. Mesma régua: sem
-          // coexistência a Meta não envia.
-          fields: [
-            "messages",
-            "message_template_status_update",
-            "smb_message_echoes",
-            "smb_app_state_sync",
-          ],
+          fields: ["messages", "message_template_status_update", "smb_message_echoes"],
         }
       : null,
     /**
@@ -239,7 +230,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // recusar. O operador precisa saber que falta uma configuração de servidor.
     return fail(
       "invalid_request",
-      t("cifra indisponível nesta instalação (GUC app.nuvemshop_oauth_key ausente) — o token não foi gravado"),
+      t(
+        "cifra indisponível nesta instalação (GUC app.nuvemshop_oauth_key ausente) — o token não foi gravado",
+      ),
       422,
       { requestId },
     );
@@ -257,14 +250,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .eq("provider", CHANNEL_PROVIDER_META)
       .maybeSingle();
   const { data: existenteRaw } = await queryTolerantToMissingArchived(
-    () => buscarExistente(`id, ${ARCHIVED_AT}, webhook_path_token, display_name`),
-    () => buscarExistente("id, webhook_path_token, display_name"),
+    () => buscarExistente(`id, ${ARCHIVED_AT}, webhook_path_token`),
+    () => buscarExistente("id, webhook_path_token"),
   );
   const existente = existenteRaw as {
     id: string;
     archived_at?: string | null;
     webhook_path_token?: string | null;
-    display_name?: string | null;
   } | null;
 
   const linha = {
@@ -273,11 +265,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     meta_phone_number_id: phone_number_id,
     meta_waba_id: waba_id,
     meta_token_encrypted: cifrado,
-    phone_number: validacao.displayPhoneNumber ? `+${validacao.displayPhoneNumber.replace(/\D/g, "")}` : null,
-    // O nome do provedor só batiza a conexão; depois dela o nome é do operador
-    // (Renomear), e salvar a credencial de novo não o apaga. Mesma regra do
-    // `coalesce(display_name, ...)` do pareamento por QR.
-    display_name: existente?.display_name || (validacao.verifiedName ?? "Canal oficial"),
+    phone_number: validacao.displayPhoneNumber
+      ? `+${validacao.displayPhoneNumber.replace(/\D/g, "")}`
+      : null,
+    display_name: validacao.verifiedName ?? "Canal oficial",
     status: "WORKING",
   };
 
@@ -296,51 +287,67 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // auditoria de volta sai de lá, junto da ressurreição, não daqui.
   let idDaSessao: string | null = existente?.id ?? null;
   let webhookPathToken: string | null = existente?.webhook_path_token ?? null;
-  let error: { message?: string | null } | null = null;
+  const writeFailure = await comCotaDeCanal<{
+    code: "billing_limit" | "billing_unavailable" | "internal_error";
+    message: string;
+    status: number;
+  } | null>(
+    admin,
+    orgId,
+    existente?.id ?? null,
+    async () => {
+      let error: { message?: string | null } | null = null;
 
-  if (existente) {
-    ({ error } = await reactivateChannelSession(
-      admin,
-      {
-        organizationId: orgId,
-        channelSessionId: existente.id,
-        archivedAt: existente.archived_at ?? null,
-      },
-      linha,
-      {
-        userId: userId,
-        requestId,
-        metadata: { provider: CHANNEL_PROVIDER_META, phone_number: linha.phone_number },
-      },
-    ));
-  } else {
-    // `select("id, webhook_path_token")` porque o registro do webhook logo abaixo
-    // precisa dos DOIS: o id para gravar o desfecho na mesma linha, e o token porque
-    // é ele que compõe a URL que a Meta vai chamar. O INSERT não os devolve sozinho,
-    // e reler a linha por (org, provider) seria uma segunda ida ao banco pelo dado
-    // que este INSERT acabou de criar.
-    const inserida = await admin
-      .from("channel_sessions")
-      .insert({
-        ...linha,
-        webhook_secret_encrypted: cifrado,
-        metadata: metadataInicialDoCanal(),
-      })
-      .select("id, webhook_path_token")
-      .maybeSingle();
-    error = inserida.error;
-    idDaSessao = inserida.data?.id ?? null;
-    webhookPathToken = inserida.data?.webhook_path_token ?? null;
-  }
-
-  if (error) {
-    // Ressuscitar ou criar o canal acima do plano: o gatilho de canais recusa (spec cobrança §5).
-    const limite = traduzirLimiteDoPlano(error, authz.user.idioma);
-    if (limite) return fail(limite.code, limite.message, 409, { requestId, details: limite.details });
-    return fail("internal_error", error.message ?? "channel_session_write_failed", 500, {
-      requestId,
-    });
-  }
+      if (existente) {
+        ({ error } = await reactivateChannelSession(
+          admin,
+          {
+            organizationId: orgId,
+            channelSessionId: existente.id,
+            archivedAt: existente.archived_at ?? null,
+          },
+          linha,
+          {
+            userId: userId,
+            requestId,
+            metadata: { provider: CHANNEL_PROVIDER_META, phone_number: linha.phone_number },
+          },
+        ));
+      } else {
+        // `select("id, webhook_path_token")` porque o registro do webhook logo abaixo
+        // precisa dos DOIS: o id para gravar o desfecho na mesma linha, e o token porque
+        // é ele que compõe a URL que a Meta vai chamar. O INSERT não os devolve sozinho,
+        // e reler a linha por (org, provider) seria uma segunda ida ao banco pelo dado
+        // que este INSERT acabou de criar.
+        const inserida = await admin
+          .from("channel_sessions")
+          .insert({
+            ...linha,
+            webhook_secret_encrypted: cifrado,
+            metadata: metadataInicialDoCanal(),
+          })
+          .select("id, webhook_path_token")
+          .maybeSingle();
+        error = inserida.error;
+        idDaSessao = inserida.data?.id ?? null;
+        webhookPathToken = inserida.data?.webhook_path_token ?? null;
+      }
+      return error
+        ? {
+            code: "internal_error",
+            message: error.message ?? "channel_session_write_failed",
+            status: 500,
+          }
+        : null;
+    },
+    (message, status) => ({
+      code: status === 403 ? "billing_limit" : "billing_unavailable",
+      message,
+      status,
+    }),
+  );
+  if (writeFailure)
+    return fail(writeFailure.code, writeFailure.message, writeFailure.status, { requestId });
 
   // ─── O webhook DESTE número, registrado pela própria instalação (fatia F1) ──
   // DEPOIS de gravar, nunca antes: o GET de verificação da Meta chega no instante
@@ -374,3 +381,4 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       : null,
   });
 }
+import { comCotaDeCanal } from "@/lib/channels/cota-do-plano";

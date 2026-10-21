@@ -4,8 +4,6 @@ import * as Sentry from "@sentry/nextjs";
 import { useEffect, useState } from "react";
 
 import { copyToClipboard } from "@/lib/clipboard";
-import { traduzir } from "@/lib/i18n/dicionario";
-import { IDIOMA_PADRAO, idiomaDelNavegador, type Idioma } from "@/lib/i18n/idiomas";
 
 export default function GlobalError({
   error,
@@ -16,13 +14,6 @@ export default function GlobalError({
 }) {
   const [eventId, setEventId] = useState<string | undefined>(undefined);
   const [copied, setCopied] = useState(false);
-  // Parte do padrão (igual ao do servidor) e ajusta depois de montar, para não
-  // quebrar a hidratação do único componente que não pode falhar.
-  const [idioma, setIdioma] = useState<Idioma>(IDIOMA_PADRAO);
-
-  useEffect(() => {
-    setIdioma(idiomaDelNavegador(navigator.languages ?? [navigator.language]));
-  }, []);
 
   useEffect(() => {
     const id = Sentry.captureException(error);
@@ -32,7 +23,7 @@ export default function GlobalError({
   const displayId = eventId ?? error.digest ?? "—";
 
   return (
-    <html lang={idioma}>
+    <html lang="pt-BR">
       <body
         style={{
           margin: 0,
@@ -58,57 +49,11 @@ export default function GlobalError({
             textAlign: "center",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "0.25rem",
-              marginBottom: "0.75rem",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setIdioma("es")}
-              style={{
-                padding: "0.2rem 0.5rem",
-                fontSize: "0.75rem",
-                borderRadius: 4,
-                border: "1px solid",
-                borderColor: idioma === "es" ? "#1c1917" : "#e7e5e4",
-                background: idioma === "es" ? "#1c1917" : "white",
-                color: idioma === "es" ? "white" : "#57534e",
-                cursor: "pointer",
-                fontWeight: idioma === "es" ? 600 : 400,
-              }}
-            >
-              ES
-            </button>
-            <button
-              type="button"
-              onClick={() => setIdioma("pt-BR")}
-              style={{
-                padding: "0.2rem 0.5rem",
-                fontSize: "0.75rem",
-                borderRadius: 4,
-                border: "1px solid",
-                borderColor: idioma === "pt-BR" ? "#1c1917" : "#e7e5e4",
-                background: idioma === "pt-BR" ? "#1c1917" : "white",
-                color: idioma === "pt-BR" ? "white" : "#57534e",
-                cursor: "pointer",
-                fontWeight: idioma === "pt-BR" ? 600 : 400,
-              }}
-            >
-              PT
-            </button>
-          </div>
           <h1 style={{ fontSize: "1.5rem", margin: "0 0 0.5rem", fontWeight: 600 }}>
-            {traduzir("Algo deu errado", idioma)}
+            Algo deu errado
           </h1>
           <p style={{ color: "#57534e", margin: "0 0 1.5rem" }}>
-            {traduzir(
-              "Tente novamente em instantes. Se persistir, contate o suporte com o ID abaixo.",
-              idioma,
-            )}
+            Tente novamente em instantes. Se persistir, contate o suporte com o ID abaixo.
           </p>
           <div
             style={{
@@ -142,7 +87,7 @@ export default function GlobalError({
                 cursor: "pointer",
               }}
             >
-              {copied ? traduzir("Copiado!", idioma) : traduzir("Copiar ID", idioma)}
+              {copied ? "Copiado!" : "Copiar ID"}
             </button>
             <button
               type="button"
@@ -156,7 +101,7 @@ export default function GlobalError({
                 cursor: "pointer",
               }}
             >
-              {traduzir("Tentar de novo", idioma)}
+              Tentar de novo
             </button>
           </div>
         </div>

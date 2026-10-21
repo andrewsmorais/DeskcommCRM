@@ -2,9 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
-import { moedaDaOrganizacao } from "@/lib/catalogo/moeda-da-org";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { createClient } from "@/lib/supabase/server";
 
 import { Comandas } from "./_client";
 
@@ -31,9 +29,6 @@ export default async function Page() {
   if (!org) redirect("/app");
 
   const t = (texto: string) => traduzir(texto, user.idioma);
-  // A moeda da organização é a régua dos pendentes (#1531): o preço sugerido
-  // não tem coluna própria e nasce nela.
-  const moedaDaOrg = await moedaDaOrganizacao(await createClient(), org.orgId);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -46,7 +41,6 @@ export default async function Page() {
       <Comandas
         podeLancar={ROLE_RANK[org.role] >= ROLE_RANK.agent}
         podeEstornar={ROLE_RANK[org.role] >= ROLE_RANK.manager}
-        moedaDaOrg={moedaDaOrg}
       />
     </div>
   );

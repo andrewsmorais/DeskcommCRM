@@ -87,9 +87,7 @@ function Conferencia({
         <p className="text-xs text-muted-foreground">{t(c.oQueProtege)}</p>
         {c.escolha === null ? (
           <p data-testid={`conferencia-${c.nome}-fixa`} className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {t(c.escolhaEmOutraTela ?? "Isto não se desliga.")}
-            </span>{" "}
+            <span className="font-medium text-foreground">{t("Isto não se desliga.")}</span>{" "}
             {t(c.porQueNaoSeDesliga)}
           </p>
         ) : (
@@ -106,29 +104,20 @@ function Conferencia({
                 {estado === undefined
                   ? t("carregando…")
                   : estado.escolha === null
-                    ? c.escolha.consultaModelo
-                      ? `${estado.efetivo ? t("Ligada") : t("Desligada")} ${t("— vem da configuração do servidor")}`
-                      : estado.efetivo
-                        ? t("Ligada")
-                        : t("Desligada")
+                    ? `${estado.efetivo ? t("Ligada") : t("Desligada")} ${t("— vem da configuração do servidor")}`
                     : estado.escolha
                       ? t("Ligada por você")
                       : t("Desligada por você")}
               </span>
             </div>
-            {c.escolha.consultaModelo ? (
-              <p className="text-xs text-muted-foreground">
-                {t("Custa")} {t(c.escolha.custo)}
-                {t(". O modelo usado se escolhe em")}{" "}
-                <a className="underline underline-offset-2" href="/app/ai/providers">
-                  {t("Provedores de IA")}
-                </a>
-                .
-              </p>
-            ) : (
-              // Sem modelo, sem link para Provedores: a camada não usa nenhum.
-              <p className="text-xs text-muted-foreground">{t(c.escolha.custo)}</p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {t("Custa")} {t(c.escolha.custo)}
+              {t(". O modelo usado se escolhe em")}{" "}
+              <a className="underline underline-offset-2" href="/app/ai/providers">
+                {t("Provedores de IA")}
+              </a>
+              .
+            </p>
           </div>
         )}
       </div>

@@ -200,10 +200,9 @@ MENU
       cat <<SSH
 
   Entre no servidor pelo terminal. O provedor te mandou o IP e a senha de root
-  por e-mail quando a VPS ficou pronta. A HostGator escuta o SSH na porta 22022,
-  e não na 22 padrão, por isso o \`-p 22022\`:
+  por e-mail quando a VPS ficou pronta:
 
-       ssh -p 22022 root@SEU_IP_AQUI
+       ssh root@SEU_IP_AQUI
 
 SSH
       comando_de_instalacao

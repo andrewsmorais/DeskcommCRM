@@ -1,4 +1,4 @@
-import { es, ptBR } from "date-fns/locale";
+import { es, ptBR, enUS } from "date-fns/locale";
 import type { Locale } from "date-fns";
 
 import { IDIOMA_PADRAO, type Idioma } from "./idiomas";

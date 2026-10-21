@@ -13,7 +13,6 @@
  *
  *   pnpm release:conferir     # não escreve; diz que número sairia
  *   pnpm release:cortar       # escreve o CHANGELOG e apaga os fragmentos
- *   ... --major               # só quando o dono pede: nenhum fragmento produz major
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -96,8 +95,7 @@ function hoje(): string {
 function main(argv: readonly string[]): number {
   const escrever = argv.includes("--escrever");
   const soAVersao = argv.includes("--versao-do-changelog");
-  const pedidoMajor = argv.includes("--major");
-  const conhecidos = new Set(["--escrever", "--versao-do-changelog", "--major"]);
+  const conhecidos = new Set(["--escrever", "--versao-do-changelog"]);
   const desconhecido = argv.find((a) => !conhecidos.has(a));
   if (desconhecido) {
     process.stderr.write(`argumento desconhecido: ${desconhecido}\n`);
@@ -132,7 +130,7 @@ function main(argv: readonly string[]): number {
     return 1;
   }
 
-  const bump = calcularBump(fragmentos.map((f) => f.impacto), pedidoMajor);
+  const bump = calcularBump(fragmentos.map((f) => f.impacto));
   const versao = proximaVersao(base, bump);
   const secao = montarSecao(fragmentos, versao, hoje());
 

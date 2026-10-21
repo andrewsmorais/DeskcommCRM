@@ -539,3 +539,4 @@ describe("marcar grava local e observação neste compromisso", () => {
     expect(linha.description).toBeNull();
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

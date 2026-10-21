@@ -31,31 +31,25 @@ const event = {
 };
 let snapshot: Record<string, unknown>,
   actions: Array<{ action: string; args: Record<string, unknown> }>,
-  batches: Array<Record<string, unknown>>,
-  consultasDeVinculo: number[],
-  linked: { id: string; google_event_id: string } | null,
+  linked: { id: string } | null,
   transport: ReturnType<typeof vi.fn<typeof fetch>>;
 function db() {
   return {
     rpc: async (_name: string, p: Record<string, unknown>) => {
-      if (_name === "fn_google_calendar_page_batch") {
-        const args = p.p_args as Record<string, unknown>;
-        batches.push(args);
-        return {
-          data: {
-            ...snapshot,
-            sync_cursor: args.next_page_token ? { ...cursor, page_token: "next" } : null,
-          },
-          error: null,
-        };
-      }
       const action = String(p.p_action);
       actions.push({ action, args: p.p_args as Record<string, unknown> });
       return {
         data:
           action === "claim"
             ? snapshot
-            : true,
+            : action === "page"
+              ? {
+                  ...snapshot,
+                  sync_cursor: (p.p_args as { next_page_token?: string }).next_page_token
+                    ? { ...cursor, page_token: "next" }
+                    : null,
+                }
+              : true,
         error: null,
       };
     },
@@ -63,10 +57,6 @@ function db() {
       const c = {
         select: () => c,
         eq: () => c,
-        in: async (_k: string, ids: string[]) => {
-          consultasDeVinculo.push(ids.length);
-          return { data: linked ? [linked] : [], error: null };
-        },
         maybeSingle: async () => ({ data: linked, error: null }),
         single: async () => ({
           data: table === "organizations" ? { timezone: "America/Manaus" } : null,
@@ -89,8 +79,6 @@ beforeEach(() => {
     sync_cursor: { ...cursor },
   };
   actions = [];
-  batches = [];
-  consultasDeVinculo = [];
   linked = null;
   transport = vi
     .fn()
@@ -98,7 +86,7 @@ beforeEach(() => {
   vi.mocked(tokenForConnection).mockResolvedValue("token");
   vi.mocked(reconcileAppointment).mockResolvedValue("processed");
 });
-const item = () => batches[0]?.items && (batches[0].items as unknown[])[0];
+const item = () => actions.find((a) => a.action === "item")?.args.item;
 describe("leitura paginada sob claim original", () => {
   it("traduz terceiro sem duplicar título pessoal e só conclui após itens", async () => {
     expect(await syncCalendar(db(), org, id, transport)).toBe("complete");
@@ -109,7 +97,7 @@ describe("leitura paginada sob claim original", () => {
       transparency: "opaque",
       ical_uid: event.iCalUID,
     });
-    expect(actions.map((a) => a.action)).toEqual(["claim", "release"]);
+    expect(actions.map((a) => a.action)).toEqual(["claim", "renew", "item", "page", "release"]);
   });
   it("sem fuso de calendário usa organização, inclusive dia inteiro", async () => {
     snapshot.time_zone = null;
@@ -125,7 +113,7 @@ describe("leitura paginada sob claim original", () => {
     expect(item()).toMatchObject({ starts_at: "2026-09-02T04:00:00.000Z" });
   });
   it("tupla ligada reconcilia antes de remover ocupação duplicada, mesmo tombstone", async () => {
-    linked = { id: "appointment", google_event_id: event.id };
+    linked = { id: "appointment" };
     transport.mockResolvedValue(
       new Response(
         JSON.stringify({ items: [{ id: event.id, status: "cancelled" }], nextSyncToken: "new" }),
@@ -141,7 +129,7 @@ describe("leitura paginada sob claim original", () => {
         remote: { id: event.id, status: "cancelled" },
       }),
     );
-    expect(batches[0]?.prune_ids).toEqual([event.id]);
+    expect(item()).toEqual({ external_event_id: event.id });
   });
   it("prefixo sem tupla é problema visível, nunca silêncio por anti-eco", async () => {
     transport.mockResolvedValue(
@@ -151,7 +139,7 @@ describe("leitura paginada sob claim original", () => {
     );
     expect(await syncCalendar(db(), org, id, transport)).toBe("failed");
     expect(actions.some((a) => a.action === "error")).toBe(true);
-    expect(batches).toHaveLength(0);
+    expect(actions.some((a) => a.action === "page")).toBe(false);
   });
   it("cancelamento de terceiro preserva lápide sem horários", async () => {
     transport.mockResolvedValue(
@@ -179,7 +167,7 @@ describe("leitura paginada sob claim original", () => {
     );
     expect(await syncCalendar(db(), org, id, transport)).toBe("failed");
     expect(item()).toBeUndefined();
-    expect(batches).toHaveLength(0);
+    expect(actions.some((a) => a.action === "page")).toBe(false);
   });
   it("cifra indisponível não faz HTTP nem grava cache", async () => {
     vi.mocked(tokenForConnection).mockRejectedValue(new Error("cipher unavailable"));
@@ -190,11 +178,9 @@ describe("leitura paginada sob claim original", () => {
   it("página vazia parcial não conclui cobertura; próxima página mantém aquisição", async () => {
     transport.mockResolvedValue(new Response(JSON.stringify({ items: [], nextPageToken: "next" })));
     expect(await syncCalendar(db(), org, id, transport)).toBe("partial");
-    expect(batches[0]).toEqual({
+    expect(actions.find((a) => a.action === "page")!.args).toEqual({
       claim,
       cursor,
-      items: [],
-      prune_ids: [],
       next_page_token: "next",
       next_sync_token: null,
     });
@@ -205,10 +191,10 @@ describe("leitura paginada sob claim original", () => {
     await syncCalendar(db(), org, id, transport);
     expect(String(transport.mock.calls[0]![0])).toContain("syncToken=original");
     expect(String(transport.mock.calls[0]![0])).not.toContain("timeMin");
-    expect(batches[0]!.cursor).toEqual(snapshot.sync_cursor);
+    expect(actions.find((a) => a.action === "page")!.args.cursor).toEqual(snapshot.sync_cursor);
   });
   it("compromisso ocupado por outro claim impede checkpoint de página", async () => {
-    linked = { id: "appointment", google_event_id: event.id };
+    linked = { id: "appointment" };
     vi.mocked(reconcileAppointment).mockResolvedValue("busy");
     expect(await syncCalendar(db(), org, id, transport)).toBe("partial");
     expect(actions.map((a) => a.action)).toEqual(["claim", "renew", "release"]);
@@ -218,13 +204,6 @@ describe("leitura paginada sob claim original", () => {
     for (const action of actions.filter((a) => a.action !== "claim")) {
       expect(action.args.claim).toEqual(claim);
     }
-    expect(batches[0]!.cursor).toEqual(cursor);
-  });
-  it("página cheia consulta os vínculos em blocos de até 50 ids", async () => {
-    const items = Array.from({ length: 120 }, (_, i) => ({ ...event, id: `${event.id}-${i}` }));
-    transport.mockResolvedValue(new Response(JSON.stringify({ items, nextSyncToken: "new" })));
-    expect(await syncCalendar(db(), org, id, transport)).toBe("complete");
-    expect(consultasDeVinculo).toEqual([50, 50, 20]);
-    expect(batches[0]!.items).toHaveLength(120);
+    expect(actions.find((a) => a.action === "item")!.args.cursor).toEqual(cursor);
   });
 });

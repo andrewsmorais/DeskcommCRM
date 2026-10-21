@@ -1,6 +1,5 @@
 "use server";
 
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { supportWriteError } from "@/lib/impersonate/support";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -8,7 +7,7 @@ import { z } from "zod";
 
 import { audit } from "@/lib/audit";
 import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
-import { podeAdministrarEmpresa } from "@/lib/auth/pode-administrar-empresa";
+import { ROLE_RANK } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MODOS_DE_VALOR_DA_VENDA, VALORES_DE_CATEGORIA } from "@/lib/conversoes/regras-google";
 
@@ -77,7 +76,7 @@ export async function updateGoogleAdsConnection(
   if (supportWriteError(authUser.support)) return { ok: false, error: "forbidden_role" };
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return { ok: false, error: "forbidden_tenant" };
-  if (!podeAdministrarEmpresa(authUser, activeOrg)) {
+  if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
   }
   if (await mfaEmDivida()) return { ok: false, error: "mfa_required" };
@@ -132,7 +131,7 @@ export async function updateGoogleAdsConnection(
     resourceType: "ad_platform_connections",
     resourceId: null,
     requestId: hdrs.get("x-request-id") ?? undefined,
-    ip: ipDoCliente(hdrs) ?? undefined,
+    ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
     userAgent: hdrs.get("user-agent") ?? undefined,
     metadata: {
       platform: "google_ads",

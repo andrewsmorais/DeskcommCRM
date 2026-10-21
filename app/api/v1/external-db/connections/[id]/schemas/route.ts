@@ -15,6 +15,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { abrirAcesso } from "@/lib/external-db/acesso";
+import { listarTabelas } from "@/lib/external-db/introspeccao";
 import { checkRateLimit } from "@/lib/ai/dispatcher/rate-limit";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -45,7 +46,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (!acesso.ok) return respostaDeAcesso(acesso.motivo, { requestId, idioma: authUser.idioma });
 
   try {
-    const tabelas = await acesso.dialeto.listarTabelas();
+    const tabelas = await listarTabelas(acesso.pool);
 
     await audit({
       action: "external_db_connection.read",
@@ -54,7 +55,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       resourceType: "external_db_connection",
       resourceId: id,
       requestId,
-      metadata: { escopo: "catalogo", modo_fontes: acesso.conexao.sourceMode, tabelas: tabelas.length },
+      metadata: { escopo: "catalogo", tabelas: tabelas.length },
     });
 
     return ok({ tabelas }, { requestId });

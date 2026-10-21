@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TenantBadge } from "@/components/admin/inbox/TenantBadge";
 import { useAdminLgpdRequest } from "@/hooks/useAdminLgpdRequest";
 import type { AdminLgpdStatus, AdminLgpdRequestType } from "@/hooks/useAdminLGPDRequests";
-import { diasAtePrazo, prazoEmBr, progressoDoPrazo } from "@/lib/lgpd/sla";
 import { useT } from "@/hooks/i18n/useT";
 
 // ---------------------------------------------------------------------------
@@ -28,22 +27,20 @@ function SlaTimelineInline({ received_at, due_at, request_type }: SlaTimelinePro
   const localeDaData = useLocaleDeData();
   const t = useT();
   const receivedAt = new Date(received_at);
+  const dueAt = new Date(due_at);
   const now = new Date();
 
-  // O FIM do dia guardado é a âncora da barra e da contagem. Antes, as duas
-  // mediam até a meia-noite UTC do dia do prazo: a barra chegava a 100% às 21h da
-  // VÉSPERA, e a contagem dizia "1d em atraso" às 9h do DIA do prazo. Medido —
-  // ver `tests/unit/lgpd-prazo-e-dia-civil.test.ts`.
-  const diasRestantes = diasAtePrazo(due_at, now);
-
   const elapsed = now.getTime() - receivedAt.getTime();
-  const progress = progressoDoPrazo(received_at, due_at, now);
+  const total = dueAt.getTime() - receivedAt.getTime();
+  const progress = Math.min(1, Math.max(0, total > 0 ? elapsed / total : 0));
   const progressPct = Math.round(progress * 100);
 
   const daysElapsed = Math.floor(elapsed / (1000 * 60 * 60 * 24));
+  const msUntilDue = dueAt.getTime() - now.getTime();
+  const daysRemaining = Math.floor(msUntilDue / (1000 * 60 * 60 * 24));
 
   const progressColor =
-    progress >= 1 ? "bg-red-500" : progress >= 0.75 ? "bg-yellow-500" : "bg-emerald-500";
+    progress >= 1 ? "bg-red-500" : progress >= 0.75 ? "bg-yellow-500" : "bg-indigo-500";
 
   const milestones =
     request_type === "data_request"
@@ -64,11 +61,11 @@ function SlaTimelineInline({ received_at, due_at, request_type }: SlaTimelinePro
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>D+{daysElapsed} ({t("hoje")})</span>
           <span>
-            {diasRestantes > 0
-              ? `${diasRestantes}d ${t("restantes")}`
-              : diasRestantes === 0
+            {daysRemaining > 0
+              ? `${daysRemaining}d ${t("restantes")}`
+              : daysRemaining === 0
                 ? t("vence hoje")
-                : `${Math.abs(diasRestantes)}d ${t("em atraso")}`}
+                : `${Math.abs(daysRemaining)}d ${t("em atraso")}`}
           </span>
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -91,7 +88,7 @@ function SlaTimelineInline({ received_at, due_at, request_type }: SlaTimelinePro
           const isPast = milestoneDate.getTime() < now.getTime();
           const isLast = idx === milestones.length - 1;
           const dotColor = isPast
-            ? "bg-emerald-500 border-emerald-500"
+            ? "bg-indigo-500 border-indigo-500"
             : "bg-muted border-border";
 
           return (
@@ -288,7 +285,7 @@ export function LgpdRequestAdminDetail({ id }: Props) {
           {request.due_at && (
             <>
               {" · "}
-              {t("Vence em")} {prazoEmBr(request.due_at)}
+              {t("Vence em")} {format(new Date(request.due_at), "dd/MM/yyyy", { locale: localeDaData })}
             </>
           )}
         </p>

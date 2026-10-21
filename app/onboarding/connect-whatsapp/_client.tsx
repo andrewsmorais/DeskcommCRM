@@ -483,7 +483,7 @@ export function ConnectWhatsappClient({
           )}
 
           {status === "WORKING" && (
-            <p className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <p className="mt-3 text-sm font-medium text-indigo-700 dark:text-indigo-400">
               ✓ {t("Conectado! Avançando…")}
             </p>
           )}

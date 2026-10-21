@@ -6,8 +6,6 @@ import { coresDaBarraDoNavegador } from "@/lib/branding/barra-do-navegador";
 import { MarcaDaInstalacaoProvider } from "@/lib/branding/contexto";
 import { cssDaMarca } from "@/lib/branding/css";
 import { iconeDaAba } from "@/lib/branding/icone";
-import { folhaPersonalizadaDaInstalacao } from "@/lib/branding/folha-personalizada";
-import { CABECALHO_SEM_CSS } from "@/lib/branding/sem-css-personalizado";
 import {
   marcaDaInstalacao,
   motivoDoFallback,
@@ -32,6 +30,14 @@ import "./globals.css";
 // next/font/google as baixava durante o build, e o build caía quando o Google
 // não respondia. A família passa a se chamar como a variável JS ("atkinson"),
 // então use sempre a custom property (--font-atkinson), nunca o nome da fonte.
+const jakarta = localFont({
+  src: [
+    { path: "./fonts/plus-jakarta-sans-200-800-latin.woff2", weight: "200 800", style: "normal" },
+  ],
+  display: "swap",
+  variable: "--font-jakarta",
+});
+
 const atkinson = localFont({
   src: [
     {
@@ -47,6 +53,15 @@ const atkinson = localFont({
   ],
   display: "swap",
   variable: "--font-atkinson",
+});
+
+// Geist é a fonte da landing ChatAI Online (lá via next/font/google; aqui
+// versionada pelo mesmo motivo das outras). Variável 100-900: é o que permite o
+// peso 800 dos h1/h2 — a Atkinson só tem 400 e 700.
+const geist = localFont({
+  src: [{ path: "./fonts/geist-100-900-latin.woff2", weight: "100 900", style: "normal" }],
+  display: "swap",
+  variable: "--font-geist",
 });
 
 const plexMono = localFont({
@@ -123,38 +138,14 @@ export async function generateMetadata(): Promise<Metadata> {
  * A cor da barra do navegador sai da RÉGUA, não de dois hexes redigitados aqui.
  * O porquê — inclusive por que isto NÃO deve virar `generateViewport()` lendo o
  * banco — está no cabeçalho de `lib/branding/barra-do-navegador.ts`.
- *
- * ─── As quatro linhas abaixo do `themeColor`, e por que não são enfeite ──────
- *
- * `viewportFit: "cover"` é PRÉ-REQUISITO, não acabamento. Sem ele o navegador
- * não estende o documento sob o notch, e aí `env(safe-area-inset-*)` devolve
- * **zero** em toda regra que o consulte — o CSS fica escrito e sem efeito. O
- * princípio 3 de `docs/design-system/screen-flow/07-responsive-strategy.md`
- * ("`safe-area-inset-bottom` em qualquer composer ou bottom-bar") estava escrito
- * desde abril de 2026 e não tinha como funcionar: faltava esta chave.
- *
- * `interactiveWidget: "resizes-content"` é o que faz o teclado virtual ENCOLHER
- * a área de conteúdo em vez de deslizar por cima dela. No padrão
- * (`resizes-visual`) o composer da conversa fica atrás do teclado — a mesma
- * classe de defeito do rodapé, só que causada pelo sistema.
- *
- * `width`/`initialScale` o Next já emitia por padrão; declarar aqui é o que
- * impede que acrescentar qualquer outra chave a este objeto apague o default
- * silenciosamente (o Next só emite o default quando NENHUMA das duas existe).
- * Nada de `maximumScale` nem `userScalable: false`: impedir o zoom é barreira
- * de acessibilidade, e quem lê a tela de perto precisa dele.
  */
 export const viewport: Viewport = {
   themeColor: coresDaBarraDoNavegador(REGUA_DO_PRODUTO),
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-  interactiveWidget: "resizes-content",
 };
 
 // Inline FOUC-prevention. Conteúdo é string literal estática (zero input do usuário),
 // portanto seguro. Lê localStorage + prefers-color-scheme antes do primeiro paint.
-const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem('deskcomm-theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var r=(s==='dark'||s==='light')?s:((s==='system'||!s)&&d?'dark':'light');document.documentElement.setAttribute('data-theme',r);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`;
+const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem('ChatAI Online-theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var r=(s==='dark'||s==='light')?s:((s==='system'||!s)&&d?'dark':'light');document.documentElement.setAttribute('data-theme',r);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`;
 
 /**
  * Motivos já registrados neste processo. `EstiloDaMarca` roda em TODA
@@ -254,17 +245,6 @@ async function EstiloDaMarca() {
 }
 
 /**
- * CSS visual, escopado e validado do administrador da instalação. `?sem_css=1`
- * desliga a folha para quem pediu (ver `lib/branding/sem-css-personalizado.ts`).
- */
-async function EstiloCssPersonalizado() {
-  const desligada = (await headers()).get(CABECALHO_SEM_CSS) === "1";
-  const css = await folhaPersonalizadaDaInstalacao(desligada);
-  if (!css) return null;
-  return <style id="marca-css-personalizado" dangerouslySetInnerHTML={{ __html: css }} />;
-}
-
-/**
  * A marca que atravessa para o NAVEGADOR — a MESMA pilha da aba e do CSS.
  *
  * Componente próprio, e não uma chamada dentro do `RootLayout`, pelo mesmo
@@ -327,68 +307,22 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       lang="pt-BR"
       data-theme="light"
       suppressHydrationWarning
-      className={`${atkinson.variable} ${plexMono.variable}`}
+      className={`${jakarta.variable} ${geist.variable} ${atkinson.variable} ${plexMono.variable}`}
     >
       <head>
         {/* Primeiro de tudo: a cor da instalação, antes do CSS e do script de tema. */}
         <EstiloDaMarca />
-        <EstiloCssPersonalizado />
         {/* Config pública do Supabase + marca resolvida, em runtime (imagem
             genérica self-host). */}
         <MarcaNoNavegador />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      {/*
-        `min-h-dvh` e não `min-h-screen`: `100vh` é a janela com a barra de
-        endereço do navegador móvel RECOLHIDA, e esse valor nunca é corrigido.
-        Com a barra visível — o estado em que toda página abre — o `<body>` mede
-        mais que a janela e o documento nasce rolável sem ter conteúdo para
-        rolar: um puxão de ~60px que não leva a nada, na primeira interação de
-        quem abre o produto no celular. Princípio 2 de
-        `docs/design-system/screen-flow/07-responsive-strategy.md`.
-      */}
-      <body className="min-h-dvh bg-bg font-sans text-text antialiased">
+      <body className="min-h-screen bg-bg font-sans text-text antialiased">
         <Providers>
           <MarcaDosClientComponents>
             <ThemeProvider>{children}</ThemeProvider>
           </MarcaDosClientComponents>
-          {/*
-            O AVISO VAI PARA BAIXO, e isto foi medido na tela.
-
-            Com `position="top-right"` o sonner usa largura CHEIA abaixo de
-            600px (regra dele, não nossa) — então no celular o aviso virava uma
-            faixa colada no topo, **cobrindo a barra de navegação inteira**:
-            hambúrguer, organização, busca e sino sumiam atrás dele. Visto em
-            360px na agenda, com um aviso de quatro linhas.
-
-            `position` é prop, não CSS: não dá para torná-la responsiva sem
-            decidir layout em JavaScript, que é o que a casa recusa (pisca na
-            hidratação). E a estratégia responsiva já pedia baixo nos DOIS
-            tamanhos — "Desktop: bottom-right; Mobile: bottom-center,
-            full-width com `safe-area-inset-bottom`". O código é que discordava.
-
-            ⚠️ Isto muda o desktop também: o aviso passa do canto superior
-            direito para o inferior direito.
-
-            `mobileOffset` sobe o aviso acima do que o rodapé já ocupa — a barra
-            de abas do celular (`components/shell/BarraInferior.tsx`) mora
-            exatamente onde o aviso cairia. O número vem do contrato
-            (`--rodape-ocupado`), não de uma constante aqui: é a mesma variável
-            que o `<main>` desconta, então os dois nunca discordam. Quando não
-            há barra, o `max()` cai na área segura do iOS (ou nos 8px).
-          */}
-          <Toaster
-            position="bottom-right"
-            richColors
-            closeButton
-            duration={4000}
-            mobileOffset={{
-              bottom:
-                "calc(0.5rem + max(0.5rem, env(safe-area-inset-bottom, 0px), var(--rodape-ocupado, 0px)))",
-              left: "0.75rem",
-              right: "0.75rem",
-            }}
-          />
+          <Toaster position="top-right" richColors closeButton duration={4000} />
         </Providers>
       </body>
     </html>

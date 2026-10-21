@@ -5,13 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MediaUnavailable } from "./MediaUnavailable";
 import { mediaSrc } from "./media-utils";
 
-/**
- * Vídeo inline com controles nativos (padrão WhatsApp Web).
- *
- * `src` é a fonte alternativa para mídia de NOTA interna (#1863, F3), que a
- * rota da nota serve; sem ele, o caminho de mensagem de sempre.
- */
-export function VideoMedia({ messageId, src }: { messageId: string; src?: string }) {
+/** Vídeo inline com controles nativos (padrão WhatsApp Web). */
+export function VideoMedia({ messageId }: { messageId: string }) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -23,7 +18,7 @@ export function VideoMedia({ messageId, src }: { messageId: string; src?: string
         <>
           {!ready && <Skeleton className="absolute inset-0 h-full w-full" />}
           <video
-            src={src ?? mediaSrc(messageId)}
+            src={mediaSrc(messageId)}
             controls
             preload="metadata"
             onLoadedMetadata={() => setReady(true)}

@@ -1,0 +1,15 @@
+{
+  "package": "pg",
+  "version": "8.23.0",
+  "registry": "https://registry.npmjs.org/pg/-/pg-8.23.0.tgz",
+  "integrityMatchesLock": true,
+  "filesBefore": 0,
+  "filesRestored": 20,
+  "existingFilesPreserved": 0,
+  "packageJsonUnchanged": true,
+  "lockfileUnchanged": true,
+  "moduleLoadExitCode": 0,
+  "manifestSha256": "2ab657698428d82996871393ae1d3181cbc0104682bdb4757e1fff4a1de96f16",
+  "lockfileSha256": "479b80ab2c91907817b1fb32534127c3825510d7fa7673f485d49ba3506812ff",
+  "note": "Somente arquivos locais ausentes restaurados; nenhuma instalação, migração ou atualização do repositório."
+}

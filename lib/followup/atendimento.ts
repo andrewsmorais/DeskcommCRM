@@ -1,3 +1,4 @@
+import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
 /**
  * Fluxo de ATENDIMENTO (surface `atendimento`) — checklist linear em tempo real.
  *
@@ -252,15 +253,7 @@ export type EventoDoRoteiro = (typeof EVENTOS_DO_ROTEIRO)[number];
  */
 export interface PayloadDoEvento {
   campo?: string;
-  origem?:
-    | "validador"
-    | "captura"
-    | "modelo"
-    | "motor"
-    | "gatilho"
-    | "roteador"
-    | "encadeamento"
-    | "automacao";
+  origem?: "validador" | "captura" | "modelo" | "motor" | "gatilho" | "roteador" | "encadeamento";
   correcao?: boolean;
   esgotadas?: string[];
   proximo_fluxo?: string;
@@ -427,6 +420,7 @@ export async function carregarEstadoDeAtendimento(
 
   const parsed = flowGraphSchema.safeParse(row.graph);
   if (!parsed.success) return null;
+  if (!(await verificarGrafoDoPlano(args.organizationId, parsed.data)).ok) return null;
   const checklist = mapearChecklist(parsed.data);
   if (!checklist.ok) return null;
 
@@ -1003,9 +997,7 @@ export async function iniciarFluxoDeAtendimento(
     contactId: string;
     flowPointerId: string;
     conversationId?: string | null;
-    // `automacao` (#2647): a regra de webhooks que arma o roteiro pelo MESMO
-    // caminho do gatilho e do roteador — o evento da trilha diz quem começou.
-    origem: "gatilho" | "roteador" | "encadeamento" | "automacao";
+    origem: "gatilho" | "roteador" | "encadeamento";
   },
 ): Promise<string | null> {
   const { rows } = await db.query<{
@@ -1029,6 +1021,7 @@ export async function iniciarFluxoDeAtendimento(
   const parsed = flowGraphSchema.safeParse(row.graph);
   if (!parsed.success) return null;
   if (!podeComecarParaOContato(parsed.data.settings, row.ja_concluiu === true)) return null;
+  if (!(await verificarGrafoDoPlano(args.organizationId, parsed.data)).ok) return null;
   const checklist = mapearChecklist(parsed.data);
   if (!checklist.ok) return null;
   const inicio = parsed.data.nodes.find((n) => n.type === "trigger")?.id;

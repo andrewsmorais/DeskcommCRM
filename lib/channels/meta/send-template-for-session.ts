@@ -113,11 +113,7 @@ export async function sendTemplateForSession(
     status: string;
     contract_hash: string;
     components: unknown;
-    // #2659: sem este campo o contrato era derivado como POSITIONAL e um
-    // template NAMED saía sem `parameter_name` — a Meta respondia
-    // `meta_100: Parameter name is missing or empty` no Inbox e na API.
-    parameter_format: string;
-  }>(db, "name, language, status, contract_hash, components, parameter_format", {
+  }>(db, "name, language, status, contract_hash, components", {
     organizationId: input.organizationId,
     name: input.name,
     language: input.language,
@@ -148,9 +144,6 @@ export async function sendTemplateForSession(
           contractHash: linha.contract_hash,
           status: linha.status,
           components: linha.components,
-          // Repassa o formato à derivação: é ele que decide se cada parâmetro
-          // textual sai com `parameter_name` (NAMED) ou só com `text` (#2659).
-          parameter_format: linha.parameter_format,
         }
       : null,
   });

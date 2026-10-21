@@ -56,7 +56,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * - `lint:channels` proíbe nome de provider fora de `lib/channels/`;
  * - `tests/unit/branding.test.ts` proíbe a marca fixada em código, porque o
  *   produto é revendido com outra marca — e este gate me pegou: a primeira
- *   versão chamava o cookie de `deskcomm_oauth_bind`.
+ *   versão chamava o cookie de `ChatAI Online_oauth_bind`.
  *
  * O cookie de SESSÃO tem o nome da marca e está na allowlist daquele gate, com
  * uma justificativa que aqui não vale: renomeá-lo deslogaria todo usuário no

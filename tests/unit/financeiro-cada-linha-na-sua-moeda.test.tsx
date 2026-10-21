@@ -90,7 +90,6 @@ describe("lançamentos recorrentes", () => {
         podeEditar={false}
         carregando={false}
         onCriar={vi.fn()}
-        onEditar={vi.fn()}
         onInativar={vi.fn()}
       />,
     );

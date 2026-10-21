@@ -1,4 +1,0 @@
-UPDATE 1
-UPDATE 0
-fila 0
-bloqueado 1

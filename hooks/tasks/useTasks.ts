@@ -2,12 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  proximoEstadoAoAlternar,
-  type EdicaoDaTarefa,
-  type NovaTarefa,
-  type Tarefa,
-} from "@/lib/tarefas/tipos";
+import type { EdicaoDaTarefa, NovaTarefa, Tarefa } from "@/lib/tarefas/tipos";
 
 /**
  * As tarefas da organização, com as três mutações que a tela dispara.
@@ -26,15 +21,8 @@ export interface FiltrosDeTarefa {
   priority?: string;
   lead_id?: string;
   contact_id?: string;
-  /** As tarefas de UMA demanda — a seção "Tarefas desta demanda" do inbox (#2818). */
-  demanda_id?: string;
   /** `true` = só o que ainda pede ação (pendente ou em andamento). */
   aberto?: boolean;
-}
-
-export interface OpcoesDeTarefas {
-  /** `false` segura a consulta — o dossiê fechado não precisa das tarefas dele. */
-  enabled?: boolean;
 }
 
 async function leJson<T>(res: Response, oQueFalhou: string): Promise<T> {
@@ -49,7 +37,7 @@ async function leJson<T>(res: Response, oQueFalhou: string): Promise<T> {
   return json.data;
 }
 
-export function useTasks(filtros: FiltrosDeTarefa = {}, opcoes: OpcoesDeTarefas = {}) {
+export function useTasks(filtros: FiltrosDeTarefa = {}) {
   const queryClient = useQueryClient();
 
   const params = new URLSearchParams();
@@ -57,7 +45,6 @@ export function useTasks(filtros: FiltrosDeTarefa = {}, opcoes: OpcoesDeTarefas 
   if (filtros.priority) params.set("priority", filtros.priority);
   if (filtros.lead_id) params.set("lead_id", filtros.lead_id);
   if (filtros.contact_id) params.set("contact_id", filtros.contact_id);
-  if (filtros.demanda_id) params.set("demanda_id", filtros.demanda_id);
   if (filtros.aberto) params.set("aberto", "true");
   const qs = params.toString();
 
@@ -69,19 +56,9 @@ export function useTasks(filtros: FiltrosDeTarefa = {}, opcoes: OpcoesDeTarefas 
     },
     staleTime: 10_000,
     refetchOnWindowFocus: true,
-    enabled: opcoes.enabled ?? true,
   });
 
-  // O QUADRO também: o card mostra o selo das tarefas do negócio, e quem cria
-  // ou conclui uma tarefa pelo dossiê precisa ver o selo mudar ao fechar o
-  // painel — senão o card segue dizendo "1 atrasada" sobre o que já foi feito.
-  // O prefixo `["board"]` alcança todo quadro em cache: a tarefa não sabe em
-  // qual funil o negócio está agora.
-  const invalidar = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: CHAVE }),
-      queryClient.invalidateQueries({ queryKey: ["board"] }),
-    ]);
+  const invalidar = () => queryClient.invalidateQueries({ queryKey: CHAVE });
 
   const criar = useMutation({
     mutationFn: async (entrada: NovaTarefa) => {
@@ -126,9 +103,7 @@ export function useTasks(filtros: FiltrosDeTarefa = {}, opcoes: OpcoesDeTarefas 
     alternarConcluida: (tarefa: Tarefa) =>
       editar.mutateAsync({
         id: tarefa.id,
-        // A MESMA regra da caixa da lista: `cancelled` reabre para `pending`
-        // (#2549), nunca para `done`.
-        entrada: { status: proximoEstadoAoAlternar(tarefa.status) },
+        entrada: { status: tarefa.status === "done" ? "pending" : "done" },
       }),
   };
 }

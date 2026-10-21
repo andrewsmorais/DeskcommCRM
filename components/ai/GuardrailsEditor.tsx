@@ -110,7 +110,7 @@ export function GuardrailsEditor({ value, onChange, disabled }: Props) {
 
       {value.length === 0 ? (
         <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          {t("Nenhum guardrail definido. O agent responde sem restrições adicionais.")}
+          {t("Nenhum guardrail definido. O agente responde sem restrições adicionais.")}
         </p>
       ) : (
         <ul className="space-y-3">

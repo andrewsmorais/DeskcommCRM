@@ -1,3 +1,4 @@
+import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
 /**
  * POST /api/v1/webhooks/waha/[token]
  *
@@ -20,7 +21,6 @@ import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { conferirContratoWaha, lerRoteamentoWahaPorToken } from "@/lib/waha/envelope";
 import { processarEventoWaha, REENTREGA_EM_SEGUNDOS } from "@/lib/waha/desfecho-do-webhook";
-import { esquecerSessaoDoWebhook, sessaoDoWebhook } from "@/lib/waha/sessao-do-webhook";
 import { authenticateWahaWebhook } from "@/lib/waha/webhook-auth";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ interface RouteCtx {
 }
 
 export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextResponse> {
+  const rl = await enforceRateLimit(req, "webhook-waha", getIp(req), 60, 60 * 1000); if (rl) return rl as any;
   const requestId = randomUUID();
   const { token } = await ctx.params;
 
@@ -104,35 +105,29 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         "id, organization_id, waha_session_name, webhook_secret_encrypted, status, is_warmup_complete, warmup_started_at",
       )
       .eq("webhook_path_token", token);
-  // Memória de 30 s por processo: conexão + segredo decifrado. Ver
-  // lib/waha/sessao-do-webhook.ts — eram 2 chamadas ao banco por evento.
-  const chaveDaSessao = `token:${token}`;
-  const lida = await sessaoDoWebhook(
-    chaveDaSessao,
-    () =>
-      queryTolerantToMissingArchived(
-        () => base().is(ARCHIVED_AT, null).maybeSingle(),
-        () => base().maybeSingle(),
-      ),
-    async (ciphertext) => {
-      // Erro do RPC LANÇA (falha passageira, não guardada); `null` é "não há credencial".
-      const dec = await admin.rpc("fn_decrypt_oauth", { ciphertext });
-      if (dec.error) throw new Error(dec.error.message);
-      return typeof dec.data === "string" ? dec.data : null;
-    },
+  const { data: session, error: sessErr } = await queryTolerantToMissingArchived(
+    () => base().is(ARCHIVED_AT, null).maybeSingle(),
+    () => base().maybeSingle(),
   );
 
-  if (!lida.ok) {
-    return fail("internal_error", lida.erro, 500, { requestId });
+  if (sessErr) {
+    return fail("internal_error", sessErr.message, 500, { requestId });
   }
-  const session = lida.valor?.session ?? null;
   if (!session) {
     return fail("not_found", "unknown webhook token", 404, { requestId });
   }
 
   // Autenticação fail-closed — regras e o porquê em lib/waha/webhook-auth.ts.
   const sigHeader = req.headers.get("x-webhook-hmac") ?? req.headers.get("X-Webhook-Hmac");
-  const sessionSecret = lida.valor?.segredo ?? null;
+  let sessionSecret: string | null = null;
+  try {
+    const dec = await admin.rpc("fn_decrypt_oauth", {
+      ciphertext: session.webhook_secret_encrypted,
+    });
+    if (!dec.error && typeof dec.data === "string") sessionSecret = dec.data;
+  } catch {
+    sessionSecret = null;
+  }
 
   // O portão lê a exigência de assinatura da MEMÓRIA do processo, de forma
   // síncrona. Sem carregar a linha da instalação aqui, um processo recém-subido
@@ -142,8 +137,6 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   await carregarComportamentoDaInstalacao();
   const auth = authenticateWahaWebhook({ rawBody, signatureHeader: sigHeader, sessionSecret });
   if (!auth.ok) {
-    // Segredo pode ter sido trocado: o próximo evento relê do banco.
-    esquecerSessaoDoWebhook(chaveDaSessao);
     await audit({
       action: "webhook.hmac_invalid",
       organizationId: session.organization_id,

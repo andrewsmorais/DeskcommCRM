@@ -5,19 +5,16 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { audit } from "@/lib/audit";
-import { escritaDeAdminOuRecusa } from "@/lib/auth/escritaDeAdminOuRecusa";
-import type { RecusaDeEscritaDeAdmin } from "@/lib/auth/recusa-de-escrita-de-admin";
+import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import {
   entradaDeDestinoValida,
   estadoDosDestinosInternos,
   gravarDestinosInternos,
 } from "@/lib/automation/destinos-internos-autorizados";
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 
 export type UpdateDestinosInternosResult =
   | { ok: true }
-  | { ok: false; error: "invalid_input" | "write_failed"; invalidas?: readonly string[] }
-  | RecusaDeEscritaDeAdmin;
+  | { ok: false; error: "invalid_input" | "write_failed"; invalidas?: readonly string[] };
 
 /**
  * A lista de endereços internos que ESTA INSTALAÇÃO pode alcançar — decisão
@@ -54,9 +51,7 @@ const entradaSchema = z.object({
 export async function updateDestinosInternos(
   input: z.infer<typeof entradaSchema>,
 ): Promise<UpdateDestinosInternosResult> {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return escrita;
-  const { user } = escrita.ctx;
+  const { user } = await requirePlatformAdmin();
 
   const parsed = entradaSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
@@ -92,7 +87,7 @@ export async function updateDestinosInternos(
       vinha_do_env: anterior.vemDoPiso,
     },
     requestId: hdrs.get("x-request-id"),
-    ip: ipDoCliente(hdrs),
+    ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
   });
 

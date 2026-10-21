@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLgpdRequest } from "@/hooks/useLgpdRequest";
-import { prazoEmBr } from "@/lib/lgpd/sla";
 import { SlaTimeline } from "./SlaTimeline";
 import { PreviewPanel } from "./PreviewPanel";
 import { ApproveButton } from "./ApproveButton";
@@ -20,8 +19,6 @@ import type { LgpdRequestStatus, LgpdRequestType } from "@/hooks/useLgpdRequests
 
 interface Props {
   id: string;
-  /** Volta para a lista. O hub de `/account-suspended` passa o próprio endereço (ver `RequestsTable`). */
-  hrefDaLista?: string;
 }
 
 const TYPE_LABELS: Record<LgpdRequestType, string> = {
@@ -49,7 +46,7 @@ const STATUS_VARIANT: Record<
   pending_review: "secondary",
 };
 
-export function LgpdRequestDetail({ id, hrefDaLista = "/app/lgpd/requests" }: Props) {
+export function LgpdRequestDetail({ id }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
   const { data, isLoading, error } = useLgpdRequest(id);
@@ -74,7 +71,7 @@ export function LgpdRequestDetail({ id, hrefDaLista = "/app/lgpd/requests" }: Pr
     );
   }
 
-  const { request, audit_trail, signed_pdf_url, titular } = data.data;
+  const { request, audit_trail, signed_pdf_url } = data.data;
 
   const shortId = request.id.slice(0, 8);
   const typeLabel = t(TYPE_LABELS[request.request_type] ?? request.request_type);
@@ -86,7 +83,7 @@ export function LgpdRequestDetail({ id, hrefDaLista = "/app/lgpd/requests" }: Pr
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild className="-ml-2 gap-1 text-muted-foreground">
-            <Link href={hrefDaLista}>
+            <Link href="/app/lgpd/requests">
               <CaretLeft size={14} aria-hidden />
               {t("Solicitações")}
             </Link>
@@ -112,13 +109,14 @@ export function LgpdRequestDetail({ id, hrefDaLista = "/app/lgpd/requests" }: Pr
           {request.due_at && (
             <>
               {" · "}
-              {t("Vence em")} {prazoEmBr(request.due_at)}
+              {t("Vence em")}{" "}
+              {format(new Date(request.due_at), "dd/MM/yyyy", { locale: localeDaData })}
             </>
           )}
         </p>
       </div>
 
-      {/* PDF download: delivered (completed) or for the operator to deliver by hand (pending_review) */}
+      {/* PDF download if completed */}
       {signed_pdf_url && (
         <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-4">
           <span>{t("Relatório de exportação disponível (expira em 72h).")}</span>
@@ -137,7 +135,6 @@ export function LgpdRequestDetail({ id, hrefDaLista = "/app/lgpd/requests" }: Pr
           requestId={request.id}
           requestType={request.request_type}
           status={request.status}
-          titular={titular}
         />
       </div>
 

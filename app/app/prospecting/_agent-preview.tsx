@@ -14,8 +14,6 @@ type PreviewResult = {
   status: string;
   stub?: boolean;
   impediments?: { code: string; message: string }[];
-  /** Não bloqueiam o teste; dizem o que impediria o envio real agora. */
-  warnings?: { code: string; message: string }[];
   restrictions?: string[];
   guardrails?: {
     passou: boolean;
@@ -146,29 +144,17 @@ export function AgentPreview({
               {t("Resposta de um provedor de teste controlado; nenhuma IA externa foi chamada.")}
             </p>
           )}
-          {result.warnings?.map((item, index) => (
-            <p
-              key={`${item.code}:${index}`}
-              role="status"
-              className="text-amber-700 dark:text-amber-400"
-            >
-              {item.message}
-            </p>
-          ))}
           {result.impediments?.map((item, index) => (
             <p key={`${item.code}:${index}`} className="text-destructive">
               {item.message}
             </p>
           ))}
-          {/* Sem texto, `passou` é false sem termo nenhum: não há o que acusar. */}
-          {result.guardrails &&
-            !result.guardrails.passou &&
-            result.guardrails.termos.length > 0 && (
-              <p className="text-destructive">
-                {t("Revise a resposta: ela contém termos internos do sistema.")}{" "}
-                {result.guardrails.termos.join(", ")}
-              </p>
-            )}
+          {result.guardrails && !result.guardrails.passou && (
+            <p className="text-destructive">
+              {t("Revise a resposta: ela contém termos internos do sistema.")}{" "}
+              {result.guardrails.termos.join(", ")}
+            </p>
+          )}
           {!!result.guardrails?.naoAvaliados.length && (
             <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer">

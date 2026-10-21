@@ -16,7 +16,6 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { duplicateAgentWithVersion } from "@/lib/ai/agents/duplicate";
-import { MENSAGEM_PROVEDOR_DESLIGADO } from "@/lib/ai/pontos/provedores-oferecidos";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -51,17 +50,14 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
 
   if (!result.ok) {
     if (result.error === "not_found") {
-      return fail("not_found", t("Agent não encontrado."), 404, { requestId });
-    }
-    if (result.error === "provedor_desligado") {
-      return fail("provedor_desligado", MENSAGEM_PROVEDOR_DESLIGADO, 422, { requestId });
+      return fail("not_found", t("Agente não encontrado."), 404, { requestId });
     }
     if (result.error === "no_version_to_duplicate") {
-      return fail("state_conflict", t("Agent não tem versão para duplicar."), 409, { requestId });
+      return fail("state_conflict", t("Agente não tem versão para duplicar."), 409, { requestId });
     }
     return fail(
       "internal_error",
-      result.error === "version_insert_failed" ? t("Erro ao duplicar versão.") : "Erro ao duplicar agent.",
+      result.error === "version_insert_failed" ? t("Erro ao duplicar versão.") : t("Erro ao duplicar agente."),
       500,
       { requestId },
     );

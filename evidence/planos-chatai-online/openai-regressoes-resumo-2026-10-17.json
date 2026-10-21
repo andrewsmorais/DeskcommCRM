@@ -1,0 +1,249 @@
+{
+  "date": "2026-10-17",
+  "scope": "Regressões unitárias focais de IA; não representa chamada real à chave OpenAI do usuário",
+  "files": 40,
+  "tests": 361,
+  "passed": 361,
+  "failed": 0,
+  "initialCollectionFailures": [
+    {
+      "file": "tests/unit/agente-novo-herda-o-provedor-da-organizacao.test.ts",
+      "reason": "Dependência pg 8.23.0 instalada com pasta vazia",
+      "retested": true
+    },
+    {
+      "file": "tests/unit/handoff-por-orcamento.test.ts",
+      "reason": "Dependência pg 8.23.0 instalada com pasta vazia",
+      "retested": true
+    },
+    {
+      "file": "tests/unit/preview-scenario-reads-security.test.ts",
+      "reason": "Dependência pg 8.23.0 instalada com pasta vazia",
+      "retested": true
+    }
+  ],
+  "environment": {
+    "envFilesLoaded": false,
+    "network": "global fetch bloqueado por configuração pura; provedores e Supabase dublados",
+    "realOpenAIKeyRead": false,
+    "paidAPICalls": 0,
+    "supabaseWrites": 0
+  },
+  "otherChecks": {
+    "typecheck": "exit 0",
+    "eslintFocused": "exit 0",
+    "redGreenToast": "1 falha/8 verdes antes; 9/9 após correção"
+  },
+  "sources": ["openai-regressoes-2026-10-17.json", "openai-regressoes-complemento-2026-10-17.json"],
+  "latestFiles": [
+    {
+      "file": "lib/ai/embed.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "lib/ai/gateway-resolve-model.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "lib/ai/provider-validators.test.ts",
+      "status": "passed",
+      "cases": 18
+    },
+    {
+      "file": "tests/unit/agente-novo-herda-o-provedor-da-organizacao.test.ts",
+      "status": "passed",
+      "cases": 4
+    },
+    {
+      "file": "tests/unit/ai-response-worker-model-routing.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "tests/unit/api-orcamento-de-ia.test.ts",
+      "status": "passed",
+      "cases": 25
+    },
+    {
+      "file": "tests/unit/budget-card-promessas.test.tsx",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "tests/unit/budget-status-medicao.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "tests/unit/credenciais-ia-delete-desliga-o-jev.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "tests/unit/credenciais-ia-delete-ensina-a-saida-do-historico.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "tests/unit/credenciais-ia-delete-instrui-a-reapontar.test.ts",
+      "status": "passed",
+      "cases": 4
+    },
+    {
+      "file": "tests/unit/credenciais-ia-editar-na-tela.test.tsx",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "tests/unit/credenciais-ia-rotacao.test.ts",
+      "status": "passed",
+      "cases": 6
+    },
+    {
+      "file": "tests/unit/credenciais-ia-view-legada.test.ts",
+      "status": "passed",
+      "cases": 9
+    },
+    {
+      "file": "tests/unit/credencial-de-enfeite-nao-derruba-a-leitura.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "tests/unit/credencial-nunca-na-url.test.ts",
+      "status": "passed",
+      "cases": 2
+    },
+    {
+      "file": "tests/unit/gateway-binding.test.ts",
+      "status": "passed",
+      "cases": 22
+    },
+    {
+      "file": "tests/unit/gateway-destino-por-caminho.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "tests/unit/handoff-por-orcamento.test.ts",
+      "status": "passed",
+      "cases": 25
+    },
+    {
+      "file": "tests/unit/model-picker-aceita-identificador-manual.test.tsx",
+      "status": "passed",
+      "cases": 1
+    },
+    {
+      "file": "tests/unit/onboarding-chave-da-ia-vale-para-a-empresa.test.ts",
+      "status": "passed",
+      "cases": 7
+    },
+    {
+      "file": "tests/unit/openai-esforco-de-raciocinio.test.ts",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "tests/unit/orcamento-caminho-legado.test.ts",
+      "status": "passed",
+      "cases": 10
+    },
+    {
+      "file": "tests/unit/orcamento-chave-de-emergencia.test.ts",
+      "status": "passed",
+      "cases": 31
+    },
+    {
+      "file": "tests/unit/orcamento-decisao.test.ts",
+      "status": "passed",
+      "cases": 17
+    },
+    {
+      "file": "tests/unit/orcamento-gate-executa-o-veredito.test.ts",
+      "status": "passed",
+      "cases": 23
+    },
+    {
+      "file": "tests/unit/orcamento-uma-regua-de-gasto.test.ts",
+      "status": "passed",
+      "cases": 11
+    },
+    {
+      "file": "tests/unit/preco-openai-codigo-e-tabela-concordam.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "tests/unit/preview-scenario-reads-security.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "tests/unit/revalidacao-que-falha-zera-o-catalogo.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "tests/unit/worker-responde-com-a-chave-da-instalacao.test.ts",
+      "status": "passed",
+      "cases": 11
+    },
+    {
+      "file": "lib/ai/credenciais/erro-de-validacao.test.ts",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "lib/ai/credenciais/uso.test.ts",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "lib/ai/dispatcher/rate-limit-misconf.test.ts",
+      "status": "passed",
+      "cases": 3
+    },
+    {
+      "file": "lib/ai/dispatcher/rate-limit.test.ts",
+      "status": "passed",
+      "cases": 5
+    },
+    {
+      "file": "lib/ai/embeddings/chave.test.ts",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "app/app/ai/credentials/_components/AddCredentialDialog.test.tsx",
+      "status": "passed",
+      "cases": 9
+    },
+    {
+      "file": "app/app/ai/credentials/_components/CredentialCard.test.tsx",
+      "status": "passed",
+      "cases": 8
+    },
+    {
+      "file": "app/app/ai/credentials/_components/RotateCredentialDialog.test.tsx",
+      "status": "passed",
+      "cases": 1
+    },
+    {
+      "file": "lib/ai/provider-validators-openai.test.ts",
+      "status": "passed",
+      "cases": 10
+    }
+  ],
+  "finalRun": {
+    "source": "openai-regressoes-final-2026-10-17.json",
+    "command": "pnpm exec vitest run --config vitest.openai.config.ts",
+    "exitCode": 0,
+    "files": 40,
+    "passedTests": 361,
+    "failedTests": 0,
+    "durationSeconds": 294.83
+  }
+}

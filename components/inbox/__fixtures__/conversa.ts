@@ -48,7 +48,6 @@ const conversation: ConversationWithContact = {
     tags: [],
     is_blocked: false,
     is_anonymized: false,
-    is_personal: false,
   },
   channel_sessions: {
     phone_number: "+5521988880000",

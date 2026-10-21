@@ -3,9 +3,9 @@
  * agente (`lib/agent-engine/agent/resolve-turn-agent.ts`).
  *
  * Com um roteador de intenção ativo no número, cada mensagem nova do cliente
- * passa por um classificador que escolhe a intenção (`intent_router`), e a
- * intenção escolhe o agente. Em comparação, Jev e IA de sempre recebem a
- * mesma pergunta em paralelo. No modo sob demanda, o Jev responde primeiro.
+ * passa por um modelo de linguagem que escolhe a intenção (`classifyIntent`,
+ * ponto `intent_router`), e a intenção escolhe o agente. O Jev responde a MESMA
+ * pergunta, entre as MESMAS intenções, ao mesmo tempo.
  *
  * ═══ O QUE ELE PODE, EM CADA ESTADO ═══
  *
@@ -16,7 +16,7 @@
  *    e a cobertura deixa rastro: uma linha em `llm_calls` com a origem
  *    `reserva_do_jev`, a que o cartão conta em "Vezes que a IA de sempre cobriu
  *    o Jev" (`registrarCobertura`).
- *    No modo comparação, o turno espera por ele o que ele passar da IA de sempre, que roda junto:
+ *    O turno espera por ele o que ele passar da IA de sempre, que roda junto:
  *    a leitura do estado (pelo banco do turno, como as demais consultas dele) e,
  *    num prazo só de no máximo `TETO_PADRAO_MS`, a busca da chave e a resposta
  *    (`decidirNoPonto`).
@@ -51,11 +51,11 @@ import { logger } from "@/lib/logger";
 import { scrubMessage } from "@/lib/sentry/scrub";
 
 import { MODELO_DO_JEV, type MotivoDaAusencia, type Pergunta } from "./cliente";
-import { lerConfigDoJev, type EstadoDaTarefa, type EstadoQuePergunta } from "./config";
+import type { EstadoDaTarefa, EstadoQuePergunta } from "./config";
 import { podeTentar, registrarFalha, registrarSucesso } from "./disjuntor";
-import { configDaTarefaNoPool, registrarFalhaQuePedeAcao } from "./pool";
+import { estadoDaTarefaNoPool, registrarFalhaQuePedeAcao } from "./pool";
 import { decidirNoPonto, type DependenciasDoPonto } from "./ponto";
-import { estadoEfetivoDaTarefa, roteadorCabeNaPergunta, TAREFA_DO_ROTEADOR } from "./tarefas";
+import { roteadorCabeNaPergunta, TAREFA_DO_ROTEADOR } from "./tarefas";
 import { codigoDoErroDoJev } from "./textos";
 
 export { MEMBROS_NO_MAXIMO } from "./tarefas";
@@ -273,7 +273,6 @@ export interface RegistroDoRoteador {
     rotuloDoJev: string;
     /** O agente a que a da IA de sempre levou; `null` quando ela não decidiu. */
     rotuloDaIa: string | null;
-    intencaoDaIa?: string | null;
   } | null;
 }
 
@@ -316,9 +315,8 @@ export async function registrarRoteadorDoJev(pool: pg.Pool, r: RegistroDoRoteado
       `with observacao as (
          insert into public.jev_observacoes
            (organization_id, tarefa, estado, conversation_id, message_id, job_id,
-            rotulo_jev, probabilidade_jev, confianca_jev, rotulo_atual, modelo, latencia_ms,
-            intencao_jev, intencao_atual)
-         values ($1, $10, $11, $12, $13, $3, $14, $15, $16, $17, $18, $8, $19, $20)
+            rotulo_jev, probabilidade_jev, confianca_jev, rotulo_atual, modelo, latencia_ms)
+         values ($1, $10, $11, $12, $13, $3, $14, $15, $16, $17, $18, $8)
          -- O retry do job pergunta de novo sobre a MESMA mensagem: a primeira
          -- resposta fica, e o custo da segunda entra em llm_calls, porque houve.
          on conflict (organization_id, tarefa, message_id) where message_id is not null do nothing
@@ -335,8 +333,6 @@ export async function registrarRoteadorDoJev(pool: pg.Pool, r: RegistroDoRoteado
         r.jev.confianca,
         r.observacao.rotuloDaIa,
         r.jev.modelo,
-        r.jev.veredito.intentName,
-        r.observacao.intencaoDaIa ?? null,
       ],
     );
   } catch (erro) {
@@ -348,7 +344,7 @@ export async function registrarRoteadorDoJev(pool: pg.Pool, r: RegistroDoRoteado
   }
 }
 
-/** A consulta ao Jev no roteador; o turno escolhe quando chamar a IA de sempre. */
+/** O Jev no roteador, começado JUNTO do classificador de sempre. */
 export interface JevNoRoteador {
   /**
    * O estado da tarefa, lido do banco — rápido, e é ele que diz se o turno
@@ -356,8 +352,6 @@ export interface JevNoRoteador {
    * quando a mensagem vem vazia).
    */
   estado: Promise<EstadoDaTarefa>;
-  /** No modo sob demanda, o classificador da IA de sempre só roda se a escolha do Jev não bastar. */
-  modo?: Promise<"comparacao" | "sob_demanda">;
   /** A escolha dele, ou `null` quando não opinou. Nunca rejeita. */
   escolha: Promise<EscolhaDoJev | null>;
   /**
@@ -385,11 +379,10 @@ export function consultarJevNoRoteador(
   entrada: EntradaDoRoteador,
   deps: DependenciasDoPonto = {},
 ): JevNoRoteador {
-  const config = entrada.mensagem.trim() === ""
-    ? Promise.resolve(lerConfigDoJev(null))
-    : configDaTarefaNoPool(pool, entrada.organizationId, TAREFA_DO_ROTEADOR);
-  const estado: Promise<EstadoDaTarefa> = config.then((c) => estadoEfetivoDaTarefa(c, TAREFA_DO_ROTEADOR)).catch(() => 'desligada');
-  const modo = config.then((c) => c.modo_roteador).catch(() => 'comparacao' as const);
+  const estado: Promise<EstadoDaTarefa> =
+    entrada.mensagem.trim() === ""
+      ? Promise.resolve("desligada")
+      : estadoDaTarefaNoPool(pool, entrada.organizationId, TAREFA_DO_ROTEADOR);
   // A pergunta só é montada com a tarefa rodando: desligado, o Jev não custa
   // nada ao turno além da leitura do estado.
   const resposta: Promise<RespostaDoJev> = estado
@@ -409,7 +402,6 @@ export function consultarJevNoRoteador(
   const escolha = resposta.then((r) => r.escolha);
   return {
     estado,
-    modo,
     escolha,
     observar: ({ conversationId, messageId, rotuloDe, vereditoDaIa, decidiu, aIaCobriu }) => {
       void resposta
@@ -429,7 +421,6 @@ export function consultarJevNoRoteador(
                   messageId,
                   rotuloDoJev: rotuloDe(jev.veredito),
                   rotuloDaIa: vereditoDaIa === null ? null : rotuloDe(vereditoDaIa),
-                  intencaoDaIa: vereditoDaIa?.intentName ?? null,
                 },
               }),
         )

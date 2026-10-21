@@ -6,7 +6,6 @@ import {
 
 export const mediaPersistHandler: EventHandler = {
   key: MEDIA_PERSIST_CONSUMER_KEY,
-  naOrgParada: "roda",
   events: ["media.persist_requested"],
   handle: persistMessageMedia,
 };

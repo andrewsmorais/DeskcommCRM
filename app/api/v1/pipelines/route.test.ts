@@ -4,9 +4,22 @@ import { NextRequest } from "next/server";
 import { audit } from "@/lib/audit";
 import { fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { getOrganizationBilling } from "@/lib/billing";
 
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({
+    from: () => {
+      const q = { select: vi.fn(), eq: vi.fn(), then: (resolve: (value: { count: number; error: null }) => unknown) => Promise.resolve({ count: 0, error: null }).then(resolve) };
+      q.select.mockReturnValue(q); q.eq.mockReturnValue(q); return q;
+    },
+  })),
+}));
+vi.mock("@/lib/billing", () => ({
+  getOrganizationBilling: vi.fn(async () => ({ ok: true, billing: { plan_name: "Teste", limits: { pipelines: -1 } } })),
+  canUse: vi.fn(() => ({ ok: true, limite: -1 })),
+}));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 
 import { ORG_ID, OUTRA_ORG, PIPE, authOk, funilRow, makeDb } from "@/tests/helpers/stages-db-double";
@@ -26,6 +39,16 @@ beforeEach(() => {
 });
 
 describe("POST /api/v1/pipelines", () => {
+  it("falha de consulta do plano responde 503 antes de criar o funil", async () => {
+    authOk();
+    const db = makeDb({ pipelines: umFunil() });
+    vi.mocked(getOrganizationBilling).mockResolvedValueOnce({ ok: false, reason: "consulta_indisponivel" });
+    const { POST } = await import("./route");
+    const res = await POST(reqPost({ name: "Clínica" }));
+    expect(res.status).toBe(503);
+    expect(db.escritas).toEqual([]);
+  });
+
   it("sem auth → repassa a resposta do requireRole, sem escrever", async () => {
     vi.mocked(requireRole).mockResolvedValue({
       ok: false,
@@ -201,7 +224,7 @@ describe("GET /api/v1/pipelines — org ativa", () => {
       ],
     });
     const { GET } = await import("./route");
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/v1/pipelines"));
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: Array<{ id: string; organization_id: string }> };
@@ -219,3 +242,4 @@ vi.mock("@/lib/impersonate/support", async (importOriginal) => ({
   requireSupportWrite: vi.fn(async () => null),
   authenticatedSessionId: vi.fn(async () => "f2200000-0000-4000-8000-000000000099"),
 }));
+vi.mock("@/lib/billing/reserva", () => ({ comReservaDeCota: async (_org: string, _recurso: string, op: () => Promise<unknown>) => op(), ErroDaReservaDeCota: class extends Error {} }));

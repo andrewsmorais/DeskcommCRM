@@ -34,17 +34,7 @@ import { seModuloDesligado } from "../_falha";
 export const dynamic = "force-dynamic";
 
 const COLUNAS_SEGURAS =
-  "id, organization_id, label, host, port, database_name, username, ssl_mode, enabled, max_rows, max_filters, max_response_bytes, customer_key_column, customer_key_kind, last_tested_at, last_test_ok, last_test_error, created_by, created_at, updated_at, source_mode, sources_count";
-
-/**
- * As escritas (insert/update) voltam da TABELA BASE, que não tem as colunas calculadas da view
- * (`sources_count` só existe em `external_db_connections_safe`). É um texto LITERAL de propósito:
- * o cliente do Supabase tipa o resultado lendo o texto do `select` em compilação, e uma string
- * calculada (`split/filter/join`) vira `GenericStringError`. Mantenha igual a `COLUNAS_SEGURAS`,
- * menos as colunas calculadas.
- */
-const COLUNAS_DA_TABELA =
-  "id, organization_id, label, host, port, database_name, username, ssl_mode, enabled, max_rows, max_filters, max_response_bytes, customer_key_column, customer_key_kind, last_tested_at, last_test_ok, last_test_error, created_by, created_at, updated_at, source_mode";
+  "id, organization_id, label, host, port, database_name, username, ssl_mode, enabled, max_rows, max_filters, max_response_bytes, last_tested_at, last_test_ok, last_test_error, created_by, created_at, updated_at";
 
 export async function GET(): Promise<Response> {
   const requestId = randomUUID();
@@ -74,16 +64,25 @@ export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const desligado = await seModuloDesligado(requestId);
   if (desligado) return desligado;
-  const authz = await requireRole("admin", { requestId, resource: "external_db_connections" });
+  const authz = await requireRole("admin", {
+    requestId,
+    resource: "external_db_connections",
+    plano: "integracoes_avancadas",
+  });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org: activeOrg } = authz;
 
   const limite = await checkRateLimit(`external-db:write:${activeOrg.orgId}`, 30, 60);
   if (!limite.allowed) {
-    return fail("rate_limited", t("Muitas alterações em pouco tempo. Tente de novo em instantes."), 429, {
-      requestId,
-    });
+    return fail(
+      "rate_limited",
+      t("Muitas alterações em pouco tempo. Tente de novo em instantes."),
+      429,
+      {
+        requestId,
+      },
+    );
   }
 
   let rawBody: unknown;
@@ -128,25 +127,19 @@ export async function POST(req: NextRequest): Promise<Response> {
       ...cifrarSenha(input.password),
       ssl_mode: input.ssl_mode,
       enabled: input.enabled,
-      source_mode: "list",
       max_rows: input.max_rows,
       max_filters: input.max_filters,
       max_response_bytes: input.max_response_bytes,
-      customer_key_column: input.customer_key_column,
-      customer_key_kind: input.customer_key_kind,
       created_by: authUser.id,
     })
-    .select(COLUNAS_DA_TABELA)
+    .select(COLUNAS_SEGURAS)
     .single();
 
   if (error || !created) {
     if (error?.code === "23505") {
-      return fail(
-        "external_db_label_em_uso",
-        t("Já existe uma conexão com este nome."),
-        409,
-        { requestId },
-      );
+      return fail("external_db_label_em_uso", t("Já existe uma conexão com este nome."), 409, {
+        requestId,
+      });
     }
     return fail("internal_error", "Erro ao criar conexão.", 500, { requestId });
   }
@@ -158,7 +151,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     resourceType: "external_db_connection",
     resourceId: created.id,
     requestId,
-    metadata: { label: input.label, host: input.host, port: input.port, ssl_mode: input.ssl_mode, source_mode: "list" },
+    metadata: { label: input.label, host: input.host, port: input.port, ssl_mode: input.ssl_mode },
   });
 
   return ok(created, { status: 201, requestId });

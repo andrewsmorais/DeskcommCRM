@@ -35,7 +35,7 @@ import {
 
 /** As colunas que descrevem um retorno. Uma lista só — leitura e escrita. */
 const COLUNAS =
-  "id, contact_id, next_run_at, enabled, payload, cancelled_at, cancel_reason, last_error";
+  "id, contact_id, next_run_at, enabled, payload, cancelled_at, cancel_reason";
 
 interface LinhaDeCron {
   id: string;
@@ -45,7 +45,6 @@ interface LinhaDeCron {
   payload: Record<string, unknown> | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
-  last_error: string | null;
 }
 
 function texto(v: unknown): string | null {
@@ -59,11 +58,7 @@ function paraRetorno(row: LinhaDeCron): RetornoAgendado {
     contactId: row.contact_id,
     quando: row.next_run_at,
     prometidoPara: texto(payload.promised_at),
-    situacao: situacaoDoRetorno({
-      enabled: row.enabled,
-      cancelled_at: row.cancelled_at,
-      last_error: row.last_error,
-    }),
+    situacao: situacaoDoRetorno({ enabled: row.enabled, cancelled_at: row.cancelled_at }),
     motivo: texto(payload.reason) ?? "Retorno agendado",
     promessa: texto(payload.promise),
     canceladoEm: row.cancelled_at,

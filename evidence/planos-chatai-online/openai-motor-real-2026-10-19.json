@@ -1,0 +1,141 @@
+{
+  "measured_at": "2026-10-19T13:06:53.809Z",
+  "organization_id": "c735b9fe-e900-49e7-8ed9-d1169191b76e",
+  "scope": "canonical runModelCall; real database, saved organization credential and provider; no browser",
+  "limitations": [
+    "No UI proof",
+    "No WhatsApp messages",
+    "No contacts or agents created",
+    "Organization budget initially absent/off; enforcement refusal not exercised"
+  ],
+  "provider_requests": [
+    {
+      "host": "api.openai.com",
+      "path": "/v1/responses",
+      "status": 200,
+      "request_id": "req_2fe3ee55dd484774bc60d396a476d1db"
+    },
+    {
+      "host": "api.openai.com",
+      "path": "/v1/responses",
+      "status": 200,
+      "request_id": "req_3cd02e21c8874d1b90f2fc7da77dc2bd"
+    },
+    {
+      "host": "api.openai.com",
+      "path": "/v1/responses",
+      "status": 200,
+      "request_id": "req_ea2f92d78d384ee7926d63662e1235e8"
+    }
+  ],
+  "tests": [
+    {
+      "name": "plain_text",
+      "started_at": "2026-10-19T13:07:10.338Z",
+      "status": "pass",
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "call_id": "0ac7f15f-e99b-4394-9224-194f534a0995",
+      "finish_reason": "stop",
+      "synthetic_response": "CONEXAO_OPENAI_OK",
+      "step_count": 1,
+      "step_usage": [
+        {
+          "input_tokens": 43,
+          "output_tokens": 10
+        }
+      ],
+      "total_usage": {
+        "input_tokens": 43,
+        "output_tokens": 10
+      },
+      "recorded_usage": {
+        "inputTokens": 43,
+        "outputTokens": 10,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0
+      },
+      "recorded_cost_usd_cents": 0.0021100000000000003,
+      "database_record": {
+        "id": "0ac7f15f-e99b-4394-9224-194f534a0995",
+        "provider": "openai",
+        "model": "gpt-5.4-nano",
+        "status": "ok",
+        "input_tokens": 43,
+        "output_tokens": 10,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cost_cents": "0.0021100000000000003",
+        "latency_ms": 3138,
+        "origem_da_escolha": "padrao_da_organizacao",
+        "no_agent": true,
+        "no_contact": true
+      },
+      "usage_totals_match": true
+    },
+    {
+      "name": "memory_only_tool_call",
+      "started_at": "2026-10-19T13:07:14.253Z",
+      "status": "pass",
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "call_id": "1ee55e03-c3fb-4ca5-8842-cb6c0335a0da",
+      "finish_reason": "stop",
+      "synthetic_response": "HORARIO_TESTE_OK 15:30",
+      "step_count": 2,
+      "step_usage": [
+        {
+          "input_tokens": 121,
+          "output_tokens": 21
+        },
+        {
+          "input_tokens": 173,
+          "output_tokens": 13
+        }
+      ],
+      "total_usage": {
+        "input_tokens": 294,
+        "output_tokens": 34
+      },
+      "recorded_usage": {
+        "inputTokens": 294,
+        "outputTokens": 34,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0
+      },
+      "recorded_cost_usd_cents": 0.01013,
+      "database_record": {
+        "id": "1ee55e03-c3fb-4ca5-8842-cb6c0335a0da",
+        "provider": "openai",
+        "model": "gpt-5.4-nano",
+        "status": "ok",
+        "input_tokens": 294,
+        "output_tokens": 34,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cost_cents": "0.01013",
+        "latency_ms": 2564,
+        "origem_da_escolha": "padrao_da_organizacao",
+        "no_agent": true,
+        "no_contact": true
+      },
+      "usage_totals_match": true
+    },
+    {
+      "name": "credential_wrong_organization",
+      "status": "pass",
+      "reason": "wrong_org",
+      "no_provider_call": true
+    }
+  ],
+  "configuration": {
+    "provider": "openai",
+    "model": "gpt-5.4-nano",
+    "credential_source": "credencial_da_organizacao",
+    "budget_mode": "off",
+    "budget_config_read_ok": true
+  },
+  "memory_tool_executions": 1,
+  "provider_request_count": 3,
+  "completed_at": "2026-10-19T13:07:18.015Z"
+}

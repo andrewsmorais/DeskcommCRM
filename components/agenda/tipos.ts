@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Vocabulário da Agenda — em pt-br, como o resto do produto.
  *
  * O produto renomeia termo técnico na cara do usuário ("Kanban" virou "Funis",
@@ -35,7 +35,7 @@ export type Pessoa = {
  * O VOCABULÁRIO DE BANCO NÃO MORA AQUI — é importado.
  *
  * Estes dois tipos tinham definição PRÓPRIA neste arquivo, com valores em pt-br
- * (`faltou`, `deskcomm`) enquanto `lib/agenda/tipos.ts` — que espelha o CHECK
+ * (`faltou`, `ChatAI Online`) enquanto `lib/agenda/tipos.ts` — que espelha o CHECK
  * da migration 0176 — declara `no_show` e `google_sync`. Mesmo NOME de símbolo,
  * conjuntos sem intersecção, em módulos diferentes.
  *

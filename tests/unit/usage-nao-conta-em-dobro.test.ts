@@ -22,36 +22,30 @@ const ROTA = "app/api/v1/ai/usage/route.ts";
 const LOG = "lib/ai/log-invocation.ts";
 
 describe("a rota de uso lê UMA tabela de telemetria", () => {
-  // Desde a migration 0586 a rota não lê tabela nenhuma: pergunta a
-  // `fn_uso_de_ia`, que soma no banco. A guarda contra a dupla contagem mudou de
-  // lugar junto — agora ela mora no corpo da função.
-  const corpoDaFuncao = (() => {
-    const baseline = readFileSync("supabase/baseline.sql", "utf8");
-    const inicio = baseline.search(/^create or replace function public\.fn_uso_de_ia\(/m);
-    return inicio === -1 ? "" : baseline.slice(inicio, baseline.indexOf("$$;", inicio));
-  })();
-
-  it("a rota pergunta a fn_uso_de_ia", () => {
+  it("consulta llm_calls", () => {
     // Controle positivo: sem esta asserção, apagar a consulta inteira faria os
     // testes abaixo passarem por vacuidade.
     const fonte = readFileSync(ROTA, "utf8");
-    expect(fonte).toContain('.rpc("fn_uso_de_ia"');
+    expect(fonte).toContain('.from("llm_calls")');
   });
 
-  it("a função consulta llm_calls", () => {
-    expect(corpoDaFuncao.length, "fn_uso_de_ia não encontrada no baseline").toBeGreaterThan(500);
-    expect(corpoDaFuncao).toMatch(/from public\.llm_calls/);
-  });
-
-  it("NÃO consulta ai_invocations — nem a rota, nem a função", () => {
-    // A tabela vira histórico na 0130. Uma leitura nova dela é o caminho de
-    // volta para a dupla contagem.
+  it("NÃO consulta ai_invocations", () => {
+    // A tabela vira histórico na 0130. Uma leitura nova dela aqui é o caminho
+    // de volta para a dupla contagem.
     const fonte = readFileSync(ROTA, "utf8");
     expect(
       fonte.includes('.from("ai_invocations")'),
       "a rota voltou a ler ai_invocations — com llm_calls já sendo a leitura primária, isso conta a mesma linha duas vezes",
     ).toBe(false);
-    expect(corpoDaFuncao).not.toMatch(/ai_invocations/);
+  });
+
+  it("agrega UMA fonte, não a concatenação de duas", () => {
+    // O formato do defeito é literal: `[...invRows, ...engineRows]`. Guardar o
+    // nome da variável é frágil de propósito — quem reintroduzir o spread vai
+    // ter de passar por aqui e justificar.
+    const fonte = readFileSync(ROTA, "utf8");
+    const agregacao = fonte.slice(fonte.indexOf("aggregateUsage("));
+    expect(agregacao.slice(0, 200)).not.toMatch(/\[\s*\.\.\..*,\s*\.\.\./s);
   });
 });
 

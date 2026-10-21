@@ -329,3 +329,4 @@ describe("o aviso de compromisso (#1612)", () => {
     expect(payload.inicio).toBe(HORARIO);
   });
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

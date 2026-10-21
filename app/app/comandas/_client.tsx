@@ -60,12 +60,9 @@ const ROTULO_DO_STATUS: Record<Comanda["status"], string> = {
 export function Comandas({
   podeLancar,
   podeEstornar,
-  moedaDaOrg,
 }: {
   podeLancar: boolean;
   podeEstornar: boolean;
-  /** A moeda da organização (#1531) — repassada aos pendentes, que não têm outra. */
-  moedaDaOrg: string;
 }) {
   const t = useT();
   const qc = useQueryClient();
@@ -217,7 +214,6 @@ export function Comandas({
         <AtendimentosSemComanda
           pendentes={pendentes.data ?? []}
           formas={formas.data ?? []}
-          moeda={moedaDaOrg}
           podeLancar={podeLancar}
           pendenteDeEnvio={faturarLote.isPending}
           onFaturar={(corpo) => faturarLote.mutate(corpo)}

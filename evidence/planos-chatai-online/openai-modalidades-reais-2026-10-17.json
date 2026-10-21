@@ -1,0 +1,131 @@
+{
+  "created_at": "2026-10-17T13:34:35.428Z",
+  "organization_id": "c735b9fe-e900-49e7-8ed9-d1169191b76e",
+  "credential_id": "7cdfaeae-bad5-424e-8a97-7f4bd1bf98cc",
+  "scope": "helpers reais; conteúdo sintético; não é prova de WhatsApp ou da interface de mídia",
+  "provider_requests": [
+    {
+      "stage": "embedding",
+      "path": "/v1/embeddings",
+      "status": 200,
+      "request_id": "req_d6948a08a6bf46829e287fca52739b0e",
+      "origin": "https://api.openai.com"
+    },
+    {
+      "stage": "vision_control",
+      "path": "/v1/responses",
+      "status": 200,
+      "request_id": "req_454fa1573292448799cc43104703a4d6",
+      "origin": "https://api.openai.com"
+    }
+  ],
+  "embedding": {
+    "passed": true,
+    "dimensions": 1536,
+    "model": "openai/text-embedding-3-small",
+    "prompt_tokens": 9,
+    "origin": "credencial_da_organizacao",
+    "canonical_helper": "embedText"
+  },
+  "credential": {
+    "active": true,
+    "validated": true,
+    "models_count": 133
+  },
+  "local_preconditions": {
+    "postgres_url_present": false
+  },
+  "vision_seam_failure": {
+    "stage": "before_provider_request",
+    "code": "postgres_url_missing",
+    "endpoint_called": false
+  },
+  "vision": {
+    "passed": false,
+    "expected": "vermelho",
+    "observed": "Verde",
+    "provider": "openai",
+    "model": "gpt-4.1-nano",
+    "tokens": {
+      "inputTokens": 38,
+      "inputTokenDetails": {
+        "noCacheTokens": 38,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0
+      },
+      "outputTokens": 3,
+      "outputTokenDetails": {
+        "textTokens": 3,
+        "reasoningTokens": 0
+      },
+      "totalTokens": 41
+    },
+    "canonical_helper": "createDefaultRegistry().openai + generateText (mesmo adapter de mídia)",
+    "full_seam_tested": false,
+    "synthetic_image_size": "64x64"
+  },
+  "synthetic_audio": {
+    "source": "OpenAI TTS, uma frase sintética, sem áudio de cliente",
+    "model": "gpt-4o-mini-tts",
+    "bytes": 252044
+  },
+  "transcription": {
+    "passed": true,
+    "expected": "Teste local de atendimento com inteligência artificial.",
+    "observed": "Teste local de atendimento com inteligência artificial.",
+    "model": "whisper-1",
+    "canonical_helper": "apiTranscriptionProvider"
+  },
+  "completed": true,
+  "control_started_at": "2026-10-17T13:36:32.857Z",
+  "vision_control": {
+    "passed": true,
+    "expected": "vermelho",
+    "observed": "Vermelho",
+    "provider": "openai",
+    "model": "gpt-5.4-nano",
+    "tokens": {
+      "inputTokens": 103,
+      "inputTokenDetails": {
+        "noCacheTokens": 103,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0
+      },
+      "outputTokens": 7,
+      "outputTokenDetails": {
+        "textTokens": 7,
+        "reasoningTokens": 0
+      },
+      "totalTokens": 110
+    },
+    "canonical_helper": "createDefaultRegistry().openai + generateText; file part igual ao worker",
+    "synthetic_image_size": "256x256",
+    "full_seam_tested": false
+  },
+  "synthetic_image_checks": {
+    "original_64px": {
+      "red_pixels": 4096,
+      "other_pixels": 0,
+      "rgb": [
+        255,
+        0,
+        0
+      ]
+    },
+    "control_256px": {
+      "red_pixels": 65536,
+      "other_pixels": 0,
+      "rgb": [
+        255,
+        0,
+        0
+      ]
+    }
+  },
+  "transport_note": "Metadados preservados para embedding e contraprova de visão; request_ids da primeira visão e áudio não foram retidos pelo coletor. Nenhuma chamada foi repetida para recuperá-los.",
+  "limits": [
+    "Visão original64px com GPT-4.1nano falhou semanticamente; contraprova256px com GPT-5.4nano passou. Modelo,tamanho epart mudaram: não é comparação causal controlada.",
+    "SUPABASE_DB_URL ausente no runtime local; seam completo de agente/custos não comprovado.",
+    "Testes diretos de helpers/adapters não provam recebimento de WhatsApp nem UX da mídia."
+  ]
+}

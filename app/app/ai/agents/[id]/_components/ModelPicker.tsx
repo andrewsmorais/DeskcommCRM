@@ -3,7 +3,6 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "@/lib/api/client";
-import { ApiError } from "@/lib/api/types";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PROVEDORES, PROVEDOR_POR_ASSINATURA } from "@/lib/ai/pontos/provedores";
+import { PROVEDORES } from "@/lib/ai/pontos/provedores";
 import { useT } from "@/hooks/i18n/useT";
 
 /**
@@ -49,32 +48,6 @@ interface ApiResponse {
   data: { models: ModelOption[] };
 }
 
-/**
- * A falha da listagem aparece na tela (#2602). Antes o erro era ignorado e o
- * seletor caía calado no campo livre: o 409 "conecte a assinatura" e o 502 com
- * o motivo só existiam na aba de rede.
- */
-function avisoDaFalha(
-  provider: Provider,
-  erro: unknown,
-  t: (texto: string) => string,
-): string | null {
-  if (!erro) return null;
-  if (provider === PROVEDOR_POR_ASSINATURA && erro instanceof ApiError) {
-    if (erro.status === 409) {
-      return t("Conecte a assinatura do ChatGPT em IA › Credenciais para listar os modelos.");
-    }
-    if (erro.status === 502) {
-      const motivo = erro.details?.motivo;
-      const frase = t(
-        "Não consegui listar os modelos da assinatura do ChatGPT. A conta continua conectada; tente de novo ou reconecte-a em IA › Credenciais.",
-      );
-      return typeof motivo === "string" ? `${frase} (${motivo})` : frase;
-    }
-  }
-  return t("Não consegui carregar a lista de modelos. Digite o identificador abaixo.");
-}
-
 export function ModelPicker({ provider, value, onChange, disabled, id, placeholder }: Props) {
   const t = useT();
   const query = useQuery({
@@ -87,16 +60,10 @@ export function ModelPicker({ provider, value, onChange, disabled, id, placehold
   });
 
   const models = query.data ?? [];
-  const aviso = avisoDaFalha(provider, query.error, t);
 
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{t("Modelo")}</Label>
-      {aviso ? (
-        <p role="alert" className="text-sm text-destructive">
-          {aviso}
-        </p>
-      ) : null}
       {models.length === 0 && !query.isLoading ? (
         <Input
           id={id}

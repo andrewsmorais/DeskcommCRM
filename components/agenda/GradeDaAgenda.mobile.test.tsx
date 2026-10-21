@@ -22,7 +22,6 @@ function grade(visao: "dia" | "semana") {
       visao={visao}
       ancora={QUARTA}
       agora={QUARTA}
-      fuso={Intl.DateTimeFormat().resolvedOptions().timeZone}
       agendamentos={[]}
       pessoas={[]}
     />,

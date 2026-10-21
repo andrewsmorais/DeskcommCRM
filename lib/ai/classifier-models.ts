@@ -22,9 +22,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { listarModelosDaAssinaturaOuVazio } from "@/lib/ai/catalogo/modelos-da-assinatura";
 import { ehProvedorSuportado } from "@/lib/ai/pontos/provedores";
-import { PROVEDOR_POR_ASSINATURA } from "@/lib/ai/pontos/provedores";
 
 /** Um modelo oferecível, já com o provedor que precisa viajar junto dele. */
 export interface ClassifierModelOption {
@@ -82,7 +80,7 @@ export async function listClassifierModels(
     .order("display_name", { ascending: true });
   if (modelErr) throw new Error(`classifier_models_catalog_failed: ${modelErr.message}`);
 
-  const fromCatalog = ((models ?? []) as Array<{ provider: string; model_id: string; display_name: string | null }>).map(
+  return ((models ?? []) as Array<{ provider: string; model_id: string; display_name: string | null }>).map(
     (m) => ({
       provider: m.provider,
       model_id: m.model_id,
@@ -90,18 +88,4 @@ export async function listClassifierModels(
       origem: origemPorProvider.get(m.provider) ?? "plataforma",
     }),
   );
-
-  if (!origemPorProvider.has(PROVEDOR_POR_ASSINATURA)) return fromCatalog;
-  // Falha na consulta do catálogo SIWC aqui vira lista vazia + log: o
-  // classificador sugere o catálogo global, não derruba a sessão de chat.
-  const accountModels = await listarModelosDaAssinaturaOuVazio(organizationId);
-  return [
-    ...fromCatalog,
-    ...accountModels.map((m) => ({
-      provider: m.provider,
-      model_id: m.model_id,
-      display_name: m.display_name,
-      origem: "org" as const,
-    })),
-  ];
 }

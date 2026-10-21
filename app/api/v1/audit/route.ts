@@ -21,7 +21,8 @@ export async function GET(req: NextRequest): Promise<Response> {
   const authz = await requireRole("manager", {
     requestId,
     resource: "audit",
-    allowPlatformAdmin: "leitura",
+    plano: "auditoria",
+    allowPlatformAdmin: true,
   });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);

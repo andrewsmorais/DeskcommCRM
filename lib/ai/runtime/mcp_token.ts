@@ -16,8 +16,8 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { EPHEMERAL_TOKEN_TTL_SEC } from "@/lib/ai/runtime/prazo-do-token-mcp";
-export { EPHEMERAL_TOKEN_TTL_SEC } from "@/lib/ai/runtime/prazo-do-token-mcp";
+
+export const EPHEMERAL_TOKEN_TTL_SEC = 300;
 
 export interface MintEphemeralTokenInput {
   readOnly?: boolean;
@@ -128,11 +128,7 @@ export async function mintEphemeralToken(input: MintEphemeralTokenInput): Promis
   return { id: data.id as string, plaintext, expiresAt: data.expires_at as string };
 }
 
-export async function revokeEphemeralToken(tokenId: string, organizationId: string): Promise<void> {
+export async function revokeEphemeralToken(tokenId: string): Promise<void> {
   const admin = createAdminClient();
-  await admin
-    .from("api_tokens")
-    .update({ revoked_at: new Date().toISOString() })
-    .eq("organization_id", organizationId)
-    .eq("id", tokenId);
+  await admin.from("api_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", tokenId);
 }

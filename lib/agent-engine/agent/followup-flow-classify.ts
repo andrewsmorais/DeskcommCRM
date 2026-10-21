@@ -15,7 +15,6 @@ import type { Logger } from '../obs/logger';
 import type { ProviderRegistry } from '../edge/llm/providers';
 import { runModelCall, type LlmEdgeConfig } from '../edge/llm/run-model-call';
 import type { LeadContext } from '../edge/crm/get-lead-context';
-import { extrairObjetoJsonDoTexto } from '@/lib/agent-engine/texto/extrair-json-do-texto';
 import { fusoDaOrganizacao } from './fuso-da-org';
 import { renderAgora } from '@/lib/tempo/agora';
 
@@ -43,30 +42,35 @@ function buildClassifyMessage(candidate: string, classes: string[], hint?: strin
  * JSON parseável) vira `null`, nunca um palpite.
  */
 export function parseFollowupClassification(text: string, classes: string[]): string | null {
-  const bruto = extrairObjetoJsonDoTexto(text);
-  if (bruto === null || typeof bruto !== 'object') return null;
-  const obj = bruto as Record<string, unknown>;
+  const match = /\{[\s\S]*\}/.exec(text);
+  if (match === null) return null;
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(match[0]) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
   const value = typeof obj.class === 'string' ? obj.class : null;
   return value !== null && classes.includes(value) ? value : null;
 }
 
 /**
- * Classifica a última resposta do lead em uma de `classes`. `candidateText` é a
- * resposta do lead ao envio do fluxo, já resolvida pelo chamador
- * (`respostaAoEnvioDoFluxo` em followup-turn.ts) — e só existe chamada quando
- * ela existe. Sem resposta não é classe: `no_reply` é
- * decisão do motor quando a carência do nó vence (node-handlers.ts), nunca
- * deste turno, que rodaria segundos depois do envio. Saída não-parseável/fora
- * de `classes` → erro (o job re-tenta pela fila; nunca adivinha uma classe
- * errada — doutrina "sem preguiça").
+ * Classifica a última resposta do lead em uma de `classes`. `candidateText` já
+ * vem resolvido pelo chamador como "a última inbound DEPOIS do último
+ * outbound, ou null" — sem candidato, NÃO chama o modelo: devolve 'no_reply'
+ * direto (custo $0; espelha o caminho sem LLM de node-handlers.ts na expiração
+ * de grace). Saída não-parseável/fora de `classes` → erro (o job re-tenta pela
+ * fila; nunca adivinha uma classe errada — doutrina "sem preguiça").
  */
 export async function classifyFollowupReply(
   db: pg.Pool,
   cfg: LlmEdgeConfig,
   ids: { tenantId: string; leadId: string; jobId: string },
-  args: { candidateText: string; classes: string[]; hint?: string; model?: string },
+  args: { candidateText: string | null; classes: string[]; hint?: string; model?: string },
   deps: { registry?: ProviderRegistry; log: Logger },
 ): Promise<string> {
+  if (args.candidateText === null) return 'no_reply';
+
   const call = await runModelCall(
     db,
     cfg,
@@ -156,9 +160,14 @@ function buildPlanMessage(
  * acessório. Fica registrado que o modelo não explicou.
  */
 export function parsePlanoDeEsperas(text: string, nodeIdsDoFluxo: string[]): PropostaDeEsperaBruta[] {
-  const bruto = extrairObjetoJsonDoTexto(text);
-  if (bruto === null || typeof bruto !== 'object') return [];
-  const obj = bruto as Record<string, unknown>;
+  const match = /\{[\s\S]*\}/.exec(text);
+  if (match === null) return [];
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(match[0]) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
   if (!Array.isArray(obj.esperas)) return [];
 
   const conhecidos = new Set(nodeIdsDoFluxo);

@@ -11,7 +11,6 @@
  *     nunca derruba o turno.
  */
 import type pg from 'pg';
-import { CLASSIFIER_CONTEXT_MESSAGES, MAX_CLASSIFIER_CONTEXT_MESSAGES } from '@/lib/ai/classifier-context';
 
 export interface RouterMember {
   agentId: string;
@@ -23,13 +22,6 @@ export interface RouterMember {
    * `null`/ausente = só roteia agente, como antes.
    */
   flowPointerId?: string | null;
-  /**
-   * Funil/etapa de DESTINO desta intenção (#2155): quando casa, o card sai do
-   * funil de entrada e vai para o funil do produto (mesma transferência das
-   * automações). `null`/ausente = só roteia o agente, como antes.
-   */
-  destinationPipelineId?: string | null;
-  destinationStageId?: string | null;
 }
 
 export interface LoadedRouter {
@@ -57,7 +49,6 @@ export interface LoadedRouter {
   classifierProvider: string | null;
   sticky: boolean;
   minConfidence: number;
-  contextMessageCount?: number;
   fallbackAgentId: string | null;
   members: RouterMember[];
 }
@@ -75,8 +66,6 @@ interface MemberRow {
   intent_description: string;
   examples: string[] | null;
   flow_pointer_id: string | null;
-  pipeline_id: string | null;
-  stage_id: string | null;
 }
 
 export async function loadActiveRouter(
@@ -96,7 +85,7 @@ export async function loadActiveRouter(
   if (router === undefined) return null;
 
   const { rows: memberRows } = await db.query<MemberRow>(
-    `select agent_id, intent_name, intent_description, examples, flow_pointer_id, pipeline_id, stage_id
+    `select agent_id, intent_name, intent_description, examples, flow_pointer_id
      from ai_router_members
      where router_id = $1
        and organization_id = $2
@@ -109,7 +98,6 @@ export async function loadActiveRouter(
     classifier_provider?: unknown;
     sticky?: unknown;
     min_confidence?: unknown;
-    context_message_count?: unknown;
   };
   const classifierModel =
     typeof cfg.classifier_model === 'string' && cfg.classifier_model.trim() !== ''
@@ -124,11 +112,6 @@ export async function loadActiveRouter(
     typeof cfg.min_confidence === 'number' && cfg.min_confidence >= 0 && cfg.min_confidence <= 1
       ? cfg.min_confidence
       : 0.6;
-  const contextMessageCount =
-    typeof cfg.context_message_count === 'number' && Number.isInteger(cfg.context_message_count) &&
-    cfg.context_message_count >= 0 && cfg.context_message_count <= MAX_CLASSIFIER_CONTEXT_MESSAGES
-      ? cfg.context_message_count
-      : CLASSIFIER_CONTEXT_MESSAGES;
 
   return {
     id: router.id,
@@ -137,7 +120,6 @@ export async function loadActiveRouter(
     classifierProvider,
     sticky,
     minConfidence,
-    contextMessageCount,
     fallbackAgentId: router.fallback_agent_id,
     members: memberRows.map((m) => ({
       agentId: m.agent_id,
@@ -145,8 +127,6 @@ export async function loadActiveRouter(
       intentDescription: m.intent_description,
       examples: m.examples ?? [],
       flowPointerId: m.flow_pointer_id,
-      destinationPipelineId: m.pipeline_id,
-      destinationStageId: m.stage_id,
     })),
   };
 }

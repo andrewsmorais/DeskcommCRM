@@ -12,20 +12,14 @@ import { mediaSrc } from "./media-utils";
 interface Props {
   messageId: string;
   alt: string;
-  /**
-   * Fonte alternativa: a mídia da NOTA interna (#1863, F3) é servida pela rota
-   * da nota, não pela de mensagem — `messageId` não existe lá. Quando ausente,
-   * o caminho é o de sempre (`/api/v1/messages/{id}/media`).
-   */
-  src?: string;
 }
 
 /** Miniatura na bolha + lightbox (Dialog) no clique. Padrão WhatsApp Web. */
-export function ImageMedia({ messageId, alt, src: fonte }: Props) {
+export function ImageMedia({ messageId, alt }: Props) {
   const t = useT();
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [open, setOpen] = useState(false);
-  const src = fonte ?? mediaSrc(messageId);
+  const src = mediaSrc(messageId);
 
   if (state === "error")
     return (

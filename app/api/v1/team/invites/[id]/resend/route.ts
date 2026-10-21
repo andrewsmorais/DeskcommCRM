@@ -66,26 +66,36 @@ export async function POST(
     });
   }
 
-  const resultado = await reenviarConvite(admin, {
-    convite,
-    orgName: activeOrg.name,
-    actorId: authUser.id,
-    actorName: authUser.full_name ?? authUser.email ?? "Um colega",
-    requestId,
-  });
-  if (!resultado) {
-    return fail("state_conflict", t("O convite mudou. Atualize e tente de novo."), 409, {
+  try {
+    const resultado = await reenviarConvite(admin, {
+      convite,
+      orgName: activeOrg.name,
+      actorId: authUser.id,
+      actorName: authUser.full_name ?? authUser.email ?? "Um colega",
       requestId,
     });
-  }
+    if (!resultado) {
+      return fail("state_conflict", t("O convite mudou. Atualize e tente de novo."), 409, {
+        requestId,
+      });
+    }
 
-  return ok(
-    {
-      ...resultado.convite,
-      status: statusConvite(resultado.convite),
-      accept_url: resultado.accept_url,
-      email_dispatched: resultado.email_dispatched,
-    },
-    { requestId },
-  );
+    return ok(
+      {
+        ...resultado.convite,
+        status: statusConvite(resultado.convite),
+        accept_url: resultado.accept_url,
+        email_dispatched: resultado.email_dispatched,
+      },
+      { requestId },
+    );
+  } catch (error) {
+    if (error instanceof ErroDaCotaDeEquipe)
+      return fail(error.code, error.message, error.status, { requestId });
+    if (error instanceof ErroDaReservaDeCota)
+      return fail("billing_unavailable", error.message, error.status, { requestId });
+    return fail("internal_error", "Não foi possível reenviar o convite.", 500, { requestId });
+  }
 }
+import { ErroDaCotaDeEquipe } from "@/lib/billing/equipe";
+import { ErroDaReservaDeCota } from "@/lib/billing/reserva";

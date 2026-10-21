@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const followupGatilhoPresencaHandler: EventHandler = {
   key: "followup-gatilho-presenca.v1",
-  naOrgParada: "pula",
   events: ["appointment.outcome_confirmed"],
   async handle(row) {
     const { data, error } = await createAdminClient().rpc("fn_appointment_recover", {

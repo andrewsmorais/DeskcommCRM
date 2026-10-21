@@ -35,7 +35,6 @@ export function Recorrencias({
   podeEditar,
   carregando,
   onCriar,
-  onEditar,
   onInativar,
 }: {
   recorrencias: Recorrencia[];
@@ -43,8 +42,6 @@ export function Recorrencias({
   podeEditar: boolean;
   carregando: boolean;
   onCriar: (corpo: Record<string, unknown>) => void;
-  /** #2641: editar sem desativar-e-recriar — o corpo é o mesmo da criação. */
-  onEditar: (id: string, corpo: Record<string, unknown>, aoSalvar: () => void) => void;
   onInativar: (id: string) => void;
 }) {
   const t = useT();
@@ -53,16 +50,6 @@ export function Recorrencias({
   const [dia, setDia] = useState("5");
   const [direcao, setDirecao] = useState<"in" | "out">("out");
   const [contaId, setContaId] = useState("");
-  const [editandoId, setEditandoId] = useState<string | null>(null);
-
-  const limpar = () => {
-    setNome("");
-    setValor("");
-    setDia("5");
-    setDirecao("out");
-    setContaId("");
-    setEditandoId(null);
-  };
 
   const cents = parseReaisToCents(valor);
   const diaNumero = Number(dia);
@@ -137,25 +124,18 @@ export function Recorrencias({
           <Button
             className="min-h-11"
             disabled={!pode}
-            onClick={() => {
-              const corpo = {
+            onClick={() =>
+              onCriar({
                 name: nome.trim(),
                 account_id: contaId,
                 direction: direcao,
                 amount_cents: cents,
                 day_of_month: diaNumero,
-              };
-              if (editandoId) onEditar(editandoId, corpo, limpar);
-              else onCriar(corpo);
-            }}
+              })
+            }
           >
-            {editandoId ? t("Salvar") : t("Adicionar")}
+            {t("Adicionar")}
           </Button>
-          {editandoId ? (
-            <Button variant="ghost" className="min-h-11" onClick={limpar}>
-              {t("Cancelar")}
-            </Button>
-          ) : null}
 
           {/*
             O aviso do dia 31 aparece só quando alguém escolhe um dia que não
@@ -186,32 +166,14 @@ export function Recorrencias({
                 {formatCents(r.amount_cents, r.currency)} · {t("dia")} {r.day_of_month}
               </span>
               {podeEditar ? (
-                <span className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    className="min-h-11"
-                    onClick={() => {
-                      // Preenche o MESMO formulário da criação com o
-                      // lançamento escolhido; o Salvar manda o PATCH (#2641).
-                      setNome(r.name);
-                      setDirecao(r.direction);
-                      setContaId(r.account_id);
-                      setValor((r.amount_cents / 100).toFixed(2).replace(".", ","));
-                      setDia(String(r.day_of_month));
-                      setEditandoId(r.id);
-                    }}
-                  >
-                    {t("Editar")}
-                  </Button>
-                  <button
-                    type="button"
-                    aria-label={t("Remover lançamento recorrente")}
-                    onClick={() => onInativar(r.id)}
-                    className="text-text-muted hover:text-text"
-                  >
-                    ×
-                  </button>
-                </span>
+                <button
+                  type="button"
+                  aria-label={t("Remover lançamento recorrente")}
+                  onClick={() => onInativar(r.id)}
+                  className="text-text-muted hover:text-text"
+                >
+                  ×
+                </button>
               ) : null}
             </li>
           ))}

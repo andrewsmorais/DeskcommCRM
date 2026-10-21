@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { EntrarComGoogle } from "@/components/auth/EntrarComGoogle";
 import { LoginForm } from "@/components/auth/LoginForm";
-import { marcaDaSaida } from "@/lib/branding/saida";
+import { branding } from "@/lib/branding";
 import { createClient } from "@/lib/supabase/server";
 import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -27,13 +27,14 @@ export default async function LoginPage({
     (user?.user_metadata?.locale as string | undefined) ?? null,
   );
   const t = (texto: string) => traduzir(texto, idioma);
-  const marca = await marcaDaSaida(null);
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1.5 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("Entrar")}</h1>
-        <p className="text-sm text-muted-foreground">{marca.nome}</p>
+      <div className="space-y-2 text-center">
+        <h1 className="text-[28px] leading-tight font-semibold tracking-tight text-foreground">
+          {t("Entrar")}
+        </h1>
+        <p className="text-sm font-medium text-muted-foreground">{branding().name}</p>
       </div>
       {reset === "success" && (
         <div
@@ -145,14 +146,17 @@ export default async function LoginPage({
         <p>
           <Link
             href="/login/forgot"
-            className="text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            className="rounded-sm text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             {t("Esqueci minha senha")}
           </Link>
         </p>
         <p className="text-muted-foreground">
           {t("Não tem conta?")}{" "}
-          <Link href="/signup" className="font-medium text-foreground underline underline-offset-4">
+          <Link
+            href="/signup"
+            className="rounded-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
             {t("Criar conta")}
           </Link>
         </p>

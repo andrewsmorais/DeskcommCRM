@@ -40,6 +40,20 @@ export function respostaDeAcesso(
   const t = (texto: string) => (idioma ? traduzir(texto, idioma) : texto);
 
   switch (motivo) {
+    case "plano_indisponivel":
+      return fail(
+        "billing_unavailable",
+        "Não foi possível confirmar seu plano. Tente novamente.",
+        503,
+        { requestId },
+      );
+    case "plano_sem_integracao":
+      return fail(
+        "billing_feature",
+        "Confira a assinatura Escala em Plano e cobrança para usar integrações avançadas.",
+        403,
+        { requestId },
+      );
     case "modulo_desligado":
       return fail("not_found", "Not found.", 404, { requestId });
     case "nao_encontrada":

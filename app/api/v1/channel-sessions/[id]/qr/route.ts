@@ -23,8 +23,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  */
 import { NextResponse } from "next/server";
 
-import { loadAuthUser } from "@/lib/auth/server";
-import { orgAtivaDaApi } from "@/lib/auth/require-role";
+import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { createClient } from "@/lib/supabase/server";
 
@@ -40,9 +39,7 @@ export async function GET(
 
   const user = await loadAuthUser();
   if (!user) return new NextResponse(null, { status: 401 });
-  const ativa = await orgAtivaDaApi(user);
-  if (!ativa.ok) return ativa.response;
-  const activeOrg = ativa.org;
+  const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) return new NextResponse(null, { status: 403 });
 
   const supabase = await createClient();

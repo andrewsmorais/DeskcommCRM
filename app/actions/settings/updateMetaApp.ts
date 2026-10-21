@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { randomBytes } from "node:crypto";
 import { headers } from "next/headers";
@@ -6,9 +6,8 @@ import { z } from "zod";
 
 import { invalidarAppDaMeta } from "@/lib/channels/meta/app";
 import { audit } from "@/lib/audit";
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { logger } from "@/lib/logger";
-import { escritaDeAdminOuRecusa } from "@/lib/auth/escritaDeAdminOuRecusa";
+import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 
@@ -47,7 +46,7 @@ export type UpdateMetaAppResult =
  * ── Por que o verify token é gerado AQUI ─────────────────────────────────────
  *
  * O operador não inventa nada: ele cola o que a Meta exige no painel, e um token
- * escolhido à mão ("deskcomm", o nome da empresa) é adivinhável — quem o acerta
+ * escolhido à mão ("ChatAI Online", o nome da empresa) é adivinhável — quem o acerta
  * responde ao handshake e passa a receber o tráfego do webhook. 32 bytes de
  * aleatório do CSPRNG do sistema, em `base64url` porque o valor viaja como query
  * string (`?hub.verify_token=...`), e `+`/`/` de base64 comum virariam `%2B`/`%2F`
@@ -131,7 +130,7 @@ async function gravar(
     // trilha ficaria sem a linha — sem sintoma em tela nenhuma.
     resourceId: null,
     requestId: cabecalhos.get("x-request-id") ?? undefined,
-    ip: ipDoCliente(cabecalhos) ?? undefined,
+    ip: cabecalhos.get("x-forwarded-for") ?? undefined,
     userAgent: cabecalhos.get("user-agent") ?? undefined,
     actingAsPlatformAdmin: true,
     // O QUE mudou, jamais o valor — nem o verify token recém-gerado.
@@ -193,9 +192,7 @@ const SEM_SEGREDO: UpdateMetaAppResult = { ok: false, error: "app_secret_obrigat
  * que o produto oferece desse valor.
  */
 export async function updateMetaApp(input: MetaAppInput): Promise<UpdateMetaAppResult> {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return escrita;
-  const { user: authUser } = escrita.ctx;
+  const { user: authUser } = await requirePlatformAdmin();
 
   const parsed = entradaSchema.safeParse(input);
   if (!parsed.success) {
@@ -267,9 +264,7 @@ export async function updateMetaApp(input: MetaAppInput): Promise<UpdateMetaAppR
  * avisa em vez de trocar sozinha.
  */
 export async function rotacionarVerifyTokenDaMeta(): Promise<UpdateMetaAppResult> {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return escrita;
-  const { user: authUser } = escrita.ctx;
+  const { user: authUser } = await requirePlatformAdmin();
 
   const gravado = await oQueEstaGravado();
   if (!gravado.ok) return gravado.recusa;

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { type NextRequest } from "next/server";
+import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
-import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
@@ -12,11 +11,8 @@ import { ProspectingError } from "@/lib/prospecting/provider";
 import { prospectingInputSchema } from "@/lib/prospecting/schema";
 import {
   activateCampaign,
-  adjustPace,
   configureCredential,
   createSearch,
-  descartarDesmarcadas,
-  selecionarNaFila,
   validateConfig,
   withProspectingLock,
   type Campaign,
@@ -25,7 +21,6 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 const headers = { "Cache-Control": "no-store" };
-const ACOES_ABERTAS_AO_TOKEN = new Set<string>(["configure", "search", "pause"]);
 function failure(error: unknown, requestId: string) {
   return fail(
     "prospecting_unavailable",
@@ -36,18 +31,13 @@ function failure(error: unknown, requestId: string) {
     { requestId, headers },
   );
 }
-export async function GET(req: NextRequest) {
+export async function GET() {
   const requestId = randomUUID();
-  const auth = await resolveAuthDual(req, {
-    requestId,
-    resource: "prospecting",
-    role: "admin",
-    scope: "mcp:read",
-  });
+  const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
   try {
     const db = getRequestPool();
-    const org = auth.organizationId;
+    const org = auth.org.orgId;
     const [settings, campaigns, candidates, agents, channels, stages] = await Promise.all([
       db.query("select organization_id from prospecting_settings where organization_id=$1", [org]),
       db.query(
@@ -55,7 +45,7 @@ export async function GET(req: NextRequest) {
         [org],
       ),
       db.query(
-        "select p.id,p.campaign_id,p.data,p.status,p.selected,p.error,p.lead_id,p.conversation_id,p.attempted_at,m.status as message_status,case when l.stage_id::text=c.config->>'qualified_stage_id' then 'qualified' when v.last_inbound_at is not null then 'replied' else p.status end as progress from prospecting_candidates p join prospecting_campaigns c on c.organization_id=p.organization_id and c.id=p.campaign_id left join crm_leads l on l.organization_id=p.organization_id and l.id=p.lead_id left join conversations v on v.organization_id=p.organization_id and v.id=p.conversation_id left join messages m on m.organization_id=p.organization_id and m.id=p.message_id where p.organization_id=$1 order by p.created_at desc limit 5000",
+        "select p.id,p.campaign_id,p.data,p.status,p.error,p.lead_id,p.conversation_id,p.attempted_at,m.status as message_status,case when l.stage_id::text=c.config->>'qualified_stage_id' then 'qualified' when v.last_inbound_at is not null then 'replied' else p.status end as progress from prospecting_candidates p join prospecting_campaigns c on c.organization_id=p.organization_id and c.id=p.campaign_id left join crm_leads l on l.organization_id=p.organization_id and l.id=p.lead_id left join conversations v on v.organization_id=p.organization_id and v.id=p.conversation_id left join messages m on m.organization_id=p.organization_id and m.id=p.message_id where p.organization_id=$1 order by p.created_at desc limit 5000",
         [org],
       ),
       db.query(
@@ -92,20 +82,12 @@ export async function GET(req: NextRequest) {
     return failure(error, requestId);
   }
 }
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   const support = await requireSupportWrite();
   if (support) return support;
   const requestId = randomUUID();
-  const auth = await resolveAuthDual(req, {
-    requestId,
-    resource: "prospecting",
-    role: "admin",
-    scope: "mcp:write",
-  });
+  const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
-  const teto = await tetoDeEscritaDoToken(auth, "prospecting", requestId);
-  if (teto) return teto;
-
   const parsed = prospectingInputSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success)
     return fail(
@@ -115,23 +97,11 @@ export async function POST(req: NextRequest) {
       { requestId, headers },
     );
   const body = parsed.data;
-  // Lista de PERMISSÃO, não de negação: iniciar e retomar campanha ENVIAM
-  // mensagem a quem nunca falou com a empresa, e a #1875 pede o envio sob
-  // controle humano. Ação nova da prospecção nasce fechada ao token até alguém
-  // decidir abri-la aqui.
-  if (auth.via === "token" && !ACOES_ABERTAS_AO_TOKEN.has(body.action))
-    return fail(
-      "forbidden",
-      "Por token, a prospecção só configura, pesquisa e pausa. Iniciar ou retomar campanha exige a tela: o envio fica sob controle de uma pessoa.",
-      403,
-      { requestId, headers },
-    );
-  const org = auth.organizationId;
+  const org = auth.org.orgId;
   try {
     const pool = getRequestPool();
     const admin = createAdminClient();
     let result: unknown;
-    let auditMetadata: Record<string, unknown> = { operation: body.action };
     if (body.action === "configure") {
       await configureCredential(pool, admin, org, body.api_key);
       result = { configured: true };
@@ -148,45 +118,6 @@ export async function POST(req: NextRequest) {
       if (!changed.rows.length)
         throw new ProspectingError("Campanha em execução não encontrada.", 404);
       result = { paused: true };
-    } else if (body.action === "adjust_pace") {
-      const { previous, next } = await adjustPace(pool, org, body.id, {
-        daily_limit: body.daily_limit,
-        interval_minutes: body.interval_minutes,
-      });
-      result = next;
-      // O histórico precisa dizer DE QUANTO PARA QUANTO — só o nome da ação não diz.
-      auditMetadata = { operation: body.action, previous, next };
-    } else if (body.action === "select") {
-      result = await withProspectingLock(pool, org, async (db) => {
-        const campaign = (
-          await db.query(
-            "select id from prospecting_campaigns where organization_id=$1 and id=$2 and status='draft'",
-            [org, body.id],
-          )
-        ).rows[0];
-        if (!campaign)
-          throw new ProspectingError("A campanha não está em preparação para selecionar empresas.", 409);
-        const { rows } = await db.query<{ id: string }>(
-          "update prospecting_candidates set selected=$3,updated_at=now() where organization_id=$1 and campaign_id=$2 and status='new' and id=any($4::uuid[]) returning id",
-          [org, body.id, body.selected, body.candidate_ids],
-        );
-        return { selected: body.selected, candidates_id: rows.map((r) => r.id) };
-      });
-    } else if (body.action === "select_in_queue") {
-      const fila = await selecionarNaFila(pool, org, body.id, body.candidate_ids, body.selected);
-      result = fila;
-      // Quantas empresas de fato mudaram (o servidor ignora as que não podiam mudar).
-      auditMetadata = {
-        operation: body.action,
-        selected: body.selected,
-        changed: fila.changed_ids.length,
-      };
-    } else if (body.action === "discard_unselected") {
-      const descarte = await descartarDesmarcadas(pool, org, body.id);
-      result = descarte;
-      // O histórico precisa dizer QUANTAS linhas saíram: apagar é o único gesto desta rota
-      // que não tem volta, e "alguém excluiu" sem número não deixa conferir nada depois.
-      auditMetadata = { operation: body.action, discarded: descarte.discarded };
     } else {
       result = await withProspectingLock(pool, org, async (db) => {
         const c = (
@@ -217,11 +148,10 @@ export async function POST(req: NextRequest) {
     await audit({
       action: "prospecting.changed",
       organizationId: org,
-      actorUserId: auth.actor.type === "user" ? auth.actor.id : null,
-      actorApiTokenId: auth.apiTokenId ?? null,
+      actorUserId: auth.user.id,
       resourceType: "prospecting",
       resourceId,
-      metadata: auditMetadata,
+      metadata: { operation: body.action },
       requestId,
     });
     return ok(result, { requestId, headers });

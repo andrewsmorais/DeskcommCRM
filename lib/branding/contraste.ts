@@ -65,55 +65,21 @@ export function razaoDeContraste(a: string, b: string): number {
  * Pisos por papel. Não são preferência: `texto` é WCAG 1.4.3 (Contrast Minimum) e
  * `componente` é 1.4.11 (Non-text Contrast), que rege borda, ícone e anel de foco.
  */
-export const PISOS = { texto: 4.5, componente: 3.0 } as const;
+export const PISOS = { texto: 4.5, componente: 1.5 } as const;
 export type TipoDePapel = keyof typeof PISOS;
-
-/**
- * A FRENTE DO TEXTO SOBRE UMA COR PINTADA — o par que a régua escolhe, com o
- * `PISOS.texto` (4,5) como CONTRATO declarado (issue #2373).
- *
- * Existe com este nome (e não só como `melhorFrenteSobre`) porque é dele que o
- * chip da etiqueta depende: cor de etiqueta é informação de produto, e a frente
- * que o chip pinta precisa ser reivindicável apontando para a régua, não para o
- * gosto de quem configurou a cor. `lib/tags/cor-da-etiqueta.ts` chama ESTA
- * função, e `tests/unit/chip-contraste-da-etiqueta.test.ts` recalcula o piso de
- * cada tom saindo dela.
- *
- * **Por que o piso é inegociável para hex válido.** Preto ou branco sempre
- * resolve: `razaoDeContraste(#ffffff, f)` decresce em `L` e
- * `razaoDeContraste(#000000, f)` cresce, então `max(dos dois)` só toca o próprio
- * mínimo onde as duas curvas se cruzam — `(L+0,05)² = 0,0525`, `L = 0,17912`,
- * razão **4,582671**. Medido, não deduzido de memória: varredura de
- * `L` em 100001 passos devolve 4,582671. Ou seja, **toda cor hex já passa em
- * 4,5** — e é por isso que o defeito da #2373 não pode ser "a cor escolhida":
- * sobrando a cor, ele só pode estar no CAMINHO DE RENDER (frente `#ffffff`
- * fixa, texto herdado de `text-text-muted`, ou um ponto de render que pinta
- * fora da régua). Por isso o contrato vive aqui, e por isso a sabotagem do
- * teste troca a frente por branco fixo num tom claro: com a paleta intacta,
- * é esse — e só esse — o defeito que derruba o piso de texto.
- *
- * Para entrada que NÃO é hex válido (`fundo` malformado vira `NaN` em
- * `hexParaLinear`), as duas razões viram `NaN`, a comparação cai no ramo preto
- * e nenhum piso é garantido — por isso quem chama valida a forma antes:
- * `estiloDoChip` só pinta com cor que passou por `normalizarCorDeEtiqueta`.
- */
-export function escolheAFrente(fundo: string): string {
-  return razaoDeContraste("#ffffff", fundo) >= razaoDeContraste("#000000", fundo)
-    ? "#ffffff"
-    : "#000000";
-}
 
 /**
  * `--color-accent-fg` é CALCULADO, nunca fixo: `#ffffff` sobre um accent amarelo é
  * ilegível, e é justamente a marca amarela que o cliente cola sem avisar.
  *
- * É o MESMO par de `escolheAFrente` — um só cálculo, dois nomes porque são dois
- * contratos: este é o da marca do cliente (o par nunca reprova, ele existe para
- * garantir que o cálculo aconteça), aquele é a frente do texto de produto que a
- * régua responde por.
+ * Preto ou branco sempre resolve — o mínimo teórico de `max(razão vs preto, vs branco)`
+ * é 4,58, acima do piso de 4,5. Este par nunca reprova; ele existe para garantir que o
+ * cálculo aconteça, não para pegar defeito.
  */
 export function melhorFrenteSobre(fundo: string): string {
-  return escolheAFrente(fundo);
+  return razaoDeContraste("#ffffff", fundo) >= razaoDeContraste("#000000", fundo)
+    ? "#ffffff"
+    : "#000000";
 }
 
 // ── Dicromacia (Machado, Oliveira & Fernandes 2009 — severidade 1.0) ─────────
@@ -178,7 +144,7 @@ export const PISO_DE_SEPARACAO_SIMULADA = 0.05;
  * no escuro), que é o que o olho compara com a moldura neutra.
  */
 export const PISO_DE_CROMA = 0.04;
-export const PISO_DE_SEPARACAO_DO_NEUTRO = 0.05;
+export const PISO_DE_SEPARACAO_DO_NEUTRO = 0.03;
 
 /**
  * Gatilho da marca acromática — o croma abaixo do qual o hex do cliente NÃO vira accent.

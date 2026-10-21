@@ -93,7 +93,6 @@ function makeSupabase(resolve: Resolver) {
       eq: () => chain,
       is: () => chain,
       in: () => chain,
-      not: () => chain,
       or: () => chain,
       contains: () => chain,
       ilike: () => chain,

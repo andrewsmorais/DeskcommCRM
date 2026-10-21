@@ -2,10 +2,9 @@
 import { z } from "zod";
 import { headers } from "next/headers";
 import { audit } from "@/lib/audit";
-import { escritaDeAdminOuRecusa } from "@/lib/auth/escritaDeAdminOuRecusa";
+import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { checkSmtpConfiguration } from "@/lib/email/smtp";
 import { saveSmtpConfig } from "@/lib/email/config";
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 
 const schema = z.object({
   host: z.string().trim().max(253),
@@ -18,9 +17,7 @@ const schema = z.object({
 });
 
 export async function updateSmtp(input: z.input<typeof schema>) {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return escrita;
-  const { user } = escrita.ctx;
+  const { user } = await requirePlatformAdmin();
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
     const field = parsed.error.issues[0]?.path[0];
@@ -53,7 +50,7 @@ export async function updateSmtp(input: z.input<typeof schema>) {
     actorUserId: user.id,
     resourceType: "platform_smtp_settings",
     requestId: requestHeaders.get("x-request-id") ?? undefined,
-    ip: ipDoCliente(requestHeaders) ?? undefined,
+    ip: requestHeaders.get("x-forwarded-for") ?? undefined,
     userAgent: requestHeaders.get("user-agent") ?? undefined,
     actingAsPlatformAdmin: true,
     metadata: {
@@ -65,7 +62,6 @@ export async function updateSmtp(input: z.input<typeof schema>) {
 }
 
 export async function checkSmtp() {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return escrita;
+  await requirePlatformAdmin();
   return checkSmtpConfiguration();
 }

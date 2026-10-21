@@ -27,7 +27,7 @@ const input = {
 const AGENT: PublishedAgentConfig = {
   agentId: "agent-1",
   versionId: "version-1",
-  agentName: "Bot Deskcomm",
+  agentName: "Bot ChatAI Online",
   systemPrompt: "Você é a vendedora da loja X.",
   provider: "anthropic",
   model: "claude-sonnet-4-6",
@@ -40,7 +40,6 @@ const AGENT: PublishedAgentConfig = {
   proposalAiDraftEnabled: true,
   splitMessages: false,
   splitMaxChars: 400,
-  inboundDebounceMs: null,
   multimodalInput: false,
   casesEnabled: false,
   toolIds: [],

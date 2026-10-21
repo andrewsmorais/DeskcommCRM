@@ -15,7 +15,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DIMENSOES_DO_EMBEDDING } from "@/lib/ai/embeddings/chave";
+import { MODELO_DE_EMBEDDING, DIMENSOES_DO_EMBEDDING } from "@/lib/ai/embeddings/chave";
 
 export interface CreateVersionParams {
   organizationId: string;
@@ -24,12 +24,6 @@ export interface CreateVersionParams {
   /** Histórico: o agente a partir do qual a fonte nasceu (pode ser null). */
   agentId: string | null;
   sourceType: string;
-  /**
-   * O modelo que VAI calcular os vetores desta versão (`modeloDeEmbedding`).
-   * Obrigatório: a busca filtra por ele, e gravar um padrão quando a indexação
-   * usou o Google faria a busca recusar os próprios trechos.
-   */
-  embeddingModel: string;
 }
 
 export interface CreateVersionResult {
@@ -76,7 +70,7 @@ export async function createKnowledgeVersion(
       is_active: false,
       // Proveniência: sem ela, "indexado com um modelo e consultado com outro"
       // é a falha que responde com trecho errado e nota alta.
-      embedding_model: params.embeddingModel,
+      embedding_model: MODELO_DE_EMBEDDING,
       embedding_dims: DIMENSOES_DO_EMBEDDING,
     })
     .select("id, version_number")

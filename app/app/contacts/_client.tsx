@@ -8,26 +8,19 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useContactList } from "@/hooks/contacts/useContactList";
-import { useBulkContacts, type AcaoEmLoteDeContatos } from "@/hooks/contacts/useBulkContacts";
-import { useSelecaoEmLote } from "@/hooks/contacts/useSelecaoEmLote";
 import { ContactsTable } from "@/components/contacts/ContactsTable";
-import { BarraDeContatosEmLote } from "@/components/contacts/BarraDeContatosEmLote";
 import { PontoDaEtiqueta } from "@/components/tags/PontoDaEtiqueta";
 import { NewContactDialog } from "@/components/contacts/NewContactDialog";
 import { ImportContactsDialog } from "@/components/contacts/ImportContactsDialog";
 import { TAG_DE_CLIENTE } from "@/lib/contacts/cliente";
-import { type ModoDeEtiqueta } from "@/lib/inbox/marcador-da-conversa";
-import { useActiveOrg, usePermission } from "@/hooks/auth/AuthProvider";
+import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { MergeDialog } from "@/components/contacts/MergeDialog";
 import { EmptyContacts } from "@/components/empty";
 import type { ContactOrderBy } from "@/lib/schemas/contacts";
@@ -56,15 +49,8 @@ export function ContactsListClient() {
   const clientesLigado = useActiveOrg()?.cliente_pela_agenda === true;
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  // VÁRIAS etiquetas com E/OU (#1274). O estado é a LISTA, e uma etiqueta só é
-  // a lista de um — o que faz "nenhuma escolha" e "vip escolhida" passarem pelo
-  // mesmo caminho, e impede a segunda forma de nascer daqui.
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagMode, setTagMode] = useState<ModoDeEtiqueta | undefined>(undefined);
+  const [tag, setTag] = useState<string | undefined>(undefined);
   const [source, setSource] = useState<string | undefined>(undefined);
-  // Só pessoais (spec 21, etapa 15 — filtro "Pessoais"): ligado lista SÓ
-  // pessoais (`?pessoais=true`, etapa 13); desligado é o padrão que exclui.
-  const [soPessoais, setSoPessoais] = useState(false);
   const [orderBy, setOrderBy] = useState<ContactOrderBy>("last_activity_at");
   const [orderDir, setOrderDir] = useState<"asc" | "desc">("desc");
   const [limit, setLimit] = useState<number>(25);
@@ -78,45 +64,10 @@ export function ContactsListClient() {
   }, [searchInput]);
 
   const filters = useMemo(
-    () => ({
-      search,
-      tag: tags.length > 0 ? tags : undefined,
-      tagMode,
-      source,
-      pessoais: soPessoais || undefined,
-      order_by: orderBy,
-      order_dir: orderDir,
-      limit,
-    }),
-    [search, tags, tagMode, source, soPessoais, orderBy, orderDir, limit],
+    () => ({ search, tag, source, order_by: orderBy, order_dir: orderDir, limit }),
+    [search, tag, source, orderBy, orderDir, limit],
   );
   const q = useContactList(filters);
-
-  // LOTE (#2484, fatia F3): a seleção múltipla e a barra de ações dos contatos.
-  // O portão de tela é o MESMO piso da edição individual (`contact.update` —
-  // agent+); quem só lê nem vê a barra. (A rota ainda valida por conta própria:
-  // este portão é de tela, a fonte da regra é a API.)
-  const podeAgirEmLote = usePermission("contact.update");
-  const podeMudarResponsavel = usePermission("contact.carteira");
-  const selecao = useSelecaoEmLote();
-  const lote = useBulkContacts();
-
-  const rodarLote = useCallback(
-    (args: AcaoEmLoteDeContatos) => {
-      const ids = Array.from(selecao.selecionados);
-      if (ids.length === 0) return;
-      lote.mutate(
-        { ids, ...args },
-        {
-          // A seleção é limpa depois do lote, aconteça o que acontecer: manter
-          // marcados os contatos recusados (de outra organização, inexistentes)
-          // deixaria a barra no lugar mensageando um lote que não existe mais.
-          onSuccess: () => selecao.limpar(),
-        },
-      );
-    },
-    [lote, selecao],
-  );
 
   const allContacts = useMemo(
     () => q.data?.pages.flatMap((p) => p.data) ?? [],
@@ -204,67 +155,19 @@ export function ContactsListClient() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" disabled={tagOptions.length === 0}>
-              {tags[0] ? <PontoDaEtiqueta tag={tags[0]} className="mr-2" /> : null}
-              {/* Resumo, e não a lista inteira: o gatilho tem a largura do filtro de
-                  origem ao lado. Uma etiqueta mostra o nome; duas mostram a
-                  primeira e o resto em contagem. */}
-              {tags.length === 0
-                ? `${t("Tag")}: ${t("todas")}`
-                : tags.length === 1
-                  ? `${t("Tag")}: ${tags[0]}`
-                  : `${t("Tag")}: ${tags[0]} +${tags.length - 1}`}
+              {tag ? <PontoDaEtiqueta tag={tag} className="mr-2" /> : null}
+              {tag ? `${t("Tag")}: ${tag}` : `${t("Tag")}: ${t("todas")}`}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuLabel>{t("Tag")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                setTags([]);
-                setTagMode(undefined);
-              }}
-            >
-              {t("Todas")}
-            </DropdownMenuItem>
-            {/* O E/OU so aparece com DUAS etiquetas: com uma so o parametro nao
-                muda o resultado, e um controle que nao muda nada e pior do que
-                nenhum. */}
-            {tags.length > 1 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={tagMode === "ou" ? "ou" : "e"}
-                  onValueChange={(modo) => setTagMode(modo === "ou" ? "ou" : undefined)}
-                >
-                  <DropdownMenuRadioItem value="e">{t("Todas (E)")}</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="ou">{t("Qualquer uma (OU)")}</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </>
-            )}
-            <DropdownMenuSeparator />
-            {/* `DropdownMenuCheckboxItem` marca e NAO fecha o menu — e o
-                `onSelect` com `preventDefault` trava esse comportamento, porque
-                o item de checkbox fecha por padrao. Sem isso, escolher a segunda
-                etiqueta exigiria reabrir o menu. */}
+            <DropdownMenuItem onClick={() => setTag(undefined)}>{t("Todas")}</DropdownMenuItem>
             {tagOptions.map((tagOption) => (
-              <DropdownMenuCheckboxItem
-                key={tagOption}
-                checked={tags.includes(tagOption)}
-                onCheckedChange={() => {
-                  const escolhida = tags.includes(tagOption);
-                  const proximas = escolhida
-                    ? tags.filter((et) => et !== tagOption)
-                    : [...tags, tagOption];
-                  setTags(proximas);
-                  // O modo so faz sentido com DUAS: com uma so ele nao muda o
-                  // resultado, e o `&modo=ou` na URL seria ruido.
-                  setTagMode(proximas.length > 1 ? tagMode : undefined);
-                }}
-                onSelect={(e) => e.preventDefault()}
-              >
+              <DropdownMenuItem key={tagOption} onClick={() => setTag(tagOption)}>
                 <PontoDaEtiqueta tag={tagOption} className="mr-2" />
                 {tagOption}
-              </DropdownMenuCheckboxItem>
+              </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -284,19 +187,6 @@ export function ContactsListClient() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Só pessoais: o filtro que acha quem saiu da operação — e a porta do
-            desmarcar em lote mental (abre a ficha e desmarca um a um). O
-            `data-testid` é contrato do e2e da spec. */}
-        <Button
-          variant={soPessoais ? "default" : "outline"}
-          size="sm"
-          data-testid="filtro-pessoais"
-          aria-pressed={soPessoais}
-          onClick={() => setSoPessoais((v) => !v)}
-        >
-          {t("Pessoais")}
-        </Button>
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
@@ -314,40 +204,21 @@ export function ContactsListClient() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {(search || tags.length > 0 || source || soPessoais) && (
+        {(search || tag || source) && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               setSearchInput("");
               setSearch("");
-              setTags([]);
-              setTagMode(undefined);
+              setTag(undefined);
               setSource(undefined);
-              setSoPessoais(false);
             }}
           >
             {t("Limpar filtros")}
           </Button>
         )}
       </div>
-
-      {podeAgirEmLote && (
-        <BarraDeContatosEmLote
-          quantidade={selecao.quantidade}
-          pendente={lote.isPending}
-          onAdicionarEtiqueta={(tag) => rodarLote({ action: "tag", op: "add", tag })}
-          onRemoverEtiqueta={(tag) => rodarLote({ action: "tag", op: "remove", tag })}
-          onMudarResponsavel={
-            podeMudarResponsavel
-              ? (donoUserId) =>
-                  rodarLote({ action: "carteira", dono_user_id: donoUserId, origem: "manual" })
-              : undefined
-          }
-          onPreencherCampo={(chave, valor) => rodarLote({ action: "custom-field", chave, valor })}
-          onLimpar={selecao.limpar}
-        />
-      )}
 
       {q.isLoading ? (
         <div className="space-y-2">
@@ -379,16 +250,6 @@ export function ContactsListClient() {
               orderBy={orderBy}
               orderDir={orderDir}
               onSort={handleSort}
-              // Sem `contact.update` não há barra, então as caixas seriam um
-              // controle que marca e não leva a nada: a tabela só as desenha
-              // quando recebe `onAlternarSelecao`.
-              selecionados={podeAgirEmLote ? selecao.selecionados : undefined}
-              onAlternarSelecao={podeAgirEmLote ? selecao.alternar : undefined}
-              onSelecionarTodosVisiveis={
-                podeAgirEmLote
-                  ? () => selecao.selecionarTodos(allContacts.map((c) => c.id))
-                  : undefined
-              }
             />
           </Card>
           <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">

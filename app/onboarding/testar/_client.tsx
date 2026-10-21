@@ -13,16 +13,22 @@ interface Props {
   nome: string | null;
   agenteId: string | null;
   versaoId: string | null;
+  versaoEmRascunho?: boolean;
+  falhaAoCarregarVersao?: boolean;
 }
 
 /** O que o ensaio devolveu — ou por que ele não aconteceu. */
-type Desfecho =
-  | { tipo: "resposta"; texto: string }
-  | { tipo: "erro"; mensagem: string };
+type Desfecho = { tipo: "resposta"; texto: string } | { tipo: "erro"; mensagem: string };
 
 const EXEMPLO = "Oi! Vocês atendem hoje? Queria saber o preço.";
 
-export function TestarClient({ nome, agenteId, versaoId }: Props) {
+export function TestarClient({
+  nome,
+  agenteId,
+  versaoId,
+  versaoEmRascunho = false,
+  falhaAoCarregarVersao = false,
+}: Props) {
   const t = useT();
   const [mensagem, setMensagem] = useState(EXEMPLO);
   const [desfecho, setDesfecho] = useState<Desfecho | null>(null);
@@ -31,11 +37,10 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
 
   const funcionario = nome ?? t("seu funcionário");
 
-  // Três estados possíveis, e nenhum deles pode virar uma tela vazia: sem
-  // agente (a pessoa pulou o treinamento), agente em rascunho (não tem versão
-  // publicada, então não há o que executar), e o caso normal.
+  // Um rascunho SALVO pode ser ensaiado. Sem versão ainda, o treinamento fica
+  // como pendência visível; o ensaio não inventa uma versão nem publica nada.
   const semAgente = !agenteId;
-  const rascunho = Boolean(agenteId) && !versaoId;
+  const semVersao = Boolean(agenteId) && !versaoId && !falhaAoCarregarVersao;
 
   async function ensaiar() {
     if (!agenteId || !versaoId) return;
@@ -48,7 +53,13 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
         body: JSON.stringify({ sample_message: mensagem }),
       });
       const json = (await res.json()) as {
-        data?: { final_text?: string; status?: string; error_code?: string; error_message?: string };
+        data?: {
+          final_text?: string;
+          status?: string;
+          error_code?: string;
+          error_message?: string;
+          impediments?: Array<{ code: string; message: string }>;
+        };
         error?: { message?: string };
       };
       if (!res.ok) {
@@ -60,23 +71,20 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
         });
         return;
       }
-      // O ensaio responde 200 mesmo quando o turno FALHA — o resultado traz o
-      // status. Ler só o texto e concluir "executou e não devolveu nada" foi o
-      // que a tela fez no primeiro percurso real, enquanto a causa verdadeira
-      // era outra: a versão não tinha credencial. Mentir sobre a causa manda a
-      // pessoa procurar no lugar errado.
-      //
-      // #2686 — a rota devolve `ok` no payload quando há candidato e nenhuma
-      // mídia pendente (vocabulário de `llm_calls`), e grava `completed` só na
-      // linha de `ai_agent_runs`. Comparar com `completed` sozinho fazia a tela
-      // chamar de erro um turno que respondeu: "Ele não conseguiu responder —
-      // motivo: o ensaio terminou como 'ok'". Os dois vocabulários são legítimos
-      // no lugar deles; quem lê aqui tem de aceitar os dois como sucesso.
+      // O endpoint vivo usa ok/blocked. completed é o contrato anterior;
+      // ambos os sucessos ainda exigem uma resposta efetiva, não apenas HTTP 200.
       const d = json.data;
-      if (d?.status && !["completed", "ok"].includes(d.status)) {
+      if (d?.status !== "ok" && d?.status !== "completed") {
+        const impedimentos = d?.impediments
+          ?.map((item) => item.message)
+          .filter(Boolean)
+          .join("; ");
         setDesfecho({
           tipo: "erro",
-          mensagem: d.error_message ?? d.error_code ?? `${t("o ensaio terminou como")} "${d.status}"`,
+          mensagem:
+            d?.error_message ??
+            (impedimentos || d?.error_code) ??
+            (d?.status ? `${t("o ensaio terminou como")} "${d.status}"` : t("O ensaio falhou")),
         });
         return;
       }
@@ -103,24 +111,51 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
               "Sem ninguém treinado, não há o que testar. Dá para voltar ao passo anterior agora ou fazer isso depois, em IA › Agentes.",
             )}
           </p>
+          <a
+            href="/onboarding/setup-ai"
+            className="mt-3 inline-block text-sm underline underline-offset-2"
+          >
+            {t("Treinar")}
+          </a>
         </div>
       )}
 
-      {rascunho && (
+      {falhaAoCarregarVersao && (
+        <div className="rounded-lg border bg-background p-6" role="alert">
+          <p className="text-sm">
+            {t("Não consegui carregar a versão do agente. Tente atualizar esta página.")}
+          </p>
+        </div>
+      )}
+
+      {semVersao && (
         <div className="rounded-lg border bg-background p-6" role="status">
           <p className="text-sm font-medium">
-            {funcionario} {t("está como")} <strong>{t("rascunho")}</strong> — {t("ainda não foi para o ar.")}
+            {funcionario} {t("está como")} <strong>{t("rascunho")}</strong> —{" "}
+            {t("ainda não foi para o ar.")}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t(
-              "Rascunho não responde mensagem, então não há o que ensaiar. O passo anterior explicou o que falta; você pode resolver depois em IA › Agentes.",
-            )}
+            {t("Configure e salve uma versão antes de testar.")}
           </p>
+          <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <a href="/onboarding/setup-ai" className="underline underline-offset-2">
+              {t("Treinar")}
+            </a>
+            <a href="/onboarding/connect-whatsapp" className="underline underline-offset-2">
+              {t("Conectar WhatsApp")}
+            </a>
+          </div>
         </div>
       )}
 
-      {!semAgente && !rascunho && (
+      {!semAgente && versaoId && !falhaAoCarregarVersao && (
         <div className="space-y-4 rounded-lg border bg-background p-6">
+          {versaoEmRascunho && (
+            <p className="text-sm text-muted-foreground" role="status">
+              {funcionario} {t("está como")} <strong>{t("rascunho")}</strong> —{" "}
+              {t("ainda não foi para o ar.")}
+            </p>
+          )}
           <div className="space-y-2">
             <Label htmlFor="mensagem">{t("Escreva como se fosse um cliente")}</Label>
             <Textarea
@@ -144,10 +179,10 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
 
           {desfecho?.tipo === "resposta" && (
             <div className="space-y-2 rounded-md border bg-muted/40 p-4">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+              <p className="text-xs tracking-wider text-muted-foreground uppercase">
                 {funcionario} {t("respondeu")}
               </p>
-              <p className="whitespace-pre-wrap text-sm">{desfecho.texto}</p>
+              <p className="text-sm whitespace-pre-wrap">{desfecho.texto}</p>
               <p className="text-xs text-muted-foreground">
                 {t("Esta conversa não foi enviada a ninguém e não aparece no seu inbox.")}
               </p>
@@ -171,7 +206,9 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
                 {t(
                   "As causas mais comuns são a chave da empresa de IA sem saldo ou o modelo indisponível. Dá para conferir em",
                 )}{" "}
-                <strong>{t("IA › Credenciais")}</strong>{" "}
+                <a href="/onboarding/setup-ai" className="font-medium underline underline-offset-2">
+                  {t("Treinar")}
+                </a>{" "}
                 {t("e seguir daqui mesmo — o que você montou está salvo.")}
               </p>
             </div>
@@ -183,14 +220,14 @@ export function TestarClient({ nome, agenteId, versaoId }: Props) {
         <Button
           type="button"
           variant="ghost"
-          disabled={pending}
+          disabled={pending || carregando}
           onClick={() => startTransition(() => void pularTeste())}
         >
           {t("Pular")}
         </Button>
         <Button
           type="button"
-          disabled={pending}
+          disabled={pending || carregando}
           onClick={() =>
             startTransition(async () => {
               // `respondeu` guarda a diferença entre "vi funcionando" e "passei

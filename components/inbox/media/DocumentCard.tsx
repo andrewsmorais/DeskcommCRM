@@ -11,27 +11,15 @@ interface Props {
   sizeBytes: number | null;
   storagePath: string | null;
   isOutbound: boolean;
-  /** Nome ORIGINAL do documento quando o payload o trouxer (#2613). Ausente/vazio → rótulo de extensão. */
-  fileName?: string | null;
-  /** Fonte alternativa para mídia de NOTA interna (#1863, F3) — ver ImageMedia. */
-  src?: string;
 }
 
-/** Card de documento: nome original (ou PDF/MP4/…), tamanho e download. */
-export function DocumentCard({
-  messageId,
-  mime,
-  sizeBytes,
-  storagePath,
-  isOutbound,
-  fileName,
-  src,
-}: Props) {
+/** Card de documento: rótulo (PDF/MP4/…), tamanho e download. */
+export function DocumentCard({ messageId, mime, sizeBytes, storagePath, isOutbound }: Props) {
   const t = useT();
-  const label = mediaFileLabel(mime, storagePath, fileName);
+  const label = mediaFileLabel(mime, storagePath);
   return (
     <a
-      href={src ?? mediaSrc(messageId)}
+      href={mediaSrc(messageId)}
       target="_blank"
       rel="noreferrer"
       aria-label={`${t("Baixar")} ${label} (${formatBytes(sizeBytes)})`}
@@ -51,9 +39,7 @@ export function DocumentCard({
         <FileText size={20} weight="duotone" aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium" title={label}>
-          {label}
-        </span>
+        <span className="block truncate text-sm font-medium">{label}</span>
         <span className="block text-xs opacity-70">{formatBytes(sizeBytes)}</span>
       </span>
       <DownloadSimple size={18} className="shrink-0 opacity-70" aria-hidden />

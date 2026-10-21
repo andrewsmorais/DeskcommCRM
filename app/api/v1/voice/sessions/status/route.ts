@@ -6,8 +6,7 @@
 import { randomUUID } from "node:crypto";
 
 import { ok } from "@/lib/api/wrappers";
-import { loadAuthUser } from "@/lib/auth/server";
-import { orgAtivaDaApi } from "@/lib/auth/require-role";
+import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -17,9 +16,7 @@ export async function GET(): Promise<Response> {
 
   const user = await loadAuthUser();
   if (!user) return new Response(null, { status: 401 });
-  const ativa = await orgAtivaDaApi(user, requestId);
-  if (!ativa.ok) return ativa.response;
-  const activeOrg = ativa.org;
+  const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) return new Response(null, { status: 403 });
 
   const supabase = await createClient();

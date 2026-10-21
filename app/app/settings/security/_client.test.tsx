@@ -53,8 +53,7 @@ function renderTela(props: Partial<React.ComponentProps<typeof SecurityClient>> 
       mfaEnrolled={true}
       obrigatorio={false}
       podeExigirDaEquipe={false}
-      papelMinimo="none"
-      diasDeCarencia={0}
+      empresaExige={false}
       {...props}
     />,
   );

@@ -1,8 +1,7 @@
 import { loadOnboardingChannel } from "@/lib/channels/onboarding-session";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { loadAuthUser } from "@/lib/auth/server";
-import { orgAtivaDaApi } from "@/lib/auth/require-role";
+import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 
 /**
  * Proxy WAHA's QR endpoint so the browser can <img src="..." /> without
@@ -13,9 +12,7 @@ import { orgAtivaDaApi } from "@/lib/auth/require-role";
 export async function GET() {
   const user = await loadAuthUser();
   if (!user) return new NextResponse(null, { status: 401 });
-  const ativa = await orgAtivaDaApi(user);
-  if (!ativa.ok) return ativa.response;
-  const activeOrg = ativa.org;
+  const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) return new NextResponse(null, { status: 404 });
 
   const baseUrl = process.env.WAHA_API_BASE_URL;

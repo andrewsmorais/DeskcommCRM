@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { audit } from "@/lib/audit";
-import { escritaDeAdminOuRecusa } from "@/lib/auth/escritaDeAdminOuRecusa";
-import { MENSAGEM_DA_RECUSA_DE_ESCRITA } from "@/lib/auth/recusa-de-escrita-de-admin";
+import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { acharChave } from "@/lib/instalacao/catalogo";
 import { estadoParaTela, gravarPelaTela, voltarAoAmbiente, type EstadoParaTela } from "@/lib/instalacao/config";
 
@@ -27,7 +26,7 @@ export type ResultadoDaGravacao =
 /**
  * Grava uma chave da instalação pela tela.
  *
- * ── O gate é `requirePlatformAdminEscrita()`, e a razão é a mesma de `updateBranding` ─
+ * ── O gate é `requirePlatformAdmin()`, e a razão é a mesma de `updateBranding` ─
  *
  * Server Action não é rota: não passa por `requireRole` nem pelo layout de
  * `/admin`. Um POST direto na action, com sessão de um platform admin, entraria
@@ -57,18 +56,12 @@ export async function salvarConfiguracaoDaInstalacao(
   chave: string,
   valor: string,
 ): Promise<ResultadoDaGravacao> {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return { ok: false, erro: MENSAGEM_DA_RECUSA_DE_ESCRITA[escrita.error] };
-  const { user } = escrita.ctx;
+  const { user } = await requirePlatformAdmin();
 
   const doCatalogo = acharChave(chave);
-  if (!doCatalogo || doCatalogo.controle !== "edita" || doCatalogo.telaDona === "cobranca") {
+  if (!doCatalogo || doCatalogo.controle !== "edita") {
     // Falha fechada: chave fora do catálogo, ou que a tela mostra só como
-    // diagnóstico, não é editável nem por caminho alternativo. As da cobrança
-    // (`telaDona: "cobranca"`) têm escritora própria — a Conexão confere a chave
-    // com o provedor, registra o webhook e recusa trocar o provedor de quem tem
-    // assinatura viva; a Régua valida 5–30 dias. Por aqui passariam sem nada
-    // disso (spec da cobrança do revendedor §7a, §10).
+    // diagnóstico, não é editável nem por caminho alternativo.
     return { ok: false, erro: "Esta configuração não pode ser alterada por aqui." };
   }
 
@@ -120,12 +113,10 @@ export async function salvarConfiguracaoDaInstalacao(
  * padrão". Sem linha, o resolvedor lê o `.env` de novo e pode semear outra vez.
  */
 export async function voltarConfiguracaoAoPadrao(chave: string): Promise<ResultadoDaGravacao> {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return { ok: false, erro: MENSAGEM_DA_RECUSA_DE_ESCRITA[escrita.error] };
-  const { user } = escrita.ctx;
+  const { user } = await requirePlatformAdmin();
 
   const doCatalogo = acharChave(chave);
-  if (!doCatalogo || doCatalogo.controle !== "edita" || doCatalogo.telaDona === "cobranca") {
+  if (!doCatalogo || doCatalogo.controle !== "edita") {
     return { ok: false, erro: "Esta configuração não pode ser alterada por aqui." };
   }
 

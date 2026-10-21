@@ -12,7 +12,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ user_id: 
   const denied = await requireSupportWrite();
   if (denied) return denied;
   const requestId = randomUUID();
-  const authz = await requireRole("admin", { requestId, resource: "team" });
+  const authz = await requireRole("admin", {
+    requestId,
+    resource: "team",
+    plano: "permissoes_avancadas",
+  });
   if (!authz.ok) return authz.response;
   const { user_id } = await ctx.params;
   const parsed = z

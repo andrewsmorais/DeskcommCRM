@@ -130,9 +130,6 @@ export async function consultar<T extends pg.QueryResultRow = pg.QueryResultRow>
   values: unknown[] = [],
 ): Promise<pg.QueryResult<T>> {
   const client = await pool.connect();
-  // #2624 — mesma marcação do #2621: o finally só libera COM erro quem falhou
-  // dentro da transação (release(err) → _remove no pg-pool, cliente descartado).
-  let erroNaTransacao: Error | undefined;
   try {
     await client.query("begin read only");
     await client.query(`set local statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
@@ -142,12 +139,10 @@ export async function consultar<T extends pg.QueryResultRow = pg.QueryResultRow>
     await client.query("commit");
     return resultado;
   } catch (err) {
-    // Marcado ANTES do rollback: se o próprio rollback estourar, o cliente ainda sai com erro.
-    erroNaTransacao = err instanceof Error ? err : new Error(String(err));
     await client.query("rollback").catch(() => undefined);
     throw err;
   } finally {
-    client.release(erroNaTransacao);
+    client.release();
   }
 }
 

@@ -15,7 +15,6 @@ export const FOLLOWUP_GATILHO_LEAD_HANDLER_KEY = "followup-gatilho-lead.v1";
 
 export const followupGatilhoLeadHandler: EventHandler = {
   key: FOLLOWUP_GATILHO_LEAD_HANDLER_KEY,
-  naOrgParada: "pula",
   events: [EVENTO_DE_LEAD_CRIADO],
   async handle(row): Promise<HandlerResult> {
     try {

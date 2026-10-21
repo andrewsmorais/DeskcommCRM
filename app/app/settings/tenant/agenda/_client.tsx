@@ -2,7 +2,6 @@
 import { AgendasConectadas } from "@/components/agenda/AgendasConectadas";
 import { PrazosDePresenca } from "@/components/agenda/PrazosDePresenca";
 import { AgendaDosColegas } from "@/components/agenda/AgendaDosColegas";
-import { MeetComAcessoAberto } from "@/components/agenda/MeetComAcessoAberto";
 import { ClientePelaAgenda } from "@/components/agenda/ClientePelaAgenda";
 import { DiasBloqueados } from "@/components/agenda/DiasBloqueados";
 
@@ -41,7 +40,6 @@ export interface TipoRow {
   requires_confirmation: boolean;
   is_active: boolean;
   reminder_enabled: boolean;
-  reminder_channel_session_id?: string | null;
   reminder_minutes_before: number;
   reminder_extra_offsets_minutes: number[] | null;
   reminder_body: string | null;
@@ -115,20 +113,7 @@ type CartaoDeLembrete = {
   body: string;
 };
 
-export interface CanalParaLembrete {
-  id: string;
-  nome: string;
-}
-
-function LembreteDoCompromisso({
-  tipo,
-  canais,
-  erroCanais,
-}: {
-  tipo: TipoRow;
-  canais: CanalParaLembrete[];
-  erroCanais: string | null;
-}) {
+function LembreteDoCompromisso({ tipo }: { tipo: TipoRow }) {
   const t = useT();
   const [ligado, setLigado] = React.useState(tipo.reminder_enabled);
   const [cartoes, setCartoes] = React.useState<CartaoDeLembrete[]>(() =>
@@ -192,43 +177,6 @@ function LembreteDoCompromisso({
         />
         {t("Avisar o cliente antes do compromisso, pelo WhatsApp")}
       </label>
-      <label className="grid gap-1 text-xs text-text-muted">
-        {t("Canal para enviar os lembretes")}
-        <select
-          name="reminder_channel_session_id"
-          disabled={!ligado || Boolean(erroCanais)}
-          defaultValue={tipo.reminder_channel_session_id ?? ""}
-          data-testid={`editar-lembrete-canal-${tipo.id}`}
-          className="rounded-md border border-border bg-surface p-2 text-sm text-text disabled:opacity-50"
-        >
-          <option value="">
-            {t("Automático — conversa da reserva ou único canal disponível")}
-          </option>
-          {tipo.reminder_channel_session_id &&
-          !canais.some((c) => c.id === tipo.reminder_channel_session_id) ? (
-            <option value={tipo.reminder_channel_session_id}>
-              {t("Canal configurado indisponível — escolha outro")}
-            </option>
-          ) : null}
-          {canais.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </select>
-        <span>
-          {t(
-            "O canal escolhido vale para todas as reservas deste tipo, inclusive as criadas manualmente. Se ele não puder enviar, a equipe recebe um aviso; o sistema não troca de número sozinho.",
-          )}
-        </span>
-        {erroCanais ? (
-          <span role="alert">
-            {t(
-              "Não foi possível carregar os canais. A escolha guardada será preservada; tente novamente.",
-            )}
-          </span>
-        ) : null}
-      </label>
       <input
         type="hidden"
         name="reminder_steps"
@@ -237,8 +185,10 @@ function LembreteDoCompromisso({
       />
       <ul className="grid gap-3">
         {cartoes.map((c, i) => {
-          const min = c.unidade === "dias" ? 1 : c.unidade === "horas" ? 1 : 15;
-          const max = c.unidade === "dias" ? 7 : c.unidade === "horas" ? 168 : 10080;
+          const min =
+            c.unidade === "dias" ? 1 : c.unidade === "horas" ? 1 : 15;
+          const max =
+            c.unidade === "dias" ? 7 : c.unidade === "horas" ? 168 : 10080;
           return (
             <li
               key={c.id}
@@ -253,7 +203,9 @@ function LembreteDoCompromisso({
                     max={max}
                     disabled={!ligado}
                     value={c.quantidade}
-                    onChange={(e) => atualizar(c.id, { quantidade: Number(e.target.value) })}
+                    onChange={(e) =>
+                      atualizar(c.id, { quantidade: Number(e.target.value) })
+                    }
                     data-testid={
                       i === 0
                         ? `editar-lembrete-minutos-${tipo.id}`
@@ -267,7 +219,9 @@ function LembreteDoCompromisso({
                   <select
                     disabled={!ligado}
                     value={c.unidade}
-                    onChange={(e) => mudarUnidade(c.id, e.target.value as UnidadeDeAntecedencia)}
+                    onChange={(e) =>
+                      mudarUnidade(c.id, e.target.value as UnidadeDeAntecedencia)
+                    }
                     data-testid={
                       i === 0
                         ? `editar-lembrete-unidade-${tipo.id}`
@@ -288,7 +242,9 @@ function LembreteDoCompromisso({
                     size="sm"
                     className="ml-auto"
                     data-testid={`editar-lembrete-remover-${tipo.id}-${i}`}
-                    onClick={() => setCartoes((cs) => cs.filter((x) => x.id !== c.id))}
+                    onClick={() =>
+                      setCartoes((cs) => cs.filter((x) => x.id !== c.id))
+                    }
                   >
                     {t("Remover")}
                   </Button>
@@ -302,9 +258,7 @@ function LembreteDoCompromisso({
                   disabled={!ligado}
                   value={c.body}
                   onChange={(e) => atualizar(c.id, { body: e.target.value })}
-                  placeholder={t(
-                    "Oi {{nome}}! Passando pra lembrar: {{titulo}}, {{dia}} às {{hora}}.",
-                  )}
+                  placeholder={t("Oi {{nome}}! Passando pra lembrar: {{titulo}}, {{dia}} às {{hora}}.")}
                   data-testid={
                     i === 0
                       ? `editar-lembrete-texto-${tipo.id}`
@@ -341,9 +295,7 @@ function LembreteDoCompromisso({
         </Button>
       ) : null}
       <p className="text-[11px] text-text-muted">
-        {t(
-          "Deixe a mensagem em branco para o texto padrão. Variáveis: {{nome}}, {{titulo}}, {{dia}}, {{hora}}, {{endereco}}.",
-        )}
+        {t("Deixe a mensagem em branco para o texto padrão. Variáveis: {{nome}}, {{titulo}}, {{dia}}, {{hora}}, {{endereco}}.")}
       </p>
     </div>
   );
@@ -351,8 +303,6 @@ function LembreteDoCompromisso({
 
 export function TiposDeAgendamentoClient({
   tiposIniciais,
-  canais = [],
-  erroCanais = null,
   pessoas,
   podeEditar,
   usuarioAtualId,
@@ -362,12 +312,8 @@ export function TiposDeAgendamentoClient({
   podeLigarClientePelaAgenda,
   colegasPodemMexerNaAgendaLigado,
   podeMudarAgendaDosColegas,
-  meetAbertoLigado,
-  podeMudarMeetAberto,
 }: {
   tiposIniciais: TipoRow[];
-  canais?: CanalParaLembrete[];
-  erroCanais?: string | null;
   pessoas: Array<{ id: string; papel: string; nome: string }>;
   podeEditar: boolean;
   usuarioAtualId: string;
@@ -380,9 +326,6 @@ export function TiposDeAgendamentoClient({
   /** `organizations.settings.colegas_podem_mexer_na_agenda` (migration 0343). */
   colegasPodemMexerNaAgendaLigado: boolean;
   podeMudarAgendaDosColegas: boolean;
-  /** `organizations.settings.google_meet_acesso_aberto` (migration 0648, issue #2063). */
-  meetAbertoLigado: boolean;
-  podeMudarMeetAberto: boolean;
 }) {
   const t = useT();
   const router = useRouter();
@@ -431,7 +374,7 @@ export function TiposDeAgendamentoClient({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="tipos-de-agendamento-config">
       {podeConfigurarGoogle && <AgendasConectadas />}
-      <PrazosDePresenca podeEditar={podeEditar} />
+      <PrazosDePresenca podeEditar={podeEditar}/>
       <ClientePelaAgenda
         ligadoInicial={clientePelaAgendaLigado}
         podeLigar={podeLigarClientePelaAgenda}
@@ -444,16 +387,7 @@ export function TiposDeAgendamentoClient({
         ligadoInicial={colegasPodemMexerNaAgendaLigado}
         podeMudar={podeMudarAgendaDosColegas}
       />
-      {/* A opção da issue #2063 é a mesma pergunta ("como a agenda se
-          comporta nesta empresa?"), e o AVISO DE RISCO fica encostado nela de
-          propósito: é a única troca de segurança por conveniência que esta
-          tela faz, e ler a frase antes de apertar é melhor que confirmar
-          depois. */}
-      <MeetComAcessoAberto
-        ligadoInicial={meetAbertoLigado}
-        podeMudar={podeMudarMeetAberto}
-      />
-      <DiasBloqueados podeEditar={podeEditar} />
+      <DiasBloqueados podeEditar={podeEditar}/>
       {podeEditar ? (
         <div>
           {criando ? (
@@ -601,13 +535,8 @@ export function TiposDeAgendamentoClient({
             <p className="mt-1 font-mono text-xs text-text-muted">{erroDeLeitura}</p>
           </li>
         ) : tiposIniciais.length === 0 ? (
-          <li
-            data-testid="sem-tipos"
-            className="rounded-lg border border-border bg-surface p-4 text-sm text-text-muted"
-          >
-            {t(
-              "Nenhum tipo de agendamento ainda. Crie o primeiro para que a Agenda tenha o que oferecer.",
-            )}
+          <li data-testid="sem-tipos" className="rounded-lg border border-border bg-surface p-4 text-sm text-text-muted">
+            {t("Nenhum tipo de agendamento ainda. Crie o primeiro para que a Agenda tenha o que oferecer.")}
           </li>
         ) : null}
         {tiposIniciais.map((tipo) => (
@@ -624,12 +553,8 @@ export function TiposDeAgendamentoClient({
               <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-text-muted">
                 {t(rotuloDe(CATEGORIAS, tipo.category))}
               </span>
-              <span className="text-xs text-text-muted tabular-nums">
-                {tipo.duration_minutes} min
-              </span>
-              <span className="text-xs text-text-muted">
-                {t(rotuloDe(LOCAIS, tipo.location_kind))}
-              </span>
+              <span className="text-xs tabular-nums text-text-muted">{tipo.duration_minutes} min</span>
+              <span className="text-xs text-text-muted">{t(rotuloDe(LOCAIS, tipo.location_kind))}</span>
               {!tipo.default_owner_user_id ? (
                 // O aviso existe porque o sintoma é MUDO: sem dono, a tela de
                 // marcar simplesmente não mostra horário, sem dizer por quê.
@@ -664,21 +589,20 @@ export function TiposDeAgendamentoClient({
                 // pode viver escondida atrás de um clique em "Editar".
                 <span
                   data-testid={`lembrete-ligado-${tipo.id}`}
-                  className="text-xs text-text-muted tabular-nums"
+                  className="text-xs tabular-nums text-text-muted"
                 >
                   {t("avisa o cliente")}{" "}
                   {[tipo.reminder_minutes_before, ...(tipo.reminder_extra_offsets_minutes ?? [])]
                     .sort((a, b) => b - a)
                     .join(", ")}{" "}
                   min {t("antes")}
-                  {tipo.reminder_body || Object.keys(tipo.reminder_bodies ?? {}).length > 0
+                  {tipo.reminder_body ||
+                  Object.keys(tipo.reminder_bodies ?? {}).length > 0
                     ? ` · ${t("texto próprio")}`
                     : ""}
                 </span>
               ) : null}
-              {!tipo.is_active ? (
-                <span className="text-xs text-text-subtle">{t("desativado")}</span>
-              ) : null}
+              {!tipo.is_active ? <span className="text-xs text-text-subtle">{t("desativado")}</span> : null}
               {podeEditar ? (
                 <span className="ml-auto flex gap-1">
                   <Button
@@ -745,9 +669,7 @@ export function TiposDeAgendamentoClient({
                         id: tipo.id,
                         name: String(dados.get("name") ?? "").trim(),
                         category: String(dados.get("category") ?? tipo.category),
-                        duration_minutes: Number(
-                          dados.get("duration_minutes") ?? tipo.duration_minutes,
-                        ),
+                        duration_minutes: Number(dados.get("duration_minutes") ?? tipo.duration_minutes),
                         // `|| null`, e NÃO omitir quando vazio.
                         //
                         // A tela oferece `<option value="">{t("Sem responsável")}</option>`
@@ -781,16 +703,11 @@ export function TiposDeAgendamentoClient({
                         ...(dados.get("reminder_enabled") === "on"
                           ? (() => {
                               const emp = empacotarLembretes(
-                                lerPassosDoFormulario(String(dados.get("reminder_steps") ?? "")),
+                                lerPassosDoFormulario(
+                                  String(dados.get("reminder_steps") ?? ""),
+                                ),
                               );
                               return {
-                                ...(dados.has("reminder_channel_session_id")
-                                  ? {
-                                      reminder_channel_session_id:
-                                        String(dados.get("reminder_channel_session_id") || "") ||
-                                        null,
-                                    }
-                                  : {}),
                                 reminder_minutes_before: emp.principal,
                                 reminder_extra_offsets_minutes: emp.extras,
                                 reminder_body: emp.corpoPrincipal,
@@ -843,33 +760,26 @@ export function TiposDeAgendamentoClient({
                     </select>
                   </label>
                   <label className="flex flex-col gap-1 text-xs text-text-muted">
-                    {t("Preço padrão")}
-                    <input
-                      name="default_price_cents"
-                      type="text"
-                      inputMode="decimal"
-                      placeholder={t("digite na hora")}
-                      defaultValue={
-                        tipo.default_price_cents === null
-                          ? ""
-                          : (tipo.default_price_cents / 100).toFixed(2)
-                      }
-                      data-testid={`editar-preco-${tipo.id}`}
-                      className="rounded-md border border-border bg-surface-elevated p-2 text-sm text-text"
-                    />
-                    <span className="text-[11px] text-text-muted">
-                      {t("Opcional. Vira o valor sugerido na comanda, e pode ser mudado lá.")}
-                    </span>
+                  {t("Preço padrão")}
+                  <input
+                    name="default_price_cents"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder={t("digite na hora")}
+                    defaultValue={
+                      tipo.default_price_cents === null ? "" : (tipo.default_price_cents / 100).toFixed(2)
+                    }
+                    data-testid={`editar-preco-${tipo.id}`}
+                    className="rounded-md border border-border bg-surface-elevated p-2 text-sm text-text"
+                  />
+                  <span className="text-[11px] text-text-muted">
+                    {t("Opcional. Vira o valor sugerido na comanda, e pode ser mudado lá.")}
+                  </span>
                   </label>
                 </div>
-                <LembreteDoCompromisso tipo={tipo} canais={canais} erroCanais={erroCanais} />
+                <LembreteDoCompromisso tipo={tipo} />
                 <div className="flex justify-end">
-                  <Button
-                    type="submit"
-                    size="sm"
-                    data-testid={`salvar-${tipo.id}`}
-                    disabled={salvando}
-                  >
+                  <Button type="submit" size="sm" data-testid={`salvar-${tipo.id}`} disabled={salvando}>
                     {salvando ? t("Salvando…") : t("Salvar")}
                   </Button>
                 </div>

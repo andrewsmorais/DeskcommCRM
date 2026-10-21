@@ -97,8 +97,7 @@ export async function login(page: Page, email: string, senha: string): Promise<v
 
 export async function captura(page: Page, nome: string): Promise<void> {
   fs.mkdirSync(EVIDENCIA, { recursive: true });
-  // Transições CSS terminadas: um interruptor recém-ligado sairia na foto a meio caminho.
-  await page.screenshot({ path: path.join(EVIDENCIA, `${nome}.png`), fullPage: true, animations: "disabled" });
+  await page.screenshot({ path: path.join(EVIDENCIA, `${nome}.png`), fullPage: true });
 }
 
 /**

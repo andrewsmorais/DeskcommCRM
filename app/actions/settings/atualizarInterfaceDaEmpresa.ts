@@ -1,6 +1,5 @@
 "use server";
 
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { supportWriteError } from "@/lib/impersonate/support";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -8,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
-import { podeAdministrarEmpresa } from "@/lib/auth/pode-administrar-empresa";
+import { ROLE_RANK } from "@/lib/auth/types";
 import {
   interfaceSettingsSchema,
   interfaceTemDestino,
@@ -39,7 +38,7 @@ export async function atualizarInterfaceDaEmpresa(input: InterfaceSettings): Pro
   if (supportWriteError(authUser.support)) return { ok: false, error: "forbidden" };
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return { ok: false, error: "forbidden_tenant" };
-  if (!podeAdministrarEmpresa(authUser, activeOrg)) {
+  if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
   }
 
@@ -61,7 +60,7 @@ export async function atualizarInterfaceDaEmpresa(input: InterfaceSettings): Pro
   const supabase = createAdminClient();
   const hdrs = await headers();
   const requestId = hdrs.get("x-request-id");
-  const ip = ipDoCliente(hdrs);
+  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
 
   const { error } = await supabase

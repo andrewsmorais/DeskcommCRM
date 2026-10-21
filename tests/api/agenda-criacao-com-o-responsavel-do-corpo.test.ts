@@ -258,3 +258,4 @@ it("Tipo sem responsável e sem responsável no corpo: 422 (a falta vem antes da
 
   expect(inseridos).toHaveLength(0);
 });
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })), exigirRecursoDoPlano: vi.fn(async () => null) }));

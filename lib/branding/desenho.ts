@@ -34,7 +34,7 @@ export const SIMBOLO = {
 } as const;
 
 /**
- * O logotipo: símbolo + "Deskcomm" + "CRM", com o texto já convertido em
+ * O logotipo: símbolo + "ChatAI Online" + "CRM", com o texto já convertido em
  * caminhos — não depende de fonte instalada nem de `@font-face`.
  */
 export const LOGOTIPO = {
@@ -94,10 +94,10 @@ export const LOGOTIPO = {
 
 /**
  * As cores da marca do produto, por tema — os mesmos graus da régua
- * (`regua-do-produto.ts`): sálvia 600/400 para o símbolo, neutro 900/0 para
- * o nome e neutro 600/300 para o "CRM". Copiadas dos SVGs de `docs/brand/`.
+ * (`regua-do-produto.ts`): violeta ChatAI 600/400 para o símbolo, neutro 900/0
+ * para o nome e neutro 600/300 para o "CRM".
  */
 export const CORES_DA_MARCA = {
-  claro: { simbolo: "#506d48", nome: "#1c1a16", sufixo: "#5d594f" },
-  escuro: { simbolo: "#82a077", nome: "#f5f4ef", sufixo: "#8e8b7f" },
+  claro: { simbolo: "#211d55", nome: "#1e1b4b", sufixo: "#4b4f70" },
+  escuro: { simbolo: "#a78bfa", nome: "#eef2ff", sufixo: "#a5b4fc" },
 } as const;

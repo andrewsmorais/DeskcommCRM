@@ -30,8 +30,6 @@ export interface PacingKnobsItem {
   defaults: PacingKnobs;
   bounds: {
     intervalMaxMs: number;
-    msPorCaractereMax: number;
-    atrasoMaximoMsMax: number;
     hourLastStart: number;
     hourEnd: number;
     daily_limit: { min: number; max: number };

@@ -1,6 +1,5 @@
 "use client";
 
-import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { useT } from "@/hooks/i18n/useT";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -13,8 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEditLead } from "@/hooks/kanban/useUpdateLead";
 import type { Lead } from "@/lib/types/leads";
 import { updateLeadSchema, type UpdateLeadInput } from "@/lib/schemas/leads";
-import { MOEDA_PADRAO, parseReaisToCents, simboloDaMoeda } from "@/lib/money";
-import { soChavesAlteradas } from "@/lib/leads/custom-fields-so-diff";
+import { parseReaisToCents } from "@/lib/money";
 import { CustomFieldsEditor, type CustomFieldDef } from "@/components/contacts/CustomFieldsEditor";
 import { EcoDoValor } from "./EcoDoValor";
 
@@ -52,18 +50,8 @@ function centsToReais(cents: number | null | undefined): string {
  */
 export function LeadFieldsForm({ lead, pipelineId, fieldDefs = [], onSaved, onCancel }: Props) {
   const t = useT();
-  const org = useActiveOrg();
-  // A moeda do negócio JÁ GRAVADO vence: trocar a moeda da empresa não
-  // reescreve o que nasceu antes, e o cartão e o dossiê mostram a persistida.
-  const moedaDoValor = lead.currency ?? org?.currency ?? MOEDA_PADRAO;
   const edit = useEditLead(pipelineId);
   const [customFields, setCustomFields] = useState<Record<string, unknown>>(lead.custom_fields ?? {});
-  // A RÉGUA do diff (issue #2132): o valor carregado ao abrir. Só o que a
-  // pessoa mudar daqui vai viajar — devolver o objeto inteiro sobrescrevia o
-  // que outra pessoa (ou o MCP `crm_update_lead`) mudou com a ficha aberta.
-  const [camposCarregados, setCamposCarregados] = useState<Record<string, unknown>>(
-    lead.custom_fields ?? {},
-  );
 
   const form = useForm<FormShape>({
     defaultValues: {
@@ -84,7 +72,6 @@ export function LeadFieldsForm({ lead, pipelineId, fieldDefs = [], onSaved, onCa
       expected_close_date: lead.expected_close_date ?? "",
     });
     setCustomFields(lead.custom_fields ?? {});
-    setCamposCarregados(lead.custom_fields ?? {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id]);
 
@@ -110,10 +97,7 @@ export function LeadFieldsForm({ lead, pipelineId, fieldDefs = [], onSaved, onCa
       value_cents: valueCents,
       tags,
       expected_close_date: values.expected_close_date || null,
-      // Só o que a pessoa alterou (issue #2132) — o merge continua do servidor.
-      ...(fieldDefs.length > 0
-        ? { custom_fields: soChavesAlteradas(camposCarregados, customFields) }
-        : {}),
+      ...(fieldDefs.length > 0 ? { custom_fields: customFields } : {}),
     };
 
     const parsed = updateLeadSchema.safeParse(patch);
@@ -128,9 +112,6 @@ export function LeadFieldsForm({ lead, pipelineId, fieldDefs = [], onSaved, onCa
         leadId: lead.id,
         patch: parsed.data as UpdateLeadInput,
       });
-      // O que acabou de gravar vira a nova régua: o segundo salvamento não
-      // reenvia o primeiro, e uma limpeza alheia no intervalo não é atropelada.
-      setCamposCarregados({ ...customFields });
       toast.success(t("Lead atualizado"));
       onSaved?.();
     } catch {
@@ -156,16 +137,14 @@ export function LeadFieldsForm({ lead, pipelineId, fieldDefs = [], onSaved, onCa
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            {/* O rótulo segue a moeda do NEGÓCIO (a organização é a reserva):
-                  `R$` em duro mentia para quem opera em euro. */}
-            <Label htmlFor="valueReais">{t("Valor")} ({simboloDaMoeda(moedaDoValor)})</Label>
+            <Label htmlFor="valueReais">{t("Valor (R$)")}</Label>
             <Input
               id="valueReais"
               inputMode="decimal"
               placeholder="0,00"
               {...form.register("valueReais")}
             />
-            <EcoDoValor control={form.control} moeda={moedaDoValor} />
+            <EcoDoValor control={form.control} />
             {form.formState.errors.valueReais && (
               <p className="text-xs text-error-fg">
                 {t(form.formState.errors.valueReais.message ?? "")}

@@ -3,15 +3,17 @@ import { marcaEhADoProduto } from "@/lib/branding";
 import { marcaDaSaida } from "@/lib/branding/saida";
 import { createClient } from "@/lib/supabase/server";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
+import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 /**
- * A casca das telas de acesso — login, cadastro, recuperação, MFA, confirmar acesso.
+ * A casca das telas de acesso — login, cadastro, recuperação, MFA.
  *
  * ── Por que o LOGO mora aqui, e não em `login/page.tsx` ───────────────────────
  *
- * São sete telas no grupo `(public)`, e todas são "antes de entrar": quem instala
+ * São seis telas no grupo `(public)`, e todas são "antes de entrar": quem instala
  * o produto para clientes mostra a marca dele exatamente aí. Um `<img>` por
- * página seriam sete cópias que divergem na primeira vez que alguém mexer numa
+ * página seriam seis cópias que divergem na primeira vez que alguém mexer numa
  * só — e a que ficaria para trás é sempre a que ninguém abre (recuperação de
  * senha, cadastro de MFA), que é justamente onde o cliente do revendedor
  * aparece sozinho e sem contexto.
@@ -30,16 +32,11 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * para que `tests/e2e/marca-logo.spec.ts` continue medindo "a fachada está sem
  * `<img>`" como "sem logo do revendedor".
  *
- * O conteúdo de cada página resolve o próprio nome. A tela de login usa
- * `marcaDaSaida(null)`, como o título da aba, para que a marca alterada pela
- * instalação apareça também sob o botão "Entrar"; a casca usa a mesma resolução
- * para logo e tema.
- *
- * Com o login e a aba na MESMA pilha, `tests/e2e/icone-da-marca.spec.ts` deixou
- * de cruzar duas resoluções independentes: ele só prova que as duas concordam.
- * O que ancora o nome numa verdade de fora da pilha é o caso "o nome trocado em
- * /admin/marca…" de `tests/e2e/marca-logo.spec.ts`, que digita o nome na tela e
- * o confere no login de quem não entrou. Não apague um sem o outro.
+ * O NOME continua saindo de `branding()` dentro de cada página — não é descuido,
+ * está medido em `tests/e2e/icone-da-marca.spec.ts:64-77`: aquela spec cruza duas
+ * resoluções independentes (o título da aba, que lê o banco, contra o texto sob
+ * o "Entrar", que lê o `.env`). Trocar o texto para este mesmo resolvedor
+ * deixaria a spec verde medindo nada.
  */
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const marca = await marcaDaSaida(null);
@@ -52,12 +49,17 @@ export default async function PublicLayout({ children }: { children: React.React
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const locale = (user?.user_metadata?.locale as string | undefined) ?? null;
+  const locale = await idiomaDoVisitante(
+    (user?.user_metadata?.locale as string | undefined) ?? null,
+  );
 
   return (
     <IdiomaProvider locale={locale}>
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="flow-auth theme-auth-colors relative isolate flex min-h-svh items-center justify-center bg-background px-4 py-20 sm:px-6">
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+          <ThemeToggle className="border border-border bg-card shadow-sm" />
+        </div>
+        <div className="relative w-full max-w-[440px] space-y-8">
           {marca.logoUrl || marca.logoDarkUrl ? (
             <div className="flex justify-center">
               {/*
@@ -76,13 +78,7 @@ export default async function PublicLayout({ children }: { children: React.React
                 "primeira <img> da página", e uma asserção de negação com seletor
                 largo passa sozinha assim que outra imagem entra na tela.
               */}
-              <div
-                className={
-                  marca.logoDarkUrl
-                    ? "rounded-md"
-                    : "rounded-md dark:bg-white dark:px-3 dark:py-2 dark:shadow-sm"
-                }
-              >
+              <div className="rounded-md">
                 {marca.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -114,7 +110,9 @@ export default async function PublicLayout({ children }: { children: React.React
               <LogotipoDoProduto nome={marca.nome} className="h-12 w-auto" />
             </div>
           ) : null}
-          {children}
+          <div className="flow-auth-card rounded-2xl border border-border bg-card p-6 sm:p-8">
+            {children}
+          </div>
         </div>
       </div>
     </IdiomaProvider>

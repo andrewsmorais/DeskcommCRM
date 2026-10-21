@@ -33,7 +33,7 @@ export async function POST(
 
   const requestId = randomUUID();
 
-  const authz = await requireRole("manager", { requestId, resource: "ai_skills" });
+  const authz = await requireRole("manager", { requestId, resource: "ai_skills", plano: "skills" });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org } = authz;
@@ -57,14 +57,19 @@ export async function POST(
     .eq("name", name)
     .maybeSingle();
   if (!platformSkill) {
-    return fail("not_found", t("Skill não encontrada no catálogo de plataforma."), 404, { requestId });
+    return fail("not_found", t("Skill não encontrada no catálogo de plataforma."), 404, {
+      requestId,
+    });
   }
 
   const db = getSkillsPool();
 
   let result: { versionId: string };
   try {
-    result = await installPlatformSkill({ db }, { organizationId: org.orgId, name, createdBy: authUser.id });
+    result = await installPlatformSkill(
+      { db },
+      { organizationId: org.orgId, name, createdBy: authUser.id },
+    );
   } catch (err) {
     console.error("[skills-install] installPlatformSkill falhou:", err);
     return fail("internal_error", "Erro ao instalar a skill.", 500, { requestId });

@@ -104,7 +104,7 @@ export async function resolveAuthDual(
         return {
           ok: false,
           response: fail(
-            err.codigo ?? (err.httpStatus === 401 ? "unauthenticated" : "forbidden"),
+            err.httpStatus === 401 ? "unauthenticated" : "forbidden",
             err.message,
             err.httpStatus,
             { requestId },

@@ -28,17 +28,6 @@ const EMPTY: SmtpConfig = {
 
 /** Banco primeiro; o .env permite provisionar uma VPS sem abrir a interface. */
 export async function getSmtpConfig(): Promise<SmtpConfig> {
-  return (await lerSmtp()).config;
-}
-
-/**
- * O mesmo que `getSmtpConfig`, dizendo também se o BANCO respondeu. "Sem linha"
- * e "banco falhou" caem os dois no `.env`, mas só o primeiro permite afirmar
- * que a instalação não tem SMTP: quem decide por isso (o "esqueci a senha",
- * #2755) não pode tratar um soluço do banco como falta de configuração.
- */
-export async function lerSmtp(): Promise<{ config: SmtpConfig; bancoRespondeu: boolean }> {
-  let bancoRespondeu = false;
   try {
     const { data, error } = await createAdminClient()
       .from("platform_smtp_settings")
@@ -57,7 +46,7 @@ export async function lerSmtp(): Promise<{ config: SmtpConfig; bancoRespondeu: b
         from_email: string | null;
         from_name: string | null;
       };
-      const config: SmtpConfig = {
+      return {
         host: row.smtp_host?.trim() ?? "",
         port: row.smtp_port,
         security: row.smtp_security,
@@ -69,10 +58,7 @@ export async function lerSmtp(): Promise<{ config: SmtpConfig; bancoRespondeu: b
         fromName: row.from_name?.trim() ?? "",
         source: "database",
       };
-      return { config, bancoRespondeu: true };
     }
-    // Sem erro e sem linha: o banco respondeu "ninguém configurou pela tela".
-    bancoRespondeu = !error;
   } catch {
     // Clones anteriores à migration caem no ambiente até serem atualizados.
   }
@@ -86,7 +72,7 @@ export async function lerSmtp(): Promise<{ config: SmtpConfig; bancoRespondeu: b
     fromName: env.SMTP_FROM_NAME.trim(),
     source: "environment",
   };
-  return { config: config.host || config.fromEmail ? config : EMPTY, bancoRespondeu };
+  return config.host || config.fromEmail ? config : EMPTY;
 }
 
 export async function saveSmtpConfig(input: Omit<SmtpConfig, "source"> & { updatedBy: string }) {

@@ -41,10 +41,7 @@ export type Bump = "patch" | "minor" | "major";
 export const BUMP_DO_IMPACTO = {
   nada_mudou: "patch",
   capacidade_nova: "minor",
-  // Não é major. Decisão do dono (07/10): "Major update é somente quando eu
-  // pedir. IA nem nenhum workflow decide isso!" O aviso de ação continua em
-  // destaque — ele vem de `atencao`, não do número (`montar-secao.ts`).
-  exige_acao: "minor",
+  exige_acao: "major",
 } as const satisfies Record<Impacto, Bump>;
 
 /** Severidade crescente. `calcularBump` devolve o máximo do conjunto. */
@@ -190,15 +187,11 @@ export function parseFragmento(arquivo: string, texto: string): Fragmento {
 /**
  * O número que o conjunto produz. Sem fragmento não há resposta — e devolver
  * `patch` no vazio seria inventar uma release que ninguém descreveu.
- *
- * `major` só sai com `pedidoMajor` — o pedido explícito de quem corta
- * (`--major` no script, input `major` no workflow). Nenhum fragmento o produz.
  */
-export function calcularBump(impactos: readonly Impacto[], pedidoMajor = false): Bump {
+export function calcularBump(impactos: readonly Impacto[]): Bump {
   if (impactos.length === 0) {
     throw new FragmentoInvalido("nenhum fragmento em `.changes/`: não há versão a cortar");
   }
-  if (pedidoMajor) return "major";
   return impactos
     .map((i) => BUMP_DO_IMPACTO[i])
     .reduce((a, b) => (SEVERIDADE[b] > SEVERIDADE[a] ? b : a));

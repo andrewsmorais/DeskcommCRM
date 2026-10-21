@@ -76,7 +76,6 @@ vi.mock("@/lib/audit", () => ({ audit: vi.fn() }));
 vi.mock("@/lib/ai/agents/escopo", () => ({
   validarEscopoDaVersao: vi.fn(async () => cena.escopo),
   mensagemDoEscopo: () => "Escopo inválido.",
-  codigoDoEscopo: () => "validation_failed",
 }));
 
 import { AgentForm } from "@/app/app/ai/agents/[id]/_components/AgentForm";

@@ -53,7 +53,7 @@ export function InviteTeamForm() {
         invitations: emails.map((email) => ({ email, role })),
       });
       if (res && !res.ok) {
-        toast.error(`${t("Falha:")} ${res.error}`);
+        toast.error(res.message ?? `${t("Falha:")} ${res.error}`);
         return;
       }
       if (res && res.ok && res.undelivered?.length) {
@@ -123,7 +123,10 @@ export function InviteTeamForm() {
                   onClick={() => {
                     void copyToClipboard(u.accept_url).then((ok) => {
                       if (ok) toast.success(t("Link copiado."));
-                      else toast.error(t("Não consegui copiar — selecione e copie o link manualmente."));
+                      else
+                        toast.error(
+                          t("Não consegui copiar — selecione e copie o link manualmente."),
+                        );
                     });
                   }}
                 >
@@ -133,7 +136,11 @@ export function InviteTeamForm() {
             ))}
           </ul>
           <div className="flex sm:justify-end">
-            <Button type="button" onClick={() => (window.location.href = "/onboarding")} className="w-full sm:w-auto">
+            <Button
+              type="button"
+              onClick={() => (window.location.href = "/onboarding")}
+              className="w-full sm:w-auto"
+            >
               {t("Continuar")}
             </Button>
           </div>

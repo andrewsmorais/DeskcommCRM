@@ -13,6 +13,7 @@
  * não na primeira mensagem que não sai — com o lead do outro lado esperando.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { comCotaDeCanal } from "./cota-do-plano";
 import { metadataInicialDoCanal } from "@/lib/ai/elegibilidade/pre-go-live";
 
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "./archived";
@@ -108,27 +109,10 @@ export async function validatePartnerCredentials(
   const conta = contas.find((c) => String(c._id ?? c.id) === accountId) ?? null;
 
   if (!conta) {
-    // O operador colou o id do PERFIL no campo CONTA (o provedor lista perfis
-    // em outro endpoint): sem distinguir, o par certo vira "não encontrada".
-    // Best-effort de propósito — se a consulta falhar, cai na mensagem do caso.
-    if (await pareceIdDePerfil(apiKey, accountId)) {
-      return { ok: false, reason: "Este id é de um PERFIL. Aqui vai o id da CONTA." };
-    }
-    if (contas.length === 0) {
-      // Medido contra o provedor com chave válida: sem perfil a lista vem
-      // `{"accounts":[]}` — a chave presta, mas não lista nada sozinha.
-      return {
-        ok: false,
-        reason: "A chave não lista nenhuma conta. Confira o perfil e a conta no painel do provedor.",
-      };
-    }
     // A chave presta, mas não alcança esta conta. É diferente de chave inválida,
     // e a mensagem precisa dizer QUAL das duas para o operador saber o que
     // corrigir.
-    return {
-      ok: false,
-      reason: "Conta fora do alcance desta chave. Confira se a conta pertence ao perfil desta chave.",
-    };
+    return { ok: false, reason: "Conta não encontrada para esta chave." };
   }
 
   if (conta.platform !== "whatsapp") {
@@ -145,30 +129,6 @@ export async function validatePartnerCredentials(
     displayName: typeof conta.displayName === "string" ? conta.displayName : null,
     qualityRating: typeof meta.qualityRating === "string" ? meta.qualityRating : null,
   };
-}
-
-/**
- * O id colado é de um PERFIL, não de uma CONTA?
- *
- * Confere em `GET /v1/profiles` sem adivinhar a forma do provedor: só vale o
- * que a resposta prova (lista com o id). Qualquer falha — rede, status, corpo
- * inesperado — devolve `false` e quem responde é a mensagem do caso.
- */
-async function pareceIdDePerfil(apiKey: string, accountId: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${zernioBaseUrl()}/v1/profiles`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return false;
-    const json = (await res.json().catch(() => null)) as {
-      profiles?: Record<string, unknown>[];
-    } | null;
-    const perfis = Array.isArray(json?.profiles) ? json.profiles : [];
-    return perfis.some((p) => String(p._id ?? p.id) === accountId);
-  } catch {
-    return false;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -252,24 +212,36 @@ export async function savePartnerSession(
     displayName: string;
   },
 ): Promise<{ error: string | null }> {
-  const linha = {
-    organization_id: input.organizationId,
-    provider: PARTNER_CHANNEL_PROVIDER,
-    zernio_account_id: input.accountId,
-    zernio_token_encrypted: input.apiKeyEncrypted,
-    webhook_path_token: input.webhookPathToken,
-    webhook_secret_encrypted: input.webhookSecretEncrypted,
-    phone_number: input.phoneNumber,
-    display_name: input.displayName,
-    status: "WORKING",
-    archived_at: null,
-  };
+  return comCotaDeCanal(
+    admin,
+    input.organizationId,
+    input.existingId,
+    async () => {
+      const linha = {
+        organization_id: input.organizationId,
+        provider: PARTNER_CHANNEL_PROVIDER,
+        zernio_account_id: input.accountId,
+        zernio_token_encrypted: input.apiKeyEncrypted,
+        webhook_path_token: input.webhookPathToken,
+        webhook_secret_encrypted: input.webhookSecretEncrypted,
+        phone_number: input.phoneNumber,
+        display_name: input.displayName,
+        status: "WORKING",
+        archived_at: null,
+      };
 
-  const { error } = input.existingId
-    ? await admin.from("channel_sessions").update(linha).eq("id", input.existingId)
-    : await admin
-        .from("channel_sessions")
-        .insert({ ...linha, metadata: metadataInicialDoCanal() });
+      const { error } = input.existingId
+        ? await admin
+            .from("channel_sessions")
+            .update(linha)
+            .eq("organization_id", input.organizationId)
+            .eq("id", input.existingId)
+        : await admin
+            .from("channel_sessions")
+            .insert({ ...linha, metadata: metadataInicialDoCanal() });
 
-  return { error: error?.message ?? null };
+      return { error: error?.message ?? null };
+    },
+    (message) => ({ error: message }),
+  );
 }

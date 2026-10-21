@@ -34,7 +34,11 @@ const periodoSchema = z.object({
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  const authz = await requireRole("viewer", { requestId, resource: "reports" });
+  const authz = await requireRole("viewer", {
+    requestId,
+    resource: "reports",
+    plano: "relatorios_completos",
+  });
   if (!authz.ok) return authz.response;
 
   const url = new URL(req.url);
@@ -56,8 +60,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     return fail("validation_failed", "A data inicial é depois da final.", 422, { requestId });
   }
 
-  const dias =
-    (Date.parse(lido.data.ate) - Date.parse(lido.data.de)) / 86_400_000;
+  const dias = (Date.parse(lido.data.ate) - Date.parse(lido.data.de)) / 86_400_000;
   if (dias > JANELA_MAXIMA_DIAS) {
     return fail("validation_failed", "O período não pode passar de 400 dias.", 422, { requestId });
   }

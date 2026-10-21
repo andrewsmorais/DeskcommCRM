@@ -7,7 +7,7 @@
  *
  * Cabeçalhos de toda entrega (#1529) — o guia de quem recebe é
  * docs/integracao/webhooks-de-saida.md:
- *  - X-Deskcomm-Event: o tipo do evento;
+ *  - X-ChatAI Online-Event: o tipo do evento;
  *  - X-Webhook-Delivery: id da ENTREGA (uuid v5 de evento + regra + posição da ação +
  *    lista de ações). É o mesmo nas retentativas e no botão Reenviar — é a
  *    chave de deduplicação;
@@ -16,7 +16,7 @@
  *  - X-Webhook-Signature (só com segredo): `t=<ts>,v1=<hex>`, HMAC de
  *    "<ts>.<delivery>.<corpo>" — cobre a hora e o id, então uma requisição
  *    capturada e repetida fora da janela do receptor é recusável;
- *  - X-Deskcomm-Signature (só com segredo): o HMAC só do corpo, LEGADO. Continua saindo
+ *  - X-ChatAI Online-Signature (só com segredo): o HMAC só do corpo, LEGADO. Continua saindo
  *    byte a byte igual durante a convivência (contrato de fio, white-label.md);
  *    a saída dele vai ser anunciada com `exige_acao`.
  */
@@ -26,7 +26,6 @@ import { registerAction } from "@/lib/automation/actions";
 import type { ActionCtx, ActionResultDetail } from "@/lib/automation/types";
 import { assertDestinoResolvidoSeguro } from "@/lib/automation/outbound-ip";
 import { assertSafeOutboundUrl } from "@/lib/automation/outbound-url";
-import { mensagemDeErro } from "@/lib/automation/actions/erro-legivel";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 
 const TIMEOUT_MS = 10_000;
@@ -41,12 +40,12 @@ const RETRY_DELAYS_MS = [1_000, 5_000]; // total 3 tentativas
  * tests/unit/branding.test.ts, lista que só encolhe.
  */
 const CABECALHOS = {
-  evento: "X-Deskcomm-Event",
+  evento: "X-ChatAI Online-Event",
   entrega: "X-Webhook-Delivery",
   tentativa: "X-Webhook-Attempt",
   carimbo: "X-Webhook-Timestamp",
   assinaturaComCarimbo: "X-Webhook-Signature",
-  assinaturaLegada: "X-Deskcomm-Signature",
+  assinaturaLegada: "X-ChatAI Online-Signature",
 } as const;
 
 /**
@@ -208,13 +207,6 @@ const LEAD_PUBLIC_FIELDS = [
   // dado antigo, e o ganho nasce com a mesma exposição para a métrica do lado
   // de fora não nascer vazia.
   "won_reason",
-  // #1528 — o ENCAMENTO sai junto do lead: `lost_reason` (o motivo da perda) e
-  // `closed_at` (quando fechou) são o que a integração de comissão e de
-  // análise de perda precisa sem uma segunda consulta por token. O comentário
-  // desta lista já afirmava que `lost_reason` saía — não saía: a projeção é a
-  // lista, e ele não estava nela.
-  "lost_reason",
-  "closed_at",
   "source",
   "created_at",
 ] as const;
@@ -240,34 +232,6 @@ function projectPublicFields(
     if (key in source) out[key] = source[key];
   }
   return out;
-}
-
-/**
- * Os quatro IDs internos que o payload de `lead.assigned` traz (#1528).
- *
- * O envelope repassa `...event.payload` inteiro, e ESTE payload nasce no
- * trigger do banco com `from_user_id`/`to_user_id` (+ os do agente): UUID de
- * usuário é dado interno, da mesma família do `owner_user_id` que a lista
- * proibida em `call-webhook.test.ts` já testa. O FATO que interessa — a troca
- * aconteceu, e para qual `owner_kind` — continua saindo; quem passou a ser
- * dono só sai sob `include_owner`, na forma pública de `responsavelPublico`.
- */
-const IDENTIDADES_DE_ATRIBUICAO = new Set([
-  "from_user_id",
-  "to_user_id",
-  "from_agent_id",
-  "to_agent_id",
-]);
-
-/** O payload do evento, sem as identidades internas da troca de responsável. */
-function payloadPublico(
-  eventType: string,
-  payload: Record<string, unknown>,
-): Record<string, unknown> {
-  if (eventType !== "lead.assigned") return payload;
-  return Object.fromEntries(
-    Object.entries(payload).filter(([chave]) => !IDENTIDADES_DE_ATRIBUICAO.has(chave)),
-  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -317,71 +281,17 @@ async function responsavelPublico(
 ): Promise<Record<string, unknown> | undefined> {
   if (config.include_owner !== true) return undefined;
   const compromisso = ctx.context.appointment as Record<string, unknown> | undefined;
-  if (compromisso) {
-    const ownerId =
-      typeof compromisso.owner_user_id === "string" ? compromisso.owner_user_id : null;
-    if (!ownerId) return undefined;
-    return { id: ownerId, ...(await nomeDeUsuario(ctx, ownerId)) };
-  }
-  return responsavelDoNegocio(ctx);
-}
-
-/** O nome do usuário, melhor esforço — nunca é motivo para a entrega falhar. */
-async function nomeDeUsuario(
-  ctx: ActionCtx,
-  ownerId: string,
-): Promise<{ name: string } | Record<string, never>> {
+  const ownerId = compromisso && typeof compromisso.owner_user_id === "string" ? compromisso.owner_user_id : null;
+  if (!ownerId) return undefined;
+  let nome: string | null = null;
   try {
     const { data } = await ctx.admin.auth.admin.getUserById(ownerId);
     const metadata = data?.user?.user_metadata as { full_name?: unknown } | undefined;
-    const nome =
-      typeof metadata?.full_name === "string" && metadata.full_name ? metadata.full_name : null;
-    return nome ? { name: nome } : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * O responsável do NEGÓCIO no corpo (#1528), sob o MESMO opt-in do compromisso.
- *
- * Sem `include_owner: true` a chave nem nasce — e é por isso que a forma
- * pública é construída aqui, nunca repassada do payload: o payload do
- * `lead.assigned` traz os UUIDs internos, que `payloadPublico` remove.
- *
- * `{kind, id, name?}`: `kind` é o `owner_kind` GRAVADO no lead (`user`/`ai`),
- * sem tradução — é o vocabulário do banco, e inventar outro faria o integrador
- * casar um valor que o próprio sistema não produz. SEM email: a doutrina do
- * repo (cabeçalho de `lib/mcp/tools/_users.ts`) é expor só o nome do usuário,
- * nunca o email — quem integra mapeia pelo id, como já faz no compromisso.
- * Nome vem melhor esforço: `full_name` do `auth.users` para dono humano,
- * `ai_agents.name` para dono IA; sem lookup o corpo sai com `kind` + `id` em
- * vez de a entrega inteira falhar por causa de um apelido.
- */
-async function responsavelDoNegocio(
-  ctx: ActionCtx,
-): Promise<Record<string, unknown> | undefined> {
-  const lead = ctx.context.lead as Record<string, unknown> | undefined;
-  if (!lead) return undefined;
-  const userId = typeof lead.owner_user_id === "string" ? lead.owner_user_id : null;
-  const agentId = typeof lead.owner_agent_id === "string" ? lead.owner_agent_id : null;
-  if (!userId && !agentId) return undefined;
-  const kind = lead.owner_kind === "ai" || (!userId && agentId ? true : false) ? "ai" : "user";
-  if (userId) return { kind, id: userId, ...(await nomeDeUsuario(ctx, userId)) };
-  let nome: string | null = null;
-  try {
-    const { data } = await ctx.admin
-      .from("ai_agents")
-      .select("name")
-      .eq("id", agentId as string)
-      .eq("organization_id", ctx.organizationId)
-      .maybeSingle();
-    const nomeLido = (data as { name?: unknown } | null)?.name;
-    nome = typeof nomeLido === "string" && nomeLido ? nomeLido : null;
+    nome = typeof metadata?.full_name === "string" && metadata.full_name ? metadata.full_name : null;
   } catch {
     nome = null;
   }
-  return nome ? { kind, id: agentId, name: nome } : { kind, id: agentId };
+  return nome ? { id: ownerId, name: nome } : { id: ownerId };
 }
 
 export async function executeCallWebhook(
@@ -422,7 +332,7 @@ export async function executeCallWebhook(
     happened_at: horaDoFato(ctx.event.created_at),
     delivery_id: entrega,
     data: {
-      ...payloadPublico(ctx.event.event_type, ctx.event.payload ?? {}),
+      ...ctx.event.payload,
       ...(leadPublic ? { lead: leadPublic } : {}),
       ...(contactPublic ? { contact: contactPublic } : {}),
       ...(compromissoPublic ?? {}),
@@ -439,8 +349,8 @@ export async function executeCallWebhook(
   };
   // secret_enc (cifrado at-rest, migration 0041) tem precedência; config.secret
   // plaintext fica só como legado pré-retrofit. Decrypt indisponível (chave da
-  // GUC ausente) → envia SEM assinatura em vez de falhar a entrega; quem recebe
-  // e exige assinatura recusa do lado de lá.
+  // GUC ausente) → envia SEM assinatura em vez de falhar a entrega — espelho do
+  // hmacSkipped do inbound.
   let secret: string | null = typeof config.secret === "string" && config.secret ? config.secret : null;
   if (typeof config.secret_enc === "string" && config.secret_enc) {
     secret = await decryptWebhookSecret(ctx.admin, config.secret_enc);
@@ -490,7 +400,7 @@ export async function executeCallWebhook(
       }
       lastError = res.status >= 300 && res.status < 400 ? "redirect_not_followed" : `http_${res.status}`;
     } catch (err) {
-      lastError = mensagemDeErro(err);
+      lastError = err instanceof Error ? err.message : String(err);
     }
     const delay = retryDelaysMs[i];
     if (delay !== undefined) await sleep(delay);

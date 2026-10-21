@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/hooks/i18n/useT";
-import { MENSAGEM_DA_RECUSA_DE_ESCRITA, ehRecusaDeEscrita } from "@/lib/auth/recusa-de-escrita-de-admin";
 
 interface Props {
   readonly listaInicial: readonly string[];
@@ -41,11 +40,11 @@ export function FormularioDeDestinosInternos({ listaInicial, vemDoPiso }: Props)
       }
       // A entrada recusada volta NOMEADA. "Valor inválido" mandaria o operador
       // conferir dez linhas para achar a que tem um espaço no meio.
-      if ("invalidas" in r && r.invalidas && r.invalidas.length > 0) {
-        setErro(`${t("Não entendi estas linhas:")} ${r.invalidas.join(", ")}`);
-        return;
-      }
-      setErro(t(ehRecusaDeEscrita(r.error) ? MENSAGEM_DA_RECUSA_DE_ESCRITA[r.error] : "Não deu para salvar. Tente de novo em instantes."));
+      setErro(
+        r.invalidas && r.invalidas.length > 0
+          ? `${t("Não entendi estas linhas:")} ${r.invalidas.join(", ")}`
+          : t("Não deu para salvar. Tente de novo em instantes."),
+      );
     });
   }
 

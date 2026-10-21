@@ -1,19 +1,16 @@
 "use server";
 
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { supportWriteError } from "@/lib/impersonate/support";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { audit } from "@/lib/audit";
 import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
-import { podeAdministrarEmpresa } from "@/lib/auth/pode-administrar-empresa";
+import { ROLE_RANK } from "@/lib/auth/types";
 import { normalizarHex } from "@/lib/branding/rampa";
-import {
-  marcaDaOrganizacaoSchema,
-  type MarcaDaOrganizacaoInput,
-} from "@/lib/schemas/settings";
+import { marcaDaOrganizacaoSchema, type MarcaDaOrganizacaoInput } from "@/lib/schemas/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 
 export type UpdateMarcaDaOrganizacaoResult =
   | { ok: true }
@@ -99,7 +96,7 @@ export async function updateMarcaDaOrganizacao(
   if (supportWriteError(authUser.support)) return { ok: false, error: "forbidden_role" };
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return { ok: false, error: "forbidden_tenant" };
-  if (!podeAdministrarEmpresa(authUser, activeOrg)) {
+  if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
   }
   // DEPOIS do papel, de propósito: quem nem tem o papel recebe `forbidden_role`,
@@ -115,18 +112,21 @@ export async function updateMarcaDaOrganizacao(
     return { ok: false, error: "mfa_required" };
   }
 
+  if (!authUser.is_platform_admin) {
+    const acesso = await verificarRecursoDoPlano(activeOrg.orgId, "multimarca");
+    if (!acesso.ok)
+      return { ok: false, error: "forbidden_role", details: { message: acesso.message } };
+  }
+
   const hdrs = await headers();
   const requestId = hdrs.get("x-request-id");
-  const ip = ipDoCliente(hdrs);
+  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
 
   // Os dois campos vazios significam "volte ao que vem da instalação", e é `null`
   // que a função entende como apagar a chave `branding` — gravar `{}` deixaria um
   // envelope vazio que o resolvedor teria de aprender a ignorar.
-  const limpar =
-    parsed.data.app_name === null &&
-    parsed.data.accent_hex === null &&
-    parsed.data.accent_dark_hex === null;
+  const limpar = parsed.data.app_name === null && parsed.data.accent_hex === null;
   const marca = limpar
     ? null
     : {
@@ -135,13 +135,7 @@ export async function updateMarcaDaOrganizacao(
         // `#FFFFFF` passam pelo Zod (o validador do domínio aceita as duas
         // formas) e só uma das duas passa pelo banco. Normalizar aqui é o que faz
         // "mudou?" ser uma pergunta com resposta.
-        accent_hex:
-          parsed.data.accent_hex === null ? null : normalizarHex(parsed.data.accent_hex),
-        // O par da cor (#2482): mesma normalização, mesma regex da função SQL.
-        accent_dark_hex:
-          parsed.data.accent_dark_hex === null
-            ? null
-            : normalizarHex(parsed.data.accent_dark_hex),
+        accent_hex: parsed.data.accent_hex === null ? null : normalizarHex(parsed.data.accent_hex),
         updated_by: authUser.id,
         updated_at: new Date().toISOString(),
       };
@@ -151,10 +145,11 @@ export async function updateMarcaDaOrganizacao(
   // `platform_branding.accent_hex`. Um envelope gravado no jsonb teria
   // `format`/`algo` sem nada que os force a bater com a versão do código, e o
   // resolvedor já sabe degradar a partir de um hex. Um único escritor da forma.
-  const { data, error } = await createAdminClient().rpc(
-    "fn_definir_marca_da_organizacao",
-    { p_org: activeOrg.orgId, p_actor: authUser.id, p_marca: marca },
-  );
+  const { data, error } = await createAdminClient().rpc("fn_definir_marca_da_organizacao", {
+    p_org: activeOrg.orgId,
+    p_actor: authUser.id,
+    p_marca: marca,
+  });
 
   if (error) {
     // Os dois códigos que a função levanta de propósito. `42501` é papel — e

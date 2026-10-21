@@ -4,36 +4,14 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Button — Sage design system.
- * Variants:
- *   - primary (default): accent fill, branded CTA
- *   - secondary: surface-elevated com border, ação neutra
- *   - ghost: transparent, hover suave (toolbar/inline)
- *   - destructive: error fill (delete/cancel destrutivo)
- *   - outline: alias de secondary com background transparente (compat shadcn)
- *   - link: text-only com underline
- *   - default: alias de primary (compat shadcn)
- */
+/** Botões compartilhados: cores semânticas, raio de 10px e alvos de toque preservados. */
 const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap",
-    "rounded-sm font-medium",
-    // `transform` SAIU da lista, e `translate` não entrou no lugar.
-    //
-    // O recuo do toque é `active:translate-y-px`, lá embaixo. No Tailwind 4 essa
-    // classe compila para a propriedade INDIVIDUAL `translate`, não para
-    // `transform` — então `transform` nesta lista era uma propriedade que nunca
-    // muda, pedindo transição para nada.
-    //
-    // E `translate` fica fora de propósito: o recuo do `:active` é o único
-    // retorno INSTANTÂNEO da interface — é ele que faz o botão parecer apertado
-    // em vez de clicado. A lei pede 80ms, que nem existe na tabela de durações
-    // dela própria; transicionar em `duration-fast` (120ms) deixaria a descida
-    // E a subida arrastadas, que é o oposto do que o recuo comunica.
-    "transition-[background-color,border-color,color,box-shadow]",
+    "rounded-[var(--flow-control-radius)] font-semibold",
+    "transition-[background-color,border-color,color,box-shadow,transform]",
     "duration-fast ease-out",
-    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+    "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent-600 focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
     "disabled:pointer-events-none disabled:opacity-50",
     "[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
     "active:translate-y-px",
@@ -41,14 +19,17 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-accent text-accent-foreground hover:bg-accent-hover shadow-xs",
-        default: "bg-accent text-accent-foreground hover:bg-accent-hover shadow-xs",
+        primary:
+          "bg-accent text-accent-foreground hover:bg-accent-hover shadow-xs dark:bg-accent-700 dark:text-white dark:hover:bg-accent-600",
+        default:
+          "bg-accent text-accent-foreground hover:bg-accent-hover shadow-xs dark:bg-accent-700 dark:text-white dark:hover:bg-accent-600",
+        cta: "bg-cta text-white shadow-md shadow-accent-600/25 hover:bg-none hover:bg-accent-hover",
         secondary:
           "bg-surface-elevated text-text border border-border hover:border-accent hover:text-accent",
         outline:
           "bg-transparent text-text border border-border hover:border-accent hover:text-accent",
         ghost: "bg-transparent text-text hover:bg-accent-soft hover:text-accent",
-        destructive: "bg-error text-white hover:brightness-95 shadow-xs",
+        destructive: "bg-error text-white hover:brightness-95 shadow-xs dark:text-bg",
         link: "bg-transparent text-accent underline underline-offset-4 decoration-1 hover:decoration-2 h-auto p-0",
       },
       // Alturas de toque: abaixo de `lg` (mesmo corte que o resto da casca

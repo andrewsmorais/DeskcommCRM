@@ -12,7 +12,6 @@ export const LGPD_REDACT_HANDLER_KEY = "lgpd-redact-worker.v1";
 
 export const lgpdRedactHandler: EventHandler = {
   key: LGPD_REDACT_HANDLER_KEY,
-  naOrgParada: "roda",
   events: ["lgpd.redact_received"],
   async handle(row) {
     return processLgpdRedact(row);

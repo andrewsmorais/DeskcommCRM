@@ -3,7 +3,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
@@ -28,7 +27,7 @@ export async function confirmMfaEnroll(
   const supabase = await createClient();
   const hdrs = await headers();
   const requestId = hdrs.get("x-request-id");
-  const ip = ipDoCliente(hdrs);
+  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
 
   const {

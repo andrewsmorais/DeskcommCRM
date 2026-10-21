@@ -3,7 +3,6 @@
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { createClient } from "@/lib/supabase/server";
 import { audit } from "@/lib/audit";
 import {
@@ -29,7 +28,7 @@ export async function updateProfile(input: ProfileInput): Promise<UpdateProfileR
   const supabase = await createClient();
   const hdrs = await headers();
   const requestId = hdrs.get("x-request-id");
-  const ip = ipDoCliente(hdrs);
+  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
 
   const { error } = await supabase.auth.updateUser({

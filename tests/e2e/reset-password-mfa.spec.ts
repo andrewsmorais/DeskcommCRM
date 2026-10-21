@@ -14,7 +14,6 @@ import * as path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { test, expect } from "./helpers/test";
 
-import { seguirLinkDeAcesso } from "./helpers/auth";
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
 import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
 
@@ -58,7 +57,7 @@ test("reset de senha com MFA pede o código TOTP e conclui", async ({ page }) =>
   const tokenHash = link.data.properties?.hashed_token;
   expect(tokenHash).toBeTruthy();
 
-  await seguirLinkDeAcesso(page, `/auth/confirm?token_hash=${tokenHash}&type=recovery`);
+  await page.goto(`/auth/confirm?token_hash=${tokenHash}&type=recovery`);
   await page.waitForURL(/\/login\/reset/);
 
   const temp = "TempReset!2026x";

@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useT } from "@/hooks/i18n/useT";
 import { PROVEDOR_DO_JEV } from "@/lib/ai/decisao/credencial";
-import { RoteamentoResultados } from "./RoteamentoResultados";
 
 /**
  * O MESMO formato da tela de Uso — as duas leem `llm_calls.cost_cents`, que é
@@ -77,9 +76,7 @@ export function ExecucoesDeIa() {
   // traz a pessoa já filtrada ("Ver as decisões do Jev").
   const router = useRouter();
   const pathname = usePathname();
-  const parametros = useSearchParams();
-  const provider = parametros.get("provider");
-  const abaRoteamento = parametros.get("tab") === "roteamento";
+  const provider = useSearchParams().get("provider");
   const soOJev = provider === PROVEDOR_DO_JEV;
 
   const carregar = useCallback(async () => {
@@ -117,8 +114,6 @@ export function ExecucoesDeIa() {
     void carregar();
   }, [carregar]);
 
-  if (abaRoteamento) return <RoteamentoResultados />;
-
   if (erro) {
     return (
       <div className="p-6">
@@ -141,7 +136,6 @@ export function ExecucoesDeIa() {
     <div className="mx-auto w-full max-w-5xl p-6" data-testid="execucoes-de-ia">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("Execuções de IA")}</h1>
-        <div className="mt-2 flex gap-3 text-sm"><span aria-current="page" className="font-medium">{t("Execuções")}</span><a href="/app/ai/runs?tab=roteamento" className="underline">{t("Roteamento")}</a></div>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           {t(
             "Tudo que a inteligência artificial fez por aqui — e, quando algo falhou, o que aconteceu e o que fazer.",
@@ -153,7 +147,7 @@ export function ExecucoesDeIa() {
       <Card className="mb-6 p-4" data-testid="resumo">
         {resumo.erros === 0 ? (
           <p className="text-sm">
-            <span className="font-medium text-emerald-600 dark:text-emerald-500">
+            <span className="font-medium text-indigo-600 dark:text-indigo-500">
               {t("Nenhuma falha")}
             </span>{" "}
             {t("nas últimas")} {resumo.total} {t("execuções.")}

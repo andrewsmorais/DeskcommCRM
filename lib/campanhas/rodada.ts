@@ -33,6 +33,8 @@
  * Nunca lança para o cron: uma campanha quebrada não pode derrubar a rodada.
  */
 import { randomUUID } from "node:crypto";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { audit } from "@/lib/audit";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -42,9 +44,8 @@ import { decidePacing, dayStartInTz } from "@/lib/agent-engine/pacing/engine";
 import { loadChannelKnobs, loadPacingState, recordSend } from "@/lib/agent-engine/pacing/store";
 import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
 import { logger } from "@/lib/logger";
-import { OrgNaoOperanteError, STATUS_OPERANTE, ehOperante, statusDaOrgEmbutida } from "@/lib/organizacao/operante";
 
-import { motivoParaExcluir, recusouMarketing, statusDaSaida } from "./elegibilidade";
+import { motivoParaExcluir, recusouMarketing } from "./elegibilidade";
 import { hashDoEndereco } from "./exclusoes";
 import { renderizar } from "./renderizador";
 import { escolherNumero, poolDaCampanha, type NumeroDisponivel } from "./rodizio";
@@ -75,9 +76,6 @@ const VAZIA: ResultadoDaRodada = {
 /** Teto de números atendidos por rodada — a rodada é de um minuto, não de um dia. */
 const NUMEROS_POR_RODADA = 10;
 
-/** Teto de agendadas promovidas por rodada: a sobra vira `running` no minuto seguinte. */
-const PROMOVIDAS_POR_RODADA = 100;
-
 interface CampanhaRow {
   id: string;
   organization_id: string;
@@ -97,49 +95,35 @@ const COLUNAS_DA_CAMPANHA =
   "id, organization_id, channel_session_id, name, message_body, content_version, " +
   "intervalo_segundos, janela_inicio_hora, janela_fim_hora, teto_diario, teto_horario";
 
-/**
- * O status da organização embutido com `!inner` no `select`, e filtrado na
- * própria consulta (`organizations.status`): o corte sai no banco, ANTES do
- * `limit`. Filtrar só em memória deixaria a campanha da org parada ocupar a
- * janela — ela nunca conclui, e a ordem por `started_at` a mantém no topo. Nunca
- * se trafega a lista de ids das paradas numa `in (...)` da URL: ela cresce sem
- * teto e corta em `max_rows` sem aviso (issue #2015).
- */
-const COLUNAS_DA_CAMPANHA_COM_EMBED = `${COLUNAS_DA_CAMPANHA}, organizations:organization_id!inner(status)`;
-
 export async function rodarUmaRodadaDeCampanha(
   admin: SupabaseClient,
   agora: Date = new Date(),
 ): Promise<ResultadoDaRodada> {
-  // Organização que não OPERA (suspensa, redigida ou arquivada) não dispara
-  // campanha: disparo em massa custa ao dono da instalação e sai para fora. A
-  // régua é a única do produto, `lib/organizacao/operante.ts`. O comentário que
-  // morava aqui dizia que `= 'suspended'` era "a mesma decisão da fila do
-  // agente"; a fila nunca filtrou status (o `CLAIM_SQL` de
-  // `lib/agent-engine/queue/queue.ts` não olha `organizations`), e quem fecha a
-  // fila é `fn_suspender_organizacao`, que falha os jobs pendentes.
-  const promovidas = await promoverAgendadas(admin, agora);
+  // Organização SUSPENSA não prospecta. A decisão é a mesma da fila do agente:
+  // `= 'suspended'` e não `<> 'active'`, porque o CHECK aceita também 'redacted'
+  // e 'archived', e desligá-los seria mudança que ninguém pediu.
+  const { data: suspensas } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("status", "suspended");
+  const idsSuspensas = (suspensas ?? []).map((o) => (o as { id: string }).id);
 
-  const { data: campanhas, error: falhaDaBusca } = await admin
+  const promovidas = await promoverAgendadas(admin, idsSuspensas, agora);
+
+  let consulta = admin
     .from("campaigns")
-    .select(COLUNAS_DA_CAMPANHA_COM_EMBED)
+    .select(COLUNAS_DA_CAMPANHA)
     .eq("status", "running")
-    .eq("organizations.status", STATUS_OPERANTE)
     .order("started_at", { ascending: true })
     .limit(NUMEROS_POR_RODADA * 3);
-  if (falhaDaBusca) {
-    // Sem isto a falha virava "nada_a_fazer": indistinguível de rodada vazia.
-    logger.warn("[campanha] busca das campanhas em andamento falhou", { motivo: falhaDaBusca.message });
-    return { ...VAZIA, promovidas, detalhe: "busca_falhou" };
+  if (idsSuspensas.length > 0) {
+    consulta = consulta.not("organization_id", "in", `(${idsSuspensas.join(",")})`);
   }
+  const { data: campanhas } = await consulta;
   // `as unknown as`: a lista de colunas é montada por concatenação, e o tipo
   // gerado do PostgREST só sabe inferir literal — o mesmo caminho que
   // `lib/asaas/*` já usa para tabela que ainda não está em `database.types.ts`.
-  // ponytail: o `ehOperante` aqui é cinto — o banco já cortou; ele só segura o
-  // dia em que alguém tirar o filtro da consulta.
-  const emExecucao = ((campanhas ?? []) as unknown as Array<
-    CampanhaRow & { organizations?: { status?: string | null } | Array<{ status?: string | null }> | null }
-  >).filter((campanha) => ehOperante(statusDaOrgEmbutida(campanha.organizations)));
+  const emExecucao = (campanhas ?? []) as unknown as CampanhaRow[];
   if (emExecucao.length === 0) {
     return promovidas > 0 ? { ...VAZIA, promovidas, detalhe: "promovidas" } : VAZIA;
   }
@@ -178,39 +162,21 @@ export async function rodarUmaRodadaDeCampanha(
   return total;
 }
 
-/**
- * `scheduled` cuja hora chegou vira `running` — só de org operante, em dois
- * passos limitados. O PostgREST filtra por recurso EMBUTIDO, e um `update` não
- * embute: `organizations.status` ali ou dá erro ou não corta nada. Por isso:
- * (a) escolhe os ids no banco, com o embed `!inner` e o corte antes do
- * `limit`; (b) promove só esses ids, e só se ainda estão `scheduled` (outra
- * rodada concorrente não promove duas vezes). A lista que vai na URL é a das
- * campanhas a promover, com teto — nunca a das orgs paradas, que não tem teto.
- */
+/** `scheduled` cuja hora chegou vira `running`. */
 async function promoverAgendadas(
   admin: SupabaseClient,
+  idsSuspensas: string[],
   agora: Date,
 ): Promise<number> {
-  const { data: vencidas, error: falhaDaEscolha } = await admin
-    .from("campaigns")
-    .select("id, organizations:organization_id!inner(status)")
-    .eq("status", "scheduled")
-    .lte("scheduled_at", agora.toISOString())
-    .eq("organizations.status", STATUS_OPERANTE)
-    .order("scheduled_at", { ascending: true })
-    .limit(PROMOVIDAS_POR_RODADA);
-  if (falhaDaEscolha) {
-    logger.warn("[campanha] promoção de agendadas falhou", { motivo: falhaDaEscolha.message });
-    return 0;
-  }
-  const ids = ((vencidas ?? []) as Array<{ id: string }>).map((c) => c.id);
-  if (ids.length === 0) return 0;
-  const { data, error } = await admin
+  let consulta = admin
     .from("campaigns")
     .update({ status: "running", started_at: agora.toISOString() })
-    .in("id", ids)
     .eq("status", "scheduled")
-    .select("id");
+    .lte("scheduled_at", agora.toISOString());
+  if (idsSuspensas.length > 0) {
+    consulta = consulta.not("organization_id", "in", `(${idsSuspensas.join(",")})`);
+  }
+  const { data, error } = await consulta.select("id");
   if (error) {
     logger.warn("[campanha] promoção de agendadas falhou", { motivo: error.message });
     return 0;
@@ -229,7 +195,6 @@ interface DestinatarioRow {
     display_name: string | null;
     phone_number: string | null;
     is_blocked: boolean;
-    is_personal: boolean;
     is_anonymized: boolean;
     consent: unknown;
   } | null;
@@ -240,11 +205,33 @@ async function rodarUmaCampanha(
   campanha: CampanhaRow,
   agora: Date,
 ): Promise<{ enviadas: number; pulados: number; concluidas: number; detalhe: string }> {
+  const acesso = await verificarRecursoDoPlano(campanha.organization_id, "campanhas");
+  if (!acesso.ok) {
+    if (acesso.status === 403) {
+      const { data, error } = await admin
+        .from("campaigns")
+        .update({ status: "paused" })
+        .eq("organization_id", campanha.organization_id)
+        .eq("id", campanha.id)
+        .eq("status", "running")
+        .select("id");
+      if (error) throw new Error("billing_pause_failed");
+      if (data?.length)
+        void audit({
+          action: "campaign.paused",
+          organizationId: campanha.organization_id,
+          resourceType: "campaign",
+          resourceId: campanha.id,
+          metadata: { reason: acesso.code },
+        });
+    }
+    return { enviadas: 0, pulados: 0, concluidas: 0, detalhe: acesso.code };
+  }
   const { data: fila } = await admin
     .from("campaign_recipients")
     .select(
       "id, contact_id, recipient_address, rendered_body, " +
-        "contacts(id, name, display_name, phone_number, is_blocked, is_personal, is_anonymized, consent)",
+        "contacts(id, name, display_name, phone_number, is_blocked, is_anonymized, consent)",
     )
     .eq("campaign_id", campanha.id)
     .eq("status", "pending")
@@ -287,7 +274,6 @@ async function rodarUmaCampanha(
     contactId: alvo.contact_id,
     telefone: contato?.phone_number ?? alvo.recipient_address,
     bloqueado: !!contato?.is_blocked,
-    pessoal: !!contato?.is_personal,
     anonimizado: !!contato?.is_anonymized,
     recusouMarketing: recusouMarketing(contato?.consent),
   });
@@ -295,7 +281,7 @@ async function rodarUmaCampanha(
     await admin
       .from("campaign_recipients")
       .update({
-        status: statusDaSaida(motivo),
+        status: motivo === "opt_out" ? "opted_out" : "skipped",
         eligibility_status: "excluded",
         exclusion_reason: motivo,
         opted_out_at: motivo === "opt_out" ? agora.toISOString() : null,
@@ -347,7 +333,11 @@ async function rodarUmaCampanha(
   // O fuso da janela da campanha é o do número PRINCIPAL: ela é uma decisão da
   // campanha, e precisa de um relógio só — três números em fusos diferentes
   // fariam a mesma campanha abrir e fechar a janela três vezes.
-  const knobsDoPrincipal = await loadChannelKnobs(pool, campanha.organization_id, campanha.channel_session_id);
+  const knobsDoPrincipal = await loadChannelKnobs(
+    pool,
+    campanha.organization_id,
+    campanha.channel_session_id,
+  );
   // ⚠️ O estado do ritmo é lido DEPOIS dos knobs porque precisa do MESMO fuso
   // que a janela usa. Com `setUTCHours`, o "dia" virava 21h no horário de
   // Brasília — DENTRO da janela de envio —, e uma campanha que já tinha batido
@@ -411,7 +401,10 @@ async function rodarUmaCampanha(
     });
   }
 
-  const escolha = escolherNumero(disponiveis, await numeroDoHistorico(admin, campanha, alvo.contact_id));
+  const escolha = escolherNumero(
+    disponiveis,
+    await numeroDoHistorico(admin, campanha, alvo.contact_id),
+  );
   if (!escolha) {
     // Nenhum número pode agora. Não é falha do destinatário: é o ritmo dos
     // números. Volta para a fila e tenta no próximo tique.
@@ -513,45 +506,19 @@ async function rodarUmaCampanha(
       detalhe: `enviado:${status ?? "?"}:${escolha.motivo}`,
     };
   } catch (err) {
+    const motivoErro = err instanceof Error ? err.message : String(err);
     logger.warn("[campanha] envio falhou", { campanha: campanha.id, destinatario: alvo.id });
-    return { enviadas: 0, pulados: 0, concluidas: 0, detalhe: await registrarExcecaoDoEnvio(admin, alvo.id, err) };
-  }
-}
-
-/**
- * O que a exceção do envio faz com o destinatário já reservado (`sending`).
- * Exportada para o teste: o caminho inteiro da rodada precisa de ritmo, canal
- * e pool.
- *
- * Organização parada entre a leitura da rodada e o envio (`OrgNaoOperanteError`
- * da porta de saída) NÃO é falha do destinatário: ele volta a `pending` e sai
- * na reativação, no ritmo da campanha. Marcar `send_exception` o tiraria da
- * campanha para sempre por algo que não é dele.
- */
-export async function registrarExcecaoDoEnvio(
-  admin: SupabaseClient,
-  destinatarioId: string,
-  err: unknown,
-): Promise<string> {
-  if (err instanceof OrgNaoOperanteError) {
     await admin
       .from("campaign_recipients")
-      .update({ status: "pending", sending_at: null })
-      .eq("id", destinatarioId)
+      .update({
+        status: "failed",
+        last_error_code: "send_exception",
+        last_error_detail: motivoErro.slice(0, 300),
+      })
+      .eq("id", alvo.id)
       .eq("status", "sending");
-    return "org_nao_operante";
+    return { enviadas: 0, pulados: 0, concluidas: 0, detalhe: "falhou" };
   }
-  const motivoErro = err instanceof Error ? err.message : String(err);
-  await admin
-    .from("campaign_recipients")
-    .update({
-      status: "failed",
-      last_error_code: "send_exception",
-      last_error_detail: motivoErro.slice(0, 300),
-    })
-    .eq("id", destinatarioId)
-    .eq("status", "sending");
-  return "falhou";
 }
 
 /**

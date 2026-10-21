@@ -42,7 +42,6 @@ import {
 } from "@/components/ui/select";
 import { useT } from "@/hooks/i18n/useT";
 
-import { CartaoDeMapas } from "./CartaoDeMapas";
 import { CartaoDoJev, jevNoPonto, useDadosDoJev, type DadosDoJev } from "./CartaoDoJev";
 
 interface Ponto {
@@ -248,8 +247,6 @@ export function PainelDeProvedores() {
           </section>
         ))}
       </div>
-
-      <CartaoDeMapas />
     </div>
   );
 }
@@ -635,7 +632,7 @@ function CartaoDoPonto({
             <Label className="text-xs">{t("Chave")}</Label>
             <Select value={credentialId} onValueChange={setCredentialId}>
               <SelectTrigger data-testid={`chave-${ponto.id}`}>
-                <SelectValue placeholder={t("da instalação")} />
+                <SelectValue placeholder={t("Escolha automática")} />
               </SelectTrigger>
               <SelectContent>
                 {credsDoProvider.map((c) => (

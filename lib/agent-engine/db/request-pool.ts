@@ -5,15 +5,24 @@
  * lança na hora do request (rota converte pra 503), não na importação do
  * módulo.
  */
-import type pg from 'pg';
+import type pg from "pg";
 
-import { createPool } from './pool';
+import { createPool } from "./pool";
 
 let _pool: pg.Pool | null = null;
 
+/** Configuração da instalação, distinta de uma falha na credencial do provedor. */
+export class RequestPoolNotConfiguredError extends Error {
+  override readonly name = "RequestPoolNotConfiguredError";
+
+  constructor() {
+    super("SUPABASE_DB_URL ausente — motor de IA indisponível");
+  }
+}
+
 export function getRequestPool(): pg.Pool {
   const url = process.env.SUPABASE_DB_URL;
-  if (!url) throw new Error('SUPABASE_DB_URL ausente — rascunho da IA indisponível');
+  if (!url) throw new RequestPoolNotConfiguredError();
   if (!_pool) _pool = createPool(url);
   return _pool;
 }

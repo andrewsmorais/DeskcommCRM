@@ -40,7 +40,7 @@ function bancoQue(...respostas: Resposta[]) {
   const upsert = vi.fn(async () => ({ error: null }));
   vi.mocked(createAdminClient).mockReturnValue({
     from: () => ({
-      select: () => ({ eq: () => ({ abortSignal: () => ({ maybeSingle }) }) }),
+      select: () => ({ eq: () => ({ maybeSingle }) }),
       upsert,
     }),
   } as never);

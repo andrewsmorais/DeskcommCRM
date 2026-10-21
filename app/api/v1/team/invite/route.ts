@@ -1,10 +1,7 @@
 import type { EmailDeliveryError } from "@/lib/email/roteador";
 import { requireSupportWrite } from "@/lib/impersonate/support";
-import { issueInvite } from "@/lib/auth/issue-invite";
 import { emitirConvite } from "@/lib/team/convites";
 import { isServiceRoleConfigured } from "@/lib/audit";
-import { lerLimiteDoPlano, mensagemDoLimite } from "@/lib/cobranca/limites";
-import { logger } from "@/lib/logger";
 /**
  * POST /api/v1/team/invite — bulk-invite up to 20 emails.
  *
@@ -28,6 +25,8 @@ import { ApiError } from "@/lib/api/types";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { inviteMemberSchema, validateRequest } from "@/lib/schemas";
+import { ErroDaCotaDeEquipe } from "@/lib/billing/equipe";
+import { ErroDaReservaDeCota } from "@/lib/billing/reserva";
 
 export const dynamic = "force-dynamic";
 
@@ -80,33 +79,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (admin) {
     const { data: members } = await admin
       .from("user_organizations")
-      .select("user_id, provisional_until_handover")
+      .select("user_id")
       .eq("organization_id", activeOrg.orgId)
       .is("revoked_at", null);
-
-    // Plano cheio: RECUSA antes do e-mail (spec cobrança §5, D-10; decisão do
-    // dono de 30/09), com a saída na frase. A trava do que já foi convidado
-    // segue no gatilho de assentos, no ACEITE. Convite pendente não conta, e o
-    // provisório do handover também não — a mesma contagem do gatilho. Ler o
-    // limite falhou → segue: falhou a informação, e a trava continua no banco.
-    const ativos = (members ?? []).filter((m) => !m.provisional_until_handover).length;
-    let limite: number | null = null;
-    try {
-      limite = await lerLimiteDoPlano(admin, activeOrg.orgId, "assentos");
-    } catch (err) {
-      logger.warn("team.invite: limite do plano não pôde ser lido — o convite segue", {
-        organization_id: activeOrg.orgId,
-        request_id: requestId,
-        causa: err instanceof Error ? err.message : String(err),
-      });
-    }
-    if (limite !== null && ativos >= limite) {
-      return fail("plan_limit_reached", mensagemDoLimite("assentos", limite, authUser.idioma), 409, {
-        requestId,
-        details: { recurso: "assentos", limite },
-      });
-    }
-
     for (const m of members ?? []) {
       const { data: u } = await admin.auth.admin.getUserById(m.user_id as string);
       const memberEmail = u?.user?.email?.trim().toLowerCase();
@@ -123,28 +98,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       continue;
     }
 
-    if (admin) {
-      const { convite, accept_url, email_dispatched, email_error } = await emitirConvite(admin, {
-        email,
-        role: inv.role,
-        interfaceSettings: inv.interface_settings,
-        organizationId: activeOrg.orgId,
-        orgName: activeOrg.name,
-        inviterId: authUser.id,
-        inviterName,
-        requestId,
-      });
-      sent.push({
-        email,
-        invite_id: convite.id,
-        expires_at: convite.expires_at,
-        email_dispatched,
-        email_error,
-        accept_url,
-      });
-    } else {
-      sent.push(
-        await issueInvite({
+    try {
+      if (admin) {
+        const { convite, accept_url, email_dispatched, email_error } = await emitirConvite(admin, {
           email,
           role: inv.role,
           interfaceSettings: inv.interface_settings,
@@ -153,8 +109,29 @@ export async function POST(req: NextRequest): Promise<Response> {
           inviterId: authUser.id,
           inviterName,
           requestId,
-        }),
-      );
+        });
+        sent.push({
+          email,
+          invite_id: convite.id,
+          expires_at: convite.expires_at,
+          email_dispatched,
+          email_error,
+          accept_url,
+        });
+      } else {
+        failed.push({
+          email,
+          reason:
+            "Não foi possível reservar uma vaga da equipe. Confira a configuração da instalação.",
+        });
+      }
+    } catch (error) {
+      if (error instanceof ErroDaCotaDeEquipe || error instanceof ErroDaReservaDeCota) {
+        failed.push({ email, reason: error.message });
+      } else
+        return fail("internal_error", "Não foi possível emitir o convite. Tente novamente.", 500, {
+          requestId,
+        });
     }
   }
 

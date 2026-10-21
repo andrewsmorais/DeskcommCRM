@@ -28,24 +28,32 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
-import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { testRunSchema } from "@/lib/ai/agents/validation";
 import { avaliarRespostaDeTeste } from "@/lib/ai/agents/avaliar-resposta-de-teste";
 import { testAgentVersion } from "@/lib/agent-engine/agent/sandbox";
 import { requestTurnDeps } from "@/lib/agent-engine/agent/request-deps";
-import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
+import { getRequestPool, RequestPoolNotConfiguredError } from "@/lib/agent-engine/db/request-pool";
+import { redigirMensagemDoProvedor } from "@/lib/agent-engine/edge/llm/run-model-call";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
-import { LlmConteudoBloqueadoError } from "@/lib/agent-engine/edge/llm/conteudo-bloqueado";
 
 export const dynamic = "force-dynamic";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Ctx = { params: Promise<{ id: string; vid: string }> };
+
+/** Mesma redação do motor, somada à remoção de URLs que podem conter credenciais. */
+function mensagemSeguraDoErro(erro: unknown): string {
+  const mensagem = erro instanceof Error ? erro.message : String(erro);
+  return redigirMensagemDoProvedor(
+    mensagem.replace(/\b[a-z][a-z\d+.-]*:\/\/[^\s<>"']+/gi, "[URL]"),
+  );
+}
 
 /**
  * Fecha a linha do run — e RECLAMA se não conseguir.
@@ -75,7 +83,7 @@ async function atualizarRun(
       run_id: runId,
       organization_id: organizationId,
       status_pretendido: campos.status,
-      error: error.message,
+      error: mensagemSeguraDoErro(error.message),
     });
   }
 }
@@ -90,20 +98,10 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     return fail("invalid_request", "ids inválidos.", 400, { requestId });
   }
 
-  const authz = await resolveAuthDual(req, {
-    requestId,
-    resource: "ai_agents",
-    role: "admin",
-    scope: "config:write",
-    tokenRole: "admin",
-  });
+  const authz = await requireRole("admin", { requestId, resource: "ai_agents" });
   if (!authz.ok) return authz.response;
-  const t = (texto: string) => traduzir(texto, authz.idioma ?? "pt-BR");
-  const { organizationId, actor } = authz;
-
-  const teto = await tetoDeEscritaDoToken(authz, "ai_agents_test", requestId);
-  if (teto) return teto;
-  const authUserId = actor.type === "user" ? actor.id : null;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
+  const { user: authUser, org: activeOrg } = authz;
 
   let raw: unknown;
   try {
@@ -121,20 +119,13 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
 
   const admin = createAdminClient();
 
-  // #2237 — esta rota só precisa saber que a versão existe (na org e no
-  // agente certos) e qual é o canal dela. A config que o Testar usa — prompt,
-  // modelo, ferramentas, `knowledge_source_ids` — o runtime do preview
-  // RECARREGA por versionId (`loadAgentVersionConfig` → `agent-config.ts`).
-  // A lista de 11 colunas que morava aqui era uma cópia que ninguém lia e que
-  // envelheceu sozinha (faltava `knowledge_source_ids`); ler só o que se usa
-  // não deixa cópia para envelhecer. O teste da rota cobra isso.
   const { data: version } = await admin
     .from("ai_agent_versions")
     .select(
-      "id, channel_session_id",
+      "id, agent_id, organization_id, system_prompt, provider, model, channel_session_id, max_steps, token_budget, cost_budget_cents, tool_ids",
     )
     .eq("id", vid)
-    .eq("organization_id", organizationId)
+    .eq("organization_id", activeOrg.orgId)
     .eq("agent_id", id)
     .maybeSingle();
 
@@ -145,7 +136,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const { data: runRow, error: runErr } = await admin
     .from("ai_agent_runs")
     .insert({
-      organization_id: organizationId,
+      organization_id: activeOrg.orgId,
       agent_id: id,
       agent_version_id: vid,
       conversation_id: null,
@@ -168,7 +159,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
 
   try {
     const result = await testAgentVersion(getRequestPool(), requestTurnDeps(), {
-      organizationId: organizationId,
+      organizationId: activeOrg.orgId,
       agentId: id,
       versionId: vid,
       runId: runRow.id,
@@ -177,19 +168,15 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       channelId: version.channel_session_id,
     });
     const finalText = result.candidates.map((c) => c.body).join("\n\n");
-    // #2490 — mídia pendente é teste REPROVADO, mesmo com candidato na mão: o
-    // `send_message` que falhou a foto devolveu erro ao modelo, e aprovar a tela
-    // com aquela resposta seria exatamente o "passou sem preparar" da issue.
-    const midiaPendente = result.midia.some((m) => m.falha !== undefined);
     resultPayload = {
       run_id: runRow.id,
-      status: result.candidates.length && !midiaPendente ? "ok" : "blocked",
+      status: result.candidates.length ? "ok" : "blocked",
       latency_ms: Date.now() - startedAt.getTime(),
       final_text: finalText,
       tool_calls: result.proposals,
       ...result,
       stub: process.env.INTERNAL_AGENT_RUN_STUB === "true",
-      guardrails: avaliarRespostaDeTeste(finalText, result.midia),
+      guardrails: avaliarRespostaDeTeste(finalText),
     };
     // ⚠️ `completed`, não `"ok"`. O CHECK da coluna aceita
     // pending|running|completed|failed|aborted|handoff — `"ok"` é o vocabulário
@@ -198,7 +185,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     // `await` não olhava `error`, ao contrário do INSERT logo acima): a linha
     // nascia `running` e morria `running`, em toda instalação, para sempre.
     // Medido numa VPS v1.20.0: 16 execuções, 16 linhas em `running`.
-    await atualizarRun(admin, organizationId, runRow.id, requestId, {
+    await atualizarRun(admin, activeOrg.orgId, runRow.id, requestId, {
       status: "completed",
       completed_at: new Date().toISOString(),
       latency_ms: Date.now() - startedAt.getTime(),
@@ -215,27 +202,38 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     // problema INDIAGNOSTICÁVEL: o teste falhava, a tela dizia uma frase
     // genérica sobre modelo e credencial, e a causa real não existia em lugar
     // nenhum — nem no log, nem na linha do run, nem na resposta.
-    const mensagem = err instanceof Error ? err.message : String(err);
+    const mensagem = mensagemSeguraDoErro(err);
+    const conexaoAusente = err instanceof RequestPoolNotConfiguredError;
     logger.error("[ai.test] o teste do agente falhou", {
       request_id: requestId,
       run_id: runRow.id,
       agent_id: id,
       version_id: vid,
-      organization_id: organizationId,
+      organization_id: activeOrg.orgId,
       error: mensagem,
     });
-    await atualizarRun(admin, organizationId, runRow.id, requestId, {
+    await atualizarRun(admin, activeOrg.orgId, runRow.id, requestId, {
       status: "failed",
       completed_at: new Date().toISOString(),
       latency_ms: Date.now() - startedAt.getTime(),
-      error_code: "preview_failed",
-      // Guardado na linha para quem for diagnosticar depois; a resposta ao
-      // operador segue genérica, porque o texto do erro é técnico.
-      error_message: mensagem.slice(0, 2000),
+      error_code: conexaoAusente ? "request_pool_not_configured" : "preview_failed",
+      // A linha guarda somente a mensagem redigida. A resposta usa orientação
+      // específica para configuração ausente e texto genérico nos demais erros.
+      error_message: mensagem,
     });
+    if (conexaoAusente) {
+      return fail(
+        "unavailable",
+        t(
+          "A conexão do motor de IA com o banco ainda não foi configurada nesta instalação. Configure a conexão PostgreSQL da instalação e tente novamente.",
+        ),
+        503,
+        { requestId },
+      );
+    }
     return fail(
       "preview_failed",
-      err instanceof LlmConteudoBloqueadoError ? err.message : t("Não foi possível executar o teste. Confira modelo, credencial e materiais do agente."),
+      t("Não foi possível executar o teste. Confira modelo, credencial e materiais do agente."),
       422,
       { requestId },
     );
@@ -243,9 +241,8 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
 
   void audit({
     action: "ai_agent.tested",
-    actorUserId: authUserId,
-    actorApiTokenId: authz.apiTokenId ?? null,
-    organizationId: organizationId,
+    actorUserId: authUser.id,
+    organizationId: activeOrg.orgId,
     resourceType: "ai_agent_version",
     resourceId: vid,
     requestId,

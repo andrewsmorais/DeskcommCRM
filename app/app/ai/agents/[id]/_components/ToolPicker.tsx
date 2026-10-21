@@ -16,11 +16,10 @@
  * renderiza. Regra dentro de `onChange` é regra que nunca é exercitada.
  */
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { apiClient } from "@/lib/api/client";
+import { useMcpToolCatalog, type McpToolMeta } from "@/hooks/ai/useMcpToolCatalog";
 import { useT } from "@/hooks/i18n/useT";
 import {
   PACOTES,
@@ -38,25 +37,10 @@ import {
   vagasExigidasPeloPacote,
   textoDaContagem,
   vagasRestantes,
-  type CapacidadeSelecionavel,
 } from "@/lib/mcp/tools/selecao-por-pacote";
 
 /** O que a rota `/api/v1/mcp/tools` serve (snake_case no wire). */
-export interface McpToolMeta extends CapacidadeSelecionavel {
-  id: string;
-  description: string;
-  category: string;
-  requires_role: string;
-  requires_scope: string;
-  rotulo: string;
-  explicacao: string;
-  o_que_toca: string;
-  risco: ToolRisk;
-  pacotes: ReadonlyArray<ToolBundle>;
-  /** `false` = capacidade do harness: mostra, explica e não deixa marcar. */
-  marcavel: boolean;
-  motivo_nao_marcavel: string | null;
-}
+export type { McpToolMeta } from "@/hooks/ai/useMcpToolCatalog";
 
 interface Props {
   value: string[];
@@ -70,14 +54,6 @@ interface Props {
    * da versão na próxima vez que a lista for alterada.
    */
   ocultar?: readonly string[];
-}
-
-interface ApiResponse {
-  data: {
-    tools: Array<Omit<McpToolMeta, "name">>;
-    /** Capacidades que a ORGANIZAÇÃO desligou (ex.: Propostas) — não são órfãs. */
-    desligadas_pela_organizacao?: string[];
-  };
 }
 
 const TODOS_OS_PACOTES: ReadonlyArray<ToolBundle> = PACOTES.map((p) => p.id);
@@ -196,18 +172,7 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
     null,
   );
 
-  const query = useQuery({
-    queryKey: ["mcp", "tools"],
-    queryFn: async () => {
-      const res = await apiClient.get<ApiResponse>("/api/v1/mcp/tools");
-      // `name` é o mesmo `id` — a regra de seleção fala em `name`, o wire em `id`.
-      return {
-        tools: res.data.tools.map((t) => ({ ...t, name: t.id })) as McpToolMeta[],
-        desligadas: res.data.desligadas_pela_organizacao ?? [],
-      };
-    },
-    staleTime: 60_000,
-  });
+  const query = useMcpToolCatalog();
 
   const catalogo = React.useMemo<McpToolMeta[]>(
     () => (query.data?.tools ?? []).filter((c) => !(ocultar ?? []).includes(c.name)),

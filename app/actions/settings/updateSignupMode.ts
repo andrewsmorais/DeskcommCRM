@@ -5,14 +5,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { audit } from "@/lib/audit";
-import { escritaDeAdminOuRecusa } from "@/lib/auth/escritaDeAdminOuRecusa";
+import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import {
   MODOS_DE_CADASTRO,
   gravarModoDeCadastro,
   modoDeCadastro,
   type ModoDeCadastro,
 } from "@/lib/auth/politica-de-cadastro";
-import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 
 export type UpdateSignupModeResult = { ok: true } | { ok: false; error: string };
 
@@ -41,9 +40,7 @@ const entradaSchema = z.object({
 export async function updateSignupMode(
   input: z.infer<typeof entradaSchema>,
 ): Promise<UpdateSignupModeResult> {
-  const escrita = await escritaDeAdminOuRecusa();
-  if (!escrita.ok) return escrita;
-  const { user } = escrita.ctx;
+  const { user } = await requirePlatformAdmin();
 
   const parsed = entradaSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
@@ -64,7 +61,7 @@ export async function updateSignupMode(
     resourceType: "platform_settings",
     metadata: { de: anterior, para: parsed.data.signup_mode },
     requestId: hdrs.get("x-request-id"),
-    ip: ipDoCliente(hdrs),
+    ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: hdrs.get("user-agent"),
   });
 

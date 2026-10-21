@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { derivarMarca } from "@/lib/branding/contraste";
 import { REGUA_DO_PRODUTO } from "@/lib/branding/regua-do-produto";
+import { DEFAULT_APP_NAME } from "@/lib/branding";
 import {
   camadaDoAmbiente,
   resolverMarca,
@@ -221,7 +222,7 @@ describe("precedência POR CAMPO", () => {
 
   it("sem nenhuma camada, tudo é o padrão do produto", () => {
     const marca = resolverMarca([], REGUA);
-    expect(marca.name).toBe("DeskcommCRM");
+    expect(marca.name).toBe(DEFAULT_APP_NAME);
     expect(marca.cor).toBeNull();
     expect(marca.origens).toEqual({ nome: "padrao", logoUrl: "padrao", cor: "padrao" });
     expect(marca.motivos).toEqual([]);
@@ -263,13 +264,15 @@ describe("diagnóstico não vaza identidade", () => {
     // motivos passam a conviver num log só, e a cor de uma empresa não tem por
     // que aparecer no diagnóstico de outra.
     const sementes = ["#f5c518", "#808080", "#0f172a", "#dc2626"];
+    let motivosNoRun = 0;
     for (const hex of sementes) {
       const marca = resolverMarca([camadaDoAmbiente({ APP_ACCENT_HEX: hex })], REGUA);
-      expect(marca.motivos.length).toBeGreaterThan(0);
+      motivosNoRun += marca.motivos.length;
       for (const m of marca.motivos) {
         expect(`${m.detalhe} ${m.alvo ?? ""}`).not.toContain(hex);
       }
     }
+    expect(motivosNoRun).toBeGreaterThan(0);
   });
 });
 
@@ -294,9 +297,9 @@ describe("memoização da derivação", () => {
   });
 
   it("o cache devolve o mesmo que a derivação direta (não uma cópia velha)", () => {
-    const direto = derivarMarca("#7c3aed", REGUA);
+    const direto = derivarMarca("#211d55", REGUA);
     const pelaCamada = resolverMarca(
-      [camadaDoAmbiente({ APP_ACCENT_HEX: "#7c3aed" })],
+      [camadaDoAmbiente({ APP_ACCENT_HEX: "#211d55" })],
       REGUA,
     );
     expect(pelaCamada.cor?.derivada).toEqual(direto);

@@ -2,9 +2,7 @@
  * GET /api/v1/lgpd/requests/[id]
  *
  * Detail of a single lgpd_request + audit trail entries for that request.
- * If completed or pending_review and result.pdf_path exists, generates a 72h
- * signed URL — pending_review is the export the worker could not deliver (no
- * e-mail configured, or no titular address), and the operator delivers it by hand.
+ * If completed and result.pdf_path exists, generates a 72h signed URL.
  *
  * Auth: cookie session, role >= admin.
  * organization_id resolved from session — never from body or path.
@@ -28,8 +26,7 @@ export async function GET(
   const authz = await requireRole("admin", {
     requestId,
     resource: "lgpd_requests",
-    allowPlatformAdmin: "leitura",
-    permiteOrgSuspensa: true,
+    allowPlatformAdmin: true,
   });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
@@ -56,29 +53,6 @@ export async function GET(
     return fail("not_found", t("Solicitação não encontrada."), 404, { requestId });
   }
 
-  // Quem recebe e para onde vai: o admin aprova o envio VENDO o nome do
-  // titular e o e-mail de destino (doc 134). O destino é o mesmo que o worker
-  // usa — o endereço que veio no pedido, senão o e-mail do contato.
-  let contato: { display_name: string | null; email: string | null } | null = null;
-  if (request.contact_id) {
-    const { data: c } = await admin
-      .from("contacts")
-      .select("display_name, email")
-      .eq("organization_id", orgId)
-      .eq("id", request.contact_id)
-      .maybeSingle();
-    contato = c ?? null;
-  }
-  const pedido = (request.request_payload ?? {}) as {
-    customer?: { name?: unknown } | null;
-    delivery?: { address?: unknown } | null;
-  };
-  const textoOuNulo = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
-  const titular = {
-    nome: textoOuNulo(contato?.display_name) ?? textoOuNulo(pedido.customer?.name),
-    email_destino: textoOuNulo(pedido.delivery?.address) ?? textoOuNulo(contato?.email),
-  };
-
   // Fetch audit trail entries for this request
   const { data: auditRows, error: auditErr } = await admin
     .from("api_audit_log")
@@ -97,11 +71,10 @@ export async function GET(
 
   const audit_trail = auditRows ?? [];
 
-  // Signed URL when the PDF exists: delivered (completed) or waiting for the
-  // operator to deliver it by hand (pending_review).
+  // Generate signed URL if completed and pdf_path present
   let signed_pdf_url: string | null = null;
 
-  if ((request.status === "completed" || request.status === "pending_review") && request.result) {
+  if (request.status === "completed" && request.result) {
     const result = request.result as Record<string, unknown>;
     const pdfPath = typeof result.pdf_path === "string" ? result.pdf_path : null;
 
@@ -119,7 +92,7 @@ export async function GET(
   }
 
   return ok(
-    { request, audit_trail, signed_pdf_url, titular },
+    { request, audit_trail, signed_pdf_url },
     { requestId },
   );
 }

@@ -9,20 +9,19 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/ai/dispatcher/rate-limit";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createLeadHandler, moveLeadHandler, updateLeadHandler } from "@/app/api/v1/leads/_handler";
-import type { HandlerCtx } from "@/lib/api/handlers/types";
+import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
-import { classificarLeadInicial, type ResultadoClassificacaoInicial } from "@/lib/leads/classificacao-inicial";
+import {
+  classificarLeadInicial,
+  type ResultadoClassificacaoInicial,
+} from "@/lib/leads/classificacao-inicial";
 import type { CreateLeadInput } from "@/lib/schemas";
 import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
-import { HEADER_ASSINATURA_DE_ENTRADA } from "@/lib/webhooks/assinatura";
 import { encontrarContatoPorTelefoneComNome } from "@/lib/channels/contato-por-telefone";
 import {
   buildContactConsentGrant,
@@ -37,23 +36,13 @@ import {
   mapRdStationPayload,
   type RdStationMapped,
 } from "@/lib/webhooks/rdstation";
-import { isElementorPayload, mapElementorPayload, type ElementorMapped } from "@/lib/webhooks/elementor";
-import {
-  motivoDaRecusaDaCriacao,
-  origemDaPagina,
-  registrarCaptacao,
-  type MotivoDaRecusa,
-} from "@/lib/webhooks/captacao";
+import { origemDaPagina, registrarCaptacao } from "@/lib/webhooks/captacao";
 import { ipDoClienteParaInet } from "@/lib/http/ip-do-cliente";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { ApiError } from "@/lib/api/types";
-import { autorizarCaptacaoParaIA, camposDaCaptacao } from "@/lib/ai/elegibilidade/formulario";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
-import {
-  normalizarCamposNumericos,
-  webhookFormFieldsSchema,
-} from "@/lib/webhooks/formulario";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -68,9 +57,19 @@ const RATE_LIMIT_PER_MIN = 60;
 // duplicated (not exported there) only so the route can flag a phone-looking
 // field that failed normalizePhoneBR, for observability. Keep in sync if that
 // list changes.
-const PHONE_ALIASES_FOR_LOGGING = ["phone", "telefone", "whatsapp", "celular", "phone_number", "tel"];
+const PHONE_ALIASES_FOR_LOGGING = [
+  "phone",
+  "telefone",
+  "whatsapp",
+  "celular",
+  "phone_number",
+  "tel",
+];
 
-function findRawPhoneIfUnnormalized(payload: Record<string, unknown>, fieldMap: FieldMap): string | null {
+function findRawPhoneIfUnnormalized(
+  payload: Record<string, unknown>,
+  fieldMap: FieldMap,
+): string | null {
   const aliases = [...(fieldMap.phone ?? []), ...PHONE_ALIASES_FOR_LOGGING];
   const lowered = new Map(Object.keys(payload).map((k) => [k.toLowerCase(), k]));
   for (const alias of aliases) {
@@ -81,84 +80,6 @@ function findRawPhoneIfUnnormalized(payload: Record<string, unknown>, fieldMap: 
     }
   }
   return null;
-}
-
-/**
- * O que um lead JÁ GRAVADO tem de diferente do que este envio trouxe (#2316).
- *
- * Por CHAVE, e com o mesmo tratamento do merge atômico (`fn_lead_anotar_campos`):
- * o banco guarda `custom_fields` com tipos mistos — o campo numérico vira
- * número na coluna e string no envio —, então a comparação é pelo texto dos
- * dois lados. `100` gravado e `"100"` reenviado são o MESMO dado: um envio
- * assim é reenvio, não atualização.
- */
-function camposQueMudaram(
-  atuais: Record<string, unknown>,
-  novos: Record<string, unknown>,
-): Record<string, unknown> {
-  const mudou: Record<string, unknown> = {};
-  for (const [chave, valor] of Object.entries(novos)) {
-    if (String(atuais[chave] ?? "") !== String(valor)) mudou[chave] = valor;
-  }
-  return mudou;
-}
-
-/**
- * A etapa que este envio PEDIU (#2316), resolvida no funil do PRÓPRIO lead.
- *
- * `stage` é campo reservado do corpo (id ou nome — o nome é o que quem integra
- * tem em mãos), e só devolve o que anda para FRENTE: o webhook é um evento de
- * fora, e um evento velho (ou um campo fixo no formulário, que manda a mesma
- * etapa em todo envio) não pode puxar o card para trás. `null` = nada a mover.
- *
- * Uma leitura só, e ela faz as duas coisas: resolve o alvo (id ou nome) e
- * ordena os dois — `position` de `crm_stages` é a única régua de "para frente"
- * que o produto tem.
- *
- * O filtro de `organization_id` usa a organização JÁ resolvida pela fonte
- * (`path_token`, fonte confiável — nunca o body): o service role contorna a RLS
- * por desenho, então o escopo do tenant é declarado aqui (anti-pattern 10,
- * régua da R3 do gate de tenant).
- */
-async function etapaAlvoDoEnvio(
-  admin: SupabaseClient,
-  organizationId: string,
-  pipelineId: string,
-  stageAtualId: string | null,
-  indicado: string | null,
-): Promise<string | null> {
-  if (!indicado || !pipelineId) return null;
-  const { data, error } = await admin
-    .from("crm_stages")
-    .select("id, name, position")
-    .eq("organization_id", organizationId)
-    .eq("pipeline_id", pipelineId)
-    .order("position", { ascending: true });
-  if (error) {
-    // Abrir o card não pode morrer por causa de um campo de etapa: o resto do
-    // envio continua sendo aplicado e a recusa fica no log.
-    logger.error("[webhooks.in] não foi possível ler as etapas do funil do lead", {
-      pipelineId,
-      errorCode: error.code,
-      errorMessage: error.message,
-    });
-    return null;
-  }
-  const etapas = (data ?? []) as Array<{ id: string; name: string | null; position: number | null }>;
-  const alvo =
-    etapas.find((e) => e.id === indicado) ??
-    etapas.find((e) => (e.name ?? "").trim().toLowerCase() === indicado.trim().toLowerCase());
-  if (!alvo) {
-    logger.warn("[webhooks.in] etapa pedida no envio não existe no funil do lead", {
-      pipelineId,
-      etapa: indicado,
-    });
-    return null;
-  }
-  const indiceAtual = etapas.findIndex((e) => e.id === stageAtualId);
-  const indiceAlvo = etapas.findIndex((e) => e.id === alvo.id);
-  if (indiceAtual < 0 || indiceAlvo <= indiceAtual) return null;
-  return alvo.id;
 }
 
 export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextResponse> {
@@ -179,13 +100,18 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const admin = createAdminClient();
   const { data: source, error: srcErr } = await admin
     .from("webhook_sources")
-    .select("id, name, organization_id, secret_encrypted, default_pipeline_id, default_stage_id, field_map, form_fields, redirect_to, is_active, authorize_ai_on_capture, update_existing_lead_on_capture")
+    .select(
+      "id, name, organization_id, secret_encrypted, default_pipeline_id, default_stage_id, field_map, redirect_to, is_active",
+    )
     .eq("path_token", token)
     .maybeSingle();
   if (srcErr) return fail("internal_error", srcErr.message, 500, { requestId });
   if (!source || !source.is_active) {
     return fail("not_found", "unknown webhook token", 404, { requestId });
   }
+
+  const recusado = await exigirRecursoDoPlano(source.organization_id, "webhooks", { requestId });
+  if (recusado) return recusado;
 
   const rawBody = await req.text();
   const contentType = req.headers.get("content-type") ?? "";
@@ -217,42 +143,32 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     sourceName: (source.name as string) ?? "Fonte sem nome",
   };
 
-  const sigHeader = req.headers.get(HEADER_ASSINATURA_DE_ENTRADA);
-  // secret cifrado at-rest (migration 0041). A fonte que TEM segredo exige
-  // assinatura; se esta instalação não consegue decifrá-lo (chave mestra
-  // ausente/trocada, dado corrompido), não há como conferir — e o que não se
-  // confere não entra. Mesma regra da autenticação do WAHA
-  // (lib/waha/webhook-auth.ts): falha FECHADA. O operador vê o motivo em
-  // "Leads recebidos" e recadastra a assinatura da fonte.
+  const sigHeader = req.headers.get("x-ChatAI Online-signature");
+  // secret cifrado at-rest (migration 0041). Decrypt falhou (chave da GUC
+  // ausente/trocada)? Precedente WAHA: pula a validação em vez de derrubar a
+  // captação — secret aqui é defesa opcional, não gate de disponibilidade.
   let sourceSecret: string | null = null;
-  let recusa: MotivoDaRecusa | null = null;
+  let hmacSkipped = false;
   if (source.secret_encrypted) {
     sourceSecret = await decryptWebhookSecret(admin, source.secret_encrypted as unknown as string);
-    if (sourceSecret === null) {
-      logger.error("[webhooks.in] segredo da fonte não decifra — captação recusada até recadastrar a assinatura", {
-        organizationId: source.organization_id,
-        webhookSourceId: source.id,
-        requestId,
-      });
-      recusa = "assinatura_indecifravel";
-    } else if (!verifyInboundSignature(rawBody, sigHeader, sourceSecret)) {
-      recusa = "assinatura_invalida";
-    }
+    if (sourceSecret === null) hmacSkipped = true;
   }
-  if (recusa) {
+  const validSignature = sourceSecret
+    ? verifyInboundSignature(rawBody, sigHeader, sourceSecret)
+    : null;
+  if (sourceSecret && !validSignature) {
     await audit({
       action: "webhook.inbound_invalid_signature",
       organizationId: source.organization_id,
       resourceType: "webhook_source",
       resourceId: source.id,
       requestId,
-      metadata: { reason: recusa },
     });
     await registrarCaptacao(admin, {
       ...fonteDaCaptacao,
       ...origemDaCaptacao,
       outcome: "recusado",
-      rejectReason: recusa,
+      rejectReason: "assinatura_invalida",
     });
     return fail("unauthenticated", "invalid_signature", 401, { requestId });
   }
@@ -272,9 +188,10 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     raw_body: rawBody,
     payload_parsed: payload,
     signature_header: sigHeader ?? null,
-    // Daqui só passa fonte sem segredo ou assinatura que conferiu.
-    valid_signature: true,
-    event_type: "lead_capture.received",
+    // hmacSkipped (decrypt indisponível) conta como "não validado mas aceito",
+    // igual ao webhook WAHA — o feed da UI não pinta de vermelho.
+    valid_signature: validSignature ?? true,
+    event_type: hmacSkipped ? "lead_capture.received_hmac_skipped" : "lead_capture.received",
     external_id: null,
     status: "received",
     attempts: 0,
@@ -293,18 +210,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // o idempotency key e o mapeamento de campos abaixo. Respondi tem
   // precedência: um payload nunca é dos dois.
   const rdStationMapped: RdStationMapped | null =
-    respondiMapped === null && isRdStationPayload(payload)
-      ? mapRdStationPayload(payload)
-      : null;
-
-  // Elementor Pro manda `fields[<id>][value]` (colchetes, uma linha por
-  // propriedade) — mesmo problema: nenhuma chave de topo chama `nome`. Fica por
-  // último na precedência porque a detecção é por forma estrita, e nenhum
-  // payload é de duas origens.
-  const elementorMapped: ElementorMapped | null =
-    respondiMapped === null && rdStationMapped === null && isElementorPayload(payload)
-      ? mapElementorPayload(payload)
-      : null;
+    respondiMapped === null && isRdStationPayload(payload) ? mapRdStationPayload(payload) : null;
 
   // Idempotência (spec §5): `external_id` é campo reservado do envio — quem
   // integra via sistema (Zapier/n8n/loja) manda o ID único do disparo e o
@@ -317,18 +223,18 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const externalId =
     typeof externalIdRaw === "string" && externalIdRaw.trim()
       ? externalIdRaw.trim().slice(0, 255)
-      // O MESMO corte do ramo acima. A assimetria era de uma linha e o desfecho
-      // não: `uniq_crm_leads_org_source_external` é btree, e btree recusa chave
-      // que não caiba em ~2.704 bytes. Medido em Postgres 17 real, com conteúdo
-      // INCOMPRESSÍVEL (o pglz comprime `repeat('a')` e mascara o limite): a
-      // partir de ~2.669 bytes o INSERT sai com sqlstate 54000, o handler
-      // devolve 500 e NENHUM lead entra.
-      //
-      // Não é alcançável pelo Respondi real — o `respondent_id` do formulário é
-      // uuid de 36 chars, ~60× abaixo do limiar. É higiene de simetria: dois
-      // ramos do mesmo `?:` produzindo a mesma coluna com regras diferentes é o
-      // tipo de coisa que só aparece quando alguém manda um corpo fabricado.
-      : (respondiMapped?.externalId?.slice(0, 255) ??
+      : // O MESMO corte do ramo acima. A assimetria era de uma linha e o desfecho
+        // não: `uniq_crm_leads_org_source_external` é btree, e btree recusa chave
+        // que não caiba em ~2.704 bytes. Medido em Postgres 17 real, com conteúdo
+        // INCOMPRESSÍVEL (o pglz comprime `repeat('a')` e mascara o limite): a
+        // partir de ~2.669 bytes o INSERT sai com sqlstate 54000, o handler
+        // devolve 500 e NENHUM lead entra.
+        //
+        // Não é alcançável pelo Respondi real — o `respondent_id` do formulário é
+        // uuid de 36 chars, ~60× abaixo do limiar. É higiene de simetria: dois
+        // ramos do mesmo `?:` produzindo a mesma coluna com regras diferentes é o
+        // tipo de coisa que só aparece quando alguém manda um corpo fabricado.
+        (respondiMapped?.externalId?.slice(0, 255) ??
         rdStationMapped?.externalId?.slice(0, 255) ??
         null);
 
@@ -339,64 +245,31 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     return ok({ lead_id: leadId }, { requestId });
   };
 
-  /**
-   * O lead que já existe com este `external_id` — com o que o reenvio precisa
-   * para decidir entre ATUALIZAR (#2316) e reenvio comum: os campos que o card
-   * já tem, o funil e a etapa onde ele está.
-   *
-   * Traz o CONTATO junto, e não só o id do lead: a linha de captação precisa do
-   * vínculo para a LGPD alcançá-la. O gatilho de anonimização casa por
-   * `contact_id` — uma captação gravada sem ele guarda nome, telefone e o
-   * formulário inteiro de alguém que pediu anonimização, por 365 dias, enquanto
-   * o produto afirma que a pessoa foi anonimizada.
-   */
-  type LeadExistente = {
+  // Traz o CONTATO junto, e não só o id do lead: a linha de captação precisa do
+  // vínculo para a LGPD alcançá-la. O gatilho de anonimização casa por
+  // `contact_id` — uma captação `duplicado` gravada sem ele guarda nome,
+  // telefone e o formulário inteiro de alguém que pediu anonimização, por 365
+  // dias, enquanto o produto afirma que a pessoa foi anonimizada.
+  const findLeadByExternalId = async (): Promise<{
     id: string;
     contactId: string | null;
-    /**
-     * A fonte que CRIOU este card (#2316). É a coluna durável
-     * `crm_leads.webhook_source_id` (migration 0683), e não o histórico de
-     * captação nem o `source_metadata`: o primeiro é podado em 365 dias e não
-     * existe para os cards antigos, e o segundo é jsonb de terceiros.
-     */
-    webhookSourceId: string | null;
-    title: string | null;
-    customFields: Record<string, unknown>;
-    pipelineId: string;
-    stageId: string | null;
-  };
-
-  const findLeadByExternalId = async (): Promise<LeadExistente | null> => {
+  } | null> => {
     if (!externalId) return null;
     const { data } = await admin
       .from("crm_leads")
-      .select("id, contact_id, webhook_source_id, title, custom_fields, pipeline_id, stage_id")
+      .select("id, contact_id")
       .eq("organization_id", source.organization_id)
       .eq("source", "webhook")
       .eq("external_id", externalId)
       .maybeSingle();
     if (!data) return null;
-    return {
-      id: data.id as string,
-      contactId: (data.contact_id as string | null) ?? null,
-      webhookSourceId: (data.webhook_source_id as string | null) ?? null,
-      title: (data.title as string | null) ?? null,
-      customFields: (data.custom_fields as Record<string, unknown> | null) ?? {},
-      pipelineId: (data.pipeline_id as string) ?? "",
-      stageId: (data.stage_id as string | null) ?? null,
-    };
+    return { id: data.id as string, contactId: (data.contact_id as string | null) ?? null };
   };
 
   const fieldMap = (source.field_map ?? {}) as FieldMap;
   // external_id não é dado do lead — sai do payload antes do mapeamento pra
   // não virar custom_field (o log de recebimento acima preserva o original).
-  // `stage` é o OUTRO campo reservado (#2316): é o jeito de quem integra pedir
-  // movimento de etapa no card que o `external_id` aponta, e ele só existe
-  // nesse caminho — fora dele o envio não tem card para onde apontar.
-  const { external_id: _reservedExternalId, stage: _reservedStage, ...payloadForMapping } = payload;
-  /** O que o envio pediu de etapa, lido do corpo CRU. */
-  const etapaPedida =
-    typeof _reservedStage === "string" && _reservedStage.trim() ? _reservedStage.trim() : null;
+  const { external_id: _reservedExternalId, ...payloadForMapping } = payload;
   // O mapeamento vem ANTES da deduplicação (era depois) porque o histórico
   // registra os DADOS também do envio repetido — sem isso, o retry de uma
   // ferramenta apareceria na tela como uma linha sem nome nem telefone, e quem
@@ -406,198 +279,38 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // O `respondiMapped ??` é do PR #326: sem ele o payload aninhado do Respondi
   // volta a cair no mapeador genérico, que é o defeito que aquele PR conserta.
   // O `rdStationMapped ??` é a mesma figura para o envelope `leads[]` do RD
-  // Station (achado 2026-09-08), e o `elementorMapped ??` para os campos em
-  // colchetes do Elementor. Ordem: Respondi, RD Station, Elementor, genérico.
+  // Station (achado 2026-09-08). Ordem: Respondi, RD Station, genérico.
   const mapped =
     respondiMapped ??
     rdStationMapped ??
-    elementorMapped ??
     mapInboundPayload(externalId ? payloadForMapping : payload, fieldMap);
   if (!mapped.phone) {
     const rawPhone = findRawPhoneIfUnnormalized(payload, fieldMap);
     if (rawPhone) mapped.source_metadata.raw_phone = rawPhone;
   }
 
-  const camposConfigurados = webhookFormFieldsSchema.safeParse(source.form_fields ?? []);
-  const tipagem = normalizarCamposNumericos(payload, camposConfigurados.success ? camposConfigurados.data : []);
-  if (tipagem.invalidKeys.length > 0) {
-    await registrarCaptacao(admin, {
-      ...fonteDaCaptacao,
-      ...origemDaCaptacao,
-      capturedName: mapped.name,
-      capturedPhone: mapped.phone,
-      capturedEmail: mapped.email,
-      fields: camposDaCaptacao(mapped.custom_fields, payload, source.authorize_ai_on_capture),
-      utm: mapped.source_metadata,
-      leadId: null,
-      contactId: null,
-      outcome: "recusado",
-      rejectReason: "campo_numerico_invalido",
-    });
-    return fail("invalid_request", "A resposta de um campo numérico tem formato inválido.", 422, {
-      requestId,
-      details: { fields: tipagem.invalidKeys },
-    });
-  }
-  Object.assign(mapped.custom_fields, tipagem.values);
-
   /** O que o formulário trouxe, do jeito que a tela de histórico mostra. */
-  // O aceite é evidência de captação, não resposta comercial no card.
-  if (source.authorize_ai_on_capture) {
-    for (const key of ["ai_service_consent", "submission_status", "ai_service_consent_version"]) {
-      delete mapped.custom_fields[key];
-    }
-  }
-
   const dadosDaCaptacao = {
     capturedName: mapped.name,
     capturedPhone: mapped.phone,
     capturedEmail: mapped.email,
-    fields: camposDaCaptacao(mapped.custom_fields, payload, source.authorize_ai_on_capture),
+    fields: mapped.custom_fields,
     utm: mapped.source_metadata,
-  };
-
-  /**
-   * O fecho de um reenvio: o `external_id` já aponta para um card (#2316).
-   *
-   * A régua tem DUAS perguntas antes da terceira, e as duas são portões:
-   *
-   * 1. a fonte tem a OPÇÃO LIGADA? Ela nasce DESLIGADA (`update_existing_lead_on_capture`,
-   *    migration 0683) — atualizar card é integração entre sistemas, e a issue
-   *    #2316 pediu a opção por fonte justamente por isto. Desligada, o envio
-   *    repetido é o que sempre foi: `duplicado`, card intocado;
-   * 2. o card é DESTA fonte? A busca é por organização + `external_id`, então
-   *    sem esta pergunta a fonte A reescreveria o card que nasceu na B. `null`
-   *    (card sem origem carimbada) também não deixa passar: na dúvida, não
-   *    escreve.
-   *
-   * Passados os dois, a régua é o DADO, não o id:
-   * - o envio trouxe campo NOVO (valor pago, área, etapa mais à frente) → o
-   *   card é ATUALIZADO com o mesmo merge atômico do `updateLeadHandler` e a
-   *   mesma etapa do `moveLeadHandler`, e o desfecho é `atualizado`;
-   * - o envio repetiu o que já estava gravado → idempotência de sempre: nada
-   *   muda, `duplicado`, 200 com o lead existente. A ferramenta que reenviou
-   *   por timeout recebe sucesso e para de tentar.
-   *
-   * O portão 1 é o que protege a edição MANUAL: sem ele, o vendedor que corrige
-   * o título ou um campo à mão e depois recebe um retry (ou um evento antigo)
-   * da ferramenta tem a correção sobrescrita — a comparação é com o valor
-   * atual, então o envio conta como "dado novo". Com a opção desligada, quem
-   * não liga continua exatamente como antes do #2316.
-   *
-   * Serve para os DOIS caminhos que encontram o card — o fast-path de
-   * deduplicação e a corrida do retry, em que o índice único derruba o segundo
-   * INSERT. E nos DOIS o histórico é gravado com o vínculo do lead e do
-   * contato: é a linha de captação que o gatilho de anonimização alcança.
-   */
-  const fecharReenvio = async (
-    lead: LeadExistente,
-    contactIdDoEnvio: string | null,
-  ): Promise<NextResponse> => {
-    /** O reenvio de sempre: nada muda no card, 200 com o lead existente. */
-    const fecharComoReenvio = async (): Promise<NextResponse> => {
-      await registrarCaptacao(admin, {
-        ...fonteDaCaptacao,
-        ...origemDaCaptacao,
-        ...dadosDaCaptacao,
-        leadId: lead.id,
-        contactId: contactIdDoEnvio ?? lead.contactId,
-        outcome: "duplicado",
-      });
-      return respondWithLead(lead.id);
-    };
-
-    // PORTÃO 1 — a opção é da fonte, e nasce desligada.
-    if (!source.update_existing_lead_on_capture) return fecharComoReenvio();
-    // PORTÃO 2 — só o card que ESTA fonte criou.
-    if (lead.webhookSourceId !== source.id) return fecharComoReenvio();
-    // PORTÃO 3 — card de titular ANONIMIZADO não recebe dado de volta. A
-    // `fn_lgpd_cascade_redact_contact` limpa título, campos e tags do card, mas
-    // mantém `external_id` e `webhook_source_id`: sem esta pergunta, o próximo
-    // envio da integração passaria pelos portões 1 e 2, tudo pareceria "novo" e
-    // o nome e os campos do titular voltariam — a anonimização é irreversível.
-    // Leitura que falha também fecha como reenvio: na dúvida, não escreve.
-    //
-    // Fronteira: a anonimização também alcança o card por `crm_lead_links`
-    // (`target_kind='contact'`), e este portão só olha o `contact_id`. Hoje
-    // nada no produto grava esse vínculo; se passar a gravar, a causa raiz é
-    // zerar `webhook_source_id` no passo 5 da `fn_lgpd_cascade_redact_contact`.
-    if (lead.contactId) {
-      const { data: titular, error: erroTitular } = await admin
-        .from("contacts")
-        .select("is_anonymized")
-        .eq("organization_id", source.organization_id)
-        .eq("id", lead.contactId)
-        .maybeSingle();
-      if (erroTitular || titular?.is_anonymized === true) return fecharComoReenvio();
-    }
-
-    const campos = camposQueMudaram(lead.customFields, mapped.custom_fields);
-    // O título vem do nome só nos caminhos que usam o mapeador genérico (RD
-    // Station e Elementor também): o Respondi tem formato próprio de título,
-    // e compará-lo com o nome de hoje faria TODO retry do Respondi virar
-    // "atualizado".
-    const tituloMudou = !respondiMapped && !!mapped.name && mapped.name !== lead.title;
-    const etapaAlvo = await etapaAlvoDoEnvio(
-      admin,
-      source.organization_id as string,
-      lead.pipelineId,
-      lead.stageId,
-      etapaPedida,
-    );
-
-    // Mesmo envio repetido: nada é recriado — a ferramenta que reenviou recebe
-    // sucesso e para de tentar.
-    if (Object.keys(campos).length === 0 && !tituloMudou && etapaAlvo === null) {
-      return fecharComoReenvio();
-    }
-
-    const ctxDoLead: HandlerCtx = {
-      organization_id: source.organization_id,
-      actor: { type: "webhook_source", id: source.id },
-      requestId,
-    };
-    try {
-      if (Object.keys(campos).length > 0 || tituloMudou) {
-        await updateLeadHandler(admin, ctxDoLead, lead.id, {
-          ...(tituloMudou && mapped.name ? { title: mapped.name } : {}),
-          ...(Object.keys(campos).length > 0 ? { custom_fields: campos } : {}),
-        });
-      }
-      if (etapaAlvo) {
-        await moveLeadHandler(admin, ctxDoLead, lead.id, { to_stage_id: etapaAlvo });
-      }
-    } catch (err) {
-      // O card JÁ existe e este envio veio de uma ferramenta que reenvia: a
-      // recusa do UPDATE (régua de campos, contato de pessoal, etapa que o
-      // funil não deixa) transformaria este card num loop de retry sem que
-      // nada do dado novo chegasse. O que não pôde ser aplicado fica no log —
-      // e o PRÓXIMO evento tenta de novo, porque o desfecho é do envio, não da
-      // escrita. `registrarCaptacao` não lança, então a linha sai de qualquer
-      // jeito, com o vínculo.
-      logger.error("[webhooks.in] reenvio com dado novo não pôde atualizar o card", {
-        organizationId: source.organization_id,
-        webhookSourceId: source.id,
-        leadId: lead.id,
-        requestId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-
-    await registrarCaptacao(admin, {
-      ...fonteDaCaptacao,
-      ...origemDaCaptacao,
-      ...dadosDaCaptacao,
-      leadId: lead.id,
-      contactId: contactIdDoEnvio ?? lead.contactId,
-      outcome: "atualizado",
-    });
-    return respondWithLead(lead.id);
   };
 
   const deduped = await findLeadByExternalId();
   if (deduped) {
-    return fecharReenvio(deduped, null);
+    // Mesmo envio repetido: 200 com o lead existente, nada é recriado — a
+    // ferramenta que reenviou recebe sucesso e para de tentar.
+    await registrarCaptacao(admin, {
+      ...fonteDaCaptacao,
+      ...origemDaCaptacao,
+      ...dadosDaCaptacao,
+      leadId: deduped.id,
+      contactId: deduped.contactId,
+      outcome: "duplicado",
+    });
+    return respondWithLead(deduped.id);
   }
 
   if (!mapped.name && !mapped.phone && !mapped.email) {
@@ -614,7 +327,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       outcome: "recusado",
       rejectReason: "sem_campo_mapeavel",
     });
-    return fail("invalid_request", "Nenhum campo mapeável (nome/telefone/email).", 400, { requestId });
+    return fail("invalid_request", "Nenhum campo mapeável (nome/telefone/email).", 400, {
+      requestId,
+    });
   }
 
   // Contato: upsert por telefone (se houver) — reusa a coluna E.164 canônica.
@@ -664,11 +379,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     // no cadastro errado, o follow-up não a reconhecia, e a mesma pergunta saía
     // de novo.
     const selectActiveByPhone = async (): Promise<ContatoAchado> => ({
-      data: await encontrarContatoPorTelefoneComNome(
-        admin,
-        source.organization_id,
-        mapped.phone!,
-      ),
+      data: await encontrarContatoPorTelefoneComNome(admin, source.organization_id, mapped.phone!),
     });
 
     // uniq_contacts_org_email (baseline.sql) é um SEGUNDO índice único parcial,
@@ -700,7 +411,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
           phone_number: mapped.phone,
           email: mapped.email,
           source: "webhook",
-          source_metadata: { ...mapped.source_metadata, webhook_source_id: source.id },
+          source_metadata: { webhook_source_id: source.id, ...mapped.source_metadata },
           // Consentimento explícito só quando o Respondi confirmou concessão —
           // recusa NUNCA vira concessão por omissão. E a recusa agora é
           // GRAVADA, não omitida: o DEFAULT da coluna já é `granted_at: null`,
@@ -817,7 +528,6 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     custom_fields?: Record<string, unknown>;
     source_metadata?: Record<string, unknown>;
     external_id?: string;
-    webhook_source_id?: string;
   } = {
     pipeline_id: source.default_pipeline_id,
     stage_id: source.default_stage_id,
@@ -828,12 +538,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     tags: [],
     source: "webhook",
     custom_fields: mapped.custom_fields,
-    source_metadata: { ...mapped.source_metadata, webhook_source_id: source.id },
-    // A coluna que responde "de quem é este card" para a atualização por
-    // integração (migration 0683). Vai junto do `source_metadata` porque é o
-    // MESMO fato em dois lugares: o jsonb é o registro histórico do envio, e a
-    // coluna é o que a régua lê — durável, tipada e indexada.
-    webhook_source_id: source.id,
+    source_metadata: { webhook_source_id: source.id, ...mapped.source_metadata },
     ...(externalId ? { external_id: externalId } : {}),
   };
 
@@ -847,23 +552,27 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         requestId,
       },
       leadInput,
-      // O lead de formulário entra no funil mesmo com campo exigido em branco:
-      // decisão do #2295 (ver `exigirCamposDaEtapa` no handler).
-      { exigirCamposDaEtapa: false },
     );
   } catch (err) {
     if (err instanceof ApiError) {
       // Corrida do retry: dois POSTs simultâneos com o mesmo external_id
       // passam ambos pelo fast-path; o índice único derruba o segundo INSERT
-      // (23505) — re-seleciona o vencedor e fecha com a MESMA régua de #2316:
-      // dado novo atualiza o vencedor, payload idêntico segue idempotente.
+      // (23505) — re-seleciona o vencedor e responde idempotente.
       if (externalId && err.message?.includes("uniq_crm_leads_org_source_external")) {
         const vencedor = await findLeadByExternalId();
         if (vencedor) {
-          // O contato desta requisição quando existe (foi resolvido acima);
-          // o do vencedor como plano B — o que importa é a linha ter vínculo,
-          // para o gatilho de anonimização alcançá-la.
-          return fecharReenvio(vencedor, contactId ?? null);
+          await registrarCaptacao(admin, {
+            ...fonteDaCaptacao,
+            ...origemDaCaptacao,
+            ...dadosDaCaptacao,
+            leadId: vencedor.id,
+            // O contato desta requisição quando existe (foi resolvido acima);
+            // o do lead vencedor como plano B — o que importa é a linha ter
+            // vínculo, para o gatilho de anonimização alcançá-la.
+            contactId: contactId ?? vencedor.contactId,
+            outcome: "duplicado",
+          });
+          return respondWithLead(vencedor.id);
         }
       }
       await registrarCaptacao(admin, {
@@ -872,10 +581,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         ...dadosDaCaptacao,
         contactId: contactId ?? null,
         outcome: "recusado",
-        // O rótulo diz o que REALMENTE falhou (#2297, caminho 4): o mesmo
-        // `erro_ao_criar_lead` para tudo mentia sobre qualquer recusa que não
-        // fosse de funil ou de etapa.
-        rejectReason: motivoDaRecusaDaCriacao(err),
+        rejectReason: "erro_ao_criar_lead",
       });
       return fail(err.code, err.message ?? "erro", err.status, { requestId });
     }
@@ -885,7 +591,6 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   await admin
     .from("webhook_sources")
     .update({ last_received_at: new Date().toISOString() })
-    .eq("organization_id", source.organization_id)
     .eq("id", source.id);
 
   await audit({
@@ -933,7 +638,8 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // atividade própria: o valor já fica visível em custom_fields, e uma
   // classificação normal não é um evento que precisa de linha na timeline.
   if (classificacaoInicial && classificacaoInicial.status !== "classificado") {
-    const tipo = classificacaoInicial.status === "desqualificado" ? "lead_disqualified" : "lead_needs_review";
+    const tipo =
+      classificacaoInicial.status === "desqualificado" ? "lead_disqualified" : "lead_needs_review";
     const atividadeClassificacao = await emitLeadActivity(admin, {
       organizationId: source.organization_id,
       leadId: String(lead.id),
@@ -975,26 +681,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     respondiMapped != null &&
     respondiMapped.consent.detectedVia !== "not_found" &&
     !respondiMapped.consent.granted;
-  if (source.authorize_ai_on_capture && contactId) {
-    const autorizou = sourceSecret !== null && await autorizarCaptacaoParaIA(admin, {
-      organizationId: source.organization_id, sourceId: source.id,
-      leadId: String(lead.id), contactId, requestId,
-    });
-    const atividadeIA = await emitLeadActivity(admin, {
-      organizationId: source.organization_id, leadId: String(lead.id), contactId,
-      type: "note", sourceModule: "webhook", sourceId: source.id,
-      actor: { type: "webhook_source", id: source.id },
-      reason: autorizou
-        ? "Atendimento por IA autorizado pelo consentimento explícito deste formulário."
-        : "Este envio não concedeu nova autorização de IA. Confira o consentimento e o estado do contato antes de configurar o atendimento.",
-      payload: { webhook_source_id: source.id, request_id: requestId, ai_authorized: autorizou },
-    });
-    if (!atividadeIA.ok) {
-      logger.warn("[webhooks.inbound] autorização por formulário sem atividade", {
-        organization_id: source.organization_id, request_id: requestId,
-      });
-    }
-  } else if (!source.authorize_ai_on_capture && respondiMapped && contactId && !consentNegado) {
+  if (respondiMapped && contactId && !consentNegado) {
     const formId = respondiMapped.custom_fields.respondi_form_id ?? "form";
     const submissionId = respondiMapped.custom_fields.respondi_respondent_id ?? "s";
     await autorizarContatoParaIA(admin, {
@@ -1008,9 +695,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   // Sem isto, numa instalação sem cron de 1 min (relógio HTTP), o gatilho fica pending.
   await kickLocalPipeline(
     admin,
-    contactId
-      ? { organizationId: source.organization_id, contactId }
-      : undefined,
+    contactId ? { organizationId: source.organization_id, contactId } : undefined,
   );
 
   return respondWithLead(String(lead.id));

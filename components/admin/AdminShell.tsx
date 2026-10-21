@@ -8,12 +8,9 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { List } from "@/lib/ui/icons";
 import { useT } from "@/hooks/i18n/useT";
-import type { ModuloOpcional } from "@/lib/instalacao/modulos";
 
 interface AdminShellProps {
   userEmail: string;
-  /** Repassado ao menu: entradas de módulo só aparecem com ele ligado. */
-  modulosLigados?: readonly ModuloOpcional[];
   children: ReactNode;
 }
 
@@ -58,7 +55,7 @@ interface AdminShellProps {
  * funcionando, em vez de repetir o erro a cada tela adicionada — é o padrão
  * recomendado pelo Radix (Provider perto da raiz, compartilhando o delay).
  */
-export function AdminShell({ userEmail, modulosLigados = [], children }: AdminShellProps) {
+export function AdminShell({ userEmail, children }: AdminShellProps) {
   const t = useT();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Mesmo padrão de `app/app/_components/AppShell.tsx`: ajuste de estado
@@ -75,11 +72,11 @@ export function AdminShell({ userEmail, modulosLigados = [], children }: AdminSh
       <div className="flex min-h-screen w-full flex-col bg-background">
         <PlatformModeBanner />
         <div className="flex flex-1">
-          <AdminSidebar userEmail={userEmail} modulosLigados={modulosLigados} />
+          <AdminSidebar userEmail={userEmail} />
           <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <SheetContent side="left" className="w-72 max-w-[85vw] gap-0 p-0 lg:hidden">
               <SheetTitle className="sr-only">{t("Menu de navegação")}</SheetTitle>
-              <AdminSidebar userEmail={userEmail} variant="mobile" modulosLigados={modulosLigados} />
+              <AdminSidebar userEmail={userEmail} variant="mobile" />
             </SheetContent>
           </Sheet>
           <div className="flex min-w-0 flex-1 flex-col">

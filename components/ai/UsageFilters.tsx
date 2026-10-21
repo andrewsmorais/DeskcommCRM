@@ -11,7 +11,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/hooks/i18n/useT";
-import { PONTO_POR_ID } from "@/lib/ai/pontos/registro";
 
 export interface UsageFiltersAgent {
   id: string;
@@ -20,8 +19,6 @@ export interface UsageFiltersAgent {
 
 interface Props {
   agents: UsageFiltersAgent[];
-  /** Os `llm_calls.purpose` que aparecem no período — a lista vem do banco, nunca fixa. */
-  kinds: string[];
   initial: {
     agent_id?: string;
     invocation_kind?: string;
@@ -30,10 +27,20 @@ interface Props {
   };
 }
 
+const KIND_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "all", label: "Todas" }, // traduzido via t() no render
+  { value: "bot_respond", label: "bot_respond" },
+  { value: "sentiment_check", label: "sentiment_check" },
+  { value: "sentiment_classify", label: "sentiment_classify" },
+  { value: "embed_chunk", label: "embed_chunk" },
+  { value: "embed_query", label: "embed_query" },
+  { value: "intent_classify", label: "intent_classify" },
+];
+
 const ALL_AGENTS = "all";
 const DEBOUNCE_MS = 300;
 
-export function UsageFilters({ agents, kinds, initial }: Props) {
+export function UsageFilters({ agents, initial }: Props) {
   const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -42,16 +49,6 @@ export function UsageFilters({ agents, kinds, initial }: Props) {
   const [kind, setKind] = useState<string>(initial.invocation_kind ?? "all");
   const [from, setFrom] = useState<string>(initial.from ?? "");
   const [to, setTo] = useState<string>(initial.to ?? "");
-
-  // A lista era fixa e quase toda de nomes que `llm_calls.purpose` não tem
-  // (`sentiment_check`, `embed_chunk`...): escolher um desses devolvia zero. O escolhido entra
-  // mesmo fora do período, senão o gatilho fica em branco e esconde o filtro ativo.
-  const kindOptions = [...new Set(kind === "all" ? kinds : [...kinds, kind])]
-    .map((value) => {
-      const ponto = PONTO_POR_ID.get(value);
-      return { value, label: ponto ? t(ponto.rotulo) : value };
-    })
-    .sort((a, b) => a.label.localeCompare(b.label, "pt"));
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstRunRef = useRef(true);
@@ -107,10 +104,9 @@ export function UsageFilters({ agents, kinds, initial }: Props) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">{t("Todas")}</SelectItem>
-            {kindOptions.map((o) => (
+            {KIND_OPTIONS.map((o) => (
               <SelectItem key={o.value} value={o.value}>
-                {o.label}
+                {t(o.label)}
               </SelectItem>
             ))}
           </SelectContent>

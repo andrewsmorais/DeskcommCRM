@@ -1,3 +1,0 @@
-# depois da faxina, de fora
-raiz=307
-gotrue_pelo_dominio=200

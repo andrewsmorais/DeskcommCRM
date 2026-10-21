@@ -13,7 +13,6 @@ import { ConversaSlot } from "./ConversaSlot";
 import { ScoreSlot } from "./ScoreSlot";
 import { OwnerBadge } from "./OwnerBadge";
 import { ContatoNoCard } from "./ContatoNoCard";
-import { TarefasNoCard } from "./TarefasNoCard";
 
 /** Os dois gestos de seleção que o card sabe relatar. */
 export type GestoDeSelecao = "alterna" | "intervalo";
@@ -290,26 +289,19 @@ export function KanbanCard({
           {/* A última mensagem, com atalho para o inbox. Fica ANTES do rodapé
               de dono/tempo porque é conteúdo do negócio, não metadado do card —
               e some por inteiro quando não há conversa. */}
-          <ConversaSlot
-            conversa={lead.conversa}
-            contactId={lead.contact_id}
-            phone={lead.contact_phone}
-          />
+          <ConversaSlot conversa={lead.conversa} />
 
           {/* Telefone, e-mail e links do contato — some por inteiro quando o
               negócio não tem nada disso, como a conversa acima. */}
           <ContatoNoCard lead={lead} />
 
-          {/* ④ dono (+ selo de tarefas) · ⑤ tempo no estágio */}
+          {/* ④ dono · ⑤ tempo no estágio */}
           <div className="mt-1 flex h-6 items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <OwnerBadge
-                ownerKind={card.owner.kind}
-                ownerName={card.owner.name}
-                agentVersion={card.owner.agentVersion}
-              />
-              <TarefasNoCard tarefas={lead.tarefas} />
-            </div>
+            <OwnerBadge
+              ownerKind={card.owner.kind}
+              ownerName={card.owner.name}
+              agentVersion={card.owner.agentVersion}
+            />
             <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-text-muted">
               {state.showStageAge && age
                 ? `${age} ${t("em")} ${card.stageName}`

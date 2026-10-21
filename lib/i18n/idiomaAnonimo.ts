@@ -21,6 +21,8 @@ export async function idiomaDoVisitante(
   localeBruto: string | null | undefined,
 ): Promise<Idioma> {
   if (localeBruto) return normalizarIdioma(localeBruto);
-  const hdrs = await headers();
-  return normalizarIdioma(parseAcceptLanguage(hdrs.get("accept-language")));
+
+  // A pedido explícito, ignoramos o cabeçalho Accept-Language do navegador
+  // para que a tela de login fique 100% em Português Brasil para qualquer visitante.
+  return "pt-BR";
 }
