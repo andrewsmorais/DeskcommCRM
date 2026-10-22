@@ -139,9 +139,12 @@ test.describe("o wizard monta um funcionário", () => {
     await login(page);
     await page.waitForURL(/\/onboarding\/connect-whatsapp/, { timeout: 30_000 });
 
+    // O passo ABRE no código por celular (ONBOARDING_WHATSAPP_QR_DIRETO, padrão
+    // true) e a pergunta das três formas fica atrás de "Escolher outra forma".
+    await page.getByTestId("voltar-para-escolha").click();
+
     // As três formas que o produto realmente suporta — as mesmas da tela de
-    // Conexões. Antes, o wizard oferecia uma e nem perguntava: a sessão do
-    // canal por código subia sozinha na montagem da tela.
+    // Conexões.
     await expect(page.getByTestId("forma-qr")).toBeVisible();
     await expect(page.getByTestId("forma-oficial")).toBeVisible();
     await expect(page.getByTestId("forma-parceiro")).toBeVisible();

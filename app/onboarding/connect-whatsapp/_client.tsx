@@ -12,6 +12,13 @@ import { CanalOficialClient } from "@/components/connections/CanalOficialClient"
 import { CanalParceiroClient } from "@/components/connections/CanalParceiroClient";
 
 interface Props {
+  /**
+   * Abre JÁ no código por celular, sem a pergunta das três formas. É a entrada
+   * do produto (como a da Umbler): quem acabou de contratar vê o QR gerando, e a
+   * API oficial / provedor parceiro ficam em "Escolher outra forma". Ainda assim
+   * vive em memória — nada é gravado até o passo terminar de verdade.
+   */
+  qrDireto?: boolean;
   wahaConfigured: boolean;
   sessionName: string;
   /**
@@ -217,13 +224,14 @@ function Saidas({ status, sessionName }: { status: Status; sessionName: string }
 }
 
 export function ConnectWhatsappClient({
+  qrDireto = false,
   wahaConfigured,
   sessionName,
   oficialPodeReceber,
 }: Props) {
   const t = useT();
   const [pending, startTransition] = useTransition();
-  const [forma, setForma] = useState<Forma | null>(null);
+  const [forma, setForma] = useState<Forma | null>(qrDireto ? "qr" : null);
   const createKey = useRef<string | null>(null);
   const restartKey = useRef<string | null>(null);
   const [info, setInfo] = useState<SessionInfo>({ status: "INIT", session: sessionName });

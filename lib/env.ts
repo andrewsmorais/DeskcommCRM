@@ -492,6 +492,19 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
 
+  // Onboarding do WhatsApp (oferta ChatAI Online, 22/10/2026). O passo do telefone
+  // abre JÁ gerando o código por celular, como a entrada da Umbler; a API oficial
+  // e o provedor parceiro ficam atrás de "Escolher outra forma". `false` devolve a
+  // pergunta de três formas como primeira tela.
+  ONBOARDING_WHATSAPP_QR_DIRETO: z
+    .enum(["true", "false"])
+    .optional()
+    .default("true")
+    .transform((v) => v === "true"),
+  // Vídeo curto que explica a conexão, mostrado acima do código. Vazio = sem vídeo.
+  // Aceita arquivo (.mp4/.webm) ou endereço de embed (YouTube/Vimeo) em https.
+  ONBOARDING_WHATSAPP_VIDEO_URL: z.string().optional().default(""),
+
   // App URLs
   NEXT_PUBLIC_APP_URL: z
     .string()

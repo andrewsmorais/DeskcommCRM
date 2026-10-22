@@ -83,6 +83,7 @@ afterEach(() => {
 function montar(props?: { oficialPodeReceber?: boolean }) {
   return render(
     <ConnectWhatsappClient
+      qrDireto={false}
       wahaConfigured
       sessionName="org_teste"
       oficialPodeReceber={props?.oficialPodeReceber ?? true}
