@@ -20,6 +20,15 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// A trava de plano (`lib/billing/acesso.ts`) lê a assinatura no banco REAL,
+// por fora das dependências injetadas — num teste unitário isso é um tempo
+// esgotado de rede, não uma resposta. A regra dela é medida em
+// `lib/billing/acesso.test.ts`; aqui ela libera.
+vi.mock("@/lib/billing/acesso", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  verificarRecursoDoPlano: vi.fn(async () => ({ ok: true })),
+}));
+
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 

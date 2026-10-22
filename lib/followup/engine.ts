@@ -54,6 +54,12 @@ import { criarTarefaInterna as criarTarefaNoCrm } from "@/lib/tarefas/criar-tare
 import { quandoDoRetornoVivo, reavaliarDepoisDoRetorno } from "./retorno-segura-o-fluxo";
 import { triggerConfigSchema } from "./api-schemas";
 
+/**
+ * Quanto esperar quando a leitura do plano falhou (banco ou rede fora). NÃO é
+ * backoff: não conta tentativa, porque a falha não é deste follow-up.
+ */
+export const ADIAMENTO_SEM_PLANO_MS = 5 * 60_000;
+
 const MAX_STEPS = 80;
 const CLAIM_LEASE_SECONDS = 120;
 const DEFAULT_CLAIM_LIMIT = 20;
@@ -669,7 +675,23 @@ async function processEnrollment(
   if (!graph) throw new Error("flow_version_not_found");
   const acesso = await verificarGrafoDoPlano(enrollment.organization_id, graph);
   if (!acesso.ok) {
-    if (acesso.status === 503) throw new Error("billing_unavailable");
+    // LEITURA DO PLANO INDISPONÍVEL não é falha DESTE follow-up. Lançar aqui
+    // caía em `applyHandlerFailure`: gastava uma tentativa e, passado
+    // `max_attempts`, matava o enrollment — um banco fora do ar por uma hora
+    // apagava os follow-ups de cliente que paga. Adia sem gastar tentativa; a
+    // trava de plano é reavaliada no próximo tick, como no ramo do 403 abaixo.
+    if (acesso.status === 503) {
+      logger.warn("followup: plano indisponível — adiado sem gastar tentativa", {
+        organization_id: enrollment.organization_id,
+        enrollment_id: enrollment.id,
+      });
+      await db.updateEnrollment(enrollment.id, enrollment.organization_id, {
+        last_error: "billing_unavailable",
+        next_eval_at: new Date(clock().getTime() + ADIAMENTO_SEM_PLANO_MS).toISOString(),
+        claimed_until: null,
+      });
+      return;
+    }
     const aviso = `Plano: ${acesso.message}`;
     if (enrollment.last_error !== aviso) await db.insertDeadInboxItem({ organization_id: enrollment.organization_id,
       title: "Um processo aguarda a revisão do plano", body: acesso.message, ref_id: enrollment.id });
