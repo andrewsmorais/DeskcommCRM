@@ -10,11 +10,13 @@
  * adulterado devolve o mesmo 404 — não se diz qual dos três foi.
  */
 import { randomUUID } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 
 import { checkRateLimit } from "@/lib/ai/dispatcher/rate-limit";
 import { fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { avisarAoTerminar, registrarDownload } from "@/lib/exportacao/download";
 import { segredoDaExportacao } from "@/lib/exportacao/link";
 import { verificarLink } from "@/lib/exportacao/token";
 import { criarZipDaConta } from "@/lib/exportacao/zip";
@@ -73,8 +75,14 @@ export async function GET(
   });
 
   const arquivo = `dados-${nomeSeguro(nome)}-${agora.toISOString().slice(0, 10)}.zip`;
+  const cliente = db as unknown as SupabaseClient;
+  // Download que chegou ao fim para os lembretes de "baixe seus dados"
+  // (`lib/exportacao/download.ts`) — o clique sozinho não conta.
+  const zip = avisarAoTerminar(criarZipDaConta(cliente, link.orgId, nome, agora), () =>
+    registrarDownload(cliente, link.orgId, new Date()),
+  );
   return new Response(
-    criarZipDaConta(db as unknown as import("@supabase/supabase-js").SupabaseClient, link.orgId, nome, agora),
+    zip,
     {
       status: 200,
       headers: {

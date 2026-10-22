@@ -21,6 +21,7 @@ const avisadoNoCiclo = (fim: Date = FIM): DadosDaOrganizacao => ({
   nome: "Loja",
   redigida: false,
   estado: { fim: fim.toISOString(), avisos: { encerramento: fim.toISOString() } },
+  baixadoEm: null,
 });
 
 function montar(
@@ -87,7 +88,7 @@ describe("executarExclusao", () => {
   });
 
   it("sem nenhum aviso entregue NÃO exclui: a pessoa nunca soube da data", async () => {
-    const m = montar([linha()], depois(40), { org: { nome: "Loja", redigida: false, estado: null } });
+    const m = montar([linha()], depois(40), { org: { nome: "Loja", redigida: false, estado: null, baixadoEm: null } });
     const r = await executarExclusao(m.dep);
     expect(r.semAviso).toBe(1);
     expect(m.ordem).toEqual([]);
@@ -103,7 +104,7 @@ describe("executarExclusao", () => {
 
   it("estado com o fim certo mas sem aviso gravado também não conta", async () => {
     const m = montar([linha()], depois(40), {
-      org: { nome: "Loja", redigida: false, estado: { fim: FIM.toISOString(), avisos: {} } },
+      org: { nome: "Loja", redigida: false, estado: { fim: FIM.toISOString(), avisos: {} }, baixadoEm: null },
     });
     expect((await executarExclusao(m.dep)).semAviso).toBe(1);
     expect(m.ordem).toEqual([]);

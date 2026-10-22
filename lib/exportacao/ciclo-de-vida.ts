@@ -84,6 +84,24 @@ export function exclusaoLiberada(fim: Date, agora: Date): boolean {
   return agora.getTime() >= exclusaoLiberadaEm(fim).getTime();
 }
 
+/**
+ * O lembrete deixa de sair porque a pessoa JÁ BAIXOU os dados.
+ *
+ * Só os lembretes (`d7`, `dia`) são dispensados. O `encerramento` sai sempre:
+ * é ele que anuncia a data da exclusão, e a exclusão só roda em conta que
+ * recebeu algum aviso (`exclusao.ts`, trava 2). Se o download dispensasse também
+ * o primeiro e-mail, quem baixou no dia 0 nunca seria avisado — e a conta nunca
+ * seria excluída.
+ *
+ * Só conta download feito DEPOIS do fim do acesso: um ZIP de meses atrás, com a
+ * conta ativa, não tem os dados de hoje.
+ */
+export function lembreteDispensado(aviso: Aviso, fim: Date, baixadoEm: string | null): boolean {
+  if (aviso === "encerramento" || !baixadoEm) return false;
+  const quando = new Date(baixadoEm).getTime();
+  return !Number.isNaN(quando) && quando >= fim.getTime();
+}
+
 /** A fase em que a conta está agora, ou `null` fora de qualquer janela de aviso. */
 export function faseDoAviso(fim: Date, agora: Date): Aviso | null {
   const t = agora.getTime();

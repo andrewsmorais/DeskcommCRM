@@ -36,14 +36,14 @@ describe("ciclo de vida: janelas", () => {
   });
 });
 
-function montar(linhas: LinhaDeAssinatura[], agora: Date, opts: { destinatarios?: string[]; url?: string | null; email?: boolean; enviaOk?: boolean; estado?: EstadoDoCiclo | null } = {}) {
+function montar(linhas: LinhaDeAssinatura[], agora: Date, opts: { destinatarios?: string[]; url?: string | null; email?: boolean; enviaOk?: boolean; estado?: EstadoDoCiclo | null; baixadoEm?: string | null } = {}) {
   const gravados: EstadoDoCiclo[] = [];
   const enviados: string[] = [];
   const auditados: number[] = [];
   const dep: Dependencias = {
     agora: () => agora,
     assinaturas: async () => linhas,
-    organizacao: async () => ({ nome: "Loja", redigida: false, estado: opts.estado ?? null }),
+    organizacao: async () => ({ nome: "Loja", redigida: false, estado: opts.estado ?? null, baixadoEm: opts.baixadoEm ?? null }),
     gravarEstado: async (_o, e) => void gravados.push(e),
     destinatarios: async () => opts.destinatarios ?? ["a@x.com", "b@x.com"],
     enviar: async ({ para }) => {

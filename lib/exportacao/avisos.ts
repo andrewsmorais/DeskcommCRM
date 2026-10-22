@@ -33,8 +33,10 @@ import {
   exclusaoEm,
   exclusaoLiberadaEm,
   fimDoAcesso,
+  lembreteDispensado,
   type Aviso,
 } from "./ciclo-de-vida";
+import { ultimoDownload } from "./download";
 import { urlDeExportacao } from "./link";
 
 export interface LinhaDeAssinatura {
@@ -55,6 +57,8 @@ export interface DadosDaOrganizacao {
   readonly nome: string;
   readonly redigida: boolean;
   readonly estado: EstadoDoCiclo | null;
+  /** Último download COMPLETO do ZIP (`download.ts`), ou `null`. */
+  readonly baixadoEm: string | null;
 }
 
 export interface Dependencias {
@@ -80,6 +84,8 @@ export interface ResultadoDosAvisos {
   readonly semLink: number;
   readonly falhasDeEnvio: number;
   readonly semEmail: boolean;
+  /** Lembretes que não saíram porque a pessoa já tinha baixado os dados. */
+  readonly jaBaixaram: { orgId: string; aviso: Aviso }[];
 }
 
 export async function executarAvisos(
@@ -95,6 +101,7 @@ export async function executarAvisos(
     semLink: 0,
     falhasDeEnvio: 0,
     semEmail: false,
+    jaBaixaram: [] as ResultadoDosAvisos["jaBaixaram"],
   };
 
   if (!opcoes.simular && !(await dep.emailPronto())) {
@@ -114,6 +121,13 @@ export async function executarAvisos(
     const jaEnviados = mesmoCiclo ? (org.estado?.avisos ?? {}) : {};
     const aviso = avisoDevido(fim, agora, jaEnviados);
     if (!aviso) continue;
+
+    // Já baixou depois do encerramento: não insiste. Nada é gravado como
+    // enviado — se o download for de antes deste fim, a regra já o ignora.
+    if (lembreteDispensado(aviso, fim, org.baixadoEm)) {
+      resultado.jaBaixaram.push({ orgId: assinatura.organization_id, aviso });
+      continue;
+    }
 
     if (opcoes.simular) {
       resultado.simulados.push({ orgId: assinatura.organization_id, aviso });
@@ -224,6 +238,7 @@ export async function lerOrganizacao(db: ClienteAdmin, orgId: string): Promise<D
     nome: nomeDaOrganizacao || "Sua conta",
     redigida: Boolean(data.redacted_at),
     estado: estadoDe(data.settings),
+    baixadoEm: ultimoDownload(data.settings),
   };
 }
 
