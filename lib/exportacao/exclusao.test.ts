@@ -42,7 +42,7 @@ function montar(
     pedidoEmAberto: async () => opts.emAberto ?? false,
     desconectarCanais: async () => {
       ordem.push("canais");
-      return opts.canais ?? { desconectados: 1, oficiais: 0, falhou: false };
+      return opts.canais ?? { desconectados: 1, webhooksDaMetaPendentes: 0, falhou: false };
     },
     agendarAnonimizacao: async () => {
       ordem.push("pedido");
@@ -124,18 +124,19 @@ describe("executarExclusao", () => {
   });
 
   it("canal que não desconectou: não abre pedido, tenta amanhã", async () => {
-    const m = montar([linha()], depois(40), { canais: { desconectados: 0, oficiais: 0, falhou: true } });
+    const m = montar([linha()], depois(40), { canais: { desconectados: 0, webhooksDaMetaPendentes: 0, falhou: true } });
     const r = await executarExclusao(m.dep);
     expect(r.falhasDeCanal).toBe(1);
     expect(m.ordem).toEqual(["canais"]);
     expect(m.auditados).toHaveLength(0);
   });
 
-  it("canal oficial não segura a anonimização, mas é contado para ação manual", async () => {
-    const m = montar([linha()], depois(40), { canais: { desconectados: 0, oficiais: 1, falhou: false } });
+  it("Meta que recusou devolver o webhook não segura a anonimização, mas fica contada", async () => {
+    // O canal já saiu (credencial apagada, URL trocada, arquivado): nada entra por ele.
+    const m = montar([linha()], depois(40), { canais: { desconectados: 1, webhooksDaMetaPendentes: 1, falhou: false } });
     const r = await executarExclusao(m.dep);
     expect(r.agendadas).toHaveLength(1);
-    expect(r.canaisOficiais).toBe(1);
+    expect(r.webhooksDaMetaPendentes).toBe(1);
   });
 
   it("pedido que não abriu: conta a falha e NÃO audita", async () => {

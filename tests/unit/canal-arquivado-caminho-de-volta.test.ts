@@ -51,6 +51,26 @@ vi.mock("@/lib/grupos/sincronizar-filtro", () => ({ sincronizarRecebimentoDeGrup
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/webhooks/secrets", () => ({ encryptWebhookSecret: vi.fn() }));
 vi.mock("@/lib/channels/meta/validate-credentials", () => ({ validateMetaCredentials: vi.fn() }));
+// A cota do plano (quantos WhatsApps o plano permite) roda ANTES de reativar o
+// canal e tem suíte própria (`lib/channels/cota-do-plano.test.ts`). Aqui ela deixa
+// passar: este arquivo mede o caminho de volta do canal arquivado, e a reserva de
+// cota escreve em `idempotency_keys` — entraria na contagem EXATA de escritas que
+// estes casos afirmam.
+vi.mock("@/lib/billing/reserva", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  comReservaDeCota: vi.fn((_org: string, _recurso: string, operacao: () => unknown) => operacao()),
+}));
+// O canal oficial passa pela cota via `comCotaDeCanal`, que confere a vaga com
+// `.is("archived_at", null)`: num banco sem a 0106 ela recusa com 503 — falha
+// FECHADA de propósito (sem contar, não libera canal) e coberta na suíte dela.
+vi.mock("@/lib/channels/cota-do-plano", () => ({
+  comCotaDeCanal: vi.fn((_db: unknown, _org: string, _id: string | null, operacao: () => unknown) => operacao()),
+}));
+vi.mock("@/lib/billing", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  getOrganizationBilling: vi.fn(async () => ({ ok: true, billing: {} })),
+  canUse: vi.fn(() => ({ ok: true })),
+}));
 vi.mock("@/lib/waha/client", () => ({
   getWahaClient: vi.fn(),
   wahaFriendlyError: (m: string) => m,
@@ -138,6 +158,8 @@ function makeDb(opts: DbOpts = {}): Registro {
     private filtros: Array<[string, unknown]> = [];
     /** `neq`: o oposto de `filtros`, guardado à parte para não virar igualdade. */
     private negados: Array<[string, unknown]> = [];
+    /** Cada `.or()` vira UM predicado: a linha passa se casar com qualquer alternativa. */
+    private alternativas: Array<(l: Linha) => boolean> = [];
     private colunas = "";
     private unica = false;
 
@@ -160,6 +182,26 @@ function makeDb(opts: DbOpts = {}): Registro {
     }
     is(col: string, val: unknown): this {
       this.filtros.push([col, val]);
+      return this;
+    }
+    /**
+     * `.or("a.eq.x,b->>c.eq.true")` do PostgREST — só o operador `eq`, que é o que
+     * `loadOnboardingChannel` usa. Coluna com `->>` lê a chave dentro do jsonb e
+     * compara como texto, como o Postgres faz.
+     */
+    or(expr: string): this {
+      const termos = expr.split(",").map((t) => {
+        const m = /^(.+?)\.eq\.(.*)$/.exec(t.trim());
+        if (!m) throw new Error(`or() do banco falso só entende eq: ${t}`);
+        return { coluna: m[1] as string, valor: m[2] as string };
+      });
+      this.alternativas.push((l) =>
+        termos.some(({ coluna, valor }) => {
+          const [base, chave] = coluna.split("->>") as [string, string | undefined];
+          const bruto = chave === undefined ? l[base] : (l[base] as Linha | null | undefined)?.[chave];
+          return bruto !== undefined && bruto !== null && String(bruto) === valor;
+        }),
+      );
       return this;
     }
     neq(col: string, val: unknown): this {
@@ -196,7 +238,8 @@ function makeDb(opts: DbOpts = {}): Registro {
     private casam(): Linha[] {
       return linhas.filter((l) =>
         this.filtros.every(([c, v]) => Array.isArray(v) ? v.includes(l[c]) : (l[c] ?? null) === v)
-        && this.negados.every(([c, v]) => (l[c] ?? null) !== v));
+        && this.negados.every(([c, v]) => (l[c] ?? null) !== v)
+        && this.alternativas.every((casa) => casa(l)));
     }
 
     private executar(): { data: unknown; error: unknown } {

@@ -28,7 +28,7 @@ import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { CHANNEL_PROVIDER_WAHA } from "@/lib/channels/capabilities";
 import { resolverSaudeDaConexaoRemovida } from "@/lib/channels/health";
-import { desfazerWebhookDoNumero } from "@/lib/channels/meta/webhook-override";
+import { devolverWebhookDoNumero, revogacaoDoCanalOficial } from "@/lib/channels/meta/devolver-webhook";
 import { numeroObservadoDaSessao } from "@/lib/channels/numero-observado";
 import { isChannelStatus } from "@/lib/schemas/channels";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,7 +36,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getWahaClient, wahaFriendlyError } from "@/lib/waha/client";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
-import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 
 export const dynamic = "force-dynamic";
 
@@ -393,60 +392,18 @@ export async function DELETE(
     // A inscrição na WABA (`subscribed_apps`) NÃO entra aqui de propósito: ela é
     // por WABA, compartilhada com os outros números — inclusive de outra
     // organização desta instalação — e desfazê-la apagaria o webhook deles.
-    if (session.meta_token_encrypted && session.meta_phone_number_id) {
-      try {
-        const token = await decryptWebhookSecret(
-          createAdminClient(),
-          session.meta_token_encrypted,
-        );
-        if (!token) {
-          // Credencial ilegível (cifra de outro ambiente, por exemplo): sem token
-          // não há como falar com a Meta pela linha. Fica registrado que o override
-          // continuou lá, em vez de a auditoria dizer "tudo certo".
-          logger.warn(
-            "Canal oficial sem credencial legível — o override do webhook do número fica na Meta",
-            {
-              requestId,
-              channel_session_id: id,
-              organization_id: activeOrg.orgId,
-              phone_number_id: session.meta_phone_number_id,
-            },
-          );
-        } else {
-          const desfecho = await desfazerWebhookDoNumero({
-            phoneNumberId: session.meta_phone_number_id,
-            token,
-          });
-          if (desfecho.ok) {
-            webhookOverride = "desfeito";
-          } else {
-            webhookOverride = "falhou";
-            logger.warn("A Meta recusou desfazer o override do webhook do número", {
-              requestId,
-              channel_session_id: id,
-              organization_id: activeOrg.orgId,
-              phone_number_id: session.meta_phone_number_id,
-              etapa: desfecho.etapa,
-              motivo: desfecho.motivo,
-            });
-          }
-        }
-      } catch (err) {
-        webhookOverride = "falhou";
-        logger.warn("Falha ao desfazer o override do webhook do número na Meta", {
-          requestId,
-          channel_session_id: id,
-          organization_id: activeOrg.orgId,
-          erro: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    // O procedimento mora em `lib/channels/meta/devolver-webhook.ts`, compartilhado
+    // com a exclusão no fim do prazo de exportação (`lib/exportacao/exclusao.ts`).
+    webhookOverride = await devolverWebhookDoNumero(createAdminClient(), session, {
+      requestId,
+      channel_session_id: id,
+      organization_id: activeOrg.orgId,
+    });
 
     // Revogação do canal oficial: a credencial some e a URL do webhook muda, então
     // o que a plataforma tem configurado do outro lado deixa de valer. Só faz
     // sentido no ramo que PRESERVA a linha — no hard delete ela some inteira.
-    patch.meta_token_encrypted = null;
-    patch.webhook_path_token = randomUUID().replace(/-/g, "");
+    Object.assign(patch, revogacaoDoCanalOficial());
   }
 
   if (arquivar) {
