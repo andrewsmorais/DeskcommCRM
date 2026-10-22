@@ -380,7 +380,7 @@ export function AgentForm(props: Props) {
       return buildState({ agent: props.agent, version: ref, t });
     }
     const inicial = buildState({ version: null, t, provedorPadrao: props.provedorPadrao });
-    if (props.mostrarConfigTecnica === false && props.padraoDaPlataforma) {
+    if (props.padraoDaPlataforma) {
       // O cliente não escolhe: o agente nasce com a IA e a chave da plataforma.
       return {
         ...inicial,
