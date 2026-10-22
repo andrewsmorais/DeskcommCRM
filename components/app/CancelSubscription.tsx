@@ -4,15 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { ptBR, es, enUS } from "date-fns/locale";
 import { traduzir } from "@/lib/i18n/dicionario";
+import { localeDeData } from "@/lib/i18n/datas";
 import type { Idioma } from "@/lib/i18n/idiomas";
-
-function getLocale(idioma: string) {
-  if (idioma === "en-US") return enUS;
-  if (idioma === "es") return es;
-  return ptBR;
-}
 
 export function CancelSubscription({
   status,
@@ -33,7 +27,7 @@ export function CancelSubscription({
   const isCanceled = status === "canceled";
 
   const formatDate = (date: string) =>
-    format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: getLocale(idioma) });
+    format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: localeDeData(idioma) });
 
   async function handleCancel() {
     setIsCanceling(true);

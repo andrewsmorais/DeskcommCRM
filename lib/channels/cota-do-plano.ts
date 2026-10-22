@@ -4,6 +4,25 @@ import { comReservaDeCota, ErroDaReservaDeCota } from "@/lib/billing/reserva";
 
 export const CANAIS_CONTADOS_NO_PLANO = ["waha", "meta_cloud", "zernio", "datafy"];
 
+/**
+ * Quantos WhatsApps a organização tem ocupando vaga do plano. É a MESMA conta
+ * para a cota (que recusa o canal a mais) e para a tela de Plano e cobrança (que
+ * mostra o uso): se cada uma montasse a sua, a tela poderia dizer "1 de 1" e a
+ * cota deixar passar um segundo — ou o contrário. Canal arquivado não conta.
+ */
+export async function contarCanaisDoPlano(
+  db: SupabaseClient,
+  orgId: string,
+): Promise<{ count: number | null; error: unknown }> {
+  const { count, error } = await db
+    .from("channel_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .is("archived_at", null)
+    .in("provider", CANAIS_CONTADOS_NO_PLANO);
+  return { count: count ?? null, error };
+}
+
 /** Mesma trava dos canais pareados; voz e redes sociais não são WhatsApps. */
 export async function comCotaDeCanal<T>(
   db: SupabaseClient,
@@ -28,12 +47,7 @@ export async function comCotaDeCanal<T>(
       }
       const [leitura, contagem] = await Promise.all([
         getOrganizationBilling(orgId),
-        db
-          .from("channel_sessions")
-          .select("id", { count: "exact", head: true })
-          .eq("organization_id", orgId)
-          .is("archived_at", null)
-          .in("provider", CANAIS_CONTADOS_NO_PLANO),
+        contarCanaisDoPlano(db, orgId),
       ]);
       if (!leitura.ok || contagem.error || contagem.count === null)
         return recusar("Não foi possível conferir a cota do plano. Tente novamente.", 503);
