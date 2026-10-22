@@ -4281,6 +4281,10 @@ export const DICIONARIO: Traducoes = {
   Suspenso: { es: "Suspendido" },
   Redigido: { es: "Anonimizado" },
   Conversas: { es: "Conversaciones" },
+  // Menu do Chatbot Builder (/app/ai/chatbots).
+  "Chatbots": { es: "Chatbots" },
+  "Fluxos automáticos sem custo de IA — triagem, FAQ e desvios antes do agente.": { es: "Flujos automáticos sin costo de IA: clasificación, preguntas frecuentes y desvíos antes del agente." },
+  "Automatizar sem IA": { es: "Automatizar sin IA" },
   "Nenhum tenant encontrado": { es: "No se encontró ningún tenant" },
   "Ajuste os filtros ou crie um novo tenant.": {
     es: "Ajusta los filtros o crea un nuevo tenant.",
