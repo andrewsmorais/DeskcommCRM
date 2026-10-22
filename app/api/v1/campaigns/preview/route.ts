@@ -19,6 +19,7 @@ import { previaSchema } from "@/lib/campanhas/schemas";
 import { TEXTO_DA_EXCLUSAO } from "@/lib/campanhas/tipos";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (negado) return negado;
 
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const authz = await requireRole("manager", { requestId, resource: "campaigns" });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);

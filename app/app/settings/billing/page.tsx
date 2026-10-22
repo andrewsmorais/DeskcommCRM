@@ -15,6 +15,7 @@ import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
 import { RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "@/lib/billing/catalogo";
 import { consultarCotaDaEquipe } from "@/lib/billing/equipe";
 import { CANAIS_CONTADOS_NO_PLANO } from "@/lib/channels/cota-do-plano";
+import { disparoEmMassaLigado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,9 @@ export default async function BillingPage() {
   const idioma = user.idioma;
   const admin = createAdminClient();
   const leituraDoPlano = await getOrganizationBilling(activeOrg.orgId);
+  // Campanhas só aparecem na lista de recursos quando o disparo em massa está
+  // ligado na instalação; desligado, o recurso não existe para ninguém.
+  const comDisparo = await disparoEmMassaLigado();
   const billing = leituraDoPlano.ok ? leituraDoPlano.billing : null;
   const equipe = billing
     ? await consultarCotaDaEquipe(admin, activeOrg.orgId).catch(() => null)
@@ -177,7 +181,7 @@ export default async function BillingPage() {
             </p>
             <h3 className="mt-6 text-base font-medium">Recursos do plano</h3>
             <ul className="mt-3 space-y-2 text-sm">
-              {Object.entries(RECURSOS_DO_PLANO).map(([key, oferta]) => (
+              {Object.entries(RECURSOS_DO_PLANO).filter(([key]) => comDisparo || key !== "campanhas").map(([key, oferta]) => (
                 <li key={key} className="flex justify-between gap-3">
                   <span>{oferta.nome}</span>
                   <span className="text-muted-foreground">

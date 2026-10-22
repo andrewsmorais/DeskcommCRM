@@ -17,6 +17,7 @@ import {
   withProspectingLock,
   type Campaign,
 } from "@/lib/prospecting/store";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -33,6 +34,8 @@ function failure(error: unknown, requestId: string) {
 }
 export async function GET() {
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
   try {
@@ -86,6 +89,8 @@ export async function POST(req: Request) {
   const support = await requireSupportWrite();
   if (support) return support;
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
   const parsed = prospectingInputSchema.safeParse(await req.json().catch(() => null));

@@ -8,12 +8,15 @@ import { agentChatInputSchema } from "@/lib/prospecting/agent-chat-schema";
 import { chatAboutAgent } from "@/lib/prospecting/agent-chat";
 import { AgentSetupError } from "@/lib/prospecting/agent-setup";
 import { beginAgentChat, finishAgentChat } from "@/lib/prospecting/agent-session";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const support = await requireSupportWrite();
   if (support) return support;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });

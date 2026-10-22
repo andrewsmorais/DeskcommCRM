@@ -11,7 +11,8 @@ describe("o plano selecionado autoriza a mesma capacidade no CRM e no runtime", 
       it(`${plano}: ${recurso}`, async () => {
         mock.ler.mockResolvedValue({ ok: true, billing: { plan_slug: plano, is_active: true } });
         const res = await verificarRecursoDoPlano("org-confiavel", recurso as RecursoDoPlano);
-        const esperado = plano === "escala" || (plano === "impulso" && oferta.desde === "impulso");
+        const ordem: Record<string, number> = { essencial: 0, impulso: 1, escala: 2 };
+        const esperado = ordem[plano]! >= ordem[oferta.desde]!;
         expect(res.ok).toBe(esperado);
         expect(planoInclui(plano, recurso as RecursoDoPlano)).toBe(esperado);
         expect(mock.ler).toHaveBeenCalledWith("org-confiavel");
