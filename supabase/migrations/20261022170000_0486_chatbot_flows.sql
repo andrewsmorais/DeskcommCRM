@@ -9,7 +9,9 @@ create table if not exists public.chatbot_flows (
   name              text        not null,
   description       text,
   is_active         boolean     not null default false,
-  trigger_channel   uuid        references public.channels(id) on delete set null,
+  -- Era `references public.channels(id)`, tabela que não existe neste schema:
+  -- o arquivo quebrava instalação nova. Produção foi criada sem a FK.
+  trigger_channel   uuid,
   -- 'draft' | 'active' | 'archived'
   status            text        not null default 'draft'
                     check (status in ('draft', 'active', 'archived')),

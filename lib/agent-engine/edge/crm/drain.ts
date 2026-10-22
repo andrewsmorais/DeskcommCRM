@@ -12,19 +12,21 @@
  *   - grupos @g.us: skip (regra dura nº 12) — evento marcado done sem job;
  *   - eventos 'processing' órfãos (crash do worker) voltam a 'pending' por timeout.
  */
-import { z } from 'zod';
-import type pg from 'pg';
+import { z } from "zod";
+import type pg from "pg";
 
-import { insertInboxItem } from '../../db/repository';
-import type { Logger } from '../../obs/logger';
-import { enqueueJob } from '../../queue/queue';
-import { decidirRajada } from './debounce';
-import { avisoDeEventoMorto, IA_QUE_NAO_RESPONDEU } from '@/lib/event-log/aviso-de-evento-morto';
-import { TIPOS_DERIVAVEIS, DERIVACAO_TERMINADA } from '@/lib/messaging/media/derivable';
-import { decidirElegibilidadeDaConversa } from '@/lib/ai/elegibilidade/consulta-pg';
-import { deveCederTurnoAoRetorno } from '@/lib/followup/ceder-turno-ao-retorno';
+import { insertInboxItem } from "../../db/repository";
+import type { Logger } from "../../obs/logger";
+import { enqueueJob } from "../../queue/queue";
+import { decidirRajada } from "./debounce";
+import { avisoDeEventoMorto, IA_QUE_NAO_RESPONDEU } from "@/lib/event-log/aviso-de-evento-morto";
+import { TIPOS_DERIVAVEIS, DERIVACAO_TERMINADA } from "@/lib/messaging/media/derivable";
+import { decidirElegibilidadeDaConversa } from "@/lib/ai/elegibilidade/consulta-pg";
+import { deveCederTurnoAoRetorno } from "@/lib/followup/ceder-turno-ao-retorno";
+import { atenderPeloChatbot } from "@/lib/chatbot/executar";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-const DRAIN_CONSUMER = 'agent-engine';
+const DRAIN_CONSUMER = "agent-engine";
 
 const dispatchPayloadSchema = z
   .object({
@@ -95,7 +97,19 @@ export async function drainTick(pool: pg.Pool, knobs: DrainKnobs, log: Logger): 
   for (const event of events) {
     try {
       const desfecho = await processEvent(pool, event, knobs, log);
-      if (desfecho === 'adiar') {
+      if (typeof desfecho === "object") {
+        // Adiar até um instante conhecido (a janela de envio abre às 7h): uma
+        // tentativa só, em vez de reavaliar o evento a cada poucos segundos.
+        await pool.query(
+          `update event_log
+           set status = 'pending', attempts = greatest(attempts - 1, 0),
+               next_attempt_at = greatest($2::timestamptz, now() + interval '30 seconds'), updated_at = now()
+           where id = $1`,
+          [event.id, desfecho.adiarAte],
+        );
+        continue;
+      }
+      if (desfecho === "adiar") {
         // Adiar NÃO é falha: volta a pending com uma espera curta e não gasta
         // o orçamento de tentativas (que existe para erro de verdade).
         await pool.query(
@@ -118,9 +132,9 @@ export async function drainTick(pool: pg.Pool, knobs: DrainKnobs, log: Logger): 
          set status = $2, last_error = $3, next_attempt_at = now() + interval '30 seconds',
              updated_at = now()
          where id = $1`,
-        [event.id, terminal ? 'dead' : 'pending', message],
+        [event.id, terminal ? "dead" : "pending", message],
       );
-      log.error('drain: evento falhou', { event_id: event.id, terminal, error: message });
+      log.error("drain: evento falhou", { event_id: event.id, terminal, error: message });
       if (terminal) await avisarDespachoMorto(pool, event, message, log);
     }
   }
@@ -155,7 +169,7 @@ async function avisarDespachoMorto(
   log: Logger,
 ): Promise<void> {
   const { title, body } = avisoDeEventoMorto({
-    eventType: 'ai_agent.dispatch_requested',
+    eventType: "ai_agent.dispatch_requested",
     // `attempts` já foi incrementado no claim: é a contagem com esta tentativa.
     tentativas: event.attempts,
     motivo,
@@ -165,11 +179,11 @@ async function avisarDespachoMorto(
     await insertInboxItem(
       pool,
       event.organization_id,
-      { kind: 'event_dead', severity: 'critical', title, body },
-      'kind_e_titulo',
+      { kind: "event_dead", severity: "critical", title, body },
+      "kind_e_titulo",
     );
   } catch (err) {
-    log.error('drain: aviso de despacho morto falhou', {
+    log.error("drain: aviso de despacho morto falhou", {
       event_id: event.id,
       error: (err instanceof Error ? err.message : String(err)).slice(0, 300),
     });
@@ -195,7 +209,8 @@ const ESPERA_DERIVACAO_MS = 4_000;
  */
 const TETO_ESPERA_DERIVACAO_MS = 120_000;
 
-type DesfechoEvento = 'processado' | 'adiar';
+/** `adiarAte`: volta a pending só nesse instante (ex.: o chatbot fora da janela do número). */
+type DesfechoEvento = "processado" | "adiar" | { adiarAte: string };
 
 async function processEvent(
   pool: pg.Pool,
@@ -207,10 +222,10 @@ async function processEvent(
   if (!parsed.success) {
     // Payload fora do contrato do ingest — evento é descartável (processed), não
     // retryável: re-tentar não conserta shape.
-    log.warn('drain: payload de dispatch fora do contrato — evento descartado', {
+    log.warn("drain: payload de dispatch fora do contrato — evento descartado", {
       event_id: event.id,
     });
-    return 'processado';
+    return "processado";
   }
   const p = parsed.data;
 
@@ -220,19 +235,47 @@ async function processEvent(
     `select settings->>'ai_dispatch_mode' as mode from organizations where id = $1`,
     [event.organization_id],
   );
-  if (modeRows[0]?.mode === 'external') {
-    log.info('drain: org em modo external (spec 14) — evento pulado', { event_id: event.id });
-    return 'processado';
+  if (modeRows[0]?.mode === "external") {
+    log.info("drain: org em modo external (spec 14) — evento pulado", { event_id: event.id });
+    return "processado";
   }
 
   // Grupos: skip, sem exceção (regra dura nº 12).
   const { rows: convRows } = await pool.query<{ is_group: boolean }>(
-    'select is_group from conversations where organization_id = $1 and id = $2',
+    "select is_group from conversations where organization_id = $1 and id = $2",
     [event.organization_id, p.conversation_id],
   );
   if (convRows[0]?.is_group !== false) {
-    log.info('drain: conversa de grupo ou inexistente — evento pulado', { event_id: event.id });
-    return 'processado';
+    log.info("drain: conversa de grupo ou inexistente — evento pulado", { event_id: event.id });
+    return "processado";
+  }
+
+  // CHATBOT (fluxo visual, sem IA): fala ANTES da IA. Se a conversa está num
+  // fluxo — esperando a resposta de um menu — ou se um fluxo ligado deve
+  // começar agora, o chatbot conduz esta mensagem e a IA nem é acordada. Fica
+  // antes do portão "tem agente publicado" de propósito: a empresa que só usa
+  // chatbot não tem agente nenhum. Qualquer falha dele devolve `nao_atende`
+  // (fail-open) e o caminho da IA segue como sempre. Ver lib/chatbot/executar.ts.
+  try {
+    const desfechoDoChatbot = await atenderPeloChatbot(
+      pool,
+      createAdminClient(),
+      {
+        organizationId: event.organization_id,
+        conversationId: p.conversation_id,
+        contactId: p.contact_id,
+        channelSessionId: p.channel_session_id,
+        inboundMessageId: p.inbound_message_id,
+      },
+      log,
+    );
+    if (desfechoDoChatbot === "atendeu") return "processado";
+    if (typeof desfechoDoChatbot === "object") return desfechoDoChatbot;
+  } catch (err) {
+    log.warn("drain: chatbot falhou — segue o caminho da IA", {
+      event_id: event.id,
+      error: err instanceof Error ? err.message.slice(0, 160) : "unknown",
+    });
   }
 
   // Ninguém para atender: NÃO gastar. Sem agente publicado para esta sessão e
@@ -303,11 +346,11 @@ async function processEvent(
   );
   const cap = capacidade[0];
   if (cap !== undefined && !cap.tem_agente && !cap.tem_roteador) {
-    log.info('drain: nenhum agente publicado para a sessão — turno pulado (sem gasto)', {
+    log.info("drain: nenhum agente publicado para a sessão — turno pulado (sem gasto)", {
       event_id: event.id,
       channel_session_id: p.channel_session_id,
     });
-    return 'processado';
+    return "processado";
   }
 
   // ANTI-BACKLOG (toda instalação, sem knob): a mensagem que disparou este
@@ -334,12 +377,12 @@ async function processEvent(
     [event.organization_id, p.conversation_id],
   );
   if (ultimaInbound[0] !== undefined && ultimaInbound[0].id !== p.inbound_message_id) {
-    log.info('drain: evento superado por inbound mais recente — turno pulado (sem gasto)', {
+    log.info("drain: evento superado por inbound mais recente — turno pulado (sem gasto)", {
       event_id: event.id,
       inbound_message_id: p.inbound_message_id,
       ultima_inbound_id: ultimaInbound[0].id,
     });
-    return 'processado';
+    return "processado";
   }
 
   // UMA VOZ: se o gatilho "cliente voltou" enrollaria neste inbound, o LLM
@@ -352,11 +395,11 @@ async function processEvent(
       messageId: p.inbound_message_id,
     })
   ) {
-    log.info('drain: turno cedido ao follow-up de retorno — inbound_turn pulado', {
+    log.info("drain: turno cedido ao follow-up de retorno — inbound_turn pulado", {
       event_id: event.id,
       contact_id: p.contact_id,
     });
-    return 'processado';
+    return "processado";
   }
 
   // GATE DE ELEGIBILIDADE (opt-in por canal — `metadata.ai_gate = 'allowlist'`).
@@ -379,11 +422,14 @@ async function processEvent(
   // profundidade realmente acontece.
   // This is a capability check, never a selection by priority. The canonical
   // router chooses once in the worker, then automatic eligibility is rechecked.
-  const {rows:assistance}=await pool.query<{available:boolean}>(`select exists(
+  const { rows: assistance } = await pool.query<{ available: boolean }>(
+    `select exists(
     select 1 from ai_agents a join ai_agent_versions v on v.organization_id=a.organization_id and v.id=a.published_version_id
     where a.organization_id=$1 and a.archived_at is null and a.operation_mode='assisted' and v.status='published'
-    and(v.channel_session_id=$2 or exists(select 1 from ai_routers r where r.organization_id=a.organization_id and r.channel_session_id=$2 and r.is_active and(r.fallback_agent_id=a.id or exists(select 1 from ai_router_members m where m.organization_id=r.organization_id and m.router_id=r.id and m.agent_id=a.id))))) as available`,[event.organization_id,p.channel_session_id]);
-  const canAssist=assistance[0]?.available===true;
+    and(v.channel_session_id=$2 or exists(select 1 from ai_routers r where r.organization_id=a.organization_id and r.channel_session_id=$2 and r.is_active and(r.fallback_agent_id=a.id or exists(select 1 from ai_router_members m where m.organization_id=r.organization_id and m.router_id=r.id and m.agent_id=a.id))))) as available`,
+    [event.organization_id, p.channel_session_id],
+  );
+  const canAssist = assistance[0]?.available === true;
   try {
     const elegib = await decidirElegibilidadeDaConversa(pool, {
       organizationId: event.organization_id,
@@ -392,18 +438,18 @@ async function processEvent(
       ttlMs: knobs.allowlistTtlMs ?? ALLOWLIST_TTL_MS_PADRAO,
     });
     if (!canAssist && elegib !== null && !elegib.permite) {
-      log.info('drain: conversa não elegível para IA — turno pulado (sem gasto)', {
+      log.info("drain: conversa não elegível para IA — turno pulado (sem gasto)", {
         event_id: event.id,
         conversation_id: p.conversation_id,
         motivo: elegib.motivo,
       });
-      return 'processado';
+      return "processado";
     }
   } catch (err) {
     // Falha da consulta de elegibilidade NÃO derruba o drain e NÃO bloqueia o
     // turno: um lead real pode estar esperando. Degrada para o fluxo antigo
     // (enfileira) — o turno tem a segunda checagem.
-    log.warn('drain: checagem de elegibilidade falhou — seguindo para o turno', {
+    log.warn("drain: checagem de elegibilidade falhou — seguindo para o turno", {
       event_id: event.id,
       error: (err instanceof Error ? err.message : String(err)).slice(0, 160),
     });
@@ -459,18 +505,18 @@ async function processEvent(
     [event.organization_id, p.conversation_id, [...TIPOS_DERIVAVEIS]],
   );
   // A mais RECENTE que ainda não terminou: é ela que o turno não pode perder.
-  const midia = midias.find((m) => !DERIVACAO_TERMINADA.has(m.media_derived_status ?? ''));
+  const midia = midias.find((m) => !DERIVACAO_TERMINADA.has(m.media_derived_status ?? ""));
   if (midia !== undefined) {
     const esperandoHa = Date.now() - new Date(midia.quando).getTime();
     if (esperandoHa < TETO_ESPERA_DERIVACAO_MS) {
-      log.info('drain: mídia ainda sendo transcrita — turno adiado', {
+      log.info("drain: mídia ainda sendo transcrita — turno adiado", {
         event_id: event.id,
         tipo: midia.type,
         esperando_ha_ms: esperandoHa,
       });
-      return 'adiar';
+      return "adiar";
     }
-    log.warn('drain: derivação não concluiu no teto — seguindo sem o texto', {
+    log.warn("drain: derivação não concluiu no teto — seguindo sem o texto", {
       event_id: event.id,
       tipo: midia.type,
       esperando_ha_ms: esperandoHa,
@@ -487,17 +533,17 @@ async function processEvent(
     { organizationId: event.organization_id, contactId: p.contact_id },
     knobs.debounceMs,
   );
-  if (rajada.tipo === 'coalescido') {
-    log.info('drain: rajada coalescida em job pendente', {
+  if (rajada.tipo === "coalescido") {
+    log.info("drain: rajada coalescida em job pendente", {
       event_id: event.id,
       job_id: rajada.jobId,
     });
-    return 'processado';
+    return "processado";
   }
 
   const runAfter = rajada.runAfter;
   const { job, deduped } = await enqueueJob(pool, event.organization_id, {
-    kind: 'inbound_turn',
+    kind: "inbound_turn",
     leadId: p.contact_id,
     sourceEventId: event.id,
     payload: {
@@ -509,8 +555,8 @@ async function processEvent(
     },
     ...(runAfter !== undefined ? { runAfter } : {}),
   });
-  log.info('drain: job de turno enfileirado', { event_id: event.id, job_id: job.id, deduped });
-  return 'processado';
+  log.info("drain: job de turno enfileirado", { event_id: event.id, job_id: job.id, deduped });
+  return "processado";
 }
 
 /** Loop do drain — polling com backoff adaptativo (ocioso = tick mais lento). */
@@ -525,7 +571,7 @@ export async function runDrainLoop(
     try {
       drained = await drainTick(pool, knobs, log);
     } catch (err) {
-      log.error('drain: tick falhou', {
+      log.error("drain: tick falhou", {
         error: (err instanceof Error ? err.message : String(err)).slice(0, 300),
       });
     }
@@ -542,11 +588,11 @@ export async function runDrainLoop(
       // aparece como memória crescendo no worker, sem erro nenhum.
       const finish = (): void => {
         clearTimeout(timer);
-        signal.removeEventListener('abort', finish);
+        signal.removeEventListener("abort", finish);
         resolve();
       };
       const timer = setTimeout(finish, waitMs);
-      signal.addEventListener('abort', finish, { once: true });
+      signal.addEventListener("abort", finish, { once: true });
     });
   }
 }

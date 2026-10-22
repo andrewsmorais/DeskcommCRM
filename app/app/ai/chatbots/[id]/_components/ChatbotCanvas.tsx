@@ -1,434 +1,556 @@
 "use client";
 
 /**
- * Canvas principal do chatbot builder.
- * Drag & drop de nós, conexão por arestas, edição lateral, auto-save.
+ * Editor do Chatbot Builder, no modelo do editor da Umbler Talk: quadro com
+ * pontinhos, botão "+" que abre o menu de passos (busca, grupos, clique ou
+ * arraste), desfazer/refazer, "Alterações não salvas" e salvar. O desenho vai
+ * inteiro num PATCH (`grafo`). Ligar o fluxo passa pela validação do servidor.
  */
-
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ReactFlow,
-  Controls,
-  MiniMap,
   Background,
   BackgroundVariant,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  ReactFlowProvider,
   addEdge,
-  useNodesState,
   useEdgesState,
+  useNodesState,
+  useReactFlow,
   type Connection,
   type Edge,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  MessageSquare,
-  GitBranch,
-  ArrowRightLeft,
-  CircleStop,
-  Save,
-  ArrowLeft,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
+import { ArrowLeft, Loader2, Pencil, Plus, Redo2, Save, Search, Undo2, X } from "lucide-react";
 
+import { Switch } from "@/components/ui/switch";
 import { useT } from "@/hooks/i18n/useT";
+import {
+  GRUPOS_DE_PASSO,
+  PASSOS,
+  configDoPasso,
+  saidasDoPasso,
+  ehTipoDePasso,
+  type Grafo,
+  type TipoDePasso,
+} from "@/lib/chatbot/passos";
 
-import { NODE_TYPES, type NodeType, type NodeData } from "./node-types";
-import { NodePanel } from "./NodePanel";
+import { PassoNode, type NodeData } from "./node-types";
+import { IconeDoPasso, ICONE_DO_GRUPO } from "./icones";
+import { NodePanel, type OpcoesDoPainel } from "./NodePanel";
 
-// ─── types ──────────────────────────────────────────────────────────────────
+type Flow = { id: string; name: string; is_active: boolean; grafo: Grafo };
 
-type Flow = {
-  id: string;
-  name: string;
-  status: "draft" | "active" | "archived";
-  is_active: boolean;
-  nodes: DbNode[];
-  edges: DbEdge[];
-};
+const NODE_TYPES = Object.fromEntries(PASSOS.map((p) => [p.tipo, PassoNode]));
+const ARRASTO = "application/x-passo-do-chatbot";
 
-type DbNode = {
-  id: string;
-  node_type: string;
-  label: string;
-  pos_x: number;
-  pos_y: number;
-  data: Record<string, unknown>;
-};
+type Foto = { nodes: Node<NodeData>[]; edges: Edge[] };
 
-type DbEdge = {
-  id: string;
-  source_node_id: string;
-  target_node_id: string;
-  source_handle: string | null;
-  target_handle: string | null;
-  label: string | null;
-};
-
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-function dbNodesToRF(nodes: DbNode[]): Node<NodeData>[] {
-  return nodes.map((n) => ({
-    id: n.id,
-    type: n.node_type as NodeType,
-    position: { x: n.pos_x, y: n.pos_y },
-    data: { label: n.label, ...n.data } as NodeData,
-  }));
+function paraReactFlow(g: Grafo): Foto {
+  return {
+    nodes: g.nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+    edges: g.edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle ?? null,
+    })),
+  };
 }
 
-function dbEdgesToRF(edges: DbEdge[]): Edge[] {
-  return edges.map((e) => ({
-    id: e.id,
-    source: e.source_node_id,
-    target: e.target_node_id,
-    sourceHandle: e.source_handle ?? undefined,
-    targetHandle: e.target_handle ?? undefined,
-    label: e.label ?? undefined,
-    animated: true,
-  }));
-}
-
-function rfNodesToDb(nodes: Node<NodeData>[]) {
-  return nodes.map((n) => {
-    const { label, ...rest } = n.data;
-    return {
+function paraGrafo(nodes: Node<NodeData>[], edges: Edge[]): Grafo {
+  return {
+    nodes: nodes.map((n) => ({
       id: n.id,
-      node_type: n.type ?? "message",
-      label: (label as string) ?? "",
-      pos_x: n.position.x,
-      pos_y: n.position.y,
-      data: rest,
-    };
+      type: n.type ?? "",
+      position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
+      data: n.data,
+    })),
+    edges: edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle ?? null,
+    })),
+  };
+}
+
+function dadosPadrao(tipo: TipoDePasso): NodeData {
+  return configDoPasso[tipo].parse({}) as NodeData;
+}
+
+/** Ligação cujo ponto de saída não existe mais (ex.: opção apagada do menu) cai fora. */
+function semLigacoesOrfas(nodes: Node<NodeData>[], edges: Edge[]): Edge[] {
+  const porId = new Map(nodes.map((n) => [n.id, n]));
+  return edges.filter((e) => {
+    const origem = porId.get(e.source);
+    if (!origem || !porId.has(e.target) || !origem.type || !ehTipoDePasso(origem.type))
+      return false;
+    const saidas = saidasDoPasso(origem.type, origem.data).map((s) => s.id);
+    return saidas.includes(e.sourceHandle ?? "proximo");
   });
 }
 
-function rfEdgesToDb(edges: Edge[]) {
-  return edges.map((e) => ({
-    id: e.id,
-    source_node_id: e.source,
-    target_node_id: e.target,
-    source_handle: e.sourceHandle ?? null,
-    target_handle: e.targetHandle ?? null,
-    label: (e.label as string) ?? null,
-  }));
+export function ChatbotCanvas(props: { flow: Flow; opcoes: OpcoesDoPainel }) {
+  return (
+    <ReactFlowProvider>
+      <Editor {...props} />
+    </ReactFlowProvider>
+  );
 }
 
-const TOOLS: { type: NodeType; icon: React.ElementType; label: string; color: string }[] = [
-  { type: "message", icon: MessageSquare, label: "Mensagem", color: "text-primary" },
-  { type: "condition", icon: GitBranch, label: "Condição", color: "text-amber-600 dark:text-amber-400" },
-  { type: "transfer", icon: ArrowRightLeft, label: "Transferir", color: "text-blue-600 dark:text-blue-400" },
-  { type: "end", icon: CircleStop, label: "Encerrar", color: "text-red-500 dark:text-red-400" },
-];
-
-// ─── component ──────────────────────────────────────────────────────────────
-
-type SaveState = "idle" | "saving" | "saved" | "error";
-
-export function ChatbotCanvas({ flow: initial }: { flow: Flow }) {
+function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
   const t = useT();
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>(
-    dbNodesToRF(initial.nodes),
-  );
-  const [edges, setEdges, onEdgesChange] = useEdgesState(dbEdgesToRF(initial.edges));
-  const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [flowName] = useState(initial.name);
-  const [isActive, setIsActive] = useState(initial.is_active);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Inicializa com nó de início se vazio — roda só na montagem
-  useEffect(() => {
-    if (nodes.length === 0) {
-      setNodes([
-        {
-          id: "start-1",
-          type: "start",
-          position: { x: 250, y: 80 },
-          data: { label: "Início" },
-          deletable: false,
-        },
-      ]);
+  const inicial = useMemo(() => {
+    const foto = paraReactFlow(flow.grafo);
+    if (foto.nodes.length === 0) {
+      foto.nodes.push({
+        id: crypto.randomUUID(),
+        type: "inicio_canal",
+        position: { x: 120, y: 80 },
+        data: dadosPadrao("inicio_canal"),
+      });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return foto;
+  }, [flow.grafo]);
 
-  // ── save ────────────────────────────────────────────────────────────────
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>(inicial.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(inicial.edges);
+  const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [sujo, setSujo] = useState(flow.grafo.nodes.length === 0);
+  const [salvando, setSalvando] = useState(false);
+  const [ligado, setLigado] = useState(flow.is_active);
+  const [nome, setNome] = useState(flow.name);
+  const [editandoNome, setEditandoNome] = useState(false);
+  const [passado, setPassado] = useState<Foto[]>([]);
+  const [futuro, setFuturo] = useState<Foto[]>([]);
+  const { screenToFlowPosition } = useReactFlow();
+  const quadro = useRef<HTMLDivElement>(null);
 
-  const save = useCallback(
-    async (currentNodes: Node<NodeData>[], currentEdges: Edge[]) => {
-      setSaveState("saving");
-      try {
-        const res = await fetch(`/api/v1/chatbot-flows/${initial.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nodes: rfNodesToDb(currentNodes),
-            edges: rfEdgesToDb(currentEdges),
-          }),
-        });
-        setSaveState(res.ok ? "saved" : "error");
-        if (res.ok) setTimeout(() => setSaveState("idle"), 2000);
-      } catch {
-        setSaveState("error");
+  /** Guarda a foto atual antes de uma mudança, para o desfazer. */
+  const lembrar = useCallback(() => {
+    setPassado((p) => [...p.slice(-49), { nodes, edges }]);
+    setFuturo([]);
+    setSujo(true);
+  }, [nodes, edges]);
+
+  const desfazer = useCallback(() => {
+    const foto = passado[passado.length - 1];
+    if (!foto) return;
+    setPassado((p) => p.slice(0, -1));
+    setFuturo((f) => [...f, { nodes, edges }]);
+    setNodes(foto.nodes);
+    setEdges(foto.edges);
+    setSujo(true);
+  }, [passado, nodes, edges, setNodes, setEdges]);
+
+  const refazer = useCallback(() => {
+    const foto = futuro[futuro.length - 1];
+    if (!foto) return;
+    setFuturo((f) => f.slice(0, -1));
+    setPassado((p) => [...p, { nodes, edges }]);
+    setNodes(foto.nodes);
+    setEdges(foto.edges);
+    setSujo(true);
+  }, [futuro, nodes, edges, setNodes, setEdges]);
+
+  const salvar = useCallback(async () => {
+    setSalvando(true);
+    try {
+      const res = await fetch(`/api/v1/chatbot-flows/${flow.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nome.trim() || flow.name, grafo: paraGrafo(nodes, edges) }),
+      });
+      if (!res.ok) {
+        const corpo = await res.json().catch(() => null);
+        toast.error(corpo?.error?.message ?? t("Não foi possível salvar o fluxo."));
+        return false;
       }
-    },
-    [initial.id],
-  );
+      setSujo(false);
+      toast.success(t("Fluxo salvo."));
+      return true;
+    } finally {
+      setSalvando(false);
+    }
+  }, [flow.id, flow.name, nome, nodes, edges, t]);
 
-  // auto-save com debounce de 1.5s
-  const scheduleAutoSave = useCallback(
-    (n: Node<NodeData>[], e: Edge[]) => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => save(n, e), 1500);
-    },
-    [save],
-  );
-
-  // ── handlers ────────────────────────────────────────────────────────────
-
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      const newEdges = addEdge({ ...connection, animated: true }, edges);
-      setEdges(newEdges);
-      scheduleAutoSave(nodes, newEdges);
-    },
-    [edges, nodes, setEdges, scheduleAutoSave],
-  );
-
-  const handleNodesChange: typeof onNodesChange = useCallback(
-    (changes) => {
-      onNodesChange(changes);
-      // não auto-salva para "select" — só para move/remove
-      const hasSubstantial = changes.some(
-        (c) => c.type === "position" || c.type === "remove" || c.type === "add",
-      );
-      if (hasSubstantial) {
-        // pegar estado atualizado após next tick
-        setTimeout(() => {
-          setNodes((n) => {
-            scheduleAutoSave(n, edges);
-            return n;
-          });
-        }, 0);
-      }
-    },
-    [onNodesChange, edges, scheduleAutoSave, setNodes],
-  );
-
-  const addNode = useCallback(
-    (type: NodeType) => {
-      const id = crypto.randomUUID();
-      const defaultLabels: Record<NodeType, string> = {
-        start: "Início",
-        message: "Mensagem",
-        condition: "Condição",
-        transfer: "Transferir",
-        end: "Encerrar",
-      };
-      const newNode: Node<NodeData> = {
-        id,
-        type,
-        position: { x: 100 + Math.random() * 300, y: 200 + Math.random() * 200 },
-        data: { label: defaultLabels[type] },
-      };
-      setNodes((prev) => {
-        const updated = [...prev, newNode];
-        scheduleAutoSave(updated, edges);
-        return updated;
-      });
-    },
-    [edges, setNodes, scheduleAutoSave],
-  );
-
-  const updateNodeData = useCallback(
-    (id: string, data: Partial<NodeData>) => {
-      setNodes((prev) => {
-        const updated = prev.map((n) =>
-          n.id === id ? { ...n, data: { ...n.data, ...data } } : n,
-        );
-        scheduleAutoSave(updated, edges);
-        return updated;
-      });
-      setSelectedNode((prev) => (prev?.id === id ? { ...prev, data: { ...prev.data, ...data } } : prev));
-    },
-    [edges, setNodes, scheduleAutoSave],
-  );
-
-  const deleteNode = useCallback(
-    (id: string) => {
-      setNodes((prev) => {
-        const updated = prev.filter((n) => n.id !== id);
-        const updatedEdges = edges.filter((e) => e.source !== id && e.target !== id);
-        setEdges(updatedEdges);
-        scheduleAutoSave(updated, updatedEdges);
-        return updated;
-      });
-      setSelectedNode(null);
-    },
-    [edges, setEdges, setNodes, scheduleAutoSave],
-  );
-
-  async function toggleActive() {
-    const next = !isActive;
-    setIsActive(next);
-    await fetch(`/api/v1/chatbot-flows/${initial.id}`, {
+  async function alternarLigado(valor: boolean) {
+    if (valor && sujo && !(await salvar())) return;
+    const res = await fetch(`/api/v1/chatbot-flows/${flow.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: next, status: next ? "active" : "draft" }),
+      body: JSON.stringify({ is_active: valor }),
     });
+    if (!res.ok) {
+      const corpo = await res.json().catch(() => null);
+      toast.error(corpo?.error?.message ?? t("Não foi possível mudar o fluxo."));
+      return;
+    }
+    setLigado(valor);
+    toast.success(valor ? t("Fluxo ligado: ele já responde no WhatsApp.") : t("Fluxo desligado."));
   }
 
-  // ── render ──────────────────────────────────────────────────────────────
+  // Ctrl+S salva, Ctrl+Z desfaz, Ctrl+Shift+Z / Ctrl+Y refaz.
+  useEffect(() => {
+    function teclado(ev: KeyboardEvent) {
+      const alvo = ev.target as HTMLElement | null;
+      if (alvo && ["INPUT", "TEXTAREA"].includes(alvo.tagName)) return;
+      if (!(ev.ctrlKey || ev.metaKey)) return;
+      const k = ev.key.toLowerCase();
+      if (k === "s") {
+        ev.preventDefault();
+        void salvar();
+      } else if (k === "z" && !ev.shiftKey) {
+        ev.preventDefault();
+        desfazer();
+      } else if (k === "y" || (k === "z" && ev.shiftKey)) {
+        ev.preventDefault();
+        refazer();
+      }
+    }
+    window.addEventListener("keydown", teclado);
+    return () => window.removeEventListener("keydown", teclado);
+  }, [salvar, desfazer, refazer]);
 
-  const SaveIcon =
-    saveState === "saving"
-      ? Loader2
-      : saveState === "saved"
-        ? CheckCircle2
-        : saveState === "error"
-          ? AlertCircle
-          : Save;
+  // Sair com alterações não salvas pergunta antes.
+  useEffect(() => {
+    function antesDeSair(ev: BeforeUnloadEvent) {
+      if (!sujo) return;
+      ev.preventDefault();
+    }
+    window.addEventListener("beforeunload", antesDeSair);
+    return () => window.removeEventListener("beforeunload", antesDeSair);
+  }, [sujo]);
+
+  const adicionar = useCallback(
+    (tipo: TipoDePasso, posicao?: { x: number; y: number }) => {
+      lembrar();
+      const caixa = quadro.current?.getBoundingClientRect();
+      const centro = caixa
+        ? screenToFlowPosition({ x: caixa.left + caixa.width / 2, y: caixa.top + caixa.height / 3 })
+        : { x: 200, y: 200 };
+      const novo: Node<NodeData> = {
+        id: crypto.randomUUID(),
+        type: tipo,
+        position: posicao ?? {
+          x: centro.x + (Math.random() * 60 - 30),
+          y: centro.y + (Math.random() * 60 - 30),
+        },
+        data: dadosPadrao(tipo),
+      };
+      setNodes((atuais) => [...atuais, novo]);
+      setSelecionado(novo.id);
+      setMenuAberto(false);
+      setBusca("");
+    },
+    [lembrar, screenToFlowPosition, setNodes],
+  );
+
+  const ligar = useCallback(
+    (c: Connection) => {
+      lembrar();
+      // Uma saída leva a UM passo: ligar de novo troca o destino.
+      setEdges((atuais) =>
+        addEdge(
+          { ...c, id: crypto.randomUUID(), sourceHandle: c.sourceHandle ?? "proximo" },
+          atuais.filter(
+            (e) =>
+              !(
+                e.source === c.source &&
+                (e.sourceHandle ?? "proximo") === (c.sourceHandle ?? "proximo")
+              ),
+          ),
+        ),
+      );
+    },
+    [lembrar, setEdges],
+  );
+
+  const mudarDados = useCallback(
+    (id: string, dados: NodeData) => {
+      lembrar();
+      setNodes((atuais) => {
+        const novos = atuais.map((n) => (n.id === id ? { ...n, data: dados } : n));
+        setEdges((ligacoes) => semLigacoesOrfas(novos, ligacoes));
+        return novos;
+      });
+    },
+    [lembrar, setNodes, setEdges],
+  );
+
+  const apagar = useCallback(
+    (id: string) => {
+      lembrar();
+      setNodes((atuais) => atuais.filter((n) => n.id !== id));
+      setEdges((atuais) => atuais.filter((e) => e.source !== id && e.target !== id));
+      setSelecionado(null);
+    },
+    [lembrar, setNodes, setEdges],
+  );
+
+  const passosFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return PASSOS.filter(
+      (p) =>
+        !termo ||
+        t(p.nome).toLowerCase().includes(termo) ||
+        t(p.descricao).toLowerCase().includes(termo),
+    );
+  }, [busca, t]);
+
+  const noSelecionado = nodes.find((n) => n.id === selecionado) ?? null;
+
+  const botaoRedondo =
+    "flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:opacity-40";
 
   return (
-    <TooltipProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
-        {/* ── Sidebar de ferramentas ─────────────────────── */}
-        <aside className="w-56 border-r bg-card flex flex-col shrink-0">
-          {/* voltar */}
-          <div className="px-3 py-3 border-b">
-            <Link
-              href="/app/ai/chatbots"
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Chatbots
-            </Link>
-            <p className="mt-1.5 text-sm font-medium line-clamp-2">{flowName}</p>
-          </div>
+    <div className="flex h-screen flex-col bg-background">
+      {/* ── barra de cima ─────────────────────────────────── */}
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+        <Link
+          href="/app/ai/chatbots"
+          className="mr-2 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t("Chatbots")}
+        </Link>
+        <button
+          type="button"
+          onClick={() => setMenuAberto((v) => !v)}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:opacity-90"
+          aria-label={t("Adicionar passo")}
+          data-testid="chatbot-adicionar-passo"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={desfazer}
+          disabled={passado.length === 0}
+          className={botaoRedondo}
+          aria-label={t("Desfazer")}
+        >
+          <Undo2 className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={refazer}
+          disabled={futuro.length === 0}
+          className={botaoRedondo}
+          aria-label={t("Refazer")}
+        >
+          <Redo2 className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void salvar()}
+          disabled={salvando}
+          className={botaoRedondo}
+          aria-label={t("Salvar")}
+          data-testid="chatbot-salvar"
+        >
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        </button>
+        <span className="ml-2 flex items-center gap-1.5 text-sm" data-testid="chatbot-estado">
+          {sujo ? (
+            <>
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+              {t("Alterações não salvas")}
+            </>
+          ) : (
+            <span className="text-muted-foreground">{t("Tudo salvo")}</span>
+          )}
+        </span>
 
-          {/* blocos */}
-          <div className="px-3 py-3 flex-1">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-2">
-              Adicionar bloco
-            </p>
-            <div className="space-y-1">
-              {TOOLS.map((tool) => {
-                const Icon = tool.icon;
+        <div className="ml-auto flex items-center gap-4">
+          {editandoNome ? (
+            <input
+              autoFocus
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              onBlur={() => {
+                setEditandoNome(false);
+                if (nome.trim() && nome !== flow.name) setSujo(true);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+              className="h-8 w-56 rounded-md border border-border bg-surface px-2 text-sm"
+              maxLength={120}
+              aria-label={t("Nome do fluxo")}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditandoNome(true)}
+              className="flex items-center gap-1.5 text-sm font-semibold"
+            >
+              {nome}
+              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <Switch
+              checked={ligado}
+              onCheckedChange={(v) => void alternarLigado(v)}
+              data-testid="chatbot-ligar"
+            />
+            {ligado ? t("Ligado") : t("Desligado")}
+          </label>
+        </div>
+      </header>
+
+      <div className="relative flex min-h-0 flex-1">
+        {/* ── menu de passos ("+") ─────────────────────────── */}
+        {menuAberto ? (
+          <div
+            className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-2rem)] w-[min(540px,calc(100%-2rem))] flex-col rounded-2xl border border-border bg-surface shadow-xl"
+            data-testid="chatbot-menu-de-passos"
+          >
+            <div className="flex items-center gap-3 border-b border-border p-4">
+              <span className="text-sm font-semibold">✋ {t("Clique ou arraste")}</span>
+              <div className="relative ml-auto flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  autoFocus
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder={t("Pesquisar passo")}
+                  className="h-9 w-full rounded-full border border-border bg-background pr-3 pl-9 text-sm outline-hidden focus:border-primary"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setMenuAberto(false)}
+                aria-label={t("Fechar")}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {GRUPOS_DE_PASSO.map((grupo) => {
+                const doGrupo = passosFiltrados.filter((p) => p.grupo === grupo.id);
+                if (doGrupo.length === 0) return null;
+                const IconeGrupo = ICONE_DO_GRUPO[grupo.id];
                 return (
-                  <Tooltip key={tool.type}>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => addNode(tool.type)}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-muted transition-colors text-left"
-                      >
-                        <Icon className={`w-4 h-4 shrink-0 ${tool.color}`} />
-                        <span>{tool.label}</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="text-xs">
-                      {t("Arraste ou clique para adicionar")}
-                    </TooltipContent>
-                  </Tooltip>
+                  <section key={grupo.id} className="mb-5 last:mb-0">
+                    <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                      {IconeGrupo ? <IconeGrupo className="h-4 w-4" /> : null}
+                      {t(grupo.nome)}
+                    </h3>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {doGrupo.map((p) => (
+                        <button
+                          key={p.tipo}
+                          type="button"
+                          draggable
+                          onDragStart={(ev) => {
+                            ev.dataTransfer.setData(ARRASTO, p.tipo);
+                            ev.dataTransfer.effectAllowed = "move";
+                          }}
+                          onClick={() => adicionar(p.tipo)}
+                          className="rounded-xl border border-border bg-background p-3 text-left transition-colors hover:border-primary/60 hover:bg-surface-elevated"
+                          data-testid={`menu-passo-${p.tipo}`}
+                        >
+                          <span className="flex items-center gap-2 text-sm font-semibold">
+                            <IconeDoPasso nome={p.icone} className={`h-4 w-4 ${p.cor}`} />
+                            {t(p.nome)}
+                          </span>
+                          <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+                            {t(p.descricao)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
                 );
               })}
+              {passosFiltrados.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  {t("Nenhum passo com esse nome.")}
+                </p>
+              ) : null}
             </div>
           </div>
+        ) : null}
 
-          {/* rodapé com status */}
-          <div className="px-3 py-3 border-t space-y-2">
-            <button
-              onClick={toggleActive}
-              className={`w-full text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                isActive
-                  ? "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {isActive ? "● Chatbot ativo" : "○ Chatbot inativo"}
-            </button>
-            <button
-              onClick={() => save(nodes, edges)}
-              disabled={saveState === "saving"}
-              className="w-full flex items-center justify-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border hover:bg-muted transition-colors"
-            >
-              <SaveIcon
-                className={`w-3.5 h-3.5 ${saveState === "saving" ? "animate-spin" : saveState === "saved" ? "text-green-600" : saveState === "error" ? "text-red-500" : ""}`}
-              />
-              {saveState === "saving"
-                ? t("Salvando…")
-                : saveState === "saved"
-                  ? t("Salvo!")
-                  : saveState === "error"
-                    ? t("Erro ao salvar")
-                    : t("Salvar agora")}
-            </button>
-          </div>
-        </aside>
-
-        {/* ── Canvas ────────────────────────────────────────── */}
-        <div className="flex-1 relative">
+        {/* ── quadro ─────────────────────────────────────── */}
+        <div
+          ref={quadro}
+          className="min-w-0 flex-1"
+          onDragOver={(ev) => {
+            if (ev.dataTransfer.types.includes(ARRASTO)) {
+              ev.preventDefault();
+              ev.dataTransfer.dropEffect = "move";
+            }
+          }}
+          onDrop={(ev) => {
+            const tipo = ev.dataTransfer.getData(ARRASTO);
+            if (!tipo || !ehTipoDePasso(tipo)) return;
+            ev.preventDefault();
+            adicionar(tipo, screenToFlowPosition({ x: ev.clientX, y: ev.clientY }));
+          }}
+        >
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={(changes) => {
-              onEdgesChange(changes);
-              setTimeout(() => {
-                setEdges((e) => {
-                  scheduleAutoSave(nodes, e);
-                  return e;
-                });
-              }, 0);
-            }}
-            onConnect={onConnect}
             nodeTypes={NODE_TYPES}
-            onNodeClick={(_, node) => setSelectedNode(node as Node<NodeData>)}
-            onPaneClick={() => setSelectedNode(null)}
-            fitView
-            fitViewOptions={{ padding: 0.3 }}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={ligar}
+            onNodeDragStart={lembrar}
+            onNodesDelete={() => {
+              setSujo(true);
+              setSelecionado(null);
+            }}
+            onEdgesDelete={() => setSujo(true)}
+            onBeforeDelete={async () => {
+              lembrar();
+              return true;
+            }}
+            onNodeClick={(_, n) => setSelecionado(n.id)}
+            onPaneClick={() => {
+              setSelecionado(null);
+              setMenuAberto(false);
+            }}
             defaultEdgeOptions={{ animated: true }}
-            className="bg-dot-pattern"
+            fitView
+            fitViewOptions={{ padding: 0.4, maxZoom: 1 }}
+            deleteKeyCode={["Delete", "Backspace"]}
+            proOptions={{ hideAttribution: true }}
           >
-            <Controls />
-            <MiniMap
-              nodeColor={(n) => {
-                const colors: Record<string, string> = {
-                  start: "#22c55e",
-                  message: "hsl(var(--primary))",
-                  condition: "#f59e0b",
-                  transfer: "#3b82f6",
-                  end: "#ef4444",
-                };
-                return colors[n.type ?? "message"] ?? "#888";
-              }}
-              pannable
-              zoomable
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={18}
+              size={1.2}
+              className="!bg-background"
             />
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="currentColor" className="text-muted-foreground/20" />
+            <Controls position="bottom-center" orientation="horizontal" showInteractive={false} />
+            <MiniMap position="bottom-right" pannable zoomable className="!bg-surface" />
           </ReactFlow>
         </div>
 
-        {/* ── Painel lateral do nó selecionado ──────────────── */}
-        {selectedNode && (
-          <aside className="w-72 border-l bg-card shrink-0">
+        {/* ── configuração do passo selecionado ─────────────── */}
+        {noSelecionado ? (
+          <aside className="w-80 shrink-0 overflow-y-auto border-l border-border bg-surface">
             <NodePanel
-              node={selectedNode}
-              onClose={() => setSelectedNode(null)}
-              onChange={updateNodeData}
-              onDelete={deleteNode}
+              key={noSelecionado.id}
+              tipo={noSelecionado.type ?? ""}
+              dados={noSelecionado.data}
+              opcoes={opcoes}
+              onChange={(d) => mudarDados(noSelecionado.id, d)}
+              onClose={() => setSelecionado(null)}
+              onDelete={() => apagar(noSelecionado.id)}
             />
           </aside>
-        )}
+        ) : null}
       </div>
-    </TooltipProvider>
+    </div>
   );
 }

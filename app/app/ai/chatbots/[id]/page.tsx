@@ -3,17 +3,17 @@ import type { Metadata } from "next";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
+import { listSelectableChannels } from "@/lib/channels/selectable";
+import { grafoSchema } from "@/lib/chatbot/passos";
 import { createClient } from "@/lib/supabase/server";
+import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 import { ChatbotCanvas } from "./_components/ChatbotCanvas";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ id: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params;
-  return { title: `Chatbot — ${id.slice(0, 8)}` };
-}
+export const metadata: Metadata = { title: "Chatbot" };
 
 export default async function ChatbotEditorPage({ params }: Props) {
   const { id } = await params;
@@ -24,35 +24,47 @@ export default async function ChatbotEditorPage({ params }: Props) {
   if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) redirect("/403");
 
   const db = await createClient();
-
-  const [flowRes, nodesRes, edgesRes] = await Promise.all([
+  const [flowRes, canais, pessoasRes] = await Promise.all([
     db
       .from("chatbot_flows")
-      .select("id, name, description, status, is_active, trigger_channel")
+      .select("id, name, is_active, grafo")
       .eq("id", id)
       .eq("organization_id", activeOrg.orgId)
       .maybeSingle(),
+    listSelectableChannels(db, activeOrg.orgId),
     db
-      .from("chatbot_nodes")
-      .select("id, node_type, label, pos_x, pos_y, data")
-      .eq("flow_id", id)
+      .from("user_organizations")
+      .select("user_id, role")
       .eq("organization_id", activeOrg.orgId)
-      .order("created_at"),
-    db
-      .from("chatbot_edges")
-      .select("id, source_node_id, target_node_id, source_handle, target_handle, label")
-      .eq("flow_id", id)
-      .eq("organization_id", activeOrg.orgId)
-      .order("created_at"),
+      .is("revoked_at", null),
   ]);
 
   if (!flowRes.data) notFound();
 
-  const flow = {
-    ...flowRes.data,
-    nodes: nodesRes.data ?? [],
-    edges: edgesRes.data ?? [],
-  };
+  // Desenho gravado fora do formato (ou vazio): abre em branco, sem quebrar a tela.
+  const grafo = grafoSchema.safeParse(flowRes.data.grafo);
 
-  return <ChatbotCanvas flow={flow} />;
+  const pessoas = (pessoasRes.data ?? []).filter((p) => p.role !== "viewer");
+  const nomes = await nomesDosAtendentes(pessoas.map((p) => String(p.user_id)));
+
+  return (
+    <ChatbotCanvas
+      flow={{
+        id: flowRes.data.id,
+        name: flowRes.data.name,
+        is_active: flowRes.data.is_active,
+        grafo: grafo.success ? grafo.data : { nodes: [], edges: [] },
+      }}
+      opcoes={{
+        canais: canais.map((c) => ({
+          id: c.id,
+          nome: c.phone_number ? `${c.display_name} (${c.phone_number})` : c.display_name,
+        })),
+        atendentes: pessoas.map((p) => ({
+          id: String(p.user_id),
+          nome: nomes.get(String(p.user_id)) ?? `${String(p.user_id).slice(0, 8)} · ${p.role}`,
+        })),
+      }}
+    />
+  );
 }

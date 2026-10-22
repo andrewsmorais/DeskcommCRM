@@ -1,200 +1,132 @@
 "use client";
 
 /**
- * Tipos de nó do canvas de chatbot.
- * Cada nó é um React component que o React Flow renderiza no canvas.
+ * Um nó só para todos os passos: o visual sai do catálogo
+ * (`lib/chatbot/passos.ts`) — ícone, cor, nome, entradas e saídas. Passo novo
+ * no catálogo aparece no quadro sem mexer aqui.
  */
-
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import {
-  MessageSquare,
-  GitBranch,
-  ArrowRightLeft,
-  CircleStop,
-  Play,
-} from "lucide-react";
 
 import { useT } from "@/hooks/i18n/useT";
+import { lerConfig, metaDoPasso, saidasDoPasso, ehTipoDePasso } from "@/lib/chatbot/passos";
+import { IconeDoPasso } from "./icones";
 
-// ─── tipos compartilhados ───────────────────────────────────────────────────
+export type NodeData = Record<string, unknown>;
 
-export type NodeData = {
-  label: string;
-  [key: string]: unknown;
-};
+/** O que o nó mostra embaixo do título: um resumo da configuração. */
+function resumo(tipo: string, dados: unknown, t: (s: string) => string): string {
+  if (!ehTipoDePasso(tipo)) return "";
+  switch (tipo) {
+    case "inicio_canal": {
+      const c = lerConfig("inicio_canal", dados);
+      return c.gatilho === "palavra_chave"
+        ? `${t("Quando a mensagem contém")}: ${c.palavras.join(", ") || "…"}`
+        : t("Toda conversa nova");
+    }
+    case "enviar_mensagem":
+      return lerConfig("enviar_mensagem", dados).texto;
+    case "pedir_escolher":
+      return lerConfig("pedir_escolher", dados).pergunta;
+    case "pedir_digitar": {
+      const c = lerConfig("pedir_digitar", dados);
+      return c.pergunta ? `${c.pergunta} → {{${c.variavel}}}` : "";
+    }
+    case "mensagem_contem":
+      return lerConfig("mensagem_contem", dados).palavras.join(", ");
+    case "horarios":
+      return lerConfig("horarios", dados)
+        .faixas.map((f) => `${f.inicio}–${f.fim}`)
+        .join(", ");
+    case "dias_semana": {
+      const nomes = [t("Dom"), t("Seg"), t("Ter"), t("Qua"), t("Qui"), t("Sex"), t("Sáb")];
+      return lerConfig("dias_semana", dados)
+        .dias.slice()
+        .sort()
+        .map((d) => nomes[d])
+        .join(", ");
+    }
+    case "editar_etiquetas": {
+      const c = lerConfig("editar_etiquetas", dados);
+      return [...c.adicionar.map((e) => `+${e}`), ...c.remover.map((e) => `−${e}`)].join(" ");
+    }
+    case "transferir_equipe":
+    case "transferir_atendente":
+    case "finalizar_conversa":
+      return (dados as { mensagem?: string })?.mensagem ?? "";
+    case "bloco_de_notas":
+      return lerConfig("bloco_de_notas", dados).texto;
+  }
+}
 
-// ─── node: Start ───────────────────────────────────────────────────────────
-
-export const StartNode = memo(function StartNode({ data, selected }: NodeProps) {
+export const PassoNode = memo(function PassoNode({ type, data, selected }: NodeProps) {
   const t = useT();
+  const meta = metaDoPasso(type);
+  if (!meta) {
+    return (
+      <div className="rounded-xl border border-destructive bg-surface px-3 py-2 text-xs text-destructive">
+        {t("Passo desconhecido — apague-o.")}
+        <Handle type="target" position={Position.Top} />
+      </div>
+    );
+  }
+  const saidas = saidasDoPasso(meta.tipo, data);
+  const texto = resumo(meta.tipo, data, t);
+  const nota = meta.tipo === "bloco_de_notas";
+
   return (
     <div
-      className={`flex items-center gap-2 rounded-full px-4 py-2 bg-green-500 text-white shadow-md text-sm font-semibold ${
-        selected ? "ring-2 ring-green-300 ring-offset-1" : ""
-      }`}
+      className={`max-w-[280px] min-w-[220px] rounded-xl border shadow-sm ${
+        nota ? "border-yellow-400/40 bg-yellow-50 dark:bg-yellow-950/30" : "bg-surface"
+      } ${selected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "border-border"}`}
+      data-testid={`passo-${meta.tipo}`}
     >
-      <Play className="w-4 h-4 fill-white" />
-      <span>{(data as NodeData).label || t("Início")}</span>
-      <Handle type="source" position={Position.Bottom} className="!bg-white !border-green-600" />
-    </div>
-  );
-});
-
-// ─── node: Message ─────────────────────────────────────────────────────────
-
-export const MessageNode = memo(function MessageNode({ data, selected }: NodeProps) {
-  const t = useT();
-  const d = data as NodeData & { message?: string };
-  return (
-    <div
-      className={`rounded-xl border bg-card shadow-sm min-w-[200px] max-w-[280px] ${
-        selected ? "ring-2 ring-primary ring-offset-1" : "border-border"
-      }`}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-primary !border-primary/60" />
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/40 rounded-t-xl">
-        <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />
-        <span className="text-xs font-medium text-primary">Mensagem</span>
-      </div>
-      <div className="px-3 py-2">
-        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
-          {d.message || (
-            <span className="italic opacity-60">{t("Clique para editar a mensagem…")}</span>
-          )}
-        </p>
-        {d.label && d.label !== "Mensagem" && (
-          <p className="text-[11px] font-medium mt-1.5 text-foreground truncate">{d.label}</p>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-primary !border-primary/60" />
-    </div>
-  );
-});
-
-// ─── node: Condition ───────────────────────────────────────────────────────
-
-export const ConditionNode = memo(function ConditionNode({ data, selected }: NodeProps) {
-  const t = useT();
-  const d = data as NodeData & { question?: string; options?: string[] };
-  const options = d.options ?? ["Sim", "Não"];
-
-  return (
-    <div
-      className={`rounded-xl border bg-card shadow-sm min-w-[200px] max-w-[280px] ${
-        selected ? "ring-2 ring-amber-500 ring-offset-1" : "border-border"
-      }`}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-amber-500 !border-amber-600" />
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-amber-50 dark:bg-amber-950/30 rounded-t-xl">
-        <GitBranch className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{t("Condição")}</span>
-      </div>
-      <div className="px-3 py-2">
-        <p className="text-xs text-foreground font-medium leading-snug line-clamp-3">
-          {d.question || (
-            <span className="italic text-muted-foreground opacity-60">{t("Qual é a pergunta?")}</span>
-          )}
-        </p>
-        <div className="flex flex-wrap gap-1 mt-2">
-          {options.map((opt, i) => (
-            <span
-              key={i}
-              className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded-full"
-            >
-              {opt}
-            </span>
-          ))}
-        </div>
-      </div>
-      {/* handles de saída — um por opção, posicionados lateralmente */}
-      {options.map((opt, i) => (
+      {meta.temEntrada ? (
         <Handle
-          key={opt}
-          id={`option-${i}`}
-          type="source"
-          position={Position.Bottom}
-          style={{ left: `${((i + 1) / (options.length + 1)) * 100}%` }}
-          className="!bg-amber-500 !border-amber-600"
-          title={opt}
+          type="target"
+          position={Position.Top}
+          className="!h-3 !w-3 !border-2 !border-surface !bg-primary"
         />
-      ))}
-    </div>
-  );
-});
-
-// ─── node: Transfer ────────────────────────────────────────────────────────
-
-export const TransferNode = memo(function TransferNode({ data, selected }: NodeProps) {
-  const t = useT();
-  const d = data as NodeData & { team?: string; message?: string };
-  return (
-    <div
-      className={`rounded-xl border bg-card shadow-sm min-w-[200px] max-w-[280px] ${
-        selected ? "ring-2 ring-blue-500 ring-offset-1" : "border-border"
-      }`}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-blue-500 !border-blue-600" />
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-blue-50 dark:bg-blue-950/30 rounded-t-xl">
-        <ArrowRightLeft className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-        <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Transferir</span>
+      ) : null}
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <IconeDoPasso nome={meta.icone} className={`h-4 w-4 shrink-0 ${meta.cor}`} />
+        <span className="truncate text-xs font-semibold">{t(meta.nome)}</span>
       </div>
       <div className="px-3 py-2">
-        {d.team ? (
-          <p className="text-xs font-medium">
-            {t("Para:")} <span className="text-blue-600 dark:text-blue-400">{d.team}</span>
-          </p>
-        ) : (
-          <p className="text-xs italic text-muted-foreground opacity-60">{t("Escolher destino…")}</p>
-        )}
-        {d.message && (
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{d.message}</p>
-        )}
+        <p className="line-clamp-4 text-xs leading-relaxed whitespace-pre-line text-muted-foreground">
+          {texto || <span className="italic opacity-60">{t("Clique para configurar")}</span>}
+        </p>
       </div>
-    </div>
-  );
-});
-
-// ─── node: End ─────────────────────────────────────────────────────────────
-
-export const EndNode = memo(function EndNode({ data, selected }: NodeProps) {
-  const d = data as NodeData & { message?: string };
-  return (
-    <div
-      className={`rounded-xl border bg-card shadow-sm min-w-[160px] max-w-[240px] ${
-        selected ? "ring-2 ring-red-400 ring-offset-1" : "border-border"
-      }`}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-red-400 !border-red-500" />
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-red-50 dark:bg-red-950/30 rounded-t-xl">
-        <CircleStop className="w-3.5 h-3.5 text-red-500 dark:text-red-400 shrink-0" />
-        <span className="text-xs font-medium text-red-600 dark:text-red-300">Encerrar</span>
-      </div>
-      {d.message && (
-        <div className="px-3 py-2">
-          <p className="text-xs text-muted-foreground line-clamp-3">{d.message}</p>
+      {saidas.length > 0 ? (
+        <div className={saidas.length > 1 ? "border-t border-border px-2 pt-1.5 pb-3" : ""}>
+          {saidas.length > 1 ? (
+            <div className="flex flex-col gap-1">
+              {saidas.map((s) => (
+                <div
+                  key={s.id}
+                  className="relative flex items-center justify-end pr-3 text-[10px] text-muted-foreground"
+                >
+                  <span className="truncate">{t(s.rotulo)}</span>
+                  <Handle
+                    id={s.id}
+                    type="source"
+                    position={Position.Right}
+                    className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-primary"
+                    style={{ top: "50%", right: -14 }}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Handle
+              id={saidas[0]?.id ?? "proximo"}
+              type="source"
+              position={Position.Bottom}
+              className="!h-3 !w-3 !border-2 !border-surface !bg-primary"
+            />
+          )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 });
-
-// ─── mapa de node types para o ReactFlow ──────────────────────────────────
-
-export const NODE_TYPES = {
-  start: StartNode,
-  message: MessageNode,
-  condition: ConditionNode,
-  transfer: TransferNode,
-  end: EndNode,
-} as const;
-
-export type NodeType = keyof typeof NODE_TYPES;
-
-export const NODE_TYPE_META: Record<NodeType, { label: string; icon: React.ElementType; color: string }> = {
-  start: { label: "Início", icon: Play, color: "text-green-600 dark:text-green-400" },
-  message: { label: "Mensagem", icon: MessageSquare, color: "text-primary" },
-  condition: { label: "Condição", icon: GitBranch, color: "text-amber-600 dark:text-amber-400" },
-  transfer: { label: "Transferir", icon: ArrowRightLeft, color: "text-blue-600 dark:text-blue-400" },
-  end: { label: "Encerrar", icon: CircleStop, color: "text-red-500 dark:text-red-400" },
-};
