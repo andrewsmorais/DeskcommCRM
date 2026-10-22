@@ -43397,3 +43397,16 @@ create policy "conversation_notes_write" on public.conversation_notes
 drop policy if exists "conversation_notes_select_platform_admin" on public.conversation_notes;
 create policy "conversation_notes_select_platform_admin" on public.conversation_notes
   for select using (public.fn_is_platform_admin());
+
+-- ---- lgpd_requests: origem `retention` e status `pending_review` (migration 0483) ----
+-- A exclusão no fim do prazo de exportação (lib/exportacao/exclusao.ts) abre
+-- pedido de escopo `tenant` com source='retention'; e `pending_review`, que o
+-- código e os workers LGPD já gravavam, passa a ser aceito. Só amplia os dois
+-- vocabulários, então nenhuma linha existente viola — reaplicar é inofensivo.
+alter table public.lgpd_requests drop constraint if exists lgpd_requests_source_check;
+alter table public.lgpd_requests add constraint lgpd_requests_source_check
+  check (source = any (array['nuvemshop'::text, 'manual'::text, 'api'::text, 'support'::text, 'retention'::text]));
+
+alter table public.lgpd_requests drop constraint if exists lgpd_requests_status_check;
+alter table public.lgpd_requests add constraint lgpd_requests_status_check
+  check (status = any (array['received'::text, 'processing'::text, 'completed'::text, 'failed'::text, 'expired'::text, 'pending_review'::text]));

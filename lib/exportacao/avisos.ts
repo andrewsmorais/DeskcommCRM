@@ -31,7 +31,7 @@ import {
   acessoEncerrado,
   avisoDevido,
   exclusaoEm,
-  FOLGA_DO_AVISO_FINAL_DIAS,
+  exclusaoLiberadaEm,
   fimDoAcesso,
   type Aviso,
 } from "./ciclo-de-vida";
@@ -121,8 +121,9 @@ export async function executarAvisos(
     }
 
     const exclusao = exclusaoEm(fim);
-    // O link vale até o fim da folga do aviso final: cobre as três mensagens.
-    const expiraEm = new Date(exclusao.getTime() + FOLGA_DO_AVISO_FINAL_DIAS * 86_400_000);
+    // O link vale até o fim da folga do aviso final: cobre as três mensagens, e
+    // é o MESMO instante em que a exclusão fica liberada (`exclusao.ts`).
+    const expiraEm = exclusaoLiberadaEm(fim);
     const url = dep.gerarUrl(assinatura.organization_id, expiraEm);
     if (!url) {
       resultado.semLink += 1;
@@ -178,45 +179,64 @@ function estadoDe(settings: unknown): EstadoDoCiclo | null {
   return { fim, avisos: limpos };
 }
 
+type ClienteAdmin = ReturnType<typeof createAdminClient>;
+
+/**
+ * A assinatura MAIS RECENTE de cada organização que tem alguma. Organização sem
+ * assinatura nenhuma (a do dono, as de teste) não aparece — e por isso nunca é
+ * avisada nem excluída por estes crons.
+ *
+ * Compartilhada com `exclusao.ts` de propósito: os dois crons TÊM de enxergar o
+ * mesmo "fim do acesso", senão a exclusão poderia correr numa data que nenhum
+ * e-mail anunciou.
+ */
+export async function lerAssinaturasMaisRecentes(db: ClienteAdmin): Promise<LinhaDeAssinatura[] | null> {
+  const { data, error } = await db
+    .from("subscriptions")
+    .select("organization_id, status, current_period_end, expires_at, canceled_at, created_at")
+    .order("created_at", { ascending: false, nullsFirst: false })
+    .limit(5000);
+  if (error) {
+    logger.warn("exportacao_leitura_de_assinaturas_falhou", { detail: error.message });
+    return null;
+  }
+  // A mais recente de cada organização: histórico de assinaturas não conta.
+  const vistas = new Set<string>();
+  const maisRecentes: LinhaDeAssinatura[] = [];
+  for (const l of (data ?? []) as unknown as LinhaDeAssinatura[]) {
+    if (vistas.has(l.organization_id)) continue;
+    vistas.add(l.organization_id);
+    maisRecentes.push(l);
+  }
+  return maisRecentes;
+}
+
+export async function lerOrganizacao(db: ClienteAdmin, orgId: string): Promise<DadosDaOrganizacao | null> {
+  const { data, error } = await db
+    .from("organizations")
+    .select("display_name, settings, redacted_at")
+    .eq("id", orgId)
+    .maybeSingle();
+  if (error || !data) return null;
+  // Nome da ORGANIZAÇÃO, não de contato — por isso não passa por `nomeDoContato`.
+  const nomeDaOrganizacao = typeof data.display_name === "string" ? data.display_name.trim() : "";
+  return {
+    nome: nomeDaOrganizacao || "Sua conta",
+    redigida: Boolean(data.redacted_at),
+    estado: estadoDe(data.settings),
+  };
+}
+
 export function dependenciasReais(): Dependencias {
   const db = createAdminClient();
   return {
     agora: () => new Date(),
 
     async assinaturas() {
-      const { data, error } = await db
-        .from("subscriptions")
-        .select("organization_id, status, current_period_end, expires_at, canceled_at, created_at")
-        .order("created_at", { ascending: false, nullsFirst: false })
-        .limit(5000);
-      if (error) {
-        logger.warn("exportacao_avisos_leitura_de_assinaturas_falhou", { detail: error.message });
-        return [];
-      }
-      // A mais recente de cada organização: histórico de assinaturas não conta.
-      const vistas = new Set<string>();
-      const maisRecentes: LinhaDeAssinatura[] = [];
-      for (const l of (data ?? []) as unknown as LinhaDeAssinatura[]) {
-        if (vistas.has(l.organization_id)) continue;
-        vistas.add(l.organization_id);
-        maisRecentes.push(l);
-      }
-      return maisRecentes;
+      return (await lerAssinaturasMaisRecentes(db)) ?? [];
     },
 
-    async organizacao(orgId) {
-      const { data, error } = await db
-        .from("organizations")
-        .select("display_name, settings, redacted_at")
-        .eq("id", orgId)
-        .maybeSingle();
-      if (error || !data) return null;
-      return {
-        nome: String(data.display_name ?? "").trim() || "Sua conta",
-        redigida: Boolean(data.redacted_at),
-        estado: estadoDe(data.settings),
-      };
-    },
+    organizacao: (orgId) => lerOrganizacao(db, orgId),
 
     async gravarEstado(orgId, estado) {
       // Relê logo antes de gravar: `settings` é compartilhado com o resto da

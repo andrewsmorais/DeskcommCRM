@@ -66,6 +66,24 @@ export function exclusaoEm(fim: Date): Date {
   return new Date(fim.getTime() + DIAS_PARA_EXPORTAR * DIA_MS);
 }
 
+/**
+ * O instante a partir do qual a exclusão PODE de fato rodar: o prazo dos Termos
+ * mais a folga do aviso final.
+ *
+ * É também quando o link dos e-mails expira (`avisos.ts` usa esta mesma função),
+ * e é isso que ela garante: **nunca se apaga uma conta enquanto ainda existe um
+ * link de download válido nas mãos de alguém.** Se as duas datas fossem contas
+ * separadas, um ajuste numa delas abriria a janela em que a pessoa clica no link
+ * do e-mail "hoje é o último dia" e baixa um ZIP de uma conta já anonimizada.
+ */
+export function exclusaoLiberadaEm(fim: Date): Date {
+  return new Date(exclusaoEm(fim).getTime() + FOLGA_DO_AVISO_FINAL_DIAS * DIA_MS);
+}
+
+export function exclusaoLiberada(fim: Date, agora: Date): boolean {
+  return agora.getTime() >= exclusaoLiberadaEm(fim).getTime();
+}
+
 /** A fase em que a conta está agora, ou `null` fora de qualquer janela de aviso. */
 export function faseDoAviso(fim: Date, agora: Date): Aviso | null {
   const t = agora.getTime();

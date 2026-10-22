@@ -17,7 +17,11 @@ import type { LgpdRequest, LgpdRequestType, LgpdScope } from "./types";
 export interface CreateLgpdRequestInput {
   organizationId: string;
   requestType: LgpdRequestType;
-  source: "nuvemshop" | "admin_panel" | "api";
+  /**
+   * `retention` = a exclusão por fim do prazo de exportação
+   * (`lib/exportacao/exclusao.ts`), aceita pelo CHECK desde a migration 0483.
+   */
+  source: "nuvemshop" | "admin_panel" | "api" | "retention";
   contactId?: string | null;
   externalCustomerId?: string | null;
   receivedAt: Date;

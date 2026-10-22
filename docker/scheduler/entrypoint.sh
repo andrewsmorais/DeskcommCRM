@@ -122,6 +122,10 @@ CRONS="
 # Avisos de exportação de dados: 12:30 UTC = 9h30 em Brasília. Diário, em horário em
 # que o administrador está lendo e-mail — o aviso de "último dia" não pode chegar de madrugada.
 30 12 * * *|120|api/v1/cron/exportacao-avisos
+# Exclusão (anonimização) dos dados depois do prazo de exportação: 13:30 UTC = 10h30
+# em Brasília, UMA HORA DEPOIS dos avisos — se o e-mail da instalação acabou de ser
+# ligado, o aviso do dia sai antes e a trava "só quem foi avisado" já o enxerga.
+30 13 * * *|120|api/v1/cron/exportacao-exclusao
 0 8 * * *|60|api/v1/cron/proposal-expiry
 30 8 * * *|60|api/v1/cron/proposal-promised-not-created
 0 6 * * 0|60|api/v1/cron/proposal-acceptance-rate
