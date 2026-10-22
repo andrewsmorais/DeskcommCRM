@@ -50,7 +50,16 @@ const MARCA: MarcaDeSaida = {
 async function fachada(marca: MarcaDeSaida): Promise<string> {
   marcaDaSaida.mockResolvedValue(marca);
   const { default: PublicLayout } = await import("@/app/(public)/layout");
-  return renderToStaticMarkup(await PublicLayout({ children: <p>formulário</p> }));
+  // Dentro do `ThemeProvider`, como em produção (`app/layout.tsx` embrulha a raiz
+  // inteira): a casca ganhou o botão de tema, que lê o contexto. Renderizá-la
+  // fora dele mediria uma árvore que o navegador nunca recebe. Importado DEPOIS
+  // do layout e do mesmo jeito: o `vi.resetModules()` do `beforeEach` dá ao
+  // layout uma instância nova de `@/lib/theme`, e um provider importado no topo
+  // seria de OUTRO contexto.
+  const { ThemeProvider } = await import("@/lib/theme");
+  return renderToStaticMarkup(
+    <ThemeProvider>{await PublicLayout({ children: <p>formulário</p> })}</ThemeProvider>,
+  );
 }
 
 describe("a casca das telas de acesso", () => {

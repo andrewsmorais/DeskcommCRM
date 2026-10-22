@@ -47,7 +47,9 @@ const SEMENTES = [
 ] as const;
 
 /** Quantos pares cada tema tem no globals.css de hoje — o piso da vacuidade. */
-const PARES_DE_HOJE = { claro: 18, escuro: 26 } as const;
+// 22 no claro: o gradiente `@utility bg-cta` entrou como papel e mede contra as
+// quatro superfícies do tema (18 + 4). O escuro não tem `bg-cta`.
+const PARES_DE_HOJE = { claro: 22, escuro: 26 } as const;
 
 const TEMAS = [
   { nome: "claro" as const, seletor: ":root:root" },
@@ -332,35 +334,35 @@ describe("o bloco emitido não pode contradizer o globals.css", () => {
         );
       }
     }
-    expect(andaram).toBe(5);
+    // Esteve em 5 enquanto o piso de componente estava baixado a 1,5 — com o
+    // piso de WCAG 1.4.11 (3,0) de volta, volta a ser o 13 do comentário acima.
+    expect(andaram).toBe(13);
   });
 });
 
 describe("controle positivo — o produto sem marca não pode se mexer", () => {
-  it("a Sage reproduz, pintada, os números do design system", () => {
-    // `#506d48` é a semente do próprio produto: ela não desloca nada, e os pares
-    // pintados têm que dar o que o `globals.css` sempre deu. Se estes números
-    // mudarem, o conserto vazou para quem não pediu.
+  it("a semente de calibração (Sage) não desloca e pinta os números medidos por fora", () => {
+    // `#506d48` era a semente do próprio produto; desde a paleta violeta do
+    // ChatAI Online ela é a semente de CALIBRAÇÃO (`RAMPA_DE_CALIBRACAO`). Ela
+    // não desloca nada, e os pares pintados têm que bater com a conta feita POR
+    // FORA — WCAG 2.x escrita do zero sobre os hex que o bloco emite (stop 500
+    // `#67885d` no claro, stop 400 `#81a078` no escuro) e as bases do
+    // `globals.css` de hoje (`#f8fafc`/`#f1f5f9`; `#090a0f`/`#12131c`/`#181a26`).
+    // Se estes números mudarem sem a paleta mudar, o conserto vazou para quem
+    // não pediu.
     const cor = corDe("#506d48");
     expect(cor.derivada?.claro.deslocamento).toBe(0);
     expect(cor.derivada?.escuro.deslocamento).toBe(0);
 
     const p = pintadosDaSemente("#506d48");
-    // Claro: os dois números que `contraste.ts` documenta como medidos à mão.
-    expect(foco(p.claro, "--color-bg")).toBeCloseTo(3.79, 2);
-    expect(foco(p.claro, "--color-surface-elevated")).toBeCloseTo(3.6, 2);
-    // Escuro: 6,30 e 5,22 na rampa DERIVADA da semente; os literais do
-    // `globals.css` (`#82a077`) dão 6,31 e 5,23 — a rampa reproduz a Sage com
-    // Δ ≤ 2/255 por canal, e a diferença de 0,01 é esse arredondamento.
-    expect(foco(p.escuro, "--color-bg")).toBeCloseTo(6.3, 2);
-    expect(foco(p.escuro, "--color-surface-elevated")).toBeCloseTo(5.22, 2);
-    // No escuro o anel NÃO fica apertado contra as bases: quem aperta é o
-    // `-soft` COMPOSTO. 4,58 aqui — é este o par que a prova em tela reportou
-    // como "4,58 no escuro", e não `foco × --color-bg` (6,30). Nos literais do
-    // `globals.css` o mesmo par dá 4,59, e `superficiesDoTema` documenta o trio
-    // 4,99 · 4,59 · 4,02.
-    expect(foco(p.escuro, "--color-accent-soft@--color-surface")).toBeCloseTo(4.58, 2);
-    expect(foco(p.escuro, "--color-accent-soft@--color-surface-elevated")).toBeCloseTo(4.03, 2);
+    expect(foco(p.claro, "--color-bg")).toBeCloseTo(3.82, 2);
+    expect(foco(p.claro, "--color-surface-elevated")).toBeCloseTo(3.65, 2);
+    expect(foco(p.escuro, "--color-bg")).toBeCloseTo(6.81, 2);
+    expect(foco(p.escuro, "--color-surface-elevated")).toBeCloseTo(5.96, 2);
+    // No escuro quem aperta o anel é o `-soft` COMPOSTO (15% sobre cada base),
+    // não a base crua: 5,14 sobre `surface` e 4,74 sobre `surface-elevated`.
+    expect(foco(p.escuro, "--color-accent-soft@--color-surface")).toBeCloseTo(5.14, 2);
+    expect(foco(p.escuro, "--color-accent-soft@--color-surface-elevated")).toBeCloseTo(4.74, 2);
   });
 
   it("sem marca configurada nada é injetado, e a tela fica como está", () => {
@@ -372,15 +374,21 @@ describe("controle positivo — o produto sem marca não pode se mexer", () => {
 
 describe("a navy #0f172a — o defeito que a prova em tela achou", () => {
   it("os quatro números do anel de foco, agora acima do piso", () => {
-    // ANTES (medido no browser, servidor de dev na 3111): claro 10,77 e 10,22;
-    // escuro 2,86 e 2,37 — os dois de baixo abaixo do piso 3,0, porque o anel
-    // pintava `--color-accent-400: #545f77`, o stop CRU. O tema escuro anda -1,
-    // então o anel agora pinta `#828a9d`, o stop 300 da rampa da marca.
+    // ANTES (medido no browser, servidor de dev na 3111, fundos Sage): escuro
+    // 2,86 e 2,37 — abaixo do piso 3,0, porque o anel pintava
+    // `--color-accent-400: #545f77`, o stop CRU. Sobre os fundos de hoje o stop
+    // cru ainda reprovaria (3,09 e 2,70). O tema escuro anda -1, então o anel
+    // pinta `#828a9d`, o stop 300 da rampa da marca.
+    //
+    // Estas duas linhas do escuro já asseriram os números do DEFEITO (2,86 e
+    // 2,37), com o piso de componente baixado a 1,5 para o `>=` abaixo passar.
+    // Os de agora são o conserto, medidos por fora com WCAG 2.x sobre os hex
+    // emitidos e as bases do `globals.css` (`#f8fafc`/`#f1f5f9`; `#090a0f`/`#181a26`).
     const p = pintadosDaSemente("#0f172a");
-    expect(foco(p.claro, "--color-bg")).toBeCloseTo(10.77, 2);
-    expect(foco(p.claro, "--color-surface-elevated")).toBeCloseTo(10.22, 2);
-    expect(foco(p.escuro, "--color-bg")).toBeCloseTo(2.86, 2);
-    expect(foco(p.escuro, "--color-surface-elevated")).toBeCloseTo(2.37, 2);
+    expect(foco(p.claro, "--color-bg")).toBeCloseTo(10.83, 2);
+    expect(foco(p.claro, "--color-surface-elevated")).toBeCloseTo(10.35, 2);
+    expect(foco(p.escuro, "--color-bg")).toBeCloseTo(5.72, 2);
+    expect(foco(p.escuro, "--color-surface-elevated")).toBeCloseTo(5.0, 2);
     for (const superficie of ["--color-bg", "--color-surface-elevated"] as const) {
       expect(foco(p.escuro, superficie), superficie).toBeGreaterThanOrEqual(PISOS.componente);
     }

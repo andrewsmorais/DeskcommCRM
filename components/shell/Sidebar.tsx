@@ -246,7 +246,7 @@ export function SidebarContent({
                     type="button"
                     onClick={() => toggleGrupo(group.id)}
                     aria-expanded={aberto}
-                    className="flow-nav-group flex w-full items-center justify-between rounded-lg px-3 py-1 text-[11px] font-semibold tracking-[0.04em] text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    className="flow-nav-group flex w-full items-center justify-between rounded-lg px-3 py-1 text-[11px] font-semibold tracking-[0.04em] text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
                   >
                     {t(group.label)}
                     <CaretDown
@@ -278,7 +278,7 @@ export function SidebarContent({
                           aria-current={isActive ? "page" : undefined}
                           onClick={onNavigate}
                           className={cn(
-                            "flow-nav-item relative flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                            "flow-nav-item relative flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
                             collapsed && "justify-center px-2",
                           )}
                         >
@@ -303,7 +303,7 @@ export function SidebarContent({
                         aria-current={pathname === group.hub.href ? "page" : undefined}
                         onClick={onNavigate}
                         className={cn(
-                          "flow-nav-item relative flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                          "flow-nav-item relative flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
                           collapsed && "justify-center px-2",
                         )}
                       >
@@ -326,7 +326,7 @@ export function SidebarContent({
             aria-current={pathname.startsWith(rodape.href) ? "page" : undefined}
             onClick={onNavigate}
             className={cn(
-              "flow-nav-item relative mb-1 flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              "flow-nav-item relative mb-1 flex items-center gap-3 rounded-[10px] px-3 py-1 text-[13px] leading-5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
               collapsed && "justify-center px-2",
             )}
           >
@@ -341,7 +341,7 @@ export function SidebarContent({
             onClick={() => startTransition(() => toggleSidebar(collapsed))}
             disabled={isPending}
             className={cn(
-              "flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+              "flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
               collapsed && "justify-center px-2",
             )}
             aria-label={collapsed ? t("Expandir menu lateral") : t("Recolher menu lateral")}
@@ -376,7 +376,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         // que é a assinatura de servidor e navegador terem pintado estados
         // diferentes — e `AppShell` e `Sidebar` são ambos `"use client"`.
         //
-        // `sticky top-0 h-screen` dá o mesmo efeito visual (a barra não rola com
+        // `sticky top-0 h-svh` dá o mesmo efeito visual (a barra não rola com
         // a página) e ela VOLTA a ocupar lugar: sobra para o conteúdo exatamente
         // o que ela não usou, e não há segunda medida para discordar.
         //
