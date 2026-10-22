@@ -58,9 +58,11 @@ const FIXTURE = [
 describe("extrairRegua — os pares saem do globals.css, nunca de lista à mão", () => {
   it("acha os dois temas, a rampa do produto e os neutros", () => {
     expect(REGUA.rampaDoProduto).toHaveLength(11);
-    expect(REGUA.rampaDoProduto[6]).toBe("#506d48");
+    // Paleta violeta do ChatAI Online (decisão do dono, out/2026): o accent do
+    // tema claro é o grau 600, `#6354df`. Antes era a Sage `#506d48`.
+    expect(REGUA.rampaDoProduto[6]).toBe("#6354df");
     expect(REGUA.claro.neutros).toHaveLength(11);
-    expect(REGUA.escuro.neutros[9]).toBe("#161510");
+    expect(REGUA.escuro.neutros[9]).toBe("#090a0f");
     expect(REGUA.claro.base.map((b) => b.chave)).toEqual([
       "--color-bg",
       "--color-surface",
@@ -69,9 +71,10 @@ describe("extrairRegua — os pares saem do globals.css, nunca de lista à mão"
   });
 
   it("alcança o anel de foco, que mora em @layer base e uma lista à mão perderia", () => {
-    // ESTE é o par do relato: `accent-600` contra bg dá 5,51 e passaria qualquer gate
-    // ingênuo, mas quem pinta o anel é `accent-500` — e ele dá 3,79. Uma régua que só
-    // olhasse o stop da semente deixaria o anel pousar em ~2,07 com o gate verde.
+    // ESTE é o par do relato: `accent-600` contra bg dá 5,19 (na Sage, 5,51) e
+    // passaria qualquer gate ingênuo, mas quem pinta o anel é `accent-500` — e ele
+    // dá 4,05 (na Sage, 3,79). Uma régua que só olhasse o stop da semente deixaria
+    // o anel de uma marca clara pousar em ~2 com o gate verde.
     const foco = REGUA.claro.papeis.find((p) => p.token.includes(":focus-visible"));
     expect(foco, "o anel de foco sumiu da régua").toBeDefined();
     expect(foco?.tipo).toBe("componente");
@@ -85,10 +88,11 @@ describe("extrairRegua — os pares saem do globals.css, nunca de lista à mão"
     const fg = REGUA.claro.papeis.find((p) => p.token === "--color-accent-fg");
     expect(fg?.tipo).toBe("texto");
     expect(REGUA.claro.tingidas.map((t) => t.chave)).toEqual(["--color-accent-soft"]);
-    // No escuro o token é o literal `rgba(130,160,119,0.16)` — verde Sage cru, sem
-    // referência à rampa. É por isso que ele precisa ser REANCORADO na derivação.
+    // No escuro o token é o literal `rgba(124,58,237,0.15)` — violeta cru
+    // (`#7c3aed`), que NÃO é um grau da rampa. É por isso que ele precisa ser
+    // REANCORADO na derivação (ver o caso do `-soft` em derivarMarca).
     expect(REGUA.escuro.indices.soft).toBeNull();
-    expect(REGUA.escuro.alfaDoSoft).toBeCloseTo(0.16, 6);
+    expect(REGUA.escuro.alfaDoSoft).toBeCloseTo(0.15, 6);
   });
 
   it("enumera o conjunto esperado de papéis e pares (guarda de vacuidade)", () => {
@@ -102,6 +106,9 @@ describe("extrairRegua — os pares saem do globals.css, nunca de lista à mão"
       "--ring",
       "::selection/color",
       ":focus-visible/outline",
+      // O gradiente dos botões de destaque (`@utility bg-cta`, 600 → 700). Pinta
+      // texto branco por cima, então entra na conta como qualquer accent.
+      "@utility bg-cta/background-image",
     ]);
     expect(REGUA.escuro.papeis).toHaveLength(6);
 
@@ -110,21 +117,26 @@ describe("extrairRegua — os pares saem do globals.css, nunca de lista à mão"
     // razões diferem (4,99 · 4,59 · 4,02). Medir uma só escolheria a mais folgada.
     expect(superficiesDoTema(REGUA.escuro, REGUA.rampaDoProduto, 0)).toHaveLength(6);
 
-    expect(medirPares(REGUA.claro, REGUA.rampaDoProduto, 0)).toHaveLength(18);
+    // 22 = 18 de antes + o `bg-cta` contra as quatro superfícies do tema claro.
+    expect(medirPares(REGUA.claro, REGUA.rampaDoProduto, 0)).toHaveLength(22);
     expect(medirPares(REGUA.escuro, REGUA.rampaDoProduto, 0)).toHaveLength(26);
   });
 
-  it("reproduz as razões medidas à mão no design system", () => {
+  it("reproduz as razões medidas por fora do código", () => {
+    // Medidas com a fórmula WCAG 2.x escrita do zero (luminância relativa sRGB),
+    // fora deste módulo, sobre os hex do globals.css: #6354df × #f8fafc = 5,1941;
+    // #8b5cf6 × #f8fafc = 4,0471; #8b5cf6 × #f1f5f9 = 3,8652. Copiar o que
+    // `medirPares` devolve hoje seria tautologia — a conta tem de vir de fora.
     const pares = medirPares(REGUA.claro, REGUA.rampaDoProduto, 0);
     const razao = (papel: string, superficie: string) =>
       pares.find((p) => p.papel === papel && p.superficie === superficie)?.razao ?? 0;
 
-    expect(razao("--color-accent", "--color-bg")).toBeCloseTo(5.51, 2);
-    expect(razao(":focus-visible/outline", "--color-bg")).toBeCloseTo(3.79, 2);
-    expect(razao(":focus-visible/outline", "--color-surface-elevated")).toBeCloseTo(3.6, 2);
+    expect(razao("--color-accent", "--color-bg")).toBeCloseTo(5.19, 2);
+    expect(razao(":focus-visible/outline", "--color-bg")).toBeCloseTo(4.05, 2);
+    expect(razao(":focus-visible/outline", "--color-surface-elevated")).toBeCloseTo(3.87, 2);
   });
 
-  it("a Sage inteira, como está no CSS, cabe nos pisos", () => {
+  it("a paleta do produto inteira, como está no CSS, cabe nos pisos", () => {
     for (const tema of [REGUA.claro, REGUA.escuro]) {
       const reprovas = medirPares(tema, REGUA.rampaDoProduto, 0).filter((p) => !p.passa);
       expect(reprovas, `${tema.nome}: ${JSON.stringify(reprovas)}`).toEqual([]);
@@ -224,13 +236,20 @@ describe("derivarMarca — as 16 sementes adversariais", () => {
         .map((t) => `${semente}/${t.deslocamento}`),
     );
     expect(deslocados.length).toBeGreaterThan(0);
-    expect(deslocados.length).toBeGreaterThan(0);
+    // 13 combos (semente × tema) andam — o mesmo número que
+    // `branding-pares-pintados.test.ts` mede no pixel emitido. Este número já
+    // esteve afrouxado para "> 0" junto com o piso de componente baixado a 1,5;
+    // com o piso de WCAG 1.4.11 (3,0) de volta, a caminhada anda onde deve.
+    expect(deslocados.length).toBe(13);
 
     // O amarelo é o caso que NÃO tem escapatória física: nenhum stop claro de amarelo
     // alcança 3:1 contra `#ffffff`. Se ele parar de andar, a caminhada quebrou.
     const amarelo = resultados.find((r) => r.semente === "#f5c518")!.marca;
     expect(amarelo.claro.deslocamento).toBeGreaterThan(0);
-    expect(amarelo.claro.grauDoAccent).toBe(800);
+    // 900 e não 800 (que era o número sobre os fundos Sage): no 800 o anel de foco
+    // pinta o 700 da marca, `#b8941b`, e dá 2,75 contra `#f8fafc` — abaixo de 3:1.
+    // Medido por fora com WCAG 2.x; no 900 o anel `#8d721a` dá 4,21 no pior fundo.
+    expect(amarelo.claro.grauDoAccent).toBe(900);
     // …e o hex EXATO do cliente reaparece como accent do tema escuro.
     expect(amarelo.escuro.accent).toBe("#f5c518");
   });
@@ -291,11 +310,12 @@ describe("derivarMarca — as 16 sementes adversariais", () => {
     }
   });
 
-  it("--color-accent-soft do tema escuro é derivado, não o verde cru", () => {
+  it("--color-accent-soft do tema escuro é derivado, não o violeta cru", () => {
     // O literal sobreviveria intacto a qualquer override da
     // rampa — seria um pedaço da NOSSA marca dentro da instalação do cliente.
     const azul = derivarMarca("#2563eb", REGUA);
-    expect(azul.escuro.accentSoft).toMatch(/^rgba\(\d+, \d+, \d+, 0\.16\)$/);
+    // O alfa vem da régua (0,15 no globals.css de hoje); a cor, da marca.
+    expect(azul.escuro.accentSoft).toMatch(/^rgba\(\d+, \d+, \d+, 0\.15\)$/);
     expect(azul.escuro.accentSoft).not.toContain("124, 58, 237");
     // E o claro continua opaco, como o tema declara.
     expect(azul.claro.accentSoft).toMatch(/^#[0-9a-f]{6}$/);
@@ -464,5 +484,17 @@ describe("ramo degradado — rampas que não têm solução", () => {
     for (const tema of [REGUA.claro, REGUA.escuro] as TemaDaRegua[]) {
       expect(escolherAccent(REGUA.rampaDoProduto, tema).motivo).toBeNull();
     }
+  });
+});
+
+describe("os pisos são os do WCAG, não preferência", () => {
+  it("texto 4,5 (1.4.3) e componente 3,0 (1.4.11)", () => {
+    // O piso de componente já esteve em 1,5 — metade do que a 1.4.11 exige —, e
+    // os números dos testes vizinhos foram ajustados para caber nele: o anel de
+    // foco da navy no escuro (2,37) passou a ser asserido como se fosse o certo.
+    // Baixar o piso faz a caminhada parar de andar e a marca do cliente pintar
+    // anel de foco invisível. Mudar este número é decisão de acessibilidade,
+    // nunca conserto de teste.
+    expect(PISOS).toEqual({ texto: 4.5, componente: 3 });
   });
 });

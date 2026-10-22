@@ -7,6 +7,7 @@ import {
   ESCADA_L,
   GRAUS,
   K,
+  RAMPA_DE_CALIBRACAO,
   deltaEOklab,
   ehHexValido,
   hexParaOklab,
@@ -19,17 +20,23 @@ import {
   rampaDeSemente,
   rgbParaHex,
 } from "@/lib/branding/rampa";
+import { REGUA_DO_PRODUTO } from "@/lib/branding/regua-do-produto";
 
 const RAIZ = process.cwd();
 const CSS = fs.readFileSync(path.join(RAIZ, "app/globals.css"), "utf8");
 
 /**
- * Os stops esperados saem do CSS, NÃO de uma cópia colada aqui.
+ * DUAS perguntas, que até out/2026 eram uma só.
  *
- * Copiar à mão criaria uma segunda fonte da verdade que envelhece em silêncio: quem
- * mexesse na paleta do design system veria este teste verde contra a paleta de ontem, e
- * a catraca deixaria de calibrar contra a régua. Lendo do arquivo, mudar a Sage quebra
- * este teste — que é exatamente o aviso que se quer.
+ * Enquanto o produto era Sage, a rampa do `globals.css` ERA a referência contra a
+ * qual o algoritmo foi calibrado, e o teste lia uma coisa só. O ChatAI Online passou
+ * para uma paleta violeta escolhida à mão, que não sai de `rampaDeSemente` — então:
+ *
+ *  - a CALIBRAÇÃO do algoritmo mede contra `RAMPA_DE_CALIBRACAO` (a Sage do design
+ *    system, de onde `ESCADA_L` e `CURVA_C` foram tiradas), e o caso "as constantes
+ *    vêm dela" amarra as duas, para a referência não virar número solto;
+ *  - o `globals.css` continua vigiado por forma (11 stops distintos) e pelo stop da
+ *    semente, que tem de ser o accent da régua congelada do produto.
  */
 /**
  * O bloco `:root` sai por casamento de chaves, e não por `slice` entre duas
@@ -48,7 +55,7 @@ function blocoRoot(css: string): string {
   return css.slice(i, fim);
 }
 
-function stopsSageDoCss(): string[] {
+function stopsDoCss(): string[] {
   const raiz = blocoRoot(CSS);
   return GRAUS.map((g) => {
     const m = new RegExp(`--color-accent-${g}:\\s*(#[0-9a-f]{6})`, "i").exec(raiz);
@@ -102,15 +109,37 @@ describe("conversões de cor", () => {
   });
 });
 
-describe("rampaDeSemente — catraca de calibração contra o design system", () => {
-  const esperados = stopsSageDoCss();
+describe("a rampa do produto no globals.css", () => {
+  const doCss = stopsDoCss();
 
   it("lê 11 stops distintos do globals.css (guarda de vacuidade)", () => {
-    // Sem isto, um regex quebrado devolveria lista vazia e a comparação abaixo passaria
-    // por não ter o que comparar — instrumento morto tem cara de teste verde.
-    expect(esperados).toHaveLength(11);
+    // Sem isto, um regex quebrado devolveria lista vazia e o resto passaria por não ter
+    // o que comparar — instrumento morto tem cara de teste verde.
+    expect(doCss).toHaveLength(11);
+    expect(new Set(doCss).size).toBe(11);
+    // O stop da semente é o accent do tema claro, lido da régua congelada (que tem
+    // teste próprio contra este mesmo arquivo) — nunca um hex redigitado aqui.
+    expect(doCss[K]).toBe(REGUA_DO_PRODUTO.rampaDoProduto[K]);
+  });
+
+  it("desce do mais claro ao mais escuro, sem degrau invertido", () => {
+    // A paleta é escolhida à mão; o que a interface assume dela é a ordem.
+    for (let i = 1; i < doCss.length; i += 1) {
+      expect(hexParaOklch(doCss[i]!).L, `stop ${GRAUS[i]}`).toBeLessThan(hexParaOklch(doCss[i - 1]!).L);
+    }
+  });
+});
+
+describe("rampaDeSemente — catraca de calibração contra o design system", () => {
+  const esperados = RAMPA_DE_CALIBRACAO;
+
+  it("as constantes da escada SAEM da rampa de calibração (L medida em OKLab)", () => {
+    // Sem isto a referência seria um número solto ao lado de outro número solto:
+    // trocar um sem remedir o outro passaria em silêncio.
     expect(new Set(esperados).size).toBe(11);
-    expect(esperados[K]).toBe("#506d48");
+    esperados.forEach((hex, i) => {
+      expect(hexParaOklch(hex).L, `stop ${GRAUS[i]}`).toBeCloseTo(ESCADA_L[i]!, 2);
+    });
   });
 
   it("reproduz os 11 stops Sage a partir de #506d48 com Δ ≤ 2/255 por canal", () => {

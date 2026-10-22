@@ -89,7 +89,12 @@ export function PipelinePageClient({
       // p-6 do <main>), quem rola é o quadro: a barra horizontal fica sempre no
       // pé da tela e o cabeçalho de cada etapa fica preso em cima. O piso de
       // 28rem é para tela baixa demais, onde a página volta a rolar.
-      className="flex h-[calc(100dvh-var(--space-16)-3rem)] min-h-[28rem] flex-col gap-4"
+      //
+      // O `p-6` de baixo NÃO é fixo: a casca aplica `max(PISO, --rodape-ocupado)`
+      // quando uma peça fixa se registra no rodapé (`lib/ui/rodape-ocupado.tsx`).
+      // Descontar `3rem` cravados deixava rolagem morta com o painel de voz
+      // aberto. A conta é a mesma do Inbox (`components/inbox/InboxLayout.tsx`).
+      className="flex h-[calc(100dvh-var(--space-16)-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] min-h-[28rem] flex-col gap-4"
       // OBSERVÁVEL de propósito, e é a razão de existir desta linha: "a
       // assinatura morreu" e "nada aconteceu" produzem o MESMO silêncio na
       // tela, e sem este valor nem o produto nem o teste conseguem separar as
