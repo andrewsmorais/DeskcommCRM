@@ -9,6 +9,7 @@ import { z } from "zod";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,9 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   const requestId = randomUUID();
   const auth = await requireRole("manager");
   if (!auth.ok) return auth.response;
@@ -68,7 +72,7 @@ export async function POST(req: NextRequest) {
   await audit({
     action: "chatbot_flow.created",
     organizationId: auth.org.orgId,
-    actorId: auth.user.id,
+    actorUserId: auth.user.id,
     resourceType: "chatbot_flow",
     resourceId: data.id,
     requestId,

@@ -10,6 +10,7 @@ import { z } from "zod";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ const NodeSchema = z.object({
   label: z.string().default(""),
   pos_x: z.number().default(0),
   pos_y: z.number().default(0),
-  data: z.record(z.unknown()).default({}),
+  data: z.record(z.string(), z.unknown()).default({}),
 });
 
 const EdgeSchema = z.object({
@@ -84,6 +85,9 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   const requestId = randomUUID();
   const auth = await requireRole("manager");
   if (!auth.ok) return auth.response;
@@ -164,7 +168,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   await audit({
     action: "chatbot_flow.updated",
     organizationId: auth.org.orgId,
-    actorId: auth.user.id,
+    actorUserId: auth.user.id,
     resourceType: "chatbot_flow",
     resourceId: id,
     requestId,
@@ -176,6 +180,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   const requestId = randomUUID();
   const auth = await requireRole("manager");
   if (!auth.ok) return auth.response;
@@ -194,7 +201,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   await audit({
     action: "chatbot_flow.deleted",
     organizationId: auth.org.orgId,
-    actorId: auth.user.id,
+    actorUserId: auth.user.id,
     resourceType: "chatbot_flow",
     resourceId: id,
     requestId,
