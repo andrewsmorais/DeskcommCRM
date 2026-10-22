@@ -6,12 +6,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api/wrappers";
 import { AgentSetupError, setupProspectingAgent } from "@/lib/prospecting/agent-setup";
 import { prospectingAgentSetupSchema } from "@/lib/prospecting/agent-setup-schema";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const support = await requireSupportWrite();
   if (support) return support;
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "ai_agents" });
   if (!auth.ok) return auth.response;
   const input = prospectingAgentSetupSchema.safeParse(await req.json().catch(() => null));

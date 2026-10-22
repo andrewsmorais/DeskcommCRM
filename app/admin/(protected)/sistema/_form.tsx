@@ -216,6 +216,13 @@ const MODULOS_NA_TELA: ReadonlyArray<{ modulo: ModuloPorFlag; id: string; rotulo
     descricao:
       "Ligado, cada empresa ganha no CRM o cadastro de Empresas (razão social e CNPJ, com os dados públicos preenchidos pela BrasilAPI), as Pessoas que decidem dentro delas, com vários telefones, e a importação de planilha CSV ou Excel. Consultar um CNPJ manda o número para a BrasilAPI. Desligado, as telas e o menu somem.",
   },
+  {
+    modulo: "disparo_em_massa",
+    id: "modulo-disparo-em-massa",
+    rotulo: "Campanhas e prospecção (disparo para quem não chamou)",
+    descricao:
+      "Ligado, cada empresa pode montar campanhas para listas de contatos e a prospecção fria, que manda a primeira mensagem para quem nunca falou com ela. Com o WhatsApp conectado por QR code, é isso que mais derruba número. Desligado, as telas, o menu e as rotas somem, e nenhuma campanha envia, nem a que estava rodando. Os follow-ups continuam.",
+  },
 ];
 
 export function FormularioDeModulos({ ligados }: { ligados: readonly ModuloOpcional[] }) {

@@ -144,6 +144,9 @@ export const NAV_CATALOG = [
     group: "crm",
     minRole: "admin",
     section: "O dia a dia da venda",
+    // Prospecção fria manda a primeira mensagem para quem nunca falou com a
+    // empresa: é disparo em massa, desligado por padrão (ChatAI Online).
+    modulo: "disparo_em_massa",
   },
   // ---- Atendimento — onde o operador passa o dia ----
   {
@@ -229,6 +232,8 @@ export const NAV_CATALOG = [
     // SÓ NO HUB, como as demais telas de preparação: o quinto item do sidebar do
     // CRM já fez o menu rolar 13px em 900px (e2e `navegacao.spec.ts`), e a
     // campanha é montada de vez em quando, não aberta todo dia.
+    // Módulo opcional, desligado por padrão (`lib/instalacao/disparo-em-massa.ts`).
+    modulo: "disparo_em_massa",
   },
   {
     href: "/app/contacts",

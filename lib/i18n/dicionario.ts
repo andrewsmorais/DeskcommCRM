@@ -74,6 +74,9 @@ export const DICIONARIO: Traducoes = {
   "conflitos": {"es": "conflictos"},
   "Empresas e pessoas (venda para empresas)": {"es": "Empresas y personas (venta a empresas)"},
   "Ligado, cada empresa ganha no CRM o cadastro de Empresas (razão social e CNPJ, com os dados públicos preenchidos pela BrasilAPI), as Pessoas que decidem dentro delas, com vários telefones, e a importação de planilha CSV ou Excel. Consultar um CNPJ manda o número para a BrasilAPI. Desligado, as telas e o menu somem.": {"es": "Activado, cada empresa gana en el CRM el registro de Empresas (razón social y CNPJ, con los datos públicos completados por BrasilAPI), las Personas que deciden dentro de ellas, con varios teléfonos, y la importación de planillas CSV o Excel. Consultar un CNPJ envía el número a BrasilAPI. Desactivado, las pantallas y el menú desaparecen."},
+  // ─── MÓDULO DE DISPARO EM MASSA (ChatAI Online, 22/10/2026) ───
+  "Campanhas e prospecção (disparo para quem não chamou)": { es: "Campañas y prospección (envío a quien no escribió)" },
+  "Ligado, cada empresa pode montar campanhas para listas de contatos e a prospecção fria, que manda a primeira mensagem para quem nunca falou com ela. Com o WhatsApp conectado por QR code, é isso que mais derruba número. Desligado, as telas, o menu e as rotas somem, e nenhuma campanha envia, nem a que estava rodando. Os follow-ups continuam.": { es: "Activado, cada empresa puede armar campañas para listas de contactos y la prospección en frío, que envía el primer mensaje a quien nunca habló con ella. Con WhatsApp conectado por código QR, es lo que más hace caer un número. Desactivado, las pantallas, el menú y las rutas desaparecen, y ninguna campaña envía, ni la que estaba en curso. Los seguimientos continúan." },
   // ─── BUSCA DENTRO DA CONVERSA (extraída do PR #1793) ───
   "Resultados nas mensagens carregadas": { es: "Resultados en los mensajes cargados" },
   "Buscar nesta conversa": { es: "Buscar en esta conversación" },
