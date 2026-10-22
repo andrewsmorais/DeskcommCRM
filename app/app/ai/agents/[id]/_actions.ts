@@ -33,7 +33,12 @@ import {
 } from "@/lib/ai/agents/validation";
 import { publishAgentVersion } from "@/lib/ai/agents/publish";
 import { escolherVersoesDaTela } from "@/lib/ai/agents/versoes-da-tela";
-import { CAMPOS_TECNICOS, podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
+import {
+  CAMPOS_TECNICOS,
+  podeEditarConfigTecnica,
+  travarConfigTecnica,
+} from "@/lib/ai/agents/config-tecnica";
+import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { VALID_TOOL_IDS } from "@/lib/mcp/tools";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,8 +47,7 @@ const VERSION_COLUMNS =
   "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin";
 
 type ActionResult<T = void> =
-  | { ok: true; data?: T }
-  | { ok: false; error: string; message?: string; details?: unknown };
+  { ok: true; data?: T } | { ok: false; error: string; message?: string; details?: unknown };
 
 async function ensureAdmin() {
   const authUser = await loadAuthUser();
@@ -144,8 +148,7 @@ export async function saveAgentDraftAction(
   // propósito com `agentMcpCreateSchema`, para criar e editar terem a mesma régua.
   // A afirmação de equivalência com o REST era falsa e ficou parada aqui até o
   // achado #532 medir a divergência.
-  const cadastroParsed =
-    cadastro === undefined ? null : agentMcpPatchSchema.safeParse(cadastro);
+  const cadastroParsed = cadastro === undefined ? null : agentMcpPatchSchema.safeParse(cadastro);
   if (cadastroParsed && !cadastroParsed.success) {
     return { ok: false, error: "validation_failed", details: cadastroParsed.error.flatten() };
   }
@@ -168,7 +171,11 @@ export async function saveAgentDraftAction(
       .maybeSingle();
     baseTecnica = (ultima as Record<string, unknown> | null) ?? null;
   }
-  const v = travarConfigTecnica(parsed.data, { pode: podeConfigTecnica, modo: "insert", base: baseTecnica });
+  const v = travarConfigTecnica(parsed.data, {
+    pode: podeConfigTecnica,
+    modo: "insert",
+    base: baseTecnica,
+  });
 
   // Sanity: o agent existe e é da org? não está arquivado?
   const { data: agent } = await admin
@@ -717,6 +724,11 @@ export async function createMcpAgentAction(
 
   const requestId = randomUUID();
   const admin = createAdminClient();
+
+  const cota = await conferirCotaDeAgentes(admin, activeOrg.orgId, {
+    isento: authUser.is_platform_admin || Boolean(authUser.support),
+  });
+  if (!cota.ok) return { ok: false, error: cota.code, message: cota.message };
 
   // Cria agent kind='mcp_agent' + v1 draft. Compensa rollback se versão falhar.
   const { data: agentRow, error: agentErr } = await admin

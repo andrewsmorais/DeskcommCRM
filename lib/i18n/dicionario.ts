@@ -7551,6 +7551,16 @@ export const DICIONARIO: Traducoes = {
       es: "; en un Supabase propio, apuntando GOTRUE_MAILER_TEMPLATES_* a las rutas /email-templates/ de la app.",
     },
   "Conta suspensa": { es: "Cuenta suspendida" },
+  // Tela /assinatura (lib/billing/exigencia.ts) e agente sem IA configurada.
+  "Sua assinatura não está ativa": { es: "Tu suscripción no está activa" },
+  "Escolha um plano para começar a usar": { es: "Elige un plan para empezar a usar" },
+  "O período de teste terminou ou o pagamento não foi confirmado. Enquanto isso, o CRM e os agentes ficam pausados.": { es: "El período de prueba terminó o el pago no se confirmó. Mientras tanto, el CRM y los agentes quedan en pausa." },
+  "Sua conta foi criada, mas ainda não tem um plano. Todos os planos começam com 7 dias grátis.": { es: "Tu cuenta fue creada, pero todavía no tiene un plan. Todos los planes empiezan con 7 días gratis." },
+  "Seus contatos, conversas e configurações continuam guardados.": { es: "Tus contactos, conversaciones y configuraciones siguen guardados." },
+  "Escolher plano": { es: "Elegir plan" },
+  "Ver cobrança": { es: "Ver facturación" },
+  "Peça para quem administra a sua empresa no sistema regularizar o plano.": { es: "Pide a quien administra tu empresa en el sistema que regularice el plan." },
+  "A inteligência artificial ainda não está pronta nesta conta. Fale com o suporte.": { es: "La inteligencia artificial todavía no está lista en esta cuenta. Habla con el soporte." },
   // Tela irmã de `/account-suspended`: quem TINHA acesso e não tem mais.
   "Acesso revogado": { es: "Acceso revocado" },
   "Seu acesso a esta organização foi retirado. Se você acredita que isso é um engano, fale com quem administra a empresa — só ela pode devolvê-lo.":

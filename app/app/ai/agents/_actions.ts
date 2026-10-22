@@ -18,6 +18,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Role } from "@/lib/auth/types";
 import { duplicateAgentWithVersion } from "@/lib/ai/agents/duplicate";
+import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,7 +26,11 @@ type ActionResult<T = void> =
   { ok: true; data?: T } | { ok: false; error: string; message?: string };
 
 type AdminGuard =
-  | { kind: "ok"; authUser: { id: string }; activeOrg: { orgId: string; role: Role } }
+  | {
+      kind: "ok";
+      authUser: { id: string; is_platform_admin?: boolean; support?: unknown };
+      activeOrg: { orgId: string; role: Role };
+    }
   | { kind: "fail"; result: { ok: false; error: string } };
 
 async function ensureAdmin(): Promise<AdminGuard> {
@@ -220,6 +225,11 @@ export async function duplicateAgentAction(id: string): Promise<ActionResult<{ n
   const { authUser, activeOrg } = guard;
 
   const admin = createAdminClient();
+
+  const cota = await conferirCotaDeAgentes(admin, activeOrg.orgId, {
+    isento: authUser.is_platform_admin === true || Boolean(authUser.support),
+  });
+  if (!cota.ok) return { ok: false, error: cota.code, message: cota.message };
 
   // Mesma implementação da rota /api/v1/ai/agents/:id/duplicate. Antes daqui a
   // action fazia cópia rasa (só a linha de ai_agents), e para mcp_agent isso

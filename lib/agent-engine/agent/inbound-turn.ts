@@ -1,4 +1,6 @@
 import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { getOrganizationBilling } from "@/lib/billing";
+import { decidirAcessoPeloPlano } from "@/lib/billing/exigencia";
 import { prospectingConversationContext } from "@/lib/prospecting/context";
 import { setExecutionAgentOperation } from '@/lib/atendimento/fronteira-server';
 import { TIPOS_DE_CASO, TIPOS_DE_CASO_PARA_A_IA } from "@/lib/ai/case-copy";
@@ -1831,6 +1833,21 @@ async function executarTurnoDoAgente(
     tenant_id: tenantId,
     lead_id: leadId,
   });
+
+  // SEM ASSINATURA ATIVA, O AGENTE NÃO RESPONDE. A chave de IA é da plataforma:
+  // organização que nunca pagou ou cujo teste venceu faria o dono pagar a conta.
+  // Fica ANTES de tudo que chama modelo, inclusive o roteador mais abaixo. Leitura
+  // do plano indisponível libera (mesma regra da tela, lib/billing/exigencia.ts).
+  // O preview da tela não passa aqui: a própria tela já está fechada sem plano.
+  if (!preview) {
+    const acessoPeloPlano = decidirAcessoPeloPlano(await getOrganizationBilling(tenantId));
+    if (!acessoPeloPlano.liberado) {
+      runLog.info('turno ignorado — organização sem assinatura ativa', {
+        motivo: acessoPeloPlano.motivo,
+      });
+      return;
+    }
+  }
 
   // AS DUAS CAMADAS QUE CUSTAM DINHEIRO, resolvidas UMA vez por turno.
   //

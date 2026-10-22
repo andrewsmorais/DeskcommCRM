@@ -25,9 +25,31 @@ export const RECURSOS_DO_PLANO = {
 
 export type RecursoDoPlano = keyof typeof RECURSOS_DO_PLANO;
 export const PLANOS_COMERCIAIS = {
-  essencial: { nome: "Essencial", ordem: 0, minimoAtendentes: 1, whatsapp: 1, pipelines: 1 },
-  impulso: { nome: "Impulso", ordem: 1, minimoAtendentes: 3, whatsapp: 3, pipelines: 5 },
-  escala: { nome: "Escala", ordem: 2, minimoAtendentes: 5, whatsapp: -1, pipelines: -1 },
+  // `agentes_ia`: agentes de IA não arquivados que a organização pode ter (-1 = sem limite).
+  essencial: {
+    nome: "Essencial",
+    ordem: 0,
+    minimoAtendentes: 1,
+    whatsapp: 1,
+    pipelines: 1,
+    agentes_ia: 1,
+  },
+  impulso: {
+    nome: "Impulso",
+    ordem: 1,
+    minimoAtendentes: 3,
+    whatsapp: 3,
+    pipelines: 5,
+    agentes_ia: 3,
+  },
+  escala: {
+    nome: "Escala",
+    ordem: 2,
+    minimoAtendentes: 5,
+    whatsapp: -1,
+    pipelines: -1,
+    agentes_ia: -1,
+  },
 } as const;
 export type PlanoComercial = keyof typeof PLANOS_COMERCIAIS;
 

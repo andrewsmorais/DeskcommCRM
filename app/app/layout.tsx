@@ -1,6 +1,6 @@
 import { InterfaceRefresh } from "@/hooks/auth/InterfaceRefresh";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { isMfaEnrolled, loadAuthUser, requiresMfa, resolveActiveOrg } from "@/lib/auth/server";
 import { DEFAULT_VISIBILITY_MODE, roleAtLeast, type VisibilityMode } from "@/lib/auth/types";
 import { clientePelaAgendaLigado } from "@/lib/schemas/settings";
@@ -18,10 +18,9 @@ import { modulosLigados } from "@/lib/instalacao/modulos";
 import { capacidadesLigadas } from "@/lib/organizacao/capacidades";
 import { BillingBanner } from "@/components/app/BillingBanner";
 import { getOrganizationBilling, type BillingReadResult } from "@/lib/billing";
+import { decidirAcessoPeloPlano, rotaAbertaSemAssinatura } from "@/lib/billing/exigencia";
 import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
-import {
-  ImpersonateBanner,
-} from "@/components/app/ImpersonateBanner";
+import { ImpersonateBanner } from "@/components/app/ImpersonateBanner";
 import { ConexaoCaidaBanner } from "@/components/app/ConexaoCaidaBanner";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
 import { listarConexoesCaidas, type ConexaoCaida } from "@/lib/channels/health";
@@ -68,8 +67,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let isBillingActive = true;
   let falhaDoPlano: Extract<BillingReadResult, { ok: false }> | null = null;
 
+  let leituraDoPlanoDaOrg: BillingReadResult | null = null;
   if (activeOrg) {
     const leituraDoPlano = await getOrganizationBilling(activeOrg.orgId);
+    leituraDoPlanoDaOrg = leituraDoPlano;
     if (leituraDoPlano.ok) {
       isBillingActive = leituraDoPlano.billing ? leituraDoPlano.billing.is_active : true;
     } else {
@@ -108,12 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         .maybeSingle(),
       listarConexoesCaidas(admin, activeOrg.orgId),
       isMfaEnrolled(),
-      requiresMfa(
-        activeOrg.role,
-        user.is_platform_admin,
-        user.id,
-        activeOrg.orgId,
-      ),
+      requiresMfa(activeOrg.role, user.is_platform_admin, user.id, activeOrg.orgId),
       // Da INSTALAÇÃO: decide se a porta de um módulo opcional entra no menu.
       modulosLigados(admin),
     ]);
@@ -125,10 +121,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     if (orgRow && !orgRow.onboarded_at && !user.support) redirect("/onboarding");
     if (orgRow?.status === "suspended") redirect("/account-suspended");
+    // Sem assinatura ativa (nunca pagou, teste vencido, atraso), o CRM fecha e
+    // fica só o caminho para o plano e para os próprios dados. O super-admin e a
+    // sessão de suporte passam. Regra em lib/billing/exigencia.ts — a mesma que
+    // o motor do agente aplica antes de gastar a chave da plataforma.
+    if (leituraDoPlanoDaOrg) {
+      const acesso = decidirAcessoPeloPlano(leituraDoPlanoDaOrg, {
+        isento: user.is_platform_admin || Boolean(user.support),
+      });
+      if (!acesso.liberado) {
+        const pathname = (await headers()).get("x-pathname");
+        if (!rotaAbertaSemAssinatura(pathname)) redirect("/assinatura");
+      }
+    }
     // G4-02: expõe visibility_mode ao client (inbox decide visões visíveis).
     // Fonte confiável (admin client, org do cookie validado) — nunca do body.
-    const mode = (orgRow?.settings as { visibility_mode?: VisibilityMode } | null)
-      ?.visibility_mode;
+    const mode = (orgRow?.settings as { visibility_mode?: VisibilityMode } | null)?.visibility_mode;
     activeOrg = {
       ...activeOrg,
       visibility_mode: mode ?? DEFAULT_VISIBILITY_MODE,
@@ -203,10 +211,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const store = await cookies();
   const collapsed = store.get("sidebar_collapsed")?.value === "1";
 
-  const impersonating = user.support ? {
-    tenantId: user.support.organization_id, tenantName: user.support.name,
-    expiresAt: user.support.expires_at, accessMode: user.support.access_mode,
-  } : null;
+  const impersonating = user.support
+    ? {
+        tenantId: user.support.organization_id,
+        tenantName: user.support.name,
+        expiresAt: user.support.expires_at,
+        accessMode: user.support.access_mode,
+      }
+    : null;
 
   // O CONTRATO DE OCUPAÇÃO DO RODAPÉ (issue #1305) envolve a casca E as peças de
   // voz. O `VoiceCallProvider` desenha o painel de chamada DEPOIS dos children,
@@ -231,8 +243,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // pergunta quem está logado. Ver `lib/i18n/IdiomaProvider`: foi o
     // acoplamento com a autenticação que derrubou 32 casos.
     <IdiomaProvider locale={user.idioma}>
-    <AuthProvider user={user} activeOrg={activeOrg}>
-      {/*
+      <AuthProvider user={user} activeOrg={activeOrg}>
+        {/*
         A COR DA ETIQUETA, uma leitura por tela.
 
         O chip aparece em LISTA — uma fila de duzentas conversas desenha quatro
@@ -244,9 +256,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         do `AppShell` porque o gate de MFA substitui a casca: o mapa precisa
         sobreviver ao portão, e não ser relido quando ele sai.
       */}
-      <ProvedorDeCoresDasEtiquetas>
-      <InterfaceRefresh userId={user.id} org={activeOrg} support={!!user.support} />
-      {/*
+        <ProvedorDeCoresDasEtiquetas>
+          <InterfaceRefresh userId={user.id} org={activeOrg} support={!!user.support} />
+          {/*
         O MARCADOR da marca da organização — o elemento cuja existência define o
         escopo `body:has([data-marca-org])` (lib/branding/css.ts).
 
@@ -261,23 +273,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         veria a tela de cadastro de MFA — a PRIMEIRA tela dele — com a cor da
         instalação, e depois o resto do produto com a dele.
       */}
-      <div data-marca-org="" className="contents">
-        <EstiloDaMarcaDaOrganizacao css={cssDaOrganizacao} />
-        {falhaDoPlano ? <FalhaNaLeituraDoPlano reason={falhaDoPlano.reason} /> :
-          <BillingBanner isActive={isBillingActive} idioma={user.idioma} />}
-        <ImpersonateBanner impersonating={impersonating} />
-        <ConexaoCaidaBanner caidas={conexoesCaidas} />
-        {needsMfaGate ? (
-          // Gate always mounted for MFA-required roles; it latches the blocking
-          // decision client-side so the enroll Server Action's revalidation
-          // can't tear down the recovery-codes screen mid-flow.
-          <MfaEnrollGate enrolled={enrolled}>{shell}</MfaEnrollGate>
-        ) : (
-          shell
-        )}
-      </div>
-      </ProvedorDeCoresDasEtiquetas>
-    </AuthProvider>
+          <div data-marca-org="" className="contents">
+            <EstiloDaMarcaDaOrganizacao css={cssDaOrganizacao} />
+            {falhaDoPlano ? (
+              <FalhaNaLeituraDoPlano reason={falhaDoPlano.reason} />
+            ) : (
+              <BillingBanner isActive={isBillingActive} idioma={user.idioma} />
+            )}
+            <ImpersonateBanner impersonating={impersonating} />
+            <ConexaoCaidaBanner caidas={conexoesCaidas} />
+            {needsMfaGate ? (
+              // Gate always mounted for MFA-required roles; it latches the blocking
+              // decision client-side so the enroll Server Action's revalidation
+              // can't tear down the recovery-codes screen mid-flow.
+              <MfaEnrollGate enrolled={enrolled}>{shell}</MfaEnrollGate>
+            ) : (
+              shell
+            )}
+          </div>
+        </ProvedorDeCoresDasEtiquetas>
+      </AuthProvider>
     </IdiomaProvider>
   );
 }

@@ -12,6 +12,7 @@ export interface OrganizationBilling {
     whatsapp?: number;
     pipelines?: number;
     sectors?: number;
+    agentes_ia?: number;
   };
   status: string;
   current_period_end: string | null;
@@ -112,6 +113,7 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
           ...plano.limits,
           whatsapp: PLANOS_COMERCIAIS[slug].whatsapp,
           pipelines: PLANOS_COMERCIAIS[slug].pipelines,
+          agentes_ia: PLANOS_COMERCIAIS[slug].agentes_ia,
         },
         status: assinatura.status,
         current_period_end: assinatura.current_period_end,
@@ -128,7 +130,7 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
 
 export function canUse(
   billing: OrganizationBilling | null,
-  recurso: "whatsapp" | "pipelines" | "sectors",
+  recurso: "whatsapp" | "pipelines" | "sectors" | "agentes_ia",
   quantidadeAtual: number,
 ): { ok: boolean; limite: number } {
   if (

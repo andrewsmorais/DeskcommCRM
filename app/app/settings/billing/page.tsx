@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { localeDeData } from "@/lib/i18n/datas";
 import { getOrganizationBilling } from "@/lib/billing";
+import { enderecoDosPlanos } from "@/lib/billing/pagina-de-planos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CancelSubscription } from "@/components/app/CancelSubscription";
 import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
@@ -127,7 +128,7 @@ export default async function BillingPage() {
 
             <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
               <Button asChild>
-                <a href="https://chataionline.io/#precos" target="_blank" rel="noopener noreferrer">
+                <a href={enderecoDosPlanos(activeOrg.orgId)} target="_blank" rel="noopener noreferrer">
                   {t("Ver outros planos")}
                 </a>
               </Button>
@@ -205,7 +206,7 @@ export default async function BillingPage() {
           </p>
           <div className="mt-6">
             <Button asChild>
-              <a href="https://chataionline.io/#precos" target="_blank" rel="noopener noreferrer">
+              <a href={enderecoDosPlanos(activeOrg.orgId)} target="_blank" rel="noopener noreferrer">
                 {t("Escolher um plano")}
               </a>
             </Button>

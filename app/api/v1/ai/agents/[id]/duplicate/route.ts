@@ -16,6 +16,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { duplicateAgentWithVersion } from "@/lib/ai/agents/duplicate";
+import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,11 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
 
   const admin = createAdminClient();
 
+  const cota = await conferirCotaDeAgentes(admin, activeOrg.orgId, {
+    isento: authUser.is_platform_admin || Boolean(authUser.support),
+  });
+  if (!cota.ok) return fail(cota.code, t(cota.message), cota.status, { requestId });
+
   // Implementação compartilhada com o botão "Duplicar" da lista
   // (`duplicateAgentAction`), que fazia cópia rasa e devolvia agente em branco.
   const result = await duplicateAgentWithVersion(admin, {
@@ -57,7 +63,9 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
     }
     return fail(
       "internal_error",
-      result.error === "version_insert_failed" ? t("Erro ao duplicar versão.") : t("Erro ao duplicar agente."),
+      result.error === "version_insert_failed"
+        ? t("Erro ao duplicar versão.")
+        : t("Erro ao duplicar agente."),
       500,
       { requestId },
     );

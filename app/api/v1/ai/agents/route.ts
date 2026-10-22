@@ -22,6 +22,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mcpAgentDraftRecords } from "@/lib/ai/agents/create-draft";
 import { podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
+import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { mensagemDoEscopo, validarEscopoDaVersao } from "@/lib/ai/agents/escopo";
 import { agentCreateSchema } from "@/lib/ai/guardrails-schema";
 import { agentMcpCreateSchema } from "@/lib/ai/agents/validation";
@@ -108,6 +109,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     ("version" in rawBody || (rawBody as { kind?: unknown }).kind === "mcp_agent");
 
   const admin = createAdminClient();
+
+  // Quantos agentes o plano permite (lib/billing/cota-de-agentes.ts).
+  const cota = await conferirCotaDeAgentes(admin, activeOrg.orgId, {
+    isento: authUser.is_platform_admin || Boolean(authUser.support),
+  });
+  if (!cota.ok) return fail(cota.code, t(cota.message), cota.status, { requestId });
 
   if (wantsMcp) {
     const parsed = agentMcpCreateSchema.safeParse(rawBody);
