@@ -91,6 +91,9 @@ lib/agent-engine/golden-candidates/stage-divergence_*.json
 .claude/skills/*
 !.claude/skills/sistema-vivo/
 !.claude/skills/deskcomm-*/
+# security-audit: o guia de auditoria do dono (andrewsmorais/Auditoria-Claude),
+# embutido como os demais.
+!.claude/skills/security-audit/
 
 # Local docker volumes (WAHA)
 .waha-data/

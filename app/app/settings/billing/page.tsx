@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
-import { ptBR, es, enUS } from "date-fns/locale";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
@@ -8,22 +7,17 @@ import { emailDeSuporte } from "@/lib/branding/saida";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { traduzir } from "@/lib/i18n/dicionario";
+import { localeDeData } from "@/lib/i18n/datas";
 import { getOrganizationBilling } from "@/lib/billing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CancelSubscription } from "@/components/app/CancelSubscription";
 import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
 import { RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "@/lib/billing/catalogo";
 import { consultarCotaDaEquipe } from "@/lib/billing/equipe";
-import { CANAIS_CONTADOS_NO_PLANO } from "@/lib/channels/cota-do-plano";
+import { contarCanaisDoPlano } from "@/lib/channels/cota-do-plano";
 import { disparoEmMassaLigado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
-
-function getLocale(idioma: string) {
-  if (idioma === "en-US") return enUS;
-  if (idioma === "es") return es;
-  return ptBR;
-}
 
 export default async function BillingPage() {
   const user = await requireAuth();
@@ -44,12 +38,11 @@ export default async function BillingPage() {
     : null;
 
   // Conta uso atual
-  const { count: whatsappCount, error: whatsappError } = await admin
-    .from("channel_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", activeOrg.orgId)
-    .is("archived_at", null)
-    .in("provider", CANAIS_CONTADOS_NO_PLANO);
+  // A mesma conta que a cota aplica (`lib/channels/cota-do-plano.ts`).
+  const { count: whatsappCount, error: whatsappError } = await contarCanaisDoPlano(
+    admin,
+    activeOrg.orgId,
+  );
   const { count: pipelinesCount, error: pipelinesError } = await admin
     .from("crm_pipelines")
     .select("id", { count: "exact", head: true })
@@ -58,7 +51,7 @@ export default async function BillingPage() {
 
   const t = (texto: string) => traduzir(texto, idioma);
   const formatDate = (date: string) =>
-    format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: getLocale(idioma) });
+    format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: localeDeData(idioma) });
 
   const statusColors: Record<string, string> = {
     active: "bg-green-100 text-green-800",
@@ -145,18 +138,18 @@ export default async function BillingPage() {
             <h2 className="text-lg font-medium">{t("Limites do Plano")}</h2>
             <div className="mt-4 space-y-4">
               <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">Atendentes humanos</span>
+                <span className="text-sm font-medium">{t("Atendentes humanos")}</span>
                 <span className="text-sm text-muted-foreground">
                   {equipe
-                    ? `${equipe.ocupados} ativos + ${equipe.reservados} vagas reservadas / ${billing.seats} contratados`
-                    : "Não foi possível confirmar a ocupação"}
+                    ? `${equipe.ocupados} ${t("ativos")} + ${equipe.reservados} ${t("vagas reservadas")} / ${billing.seats} ${t("contratados")}`
+                    : t("Não foi possível confirmar a ocupação")}
                 </span>
               </div>
               <div className="flex justify-between border-b pb-2">
                 <span className="text-sm font-medium">{t("WhatsApps (Canais)")}</span>
                 <span className="text-sm text-muted-foreground">
                   {whatsappError || whatsappCount === null
-                    ? "Não confirmado"
+                    ? t("Não confirmado")
                     : getLimitLabel(billing.limits?.whatsapp, whatsappCount)}
                 </span>
               </div>
@@ -164,7 +157,7 @@ export default async function BillingPage() {
                 <span className="text-sm font-medium">{t("Pipelines")}</span>
                 <span className="text-sm text-muted-foreground">
                   {pipelinesError || pipelinesCount === null
-                    ? "Não confirmado"
+                    ? t("Não confirmado")
                     : getLimitLabel(billing.limits?.pipelines, pipelinesCount)}
                 </span>
               </div>
@@ -176,10 +169,11 @@ export default async function BillingPage() {
               </div>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Agentes de IA não ocupam vagas de atendentes humanos. Convites válidos reservam uma
-              vaga até serem aceitos, revogados ou expirarem.
+              {t(
+                "Agentes de IA não ocupam vagas de atendentes humanos. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem.",
+              )}
             </p>
-            <h3 className="mt-6 text-base font-medium">Recursos do plano</h3>
+            <h3 className="mt-6 text-base font-medium">{t("Recursos do plano")}</h3>
             <ul className="mt-3 space-y-2 text-sm">
               {Object.entries(RECURSOS_DO_PLANO).filter(([key]) => comDisparo || key !== "campanhas").map(([key, oferta]) => (
                 <li key={key} className="flex justify-between gap-3">
@@ -187,9 +181,9 @@ export default async function BillingPage() {
                   <span className="text-muted-foreground">
                     {planoInclui(billing.plan_slug, key as RecursoDoPlano)
                       ? billing.is_active
-                        ? "Incluído"
-                        : "Assinatura inativa"
-                      : `A partir de ${oferta.desde === "impulso" ? "Impulso" : "Escala"}`}
+                        ? t("Incluído")
+                        : t("Assinatura inativa")
+                      : `${t("A partir de")} ${oferta.desde === "impulso" ? "Impulso" : "Escala"}`}
                   </span>
                 </li>
               ))}

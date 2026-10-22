@@ -57,10 +57,19 @@ import { instanteDaParede, primeiroInstanteDoDia } from "./tempo";
  * dali, todo evento criado antes da troca de marca deixaria de ser reconhecido.
  * O sintoma seria compromisso fantasma ocupando horário, sem erro nenhum.
  */
-export const SUFIXO_ICAL_UID = "ChatAI Online.app";
+// Minúsculo, sem espaço e sem ponto: vira o prefixo do id do evento no Google
+// (`escrita.ts` filtra para [a-v0-9], o alfabeto que o Google aceita), e não é
+// domínio de ninguém. Já foi "ChatAI Online.app" — espaço e maiúscula num
+// identificador de fio — por uma troca de nome em massa; o prefixo calculado
+// (`chataionlineapp`) é o mesmo de antes, então nenhum id muda.
+export const SUFIXO_ICAL_UID = "chataionlineapp";
 
-/** Prefixo das `extendedProperties.private` que carregam a identidade do tenant. */
-export const PREFIXO_PROPRIEDADE = "ChatAI Online";
+/**
+ * Prefixo das `extendedProperties.private` que carregam a identidade do tenant.
+ * Minúsculo e sem espaço pelo mesmo motivo: é chave gravada no Google e lida de
+ * volta por igualdade (`sync-executor.ts`).
+ */
+export const PREFIXO_PROPRIEDADE = "chataionline";
 
 /** Versão do formato das propriedades privadas — permite migrar sem adivinhar. */
 const VERSAO_DA_PROPRIEDADE = "1";

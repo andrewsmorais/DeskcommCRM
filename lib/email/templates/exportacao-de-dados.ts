@@ -11,6 +11,8 @@
  */
 import { NEUTROS_DE_SAIDA, type MarcaDeSaida } from "@/lib/branding/saida";
 import type { Aviso } from "@/lib/exportacao/ciclo-de-vida";
+import { tagDeIdioma } from "@/lib/i18n/datas";
+import { IDIOMA_PADRAO } from "@/lib/i18n/idiomas";
 
 export interface ExportacaoEmailOptions {
   aviso: Aviso;
@@ -37,8 +39,18 @@ const ABERTURAS: Record<Aviso, string> = {
   dia: "Este é o último dia do prazo para baixar os dados da sua conta:",
 };
 
+/**
+ * O e-mail inteiro está no idioma padrão do produto, e a data acompanha o texto
+ * — uma data em outro idioma no meio de uma frase em português seria pior que
+ * as duas no mesmo. O idioma vem da camada de datas, nunca escrito à mão.
+ */
 function dataLonga(d: Date): string {
-  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "long", year: "numeric" });
+  return d.toLocaleDateString(tagDeIdioma(IDIOMA_PADRAO), {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export function construirEmailDeExportacao(opts: ExportacaoEmailOptions): {

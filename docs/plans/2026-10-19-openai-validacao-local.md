@@ -77,8 +77,8 @@ Fonte: [openai-modalidades-reais-2026-10-17.json](../../evidence/planos-chatai-o
 |---|---|---|
 | Embedding | `embedText` com `text-embedding-3-small`: 1536 dimensões, 9 tokens, chave da organização | Valida o helper; não comprova indexação e recuperação completas de uma base de conhecimento pela tela |
 | Transcrição | `apiTranscriptionProvider` com `whisper-1` reproduziu exatamente a frase sintética de teste | Áudio gerado para o teste, sem mensagem recebida pelo WhatsApp |
-| Visão inicial | `gpt-4.1-nano` respondeu “Verde” a uma imagem inteiramente vermelha de 64 × 64 pixels | Falha semântica preservada na evidência |
-| Contraprova de visão | `gpt-5.4-nano` respondeu “Vermelho” à imagem vermelha de 256 × 256 pixels | Passaram a ser diferentes o modelo, o tamanho e a representação da imagem; não é comparação causal controlada |
+| Visão inicial | `gpt-4.1-nano` respondeu “Verde” a uma imagem inteiramente vermelha de 64 × 64 pixels (imagem enviada: `evidence/planos-chatai-online/openai-imagem-sintetica-vermelha-64px.png`) | Falha semântica preservada na evidência |
+| Contraprova de visão | `gpt-5.4-nano` respondeu “Vermelho” à imagem vermelha de 256 × 256 pixels (imagem enviada: `evidence/planos-chatai-online/openai-imagem-sintetica-vermelha-256px.png`) | Passaram a ser diferentes o modelo, o tamanho e a representação da imagem; não é comparação causal controlada |
 
 O coletor reteve metadados HTTP e request IDs do embedding e da contraprova de
 visão. Não reteve os request IDs da primeira visão e do áudio; as chamadas não

@@ -41,6 +41,11 @@ export default defineConfig({
       // Bancada opcional: usa node:test, PostgreSQL próprio e Playwright com
       // configuração dedicada. Não depende do ambiente da suíte do produto.
       "experiments/extensoes/**",
+      // Os validadores dos guias embutidos (`security-audit`) vêm com testes em
+      // `node:test`, como o guia é distribuído fora deste repo. Coletados pelo
+      // vitest, viravam "No test suite found". Quem os executa é
+      // `tests/unit/guias-validadores-node-test.test.ts`, pelo `node --test`.
+      ".agents/**/*.test.cjs",
     ],
     // Dois projetos, a mesma suíte: `pnpm test:unit` continua rodando TUDO,
     // uma vez só. A divisão existe por duas razões medidas em 18/09/2026:

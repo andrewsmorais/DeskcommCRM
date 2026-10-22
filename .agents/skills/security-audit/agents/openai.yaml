@@ -1,0 +1,6 @@
+interface:
+  display_name: "Auditoria de segurança"
+  short_description: "Revisão de vulnerabilidades com evidência no código, reprodução segura, prioridade e a menor correção eficaz"
+  default_prompt: "Use a skill security-audit e revise a segurança deste projeto."
+policy:
+  allow_implicit_invocation: true
