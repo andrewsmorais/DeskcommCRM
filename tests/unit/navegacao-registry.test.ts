@@ -163,6 +163,9 @@ describe("sidebarGroups", () => {
       "/app/ai/agents",
       "/app/ai/followups",
       "/app/ai/cases",
+      // Chatbot Builder (fluxo sem IA), 22/10/2026 — entrou no lugar do Meta Ads,
+      // que saiu do menu lateral para o total seguir em 15.
+      "/app/ai/chatbots",
     ]);
   });
 });
@@ -199,9 +202,9 @@ describe("hubSections", () => {
     expect(hrefs(["crm_b2b"]).filter((h) => B2B.includes(h))).toEqual(B2B);
   });
 
-  it("agrupa a IA nas três etapas da jornada, na ordem", () => {
+  it("agrupa a IA nas três etapas da jornada, na ordem, e o chatbot à parte", () => {
     const secoes = hubSections("ia", true, null).map((s) => s.section);
-    expect(secoes).toEqual(["Montar o agente", "Ensinar o agente", "Acompanhar o agente"]);
+    expect(secoes).toEqual(["Montar o agente", "Ensinar o agente", "Acompanhar o agente", "Automatizar sem IA"]);
   });
 
   it("o hub mostra também o que já está no sidebar — é inventário, não sobra", () => {

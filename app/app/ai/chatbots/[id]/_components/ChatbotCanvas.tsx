@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Loader2, Pencil, Plus, Redo2, Save, Search, Undo2, X } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
+import { randomId } from "@/lib/random-id";
 import { useT } from "@/hooks/i18n/useT";
 import {
   GRUPOS_DE_PASSO,
@@ -109,7 +110,7 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
     const foto = paraReactFlow(flow.grafo);
     if (foto.nodes.length === 0) {
       foto.nodes.push({
-        id: crypto.randomUUID(),
+        id: randomId(),
         type: "inicio_canal",
         position: { x: 120, y: 80 },
         data: dadosPadrao("inicio_canal"),
@@ -237,7 +238,7 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
         ? screenToFlowPosition({ x: caixa.left + caixa.width / 2, y: caixa.top + caixa.height / 3 })
         : { x: 200, y: 200 };
       const novo: Node<NodeData> = {
-        id: crypto.randomUUID(),
+        id: randomId(),
         type: tipo,
         position: posicao ?? {
           x: centro.x + (Math.random() * 60 - 30),
@@ -259,7 +260,7 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
       // Uma saída leva a UM passo: ligar de novo troca o destino.
       setEdges((atuais) =>
         addEdge(
-          { ...c, id: crypto.randomUUID(), sourceHandle: c.sourceHandle ?? "proximo" },
+          { ...c, id: randomId(), sourceHandle: c.sourceHandle ?? "proximo" },
           atuais.filter(
             (e) =>
               !(

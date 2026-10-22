@@ -811,7 +811,11 @@ export const NAV_CATALOG = [
     // pessoa — orçamento e criativo são da empresa inteira. Mesmo grau dos
     // outros dois vizinhos do grupo.
     minRole: "manager",
-    sidebar: true,
+    // Fora do menu lateral desde 22/10/2026: o Chatbot Builder entrou no grupo
+    // de IA e o menu tem teto de 15 itens (dobra a 1280x900, medido em
+    // tests/unit/interface-por-empresa.test.ts). Na oferta do ChatAI Online o
+    // Meta Ads ainda é "Em breve"; segue alcançável pelo hub de Análise.
+    sidebar: false,
   },
   {
     // Irmã de "Desempenho", não a mesma coisa: lá é DESFECHO (funil agora,

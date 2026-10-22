@@ -305,8 +305,9 @@ async function AbaIA(t: Traduz) {
   const ids = d.por_empresa.map((e) => e.organization_id);
   if (ids.length > 0) {
     const { data } = await createAdminClient().from("organizations").select("id, slug, display_name").in("id", ids);
-    for (const o of (data ?? []) as { id: string; slug: string; display_name: string | null }[]) {
-      nomes.set(o.id, o.display_name || o.slug);
+    // Nome de ORGANIZAÇÃO, não de contato: a cadeia de `nomeDoContato` não se aplica.
+    for (const org of (data ?? []) as { id: string; slug: string; display_name: string | null }[]) {
+      nomes.set(org.id, org.display_name || org.slug);
     }
   }
 

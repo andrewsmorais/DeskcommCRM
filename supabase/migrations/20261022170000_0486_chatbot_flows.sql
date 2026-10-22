@@ -35,7 +35,7 @@ do $$ begin
     create policy tenant_isolation_chatbot_flows_all
       on public.chatbot_flows
       for all
-      using (organization_id = any(public.fn_user_org_ids()));
+      using (organization_id in (select public.fn_user_org_ids()));
   end if;
 end $$;
 
@@ -75,7 +75,7 @@ do $$ begin
     create policy tenant_isolation_chatbot_nodes_all
       on public.chatbot_nodes
       for all
-      using (organization_id = any(public.fn_user_org_ids()));
+      using (organization_id in (select public.fn_user_org_ids()));
   end if;
 end $$;
 
@@ -112,7 +112,7 @@ do $$ begin
     create policy tenant_isolation_chatbot_edges_all
       on public.chatbot_edges
       for all
-      using (organization_id = any(public.fn_user_org_ids()));
+      using (organization_id in (select public.fn_user_org_ids()));
   end if;
 end $$;
 
@@ -154,6 +154,6 @@ do $$ begin
     create policy tenant_isolation_chatbot_sessions_all
       on public.chatbot_sessions
       for all
-      using (organization_id = any(public.fn_user_org_ids()));
+      using (organization_id in (select public.fn_user_org_ids()));
   end if;
 end $$;
