@@ -33,6 +33,7 @@ import {
 } from "@/lib/ai/agents/validation";
 import { publishAgentVersion } from "@/lib/ai/agents/publish";
 import { escolherVersoesDaTela } from "@/lib/ai/agents/versoes-da-tela";
+import { CAMPOS_TECNICOS, podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
 import { VALID_TOOL_IDS } from "@/lib/mcp/tools";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -149,9 +150,25 @@ export async function saveAgentDraftAction(
     return { ok: false, error: "validation_failed", details: cadastroParsed.error.flatten() };
   }
 
-  const v = parsed.data;
   const requestId = randomUUID();
   const admin = createAdminClient();
+
+  // Cliente não escolhe provedor, modelo, chave nem freios: a versão nova herda
+  // os da última versão do agente (ou o padrão da plataforma). Ver config-tecnica.ts.
+  const podeConfigTecnica = podeEditarConfigTecnica(authUser);
+  let baseTecnica: Record<string, unknown> | null = null;
+  if (!podeConfigTecnica) {
+    const { data: ultima } = await admin
+      .from("ai_agent_versions")
+      .select(CAMPOS_TECNICOS.join(", "))
+      .eq("organization_id", activeOrg.orgId)
+      .eq("agent_id", agentId)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    baseTecnica = (ultima as Record<string, unknown> | null) ?? null;
+  }
+  const v = travarConfigTecnica(parsed.data, { pode: podeConfigTecnica, modo: "insert", base: baseTecnica });
 
   // Sanity: o agent existe e é da org? não está arquivado?
   const { data: agent } = await admin
@@ -225,7 +242,10 @@ export async function saveAgentDraftAction(
     if (!patchValidated.success) {
       return { ok: false, error: "validation_failed", details: patchValidated.error.flatten() };
     }
-    const update: Record<string, unknown> = { ...patchValidated.data };
+    const update: Record<string, unknown> = travarConfigTecnica(
+      { ...patchValidated.data },
+      { pode: podeConfigTecnica, modo: "patch" },
+    );
     const { data: updated, error } = await admin
       .from("ai_agent_versions")
       .update(update)
@@ -690,6 +710,10 @@ export async function createMcpAgentAction(
   if (!parsed.success) {
     return { ok: false, error: "validation_failed", details: parsed.error.flatten() };
   }
+  const v = travarConfigTecnica(parsed.data.version, {
+    pode: podeEditarConfigTecnica(authUser),
+    modo: "insert",
+  });
 
   const requestId = randomUUID();
   const admin = createAdminClient();
@@ -701,8 +725,8 @@ export async function createMcpAgentAction(
       organization_id: activeOrg.orgId,
       name: parsed.data.name,
       description: parsed.data.description ?? null,
-      model: parsed.data.version.model,
-      system_prompt: parsed.data.version.system_prompt,
+      model: v.model,
+      system_prompt: v.system_prompt,
       kind: "mcp_agent",
       priority: parsed.data.priority,
       is_active: false,
@@ -716,7 +740,6 @@ export async function createMcpAgentAction(
     return { ok: false, error: "internal_error", message: agentErr?.message };
   }
 
-  const v = parsed.data.version;
   const { error: versionErr } = await admin.from("ai_agent_versions").insert({
     organization_id: activeOrg.orgId,
     agent_id: agentRow.id,

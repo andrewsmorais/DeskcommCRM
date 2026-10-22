@@ -39,6 +39,8 @@ interface Props {
   routerMembership?: { routerId: string; routerName: string } | null;
   readOnly?: boolean;
   organizationTimezone?: string;
+  /** Ver `AgentForm`: só o super-admin vê empresa de IA, modelo, chave e freios. */
+  mostrarConfigTecnica?: boolean;
 }
 
 export function AgentTabs(props: Props) {
@@ -75,6 +77,7 @@ export function AgentTabs(props: Props) {
           draftObsoleto={props.draftObsoleto}
           credentials={props.credentials}
           provedoresDaInstalacao={props.provedoresDaInstalacao}
+          mostrarConfigTecnica={props.mostrarConfigTecnica}
           channelSessions={props.channelSessions}
           funis={props.funis}
           cobertura={props.cobertura}

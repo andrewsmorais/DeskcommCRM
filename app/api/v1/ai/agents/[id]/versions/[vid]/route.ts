@@ -14,6 +14,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { versionPatchSchema } from "@/lib/ai/agents/validation";
+import { podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +80,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx): Promise<Response> {
       details: parsed.error.flatten(),
     });
   }
-  const patch = parsed.data;
+  // Cliente não muda provedor, modelo, chave nem freios (config-tecnica.ts).
+  const patch = travarConfigTecnica(parsed.data, { pode: podeEditarConfigTecnica(authUser), modo: "patch" });
   if (Object.keys(patch).length === 0) {
     return fail("invalid_request", "Body vazio.", 400, { requestId });
   }

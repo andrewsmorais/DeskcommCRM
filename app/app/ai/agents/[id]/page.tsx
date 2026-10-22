@@ -19,6 +19,7 @@ import type { CoberturaPorFunil } from "./_components/FunisDoAgente";
 import { lerAmbiente } from "@/lib/instalacao/ambiente";
 import { escolherVersoesDaTela } from "@/lib/ai/agents/versoes-da-tela";
 import { fusoUtilizavel } from "@/lib/tempo/fusos";
+import { configTecnicaDaPlataforma, podeEditarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
 
 export const dynamic = "force-dynamic";
 
@@ -236,6 +237,7 @@ export default async function AgentEditorPage({ params }: { params: Promise<{ id
         routerMembership={routerMembership}
         readOnly={readOnly}
         organizationTimezone={fusoUtilizavel(activeOrg.timezone)}
+        mostrarConfigTecnica={podeEditarConfigTecnica(user)}
       />
     </div>
   );

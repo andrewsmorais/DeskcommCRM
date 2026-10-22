@@ -17,6 +17,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mensagemDoEscopo, validarEscopoDaVersao } from "@/lib/ai/agents/escopo";
 import { versionCreateSchema } from "@/lib/ai/agents/validation";
+import { CAMPOS_TECNICOS, podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
 import { lerAmbiente } from "@/lib/instalacao/ambiente";
 import { traduzir } from "@/lib/i18n/dicionario";
 
@@ -92,14 +93,29 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       details: parsed.error.flatten(),
     });
   }
-  const v = parsed.data;
-
   const agentCheck = await assertAgentInOrg(id, activeOrg.orgId);
   if (!agentCheck.ok) {
     return fail("not_found", t("Agente não encontrado."), 404, { requestId });
   }
 
   const admin = createAdminClient();
+
+  // Cliente não escolhe provedor, modelo, chave nem freios: a versão nova herda
+  // os da última versão do agente, ou o padrão da plataforma (config-tecnica.ts).
+  const podeConfigTecnica = podeEditarConfigTecnica(authUser);
+  let baseTecnica: Record<string, unknown> | null = null;
+  if (!podeConfigTecnica) {
+    const { data: ultima } = await admin
+      .from("ai_agent_versions")
+      .select(CAMPOS_TECNICOS.join(", "))
+      .eq("organization_id", activeOrg.orgId)
+      .eq("agent_id", id)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    baseTecnica = (ultima as Record<string, unknown> | null) ?? null;
+  }
+  const v = travarConfigTecnica(parsed.data, { pode: podeConfigTecnica, modo: "insert", base: baseTecnica });
 
   // Ordering: insert with retry on 23505 (race com unique(agent_id,version_number)).
   for (let attempt = 0; attempt < 3; attempt++) {

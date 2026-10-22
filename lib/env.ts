@@ -505,6 +505,12 @@ const schema = z.object({
   // Aceita arquivo (.mp4/.webm) ou endereço de embed (YouTube/Vimeo) em https.
   ONBOARDING_WHATSAPP_VIDEO_URL: z.string().optional().default(""),
 
+  // IA da plataforma (ChatAI Online). Todo agente de cliente usa este provedor e
+  // este modelo, com a chave da instalação — o cliente não vê nem escolhe. Só o
+  // super-admin muda por agente. Ver lib/ai/agents/config-tecnica.ts.
+  PLATAFORMA_IA_PROVEDOR: z.string().optional().default("openai"),
+  PLATAFORMA_IA_MODELO: z.string().optional().default("gpt-5.4-nano"),
+
   // App URLs
   NEXT_PUBLIC_APP_URL: z
     .string()

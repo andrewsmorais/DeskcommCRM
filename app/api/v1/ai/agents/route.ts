@@ -21,6 +21,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mcpAgentDraftRecords } from "@/lib/ai/agents/create-draft";
+import { podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
 import { mensagemDoEscopo, validarEscopoDaVersao } from "@/lib/ai/agents/escopo";
 import { agentCreateSchema } from "@/lib/ai/guardrails-schema";
 import { agentMcpCreateSchema } from "@/lib/ai/agents/validation";
@@ -116,7 +117,13 @@ export async function POST(req: NextRequest): Promise<Response> {
         details: parsed.error.flatten(),
       });
     }
-    const input = parsed.data;
+    const input = {
+      ...parsed.data,
+      version: travarConfigTecnica(parsed.data.version, {
+        pode: podeEditarConfigTecnica(authUser),
+        modo: "insert",
+      }),
+    };
 
     // Validate scope before the first write; a rejected form leaves no orphan.
     const escopo = await validarEscopoDaVersao(admin, activeOrg.orgId, input.version);
