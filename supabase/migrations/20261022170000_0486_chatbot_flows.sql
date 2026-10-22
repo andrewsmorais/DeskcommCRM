@@ -1,4 +1,4 @@
--- migration 0484 — Chatbot Builder: flows, nodes, edges, sessions
+-- migration 0486 — Chatbot Builder: flows, nodes, edges, sessions
 -- Fluxos visuais de chatbot (canvas estilo Umbler Talk), sem custo de IA.
 -- Cada tenant tem seus próprios flows. RLS via fn_user_org_ids().
 

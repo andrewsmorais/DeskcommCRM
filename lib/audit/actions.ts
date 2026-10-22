@@ -416,6 +416,11 @@ export const AUDIT_ACTIONS = [
   // O emissor grava só a chave, a natureza e os últimos 4 caracteres.
   "platform.config_changed",
   "platform.config_reset",
+  // Custo da PLATAFORMA lançado ou removido pelo dono em `/admin/metricas`
+  // (`platform_custos_fixos`, migration 0484). Entra no lucro estimado, então
+  // quem mexeu e quando precisa ficar. O metadata leva nome, tipo e valor — nada
+  // secreto.
+  "platform.custo_changed",
   // O COMPORTAMENTO da instalação trocado em `platform_settings` pela tela
   // `/admin/sistema` (migration 0331, issue #1034) — irmã da linha de cima, e
   // mutação de plataforma. Auditável porque pergunta "por que a IA não parou no
