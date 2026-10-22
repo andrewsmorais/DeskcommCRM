@@ -15,9 +15,11 @@
  * lendo: a stream é puxada (`pull`), então o fim só chega depois que os pedaços
  * anteriores saíram. Cancelamento ou erro no meio não registram nada.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import { logger } from "@/lib/logger";
+import type { createAdminClient } from "@/lib/supabase/admin";
+
+/** Só o cliente admin grava em `organizations` (a RLS recusa o de sessão em silêncio). */
+type ClienteAdmin = ReturnType<typeof createAdminClient>;
 
 /** A data do último download completo, ou `null`. Nunca lança. */
 export function ultimoDownload(settings: unknown): string | null {
@@ -29,7 +31,7 @@ export function ultimoDownload(settings: unknown): string | null {
 }
 
 /** Grava o download. Best-effort: falhar aqui só faz um lembrete a mais sair. */
-export async function registrarDownload(db: SupabaseClient, orgId: string, quando: Date): Promise<void> {
+export async function registrarDownload(db: ClienteAdmin, orgId: string, quando: Date): Promise<void> {
   // Relê logo antes de gravar: `settings` é compartilhado com o resto do sistema
   // (a tela de Configurações, o estado dos avisos), e sobrescrever o que acabou
   // de mudar seria pior que um lembrete repetido.
@@ -52,7 +54,7 @@ export async function registrarDownload(db: SupabaseClient, orgId: string, quand
       : {};
   const { error } = await db
     .from("organizations")
-    .update({ settings: { ...atual, exportacao: { ...bloco, ultimo_download_em: quando.toISOString() } } })
+    .update({ settings: { ...atual, exportacao: { ...bloco, ultimo_download_em: quando.toISOString() } } } as never)
     .eq("id", orgId);
   if (error) logger.warn("exportacao_download_nao_registrado", { orgId, etapa: "escrita" });
 }

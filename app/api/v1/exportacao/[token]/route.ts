@@ -79,7 +79,7 @@ export async function GET(
   // Download que chegou ao fim para os lembretes de "baixe seus dados"
   // (`lib/exportacao/download.ts`) — o clique sozinho não conta.
   const zip = avisarAoTerminar(criarZipDaConta(cliente, link.orgId, nome, agora), () =>
-    registrarDownload(cliente, link.orgId, new Date()),
+    registrarDownload(db, link.orgId, new Date()),
   );
   return new Response(
     zip,
