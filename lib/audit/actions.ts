@@ -999,6 +999,12 @@ export const AUDIT_ACTIONS = [
   "company_people.updated",
   "contacts.person_linked",
   "imports.companies_people",
+  /** O admin pediu o link de exportação da conta pela tela de Configurações. */
+  "org.exportacao_gerada",
+  /** O ZIP de exportação foi baixado, pela tela ou pelo link do e-mail de aviso. */
+  "org.exportacao_baixada",
+  /** Um aviso do ciclo de vida da conta (encerramento, 7 dias, último dia) foi enviado. */
+  "org.exportacao_aviso_enviado",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

@@ -119,6 +119,9 @@ CRONS="
 30 3 * * *|120|api/v1/cron/kb-conversations-batch
 15 4 * * *|60|api/v1/cron/sync-model-catalog
 40 4 * * *|120|api/v1/cron/data-retention
+# Avisos de exportação de dados: 12:30 UTC = 9h30 em Brasília. Diário, em horário em
+# que o administrador está lendo e-mail — o aviso de "último dia" não pode chegar de madrugada.
+30 12 * * *|120|api/v1/cron/exportacao-avisos
 0 8 * * *|60|api/v1/cron/proposal-expiry
 30 8 * * *|60|api/v1/cron/proposal-promised-not-created
 0 6 * * 0|60|api/v1/cron/proposal-acceptance-rate

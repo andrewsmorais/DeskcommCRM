@@ -7,6 +7,7 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { moedaServidaOu } from "@/lib/money";
 import { createClient } from "@/lib/supabase/server";
 import { ZonaDePerigoDaOrganizacao } from "./_danger-zone";
+import { ExportarDados } from "./_exportar-dados";
 import { TenantForm } from "./_form";
 import { InterfaceDaEmpresaForm } from "./_interface";
 
@@ -84,6 +85,7 @@ export default async function TenantSettingsPage() {
           role={activeOrg.role}
         />
       )}
+      {row && <ExportarDados />}
       {row && <ZonaDePerigoDaOrganizacao displayName={row.display_name} />}
     </div>
   );

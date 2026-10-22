@@ -152,6 +152,12 @@ export const PUBLIC_PATHS: RegExp[] = [
   // dois nomes de propósito: `/^\/legal/` deixaria qualquer sub-path futuro
   // nascer público de carona.
   /^\/legal\/(terms|privacy)$/,
+  // Download da exportação de dados, aberto pelo link do e-mail de aviso por
+  // quem JÁ perdeu a sessão (conta suspensa ou cancelada). A autorização é a
+  // ASSINATURA do link, conferida na rota (`lib/exportacao/token.ts`): a
+  // organização sai de dentro dele, nunca da URL ou do corpo. Âncora `$` e dois
+  // segmentos de propósito: nenhum sub-path futuro nasce público de carona.
+  /^\/api\/v1\/exportacao\/[A-Za-z0-9_-]{10,200}\.[A-Za-z0-9_-]{20,100}$/,
 ];
 
 export function isPublicPath(pathname: string): boolean {
