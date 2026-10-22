@@ -18,6 +18,9 @@ import {
   ROTULO_DO_PLANO,
 } from "@/lib/admin/metricas";
 import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
+import { loadAuthUser } from "@/lib/auth/server";
+import { traduzir } from "@/lib/i18n/dicionario";
+import { IDIOMA_PADRAO } from "@/lib/i18n/idiomas";
 import { formatCentsBRL, formatCentsUSD } from "@/lib/money";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cn } from "@/lib/utils";
@@ -34,6 +37,9 @@ const ABAS = [
   { id: "lucro", rotulo: "Custos e lucro" },
 ] as const;
 type AbaId = (typeof ABAS)[number]["id"];
+
+/** Tradutor já ligado ao idioma de quem abriu a tela. */
+type Traduz = (texto: string) => string;
 
 const CATEGORIAS = ["servidor", "ia", "dominio", "email", "gateway", "ferramentas", "outros"];
 
@@ -71,6 +77,9 @@ export default async function MetricasPage({
   // A página é a porta dos dados de TODAS as empresas: o gate se repete aqui,
   // mesmo com o layout de /admin já o fazendo.
   await requirePlatformAdmin();
+  const usuario = await loadAuthUser();
+  const idioma = usuario?.idioma ?? IDIOMA_PADRAO;
+  const t: Traduz = (texto) => traduzir(texto, idioma);
 
   const sp = await searchParams;
   const aba: AbaId = ABAS.some((a) => a.id === sp.aba) ? (sp.aba as AbaId) : "receita";
@@ -88,26 +97,26 @@ export default async function MetricasPage({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Métricas do negócio</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("Métricas do negócio")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Receita, clientes, aquisição, custo de IA e lucro estimado de todas as empresas da plataforma.
+            {t("Receita, clientes, aquisição, custo de IA e lucro estimado de todas as empresas da plataforma.")}
           </p>
         </div>
         <Link
           href={incluirTeste ? `/admin/metricas?aba=${aba}` : `/admin/metricas?aba=${aba}&teste=1`}
           className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
         >
-          {incluirTeste ? "Esconder empresas de teste" : "Incluir empresas de teste"}
+          {incluirTeste ? t("Esconder empresas de teste") : t("Incluir empresas de teste")}
         </Link>
       </div>
 
       {incluirTeste ? (
         <Falha>
-          Mostrando também as empresas de teste e homologação. Os números de receita estão inflados por dados de teste.
+          {t("Mostrando também as empresas de teste e homologação. Os números de receita estão inflados por dados de teste.")}
         </Falha>
       ) : null}
 
-      <nav aria-label="Abas das métricas" className="flex flex-wrap gap-1 border-b">
+      <nav aria-label={t("Abas das métricas")} className="flex flex-wrap gap-1 border-b">
         {ABAS.map((a) => (
           <Link
             key={a.id}
@@ -125,17 +134,17 @@ export default async function MetricasPage({
         ))}
       </nav>
 
-      {aba === "receita" ? await AbaReceita(incluirTeste) : null}
-      {aba === "aquisicao" ? await AbaAquisicao(incluirTeste) : null}
-      {aba === "ia" ? await AbaIA() : null}
-      {aba === "lucro" ? await AbaLucro(cambioUsado, incluirTeste) : null}
+      {aba === "receita" ? await AbaReceita(incluirTeste, t) : null}
+      {aba === "aquisicao" ? await AbaAquisicao(incluirTeste, t) : null}
+      {aba === "ia" ? await AbaIA(t) : null}
+      {aba === "lucro" ? await AbaLucro(cambioUsado, incluirTeste, t) : null}
     </div>
   );
 }
 
-async function AbaReceita(incluirTeste: boolean) {
+async function AbaReceita(incluirTeste: boolean, t: Traduz) {
   const [receita, crescimento] = await Promise.all([lerReceita(incluirTeste), lerCrescimento(90, incluirTeste)]);
-  if (!receita.ok) return <Falha>Não consegui ler a receita agora. Tente de novo em instantes.</Falha>;
+  if (!receita.ok) return <Falha>{t("Não consegui ler a receita agora. Tente de novo em instantes.")}</Falha>;
   const r = receita.dados;
 
   return (
@@ -153,12 +162,12 @@ async function AbaReceita(incluirTeste: boolean) {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Plano mais escolhido</CardTitle>
+            <CardTitle className="text-base">{t("Plano mais escolhido")}</CardTitle>
             <CardDescription>Empresas e receita por plano.</CardDescription>
           </CardHeader>
           <CardContent>
             {r.por_plano.length === 0 ? (
-              <Vazio>Nenhuma assinatura paga ainda.</Vazio>
+              <Vazio>{t("Nenhuma assinatura paga ainda.")}</Vazio>
             ) : (
               <Table>
                 <TableHeader>
@@ -186,12 +195,12 @@ async function AbaReceita(incluirTeste: boolean) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Ciclo mais escolhido</CardTitle>
-            <CardDescription>Mensal, trimestral ou anual (receita já convertida para mês).</CardDescription>
+            <CardTitle className="text-base">{t("Ciclo mais escolhido")}</CardTitle>
+            <CardDescription>{t("Mensal, trimestral ou anual (receita já convertida para mês).")}</CardDescription>
           </CardHeader>
           <CardContent>
             {r.por_ciclo.length === 0 ? (
-              <Vazio>Nenhuma assinatura paga ainda.</Vazio>
+              <Vazio>{t("Nenhuma assinatura paga ainda.")}</Vazio>
             ) : (
               <Table>
                 <TableHeader>
@@ -218,28 +227,28 @@ async function AbaReceita(incluirTeste: boolean) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Novos clientes e cancelamentos — últimos 90 dias</CardTitle>
+          <CardTitle className="text-base">{t("Novos clientes e cancelamentos — últimos 90 dias")}</CardTitle>
         </CardHeader>
         <CardContent>
           {crescimento.ok ? (
             <GraficoDeCrescimento dados={crescimento.dados} />
           ) : (
-            <Falha>Não consegui ler o histórico agora.</Falha>
+            <Falha>{t("Não consegui ler o histórico agora.")}</Falha>
           )}
         </CardContent>
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        Empresas de teste e a sua própria conta ficam de fora por padrão (marca <code>excluir_das_metricas</code> em
+        {t("Empresas de teste e a sua própria conta ficam de fora por padrão (marca")} <code>excluir_das_metricas</code> {t("em")}
         <code> organizations.settings</code>).
       </p>
     </div>
   );
 }
 
-async function AbaAquisicao(incluirTeste: boolean) {
+async function AbaAquisicao(incluirTeste: boolean, t: Traduz) {
   const aq = await lerAquisicao(incluirTeste);
-  if (!aq.ok) return <Falha>Não consegui ler a aquisição agora.</Falha>;
+  if (!aq.ok) return <Falha>{t("Não consegui ler a aquisição agora.")}</Falha>;
   const total = aq.dados.reduce((s, l) => s + l.empresas, 0);
   const semOrigem = aq.dados.length > 0 && aq.dados.every((l) => l.origem === "nao_informada");
 
@@ -247,18 +256,17 @@ async function AbaAquisicao(incluirTeste: boolean) {
     <div className="space-y-4">
       {semOrigem ? (
         <Falha>
-          Nenhuma empresa tem origem registrada. O cadastro ainda não grava de onde a pessoa veio (Google, anúncio,
-          WhatsApp, indicação). Enquanto isso, todas aparecem como &quot;Não informada&quot;.
+          {t("Nenhuma empresa tem origem registrada. O cadastro ainda não grava de onde a pessoa veio (Google, anúncio, WhatsApp, indicação). Enquanto isso, todas aparecem como \"Não informada\".")}
         </Falha>
       ) : null}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">De onde vêm as empresas</CardTitle>
-          <CardDescription>Origem gravada no cadastro de cada empresa.</CardDescription>
+          <CardTitle className="text-base">{t("De onde vêm as empresas")}</CardTitle>
+          <CardDescription>{t("Origem gravada no cadastro de cada empresa.")}</CardDescription>
         </CardHeader>
         <CardContent>
           {aq.dados.length === 0 ? (
-            <Vazio>Nenhuma empresa cadastrada.</Vazio>
+            <Vazio>{t("Nenhuma empresa cadastrada.")}</Vazio>
           ) : (
             <Table>
               <TableHeader>
@@ -287,9 +295,9 @@ async function AbaAquisicao(incluirTeste: boolean) {
   );
 }
 
-async function AbaIA() {
+async function AbaIA(t: Traduz) {
   const ia = await lerIA(30);
-  if (!ia.ok) return <Falha>Não consegui ler o uso de IA agora.</Falha>;
+  if (!ia.ok) return <Falha>{t("Não consegui ler o uso de IA agora.")}</Falha>;
   const d = ia.dados;
 
   // Nome da empresa em vez do UUID cru.
@@ -326,7 +334,7 @@ async function AbaIA() {
           </CardHeader>
           <CardContent>
             {d.por_modelo.length === 0 ? (
-              <Vazio>Sem chamadas no período.</Vazio>
+              <Vazio>{t("Sem chamadas no período.")}</Vazio>
             ) : (
               <Table>
                 <TableHeader>
@@ -356,7 +364,7 @@ async function AbaIA() {
           </CardHeader>
           <CardContent>
             {d.por_empresa.length === 0 ? (
-              <Vazio>Sem chamadas no período.</Vazio>
+              <Vazio>{t("Sem chamadas no período.")}</Vazio>
             ) : (
               <Table>
                 <TableHeader>
@@ -381,20 +389,20 @@ async function AbaIA() {
         </Card>
       </div>
       <p className="text-xs text-muted-foreground">
-        O custo de IA inclui as empresas de teste: é dinheiro real gasto, mesmo sem receita.
+        {t("O custo de IA inclui as empresas de teste: é dinheiro real gasto, mesmo sem receita.")}
       </p>
     </div>
   );
 }
 
-async function AbaLucro(cambio: number, incluirTeste: boolean) {
+async function AbaLucro(cambio: number, incluirTeste: boolean, t: Traduz) {
   const [lucro, custos] = await Promise.all([lerLucro(cambio), lerCustos()]);
   const l = lucro.ok ? lucro.dados : null;
   const negativo = l ? l.lucro_liquido_cents < 0 : false;
 
   return (
     <div className="space-y-6">
-      {!lucro.ok ? <Falha>Não consegui calcular o lucro agora.</Falha> : null}
+      {!lucro.ok ? <Falha>{t("Não consegui calcular o lucro agora.")}</Falha> : null}
       {l ? (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           <Indicador titulo="Receita (MRR)" valor={formatCentsBRL(l.mrr_cents)} />
@@ -407,7 +415,7 @@ async function AbaLucro(cambio: number, incluirTeste: boolean) {
           <Indicador titulo="Taxas sobre a receita" valor={formatCentsBRL(l.taxas_percentuais_cents)} />
           <Card className={cn(negativo && "border-destructive/50")}>
             <CardContent className="space-y-1 pt-6">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Lucro líquido estimado</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{t("Lucro líquido estimado")}</p>
               <p className={cn("text-2xl font-semibold tabular-nums", negativo && "text-destructive")}>
                 {formatCentsBRL(l.lucro_liquido_cents)}
               </p>
@@ -425,7 +433,7 @@ async function AbaLucro(cambio: number, incluirTeste: boolean) {
         <input type="hidden" name="aba" value="lucro" />
         {incluirTeste ? <input type="hidden" name="teste" value="1" /> : null}
         <label className="space-y-1 text-xs text-muted-foreground">
-          Câmbio (R$ por US$ 1)
+          {t("Câmbio (R$ por US$ 1)")}
           <Input name="cambio" defaultValue={String(cambio).replace(".", ",")} className="w-28" inputMode="decimal" />
         </label>
         <Button type="submit" variant="outline" size="sm">
@@ -437,15 +445,14 @@ async function AbaLucro(cambio: number, incluirTeste: boolean) {
         <CardHeader>
           <CardTitle className="text-base">Custos da plataforma</CardTitle>
           <CardDescription>
-            Servidor, domínio, e-mail, ferramentas e taxas do gateway. Entram no lucro estimado. O custo de conversa da
-            Meta não entra: quem paga é o cliente.
+            {t("Servidor, domínio, e-mail, ferramentas e taxas do gateway. Entram no lucro estimado. O custo de conversa da Meta não entra: quem paga é o cliente.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {!custos.ok ? (
-            <Falha>Não consegui ler os custos agora.</Falha>
+            <Falha>{t("Não consegui ler os custos agora.")}</Falha>
           ) : custos.dados.length === 0 ? (
-            <Vazio>Nenhum custo lançado ainda. Sem eles, o lucro mostrado considera só a IA.</Vazio>
+            <Vazio>{t("Nenhum custo lançado ainda. Sem eles, o lucro mostrado considera só a IA.")}</Vazio>
           ) : (
             <Table>
               <TableHeader>
@@ -518,8 +525,7 @@ async function AbaLucro(cambio: number, incluirTeste: boolean) {
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        Lucro estimado = MRR − IA dos últimos 30 dias (convertida pelo câmbio acima) − custos fixos − taxas sobre a
-        receita. É uma estimativa gerencial, não contabilidade.
+        {t("Lucro estimado = MRR − IA dos últimos 30 dias (convertida pelo câmbio acima) − custos fixos − taxas sobre a receita. É uma estimativa gerencial, não contabilidade.")}
       </p>
     </div>
   );

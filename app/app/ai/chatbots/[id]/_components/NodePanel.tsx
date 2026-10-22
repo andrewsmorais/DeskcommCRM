@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useT } from "@/hooks/i18n/useT";
 import { NODE_TYPE_META, type NodeType } from "./node-types";
 
 type NodeData = Record<string, unknown>;
@@ -23,6 +24,7 @@ type Props = {
 };
 
 export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
+  const t = useT();
   const type = node.type as NodeType;
   const meta = NODE_TYPE_META[type];
   const data = node.data;
@@ -50,7 +52,7 @@ export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
         {/* label (todos os tipos, exceto start) */}
         {type !== "start" && (
           <div className="space-y-1.5">
-            <Label className="text-xs">Título do nó</Label>
+            <Label className="text-xs">{t("Título do nó")}</Label>
             <Input
               placeholder="Nome interno (opcional)"
               value={(data.label as string) ?? ""}
@@ -67,13 +69,13 @@ export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
           <div className="space-y-1.5">
             <Label className="text-xs">Texto da mensagem</Label>
             <Textarea
-              placeholder="Digite a mensagem que será enviada ao contato…"
+              placeholder={t("Digite a mensagem que será enviada ao contato…")}
               rows={5}
               value={(data.message as string) ?? ""}
               onChange={(e) => set("message", e.target.value)}
             />
             <p className="text-[11px] text-muted-foreground">
-              Suporta emojis e quebras de linha. Variáveis: {"{nome}"}, {"{telefone}"}.
+              {t("Suporta emojis e quebras de linha. Variáveis:")} {"{nome}"}, {"{telefone}"}.
             </p>
           </div>
         )}
@@ -84,16 +86,16 @@ export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
             <div className="space-y-1.5">
               <Label className="text-xs">Pergunta</Label>
               <Textarea
-                placeholder="Qual é a sua dúvida hoje?"
+                placeholder={t("Qual é a sua dúvida hoje?")}
                 rows={3}
                 value={(data.question as string) ?? ""}
                 onChange={(e) => set("question", e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Opções (uma por linha)</Label>
+              <Label className="text-xs">{t("Opções (uma por linha)")}</Label>
               <Textarea
-                placeholder={"Suporte técnico\nFinanceiro\nVendas"}
+                placeholder={t("Suporte técnico\nFinanceiro\nVendas")}
                 rows={4}
                 value={((data.options as string[]) ?? ["Sim", "Não"]).join("\n")}
                 onChange={(e) =>
@@ -107,7 +109,7 @@ export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
                 }
               />
               <p className="text-[11px] text-muted-foreground">
-                Cada linha vira uma opção numerada no WhatsApp.
+                {t("Cada linha vira uma opção numerada no WhatsApp.")}
               </p>
             </div>
           </>
@@ -125,9 +127,9 @@ export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Mensagem de transição (opcional)</Label>
+              <Label className="text-xs">{t("Mensagem de transição (opcional)")}</Label>
               <Textarea
-                placeholder="Aguarde, vou te transferir para um atendente…"
+                placeholder={t("Aguarde, vou te transferir para um atendente…")}
                 rows={3}
                 value={(data.message as string) ?? ""}
                 onChange={(e) => set("message", e.target.value)}
@@ -141,7 +143,7 @@ export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
           <div className="space-y-1.5">
             <Label className="text-xs">Mensagem de encerramento (opcional)</Label>
             <Textarea
-              placeholder="Obrigado pelo contato! Até a próxima 😊"
+              placeholder={t("Obrigado pelo contato! Até a próxima 😊")}
               rows={4}
               value={(data.message as string) ?? ""}
               onChange={(e) => set("message", e.target.value)}
@@ -159,7 +161,7 @@ export function NodePanel({ node, onClose, onChange, onDelete }: Props) {
             className="w-full"
             onClick={() => onDelete(node.id)}
           >
-            Remover nó
+            {t("Remover nó")}
           </Button>
         </div>
       )}

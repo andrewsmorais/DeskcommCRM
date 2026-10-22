@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useT } from "@/hooks/i18n/useT";
 
 type Flow = {
   id: string;
@@ -50,6 +51,7 @@ const STATUS_COLOR: Record<Flow["status"], string> = {
 
 export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string }) {
   const router = useRouter();
+  const t = useT();
   const [flows] = useState(initial);
   const [open, setOpen] = useState(false);
   const [nome, setNome] = useState("");
@@ -84,7 +86,7 @@ export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string 
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Chatbots</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Fluxos automáticos sem custo de IA — triagem, FAQ e desvios antes do agente.
+            {t("Fluxos automáticos sem custo de IA — triagem, FAQ e desvios antes do agente.")}
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -98,7 +100,7 @@ export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string 
             <DialogHeader>
               <DialogTitle>Novo chatbot</DialogTitle>
               <DialogDescription>
-                Dê um nome para o fluxo. Você vai montar as perguntas e respostas no canvas.
+                {t("Dê um nome para o fluxo. Você vai montar as perguntas e respostas no canvas.")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
@@ -114,10 +116,10 @@ export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string 
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="descricao">Descrição (opcional)</Label>
+                <Label htmlFor="descricao">{t("Descrição (opcional)")}</Label>
                 <Textarea
                   id="descricao"
-                  placeholder="Para que serve este chatbot?"
+                  placeholder={t("Para que serve este chatbot?")}
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
                   rows={2}
@@ -140,9 +142,9 @@ export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string 
       {flows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
           <GitBranch className="w-12 h-12 text-muted-foreground/40" />
-          <p className="text-lg font-medium text-muted-foreground">Nenhum chatbot ainda</p>
+          <p className="text-lg font-medium text-muted-foreground">{t("Nenhum chatbot ainda")}</p>
           <p className="text-sm text-muted-foreground max-w-xs">
-            Crie um fluxo visual de perguntas e respostas — sem custo de IA, sem tokens.
+            {t("Crie um fluxo visual de perguntas e respostas — sem custo de IA, sem tokens.")}
           </p>
           <Button className="mt-2" onClick={() => setOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />

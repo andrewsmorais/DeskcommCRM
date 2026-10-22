@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { useT } from "@/hooks/i18n/useT";
+
 import { NODE_TYPES, type NodeType, type NodeData } from "./node-types";
 import { NodePanel } from "./NodePanel";
 
@@ -132,6 +134,7 @@ const TOOLS: { type: NodeType; icon: React.ElementType; label: string; color: st
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 export function ChatbotCanvas({ flow: initial }: { flow: Flow }) {
+  const t = useT();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>(
     dbNodesToRF(initial.nodes),
   );
@@ -332,7 +335,7 @@ export function ChatbotCanvas({ flow: initial }: { flow: Flow }) {
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="text-xs">
-                      Arraste ou clique para adicionar
+                      {t("Arraste ou clique para adicionar")}
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -361,12 +364,12 @@ export function ChatbotCanvas({ flow: initial }: { flow: Flow }) {
                 className={`w-3.5 h-3.5 ${saveState === "saving" ? "animate-spin" : saveState === "saved" ? "text-green-600" : saveState === "error" ? "text-red-500" : ""}`}
               />
               {saveState === "saving"
-                ? "Salvando…"
+                ? t("Salvando…")
                 : saveState === "saved"
-                  ? "Salvo!"
+                  ? t("Salvo!")
                   : saveState === "error"
-                    ? "Erro ao salvar"
-                    : "Salvar agora"}
+                    ? t("Erro ao salvar")
+                    : t("Salvar agora")}
             </button>
           </div>
         </aside>

@@ -13,6 +13,9 @@ import {
   type LeituraAsaas,
 } from "@/lib/admin/asaas-leitura";
 import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
+import { loadAuthUser } from "@/lib/auth/server";
+import { traduzir } from "@/lib/i18n/dicionario";
+import { IDIOMA_PADRAO } from "@/lib/i18n/idiomas";
 
 export const metadata = { title: "Asaas — Admin Plataforma" };
 export const dynamic = "force-dynamic";
@@ -56,6 +59,9 @@ const GRUPOS_DE_COBRANCA = [
 
 export default async function AsaasPage() {
   await requirePlatformAdmin();
+  const usuario = await loadAuthUser();
+  const idioma = usuario?.idioma ?? IDIOMA_PADRAO;
+  const t = (texto: string) => traduzir(texto, idioma);
 
   const amb = ambienteDoAsaas();
   if (!amb.configurado) {
@@ -84,28 +90,26 @@ export default async function AsaasPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Asaas — pagamentos</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Saldo, assinaturas, cobranças, cancelamentos e webhooks da sua conta no Asaas. Somente leitura.
+            {t("Saldo, assinaturas, cobranças, cancelamentos e webhooks da sua conta no Asaas. Somente leitura.")}
           </p>
         </div>
-        <Badge variant={amb.sandbox ? "secondary" : "default"}>{amb.sandbox ? "Sandbox (teste)" : "Produção"}</Badge>
+        <Badge variant={amb.sandbox ? "secondary" : "default"}>{amb.sandbox ? t("Sandbox (teste)") : t("Produção")}</Badge>
       </div>
 
       {amb.sandbox ? (
         <Aviso>
-          Você está vendo a conta de TESTE do Asaas. Nenhum dinheiro real aparece aqui. Para ver a conta real, troque a
-          chave e o endereço no servidor.
+          {t("Você está vendo a conta de TESTE do Asaas. Nenhum dinheiro real aparece aqui. Para ver a conta real, troque a chave e o endereço no servidor.")}
         </Aviso>
       ) : null}
 
       {webhooksPausados.length > 0 ? (
         <Aviso tom="erro">
-          {webhooksPausados.length === 1 ? "Um webhook está pausado" : `${webhooksPausados.length} webhooks estão pausados`}{" "}
-          pelo Asaas por falhas seguidas de entrega. Enquanto isso, pagamentos e cancelamentos não chegam ao CRM. Corrija o
-          endereço e reative no painel do Asaas.
+          {webhooksPausados.length === 1 ? t("Um webhook está pausado") : `${webhooksPausados.length} ${t("webhooks estão pausados")}`}{" "}
+          {t("pelo Asaas por falhas seguidas de entrega. Enquanto isso, pagamentos e cancelamentos não chegam ao CRM. Corrija o endereço e reative no painel do Asaas.")}
         </Aviso>
       ) : null}
       {semWebhookAtivo ? (
-        <Aviso tom="erro">Nenhum webhook ativo no Asaas. Pagamentos confirmados não atualizam as assinaturas sozinhos.</Aviso>
+        <Aviso tom="erro">{t("Nenhum webhook ativo no Asaas. Pagamentos confirmados não atualizam as assinaturas sozinhos.")}</Aviso>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -145,14 +149,14 @@ export default async function AsaasPage() {
         <CardHeader>
           <CardTitle className="text-base">Webhooks configurados</CardTitle>
           <CardDescription>
-            Os endereços para onde o Asaas avisa cada pagamento. O token de segurança nunca é exibido.
+            {t("Os endereços para onde o Asaas avisa cada pagamento. O token de segurança nunca é exibido.")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {!webhooks.ok ? (
             <p className="text-sm text-muted-foreground">{motivo(webhooks)}</p>
           ) : webhooks.dados.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Nenhum webhook configurado.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">{t("Nenhum webhook configurado.")}</p>
           ) : (
             <Table>
               <TableHeader>
@@ -191,18 +195,18 @@ export default async function AsaasPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Assinaturas canceladas</CardTitle>
-            <CardDescription>As 20 mais recentes que o Asaas devolve.</CardDescription>
+            <CardDescription>{t("As 20 mais recentes que o Asaas devolve.")}</CardDescription>
           </CardHeader>
           <CardContent>
             {!canceladas.ok ? (
               <p className="text-sm text-muted-foreground">{motivo(canceladas)}</p>
             ) : canceladas.dados.itens.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma assinatura cancelada.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">{t("Nenhuma assinatura cancelada.")}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Código</TableHead>
+                    <TableHead>{t("Código")}</TableHead>
                     <TableHead>Ciclo</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                   </TableRow>
@@ -230,14 +234,14 @@ export default async function AsaasPage() {
             {!ativas.ok ? (
               <p className="text-sm text-muted-foreground">{motivo(ativas)}</p>
             ) : ativas.dados.itens.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma assinatura ativa.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">{t("Nenhuma assinatura ativa.")}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Código</TableHead>
+                    <TableHead>{t("Código")}</TableHead>
                     <TableHead>Ciclo</TableHead>
-                    <TableHead>Próx. venc.</TableHead>
+                    <TableHead>{t("Próx. venc.")}</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -264,23 +268,23 @@ export default async function AsaasPage() {
             <Card key={g.status}>
               <CardHeader>
                 <CardTitle className="text-base">
-                  Cobranças {g.titulo.toLowerCase()}
+                  {t("Cobranças")} {t(g.titulo).toLowerCase()}
                   {r?.ok && r.dados.total !== null ? (
                     <span className="ml-2 text-sm font-normal text-muted-foreground">({r.dados.total})</span>
                   ) : null}
                 </CardTitle>
-                <CardDescription>{g.ajuda}</CardDescription>
+                <CardDescription>{t(g.ajuda)}</CardDescription>
               </CardHeader>
               <CardContent>
                 {!r || !r.ok ? (
                   <p className="text-sm text-muted-foreground">{r ? motivo(r) : "—"}</p>
                 ) : r.dados.itens.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma cobrança.</p>
+                  <p className="py-4 text-center text-sm text-muted-foreground">{t("Nenhuma cobrança.")}</p>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Código</TableHead>
+                        <TableHead>{t("Código")}</TableHead>
                         <TableHead>Forma</TableHead>
                         <TableHead>Venc.</TableHead>
                         <TableHead className="text-right">Valor</TableHead>

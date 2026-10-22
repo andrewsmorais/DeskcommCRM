@@ -15,6 +15,8 @@ import {
   Play,
 } from "lucide-react";
 
+import { useT } from "@/hooks/i18n/useT";
+
 // ─── tipos compartilhados ───────────────────────────────────────────────────
 
 export type NodeData = {
@@ -25,6 +27,7 @@ export type NodeData = {
 // ─── node: Start ───────────────────────────────────────────────────────────
 
 export const StartNode = memo(function StartNode({ data, selected }: NodeProps) {
+  const t = useT();
   return (
     <div
       className={`flex items-center gap-2 rounded-full px-4 py-2 bg-green-500 text-white shadow-md text-sm font-semibold ${
@@ -32,7 +35,7 @@ export const StartNode = memo(function StartNode({ data, selected }: NodeProps) 
       }`}
     >
       <Play className="w-4 h-4 fill-white" />
-      <span>{(data as NodeData).label || "Início"}</span>
+      <span>{(data as NodeData).label || t("Início")}</span>
       <Handle type="source" position={Position.Bottom} className="!bg-white !border-green-600" />
     </div>
   );
@@ -41,6 +44,7 @@ export const StartNode = memo(function StartNode({ data, selected }: NodeProps) 
 // ─── node: Message ─────────────────────────────────────────────────────────
 
 export const MessageNode = memo(function MessageNode({ data, selected }: NodeProps) {
+  const t = useT();
   const d = data as NodeData & { message?: string };
   return (
     <div
@@ -56,7 +60,7 @@ export const MessageNode = memo(function MessageNode({ data, selected }: NodePro
       <div className="px-3 py-2">
         <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
           {d.message || (
-            <span className="italic opacity-60">Clique para editar a mensagem…</span>
+            <span className="italic opacity-60">{t("Clique para editar a mensagem…")}</span>
           )}
         </p>
         {d.label && d.label !== "Mensagem" && (
@@ -71,6 +75,7 @@ export const MessageNode = memo(function MessageNode({ data, selected }: NodePro
 // ─── node: Condition ───────────────────────────────────────────────────────
 
 export const ConditionNode = memo(function ConditionNode({ data, selected }: NodeProps) {
+  const t = useT();
   const d = data as NodeData & { question?: string; options?: string[] };
   const options = d.options ?? ["Sim", "Não"];
 
@@ -83,12 +88,12 @@ export const ConditionNode = memo(function ConditionNode({ data, selected }: Nod
       <Handle type="target" position={Position.Top} className="!bg-amber-500 !border-amber-600" />
       <div className="flex items-center gap-2 px-3 py-2 border-b bg-amber-50 dark:bg-amber-950/30 rounded-t-xl">
         <GitBranch className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Condição</span>
+        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{t("Condição")}</span>
       </div>
       <div className="px-3 py-2">
         <p className="text-xs text-foreground font-medium leading-snug line-clamp-3">
           {d.question || (
-            <span className="italic text-muted-foreground opacity-60">Qual é a pergunta?</span>
+            <span className="italic text-muted-foreground opacity-60">{t("Qual é a pergunta?")}</span>
           )}
         </p>
         <div className="flex flex-wrap gap-1 mt-2">
@@ -121,6 +126,7 @@ export const ConditionNode = memo(function ConditionNode({ data, selected }: Nod
 // ─── node: Transfer ────────────────────────────────────────────────────────
 
 export const TransferNode = memo(function TransferNode({ data, selected }: NodeProps) {
+  const t = useT();
   const d = data as NodeData & { team?: string; message?: string };
   return (
     <div
@@ -136,10 +142,10 @@ export const TransferNode = memo(function TransferNode({ data, selected }: NodeP
       <div className="px-3 py-2">
         {d.team ? (
           <p className="text-xs font-medium">
-            Para: <span className="text-blue-600 dark:text-blue-400">{d.team}</span>
+            {t("Para:")} <span className="text-blue-600 dark:text-blue-400">{d.team}</span>
           </p>
         ) : (
-          <p className="text-xs italic text-muted-foreground opacity-60">Escolher destino…</p>
+          <p className="text-xs italic text-muted-foreground opacity-60">{t("Escolher destino…")}</p>
         )}
         {d.message && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{d.message}</p>
