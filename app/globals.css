@@ -294,9 +294,9 @@
   --color-info: #2563eb;
   --color-info-bg: rgba(59, 130, 246, 0.1);
   --color-info-fg: #1d4ed8;
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 8px 24px -6px rgba(15, 23, 42, 0.08);
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.03), 0 6px 20px -6px rgba(15, 23, 42, 0.07);
+  --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.04), 0 12px 32px -10px rgba(15, 23, 42, 0.10);
   --shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.12);
   --shadow-xl: 0 24px 64px -16px rgba(15, 23, 42, 0.16);
   --background: var(--color-bg);
@@ -440,8 +440,13 @@
   --agenda-pessoa-7: #be9ef6;
   --agenda-pessoa-8: #cc77b1;
   --flow-sidebar-bg: #0d0e15;
-  --flow-nav-active-bg: var(--color-accent-600);
-  --flow-nav-active-text: #ffffff;
+  /* A pílula ativa veste o accent DO TEMA, não um grau fixo: `--color-accent` é o
+     stop que a caminhada de contraste garante ≥3:1 contra as superfícies escuras
+     para qualquer marca, e `--color-accent-fg` é a frente calculada sobre ele. O
+     600 com texto branco dava 2,7:1 contra `--color-surface` (abaixo do piso de
+     componente) e, numa marca amarela, deixava o texto branco ilegível. */
+  --flow-nav-active-bg: var(--color-accent);
+  --flow-nav-active-text: var(--color-accent-fg);
   --flow-nav-active-border: transparent;
   --flow-nav-glow: 0 2px 8px -2px rgba(99, 84, 223, 0.45);
   --flow-card-shadow: 0 0 25px rgba(139, 92, 246, 0.04);

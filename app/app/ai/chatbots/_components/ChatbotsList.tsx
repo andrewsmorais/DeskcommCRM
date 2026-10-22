@@ -143,7 +143,7 @@ export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string 
       {/* Lista vazia */}
       {flows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
-          <GitBranch className="w-12 h-12 text-muted-foreground/40" />
+          <GitBranch aria-hidden="true" className="w-12 h-12 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">{t("Nenhum chatbot ainda")}</p>
           <p className="text-sm text-muted-foreground max-w-xs">
             {t("Crie um fluxo visual de perguntas e respostas — sem custo de IA, sem tokens.")}

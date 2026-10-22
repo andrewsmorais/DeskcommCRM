@@ -86,8 +86,9 @@ describe("Tailwind 4 — a ponte token → utilitário", () => {
     // `<html>` (app/layout.tsx), não pelo `:root` do CSS — por isso não caem na
     // regra acima. A isenção não é um buraco: o teste confere logo abaixo que
     // elas continuam sendo declaradas lá. `--font-jakarta` é a Plus Jakarta Sans
-    // da paleta violeta do ChatAI Online (`localFont`, `app/layout.tsx`).
-    const DE_FORA_DO_CSS = ["--font-atkinson", "--font-mono", "--font-jakarta"];
+    // da paleta violeta do ChatAI Online (`localFont`, `app/layout.tsx`), e
+    // `--font-manrope` é a face que veste o app desde o redesenho (idem).
+    const DE_FORA_DO_CSS = ["--font-atkinson", "--font-mono", "--font-jakarta", "--font-manrope"];
     const layout = fs.readFileSync(path.join(RAIZ, "app/layout.tsx"), "utf8");
     for (const v of DE_FORA_DO_CSS) {
       expect(layout, `${v} deixou de ser declarada pelo next/font`).toContain(`"${v}"`);

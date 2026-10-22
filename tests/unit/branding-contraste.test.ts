@@ -71,9 +71,9 @@ describe("extrairRegua — os pares saem do globals.css, nunca de lista à mão"
   });
 
   it("alcança o anel de foco, que mora em @layer base e uma lista à mão perderia", () => {
-    // ESTE é o par do relato: `accent-600` contra bg dá 5,19 (na Sage, 5,51) e
+    // ESTE é o par do relato: `accent-600` contra bg dá 4,80 (na Sage, 5,51) e
     // passaria qualquer gate ingênuo, mas quem pinta o anel é `accent-500` — e ele
-    // dá 4,05 (na Sage, 3,79). Uma régua que só olhasse o stop da semente deixaria
+    // dá 3,74 (na Sage, 3,79). Uma régua que só olhasse o stop da semente deixaria
     // o anel de uma marca clara pousar em ~2 com o gate verde.
     const foco = REGUA.claro.papeis.find((p) => p.token.includes(":focus-visible"));
     expect(foco, "o anel de foco sumiu da régua").toBeDefined();
@@ -124,16 +124,17 @@ describe("extrairRegua — os pares saem do globals.css, nunca de lista à mão"
 
   it("reproduz as razões medidas por fora do código", () => {
     // Medidas com a fórmula WCAG 2.x escrita do zero (luminância relativa sRGB),
-    // fora deste módulo, sobre os hex do globals.css: #6354df × #f8fafc = 5,1941;
-    // #8b5cf6 × #f8fafc = 4,0471; #8b5cf6 × #f1f5f9 = 3,8652. Copiar o que
+    // fora deste módulo, sobre os hex do globals.css (fundos do redesenho,
+    // `#eef1f6`/`#f6f8fc`): #6354df × #eef1f6 = 4,8000; #8b5cf6 × #eef1f6 = 3,7400;
+    // #8b5cf6 × #f6f8fc = 3,9826. Copiar o que
     // `medirPares` devolve hoje seria tautologia — a conta tem de vir de fora.
     const pares = medirPares(REGUA.claro, REGUA.rampaDoProduto, 0);
     const razao = (papel: string, superficie: string) =>
       pares.find((p) => p.papel === papel && p.superficie === superficie)?.razao ?? 0;
 
-    expect(razao("--color-accent", "--color-bg")).toBeCloseTo(5.19, 2);
-    expect(razao(":focus-visible/outline", "--color-bg")).toBeCloseTo(4.05, 2);
-    expect(razao(":focus-visible/outline", "--color-surface-elevated")).toBeCloseTo(3.87, 2);
+    expect(razao("--color-accent", "--color-bg")).toBeCloseTo(4.8, 2);
+    expect(razao(":focus-visible/outline", "--color-bg")).toBeCloseTo(3.74, 2);
+    expect(razao(":focus-visible/outline", "--color-surface-elevated")).toBeCloseTo(3.98, 2);
   });
 
   it("a paleta do produto inteira, como está no CSS, cabe nos pisos", () => {
