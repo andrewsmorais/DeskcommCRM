@@ -60,7 +60,7 @@ describe("plano persistido da organização", () => {
         organization_id: ORG,
         plan_name: "Impulso",
         plan_slug: "impulso",
-        limits: plano.limits,
+        limits: { ...plano.limits, agentes_ia: 3 },
         status: "active",
         current_period_end: assinatura.current_period_end,
         asaas_subscription_id: assinatura.asaas_subscription_id,
