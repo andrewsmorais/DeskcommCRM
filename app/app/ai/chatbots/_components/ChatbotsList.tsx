@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/hooks/i18n/useT";
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 
 type Flow = {
   id: string;
@@ -52,6 +53,7 @@ const STATUS_COLOR: Record<Flow["status"], string> = {
 export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string }) {
   const router = useRouter();
   const t = useT();
+  const tagDeData = useTagDeIdioma();
   const [flows] = useState(initial);
   const [open, setOpen] = useState(false);
   const [nome, setNome] = useState("");
@@ -197,7 +199,7 @@ export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string 
                   </span>
                   <span>
                     Atualizado{" "}
-                    {new Date(flow.updated_at).toLocaleDateString("pt-BR", {
+                    {new Date(flow.updated_at).toLocaleDateString(tagDeData, {
                       day: "2-digit",
                       month: "short",
                     })}

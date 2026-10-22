@@ -16,16 +16,17 @@ import { requirePlatformAdmin } from "@/lib/auth/requirePlatformAdmin";
 import { loadAuthUser } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { IDIOMA_PADRAO } from "@/lib/i18n/idiomas";
+import { tagDeIdioma } from "@/lib/i18n/datas";
 
 export const metadata = { title: "Asaas — Admin Plataforma" };
 export const dynamic = "force-dynamic";
 
 const reais = (v: number | null) =>
   v === null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const data = (iso: string | null) => {
+const data = (iso: string | null, tag: string) => {
   if (!iso) return "—";
   const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString(tag);
 };
 
 function Aviso({ children, tom = "aviso" }: { children: ReactNode; tom?: "aviso" | "erro" }) {
@@ -250,7 +251,7 @@ export default async function AsaasPage() {
                     <TableRow key={s.id}>
                       <TableCell className="font-mono text-xs">{s.id}</TableCell>
                       <TableCell>{CICLO[s.ciclo ?? ""] ?? s.ciclo ?? "—"}</TableCell>
-                      <TableCell>{data(s.proximoVencimento)}</TableCell>
+                      <TableCell>{data(s.proximoVencimento, tagDeIdioma(idioma))}</TableCell>
                       <TableCell className="text-right tabular-nums">{reais(s.valor)}</TableCell>
                     </TableRow>
                   ))}
@@ -295,7 +296,7 @@ export default async function AsaasPage() {
                         <TableRow key={p.id}>
                           <TableCell className="font-mono text-xs">{p.id}</TableCell>
                           <TableCell>{BILLING[p.forma ?? ""] ?? p.forma ?? "—"}</TableCell>
-                          <TableCell>{data(p.vencimento)}</TableCell>
+                          <TableCell>{data(p.vencimento, tagDeIdioma(idioma))}</TableCell>
                           <TableCell className="text-right tabular-nums">{reais(p.valor)}</TableCell>
                         </TableRow>
                       ))}

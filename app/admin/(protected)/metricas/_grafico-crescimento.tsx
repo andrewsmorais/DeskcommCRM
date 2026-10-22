@@ -3,12 +3,14 @@
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import type { DiaDeCrescimento } from "@/lib/admin/metricas";
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 
 /** Barras por dia: novas empresas, novas assinaturas e cancelamentos. */
 export function GraficoDeCrescimento({ dados }: { dados: DiaDeCrescimento[] }) {
+  const tag = useTagDeIdioma();
   const linhas = dados.map((d) => ({
     ...d,
-    rotulo: new Date(`${d.dia}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+    rotulo: new Date(`${d.dia}T12:00:00`).toLocaleDateString(tag, { day: "2-digit", month: "2-digit" }),
   }));
   return (
     <div className="h-64 w-full" role="img" aria-label="Novas empresas, novas assinaturas e cancelamentos por dia">
