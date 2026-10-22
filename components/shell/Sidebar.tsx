@@ -168,7 +168,7 @@ export function SidebarContent({
             ) : null}
           </div>
         ) : (
-          <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
+          <span className={cn("text-[17px] font-extrabold tracking-[-0.02em]", collapsed && "sr-only")}>{nome}</span>
         )}
         {collapsed && !marcaDoProduto && (
           <span aria-hidden className="text-lg font-bold text-primary">
@@ -246,7 +246,7 @@ export function SidebarContent({
                     type="button"
                     onClick={() => toggleGrupo(group.id)}
                     aria-expanded={aberto}
-                    className="flow-nav-group flex w-full items-center justify-between rounded-lg px-3 py-1 text-[11px] font-semibold tracking-[0.04em] text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+                    className="flow-nav-group flex w-full items-center justify-between rounded-lg px-3 py-1 text-[11px] font-bold tracking-[0.08em] uppercase text-text-subtle transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
                   >
                     {t(group.label)}
                     <CaretDown

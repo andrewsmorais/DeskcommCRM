@@ -38,6 +38,14 @@ const jakarta = localFont({
   variable: "--font-jakarta",
 });
 
+/* A face do produto. A Jakarta continua carregada porque a página /design a
+   usa como comparação, mas quem veste o app é esta. */
+const manrope = localFont({
+  src: [{ path: "./fonts/manrope-200-800-latin.woff2", weight: "200 800", style: "normal" }],
+  display: "swap",
+  variable: "--font-manrope",
+});
+
 const atkinson = localFont({
   src: [
     {
@@ -307,7 +315,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       lang="pt-BR"
       data-theme="light"
       suppressHydrationWarning
-      className={`${jakarta.variable} ${geist.variable} ${atkinson.variable} ${plexMono.variable}`}
+      className={`${jakarta.variable} ${manrope.variable} ${geist.variable} ${atkinson.variable} ${plexMono.variable}`}
     >
       <head>
         {/* Primeiro de tudo: a cor da instalação, antes do CSS e do script de tema. */}
