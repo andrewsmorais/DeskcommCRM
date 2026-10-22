@@ -1005,6 +1005,13 @@ export const AUDIT_ACTIONS = [
   "org.exportacao_baixada",
   /** Um aviso do ciclo de vida da conta (encerramento, 7 dias, último dia) foi enviado. */
   "org.exportacao_aviso_enviado",
+  // Chatbot flows — fluxos automáticos sem custo de IA (migration 0484)
+  /** Um fluxo de chatbot foi criado. */
+  "chatbot_flow.created",
+  /** Um fluxo de chatbot foi atualizado (canvas, nome, status). */
+  "chatbot_flow.updated",
+  /** Um fluxo de chatbot foi excluído. */
+  "chatbot_flow.deleted",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

@@ -672,6 +672,22 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
 
+  // ---- Chatbots — fluxos visuais sem custo de IA ----
+  {
+    // O canvas de chatbot (estilo Umbler Talk): triagem automática antes do
+    // agente de IA. Não gasta token — é árvore de decisão visual.
+    // Fica em "ia" porque é automação de atendimento, mas em seção própria
+    // para não confundir com o agente RAG que consome créditos.
+    href: "/app/ai/chatbots",
+    label: "Chatbots",
+    description: "Fluxos automáticos sem custo de IA — triagem, FAQ e desvios antes do agente.",
+    icon: "FlowArrow",
+    group: "ia",
+    section: "Automatizar sem IA",
+    minRole: "manager",
+    sidebar: true,
+  },
+
   // ---- Canais — por onde as mensagens entram e saem ----
   {
     href: "/app/connections",
