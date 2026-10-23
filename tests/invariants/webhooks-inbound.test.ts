@@ -1344,3 +1344,120 @@ describe("POST /api/v1/webhooks/in/[token] — RD Station (envelope leads[])", (
     expect(lead.currency).toBe("EUR");
   });
 });
+
+// ── Kiwify / Cakto: um negócio por pedido, que anda de etapa (23/10/2026) ──────
+const VENDAS_PIPELINE = "dddddddd-6666-4000-8000-000000000001";
+const VENDAS_NOVO = "dddddddd-6666-4000-8000-000000000002";
+const VENDAS_CARRINHO = "dddddddd-6666-4000-8000-000000000003";
+const VENDAS_AGUARDANDO = "dddddddd-6666-4000-8000-000000000004";
+const VENDAS_PAGO = "dddddddd-6666-4000-8000-000000000005";
+const WHIN_SOURCE_KIWIFY = "dddddddd-6666-4000-8000-000000000006";
+const WHIN_SOURCE_CAKTO = "dddddddd-6666-4000-8000-000000000007";
+const TOKEN_KIWIFY = "wh-in-kiwify-token-1234";
+const TOKEN_CAKTO = "wh-in-cakto-token-1234";
+const SEGREDO_CAKTO = "cakto-segredo-xyz";
+
+describe("POST /api/v1/webhooks/in/[token] — Kiwify e Cakto", () => {
+  beforeAll(() => {
+    sql(`
+      insert into public.crm_pipelines (id, organization_id, name, slug)
+        values ('${VENDAS_PIPELINE}', '${GOV_ORG}', 'Vendas', 'vendas-kiwify') on conflict do nothing;
+      insert into public.crm_stages (id, organization_id, pipeline_id, name, slug, position) values
+        ('${VENDAS_NOVO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Novo', 'novo', 1000),
+        ('${VENDAS_CARRINHO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Carrinho abandonado', 'carrinho', 2000),
+        ('${VENDAS_AGUARDANDO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Aguardando Pagamento', 'aguardando', 3000),
+        ('${VENDAS_PAGO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Pago', 'pago', 4000)
+        on conflict do nothing;
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id)
+        values ('${WHIN_SOURCE_KIWIFY}', '${GOV_ORG}', 'Kiwify', '${TOKEN_KIWIFY}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}')
+        on conflict do nothing;
+      select set_config('app.nuvemshop_oauth_key', 'test-guc-key-0123456789abcdef0123456789abcdef', false);
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id, secret_encrypted)
+        values ('${WHIN_SOURCE_CAKTO}', '${GOV_ORG}', 'Cakto', '${TOKEN_CAKTO}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}', public.fn_encrypt_oauth('${SEGREDO_CAKTO}'))
+        on conflict do nothing;
+    `);
+  });
+
+  const pedido = (evento: string, status: string) => ({
+    order_id: "kw-ord-777",
+    order_status: status,
+    webhook_event_type: evento,
+    checkout_link: "https://pay.kiwify.com.br/bolo",
+    Product: { product_name: "Curso de Bolos" },
+    Customer: { full_name: "Ana Kiwify", email: "ana.kiwify@exemplo.com", mobile: "11977770001" },
+  });
+  const lead = (id: string) => rows(`select * from public.crm_leads where id = '${id}'`)[0]!;
+  let leadId = "";
+
+  it("carrinho abandonado: negócio nasce na etapa 'Carrinho abandonado' com produto e link", async () => {
+    const res = await POST(
+      jsonReq(TOKEN_KIWIFY, {
+        status: "abandoned",
+        checkout_link: "https://pay.kiwify.com.br/bolo",
+        product_name: "Curso de Bolos",
+        name: "Ana Kiwify",
+        phone: "11977770001",
+        email: "ana.kiwify@exemplo.com",
+      }),
+      reqCtx(TOKEN_KIWIFY),
+    );
+    expect(res.status).toBe(200);
+    leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+    const l = lead(leadId);
+    expect(l.stage_id).toBe(VENDAS_CARRINHO);
+    expect(l.title).toBe("Ana Kiwify · Curso de Bolos");
+    expect(l.custom_fields).toMatchObject({
+      plataforma: "kiwify",
+      evento_da_venda: "carrinho_abandonado",
+      produto: "Curso de Bolos",
+      link_checkout: "https://pay.kiwify.com.br/bolo",
+    });
+  });
+
+  it("Pix gerado do mesmo comprador e produto: herda o negócio do carrinho e vai para 'Aguardando pagamento'", async () => {
+    const res = await POST(jsonReq(TOKEN_KIWIFY, pedido("pix_created", "waiting_payment")), reqCtx(TOKEN_KIWIFY));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { lead_id: string } }).data.lead_id).toBe(leadId);
+    const l = lead(leadId);
+    expect(l.stage_id).toBe(VENDAS_AGUARDANDO);
+    expect(l.external_id).toBe("kiwify:kw-ord-777");
+    expect((l.custom_fields as Record<string, unknown>).evento_da_venda).toBe("aguardando_pagamento");
+  });
+
+  it("compra aprovada: o MESMO negócio vai para 'Pago' e emite lead.stage_changed (o gatilho do chatbot)", async () => {
+    const res = await POST(jsonReq(TOKEN_KIWIFY, pedido("order_approved", "paid")), reqCtx(TOKEN_KIWIFY));
+    expect(res.status).toBe(200);
+    expect(lead(leadId).stage_id).toBe(VENDAS_PAGO);
+    expect(rows(`select id from public.crm_leads where organization_id = '${GOV_ORG}' and title = 'Ana Kiwify · Curso de Bolos'`)).toHaveLength(1);
+    const mudancas = rows(
+      `select payload from public.event_log where event_type = 'lead.stage_changed' and entity_id = '${leadId}'`,
+    );
+    expect(mudancas.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("Cakto com segredo: secret errado no corpo é 401; o certo entra, e o segredo não fica no log", async () => {
+    const corpo = (secret: string) => ({
+      secret,
+      event: "purchase_approved",
+      data: {
+        id: "ck-ord-1",
+        customer: { name: "Bruno Cakto", phone: "21966660002", email: "bruno.cakto@exemplo.com" },
+        product: { name: "Mentoria" },
+        amount: 197,
+      },
+    });
+    expect((await POST(jsonReq(TOKEN_CAKTO, corpo("errado")), reqCtx(TOKEN_CAKTO))).status).toBe(401);
+    const res = await POST(jsonReq(TOKEN_CAKTO, corpo(SEGREDO_CAKTO)), reqCtx(TOKEN_CAKTO));
+    expect(res.status).toBe(200);
+    const id = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+    const l = lead(id);
+    expect(l.stage_id).toBe(VENDAS_PAGO);
+    expect(Number(l.value_cents)).toBe(19700);
+    const log = rows(
+      `select raw_body from public.webhook_events_log where webhook_path_token = '${TOKEN_CAKTO}' order by received_at desc limit 1`,
+    )[0]!;
+    expect(String(log.raw_body)).not.toContain(SEGREDO_CAKTO);
+  });
+});

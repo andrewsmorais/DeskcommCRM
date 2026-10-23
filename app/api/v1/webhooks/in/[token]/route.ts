@@ -43,6 +43,13 @@ import { ApiError } from "@/lib/api/types";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
 import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import {
+  avisoDaPlataformaAutentico,
+  etapaDoEvento,
+  mapearAvisoDeVenda,
+  type AvisoDeVenda,
+} from "@/lib/webhooks/plataformas-de-venda";
+import { atualizarNegocioDaVenda, etapasDoFunil } from "@/lib/webhooks/negocio-da-venda";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -153,8 +160,16 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     sourceSecret = await decryptWebhookSecret(admin, source.secret_encrypted as unknown as string);
     if (sourceSecret === null) hmacSkipped = true;
   }
+  // Kiwify e Cakto se provam do jeito delas (segredo no corpo / HMAC na URL),
+  // com o MESMO segredo cadastrado na fonte.
   const validSignature = sourceSecret
-    ? verifyInboundSignature(rawBody, sigHeader, sourceSecret)
+    ? verifyInboundSignature(rawBody, sigHeader, sourceSecret) ||
+      avisoDaPlataformaAutentico(
+        rawBody,
+        payload,
+        req.nextUrl.searchParams.get("signature"),
+        sourceSecret,
+      )
     : null;
   if (sourceSecret && !validSignature) {
     await audit({
@@ -185,8 +200,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     webhook_path_token: token,
     http_method: "POST",
     headers: headersJson,
-    raw_body: rawBody,
-    payload_parsed: payload,
+    // O `secret` que a Cakto manda no corpo é o segredo da fonte: não fica no log.
+    raw_body: typeof payload.secret === "string" ? JSON.stringify({ ...payload, secret: "[removido]" }) : rawBody,
+    payload_parsed: typeof payload.secret === "string" ? { ...payload, secret: "[removido]" } : payload,
     signature_header: sigHeader ?? null,
     // hmacSkipped (decrypt indisponível) conta como "não validado mas aceito",
     // igual ao webhook WAHA — o feed da UI não pinta de vermelho.
@@ -212,6 +228,11 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const rdStationMapped: RdStationMapped | null =
     respondiMapped === null && isRdStationPayload(payload) ? mapRdStationPayload(payload) : null;
 
+  // Kiwify / Cakto: comprador aninhado e um EVENTO de venda. O mesmo pedido é
+  // um negócio só, que anda de etapa a cada aviso (lib/webhooks/plataformas-de-venda.ts).
+  const vendaMapped: AvisoDeVenda | null =
+    respondiMapped === null && rdStationMapped === null ? mapearAvisoDeVenda(payload) : null;
+
   // Idempotência (spec §5): `external_id` é campo reservado do envio — quem
   // integra via sistema (Zapier/n8n/loja) manda o ID único do disparo e o
   // reenvio automático (retry por timeout) NUNCA duplica o lead. O índice
@@ -236,6 +257,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         // tipo de coisa que só aparece quando alguém manda um corpo fabricado.
         (respondiMapped?.externalId?.slice(0, 255) ??
         rdStationMapped?.externalId?.slice(0, 255) ??
+        vendaMapped?.externalId?.slice(0, 255) ??
         null);
 
   const respondWithLead = (leadId: string): NextResponse => {
@@ -283,6 +305,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const mapped =
     respondiMapped ??
     rdStationMapped ??
+    vendaMapped ??
     mapInboundPayload(externalId ? payloadForMapping : payload, fieldMap);
   if (!mapped.phone) {
     const rawPhone = findRawPhoneIfUnnormalized(payload, fieldMap);
@@ -298,7 +321,62 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     utm: mapped.source_metadata,
   };
 
-  const deduped = await findLeadByExternalId();
+  let deduped = await findLeadByExternalId();
+
+  // A compra herda o negócio do carrinho abandonado da mesma pessoa e produto:
+  // a chave do negócio passa a ser a do pedido, e daqui em diante é ele que anda.
+  if (!deduped && vendaMapped?.chaveDoCarrinho && externalId) {
+    const { data: carrinho } = await admin
+      .from("crm_leads")
+      .select("id, contact_id")
+      .eq("organization_id", source.organization_id)
+      .eq("source", "webhook")
+      .eq("external_id", vendaMapped.chaveDoCarrinho)
+      .maybeSingle();
+    if (carrinho) {
+      await admin
+        .from("crm_leads")
+        .update({ external_id: externalId })
+        .eq("organization_id", source.organization_id)
+        .eq("id", carrinho.id);
+      deduped = { id: carrinho.id as string, contactId: (carrinho.contact_id as string | null) ?? null };
+    }
+  }
+
+  if (deduped && vendaMapped) {
+    // Aviso novo de um pedido que já tem negócio: o negócio anda de etapa
+    // (e a automação de "lead mudou de etapa" manda o chatbot).
+    const { movido } = await atualizarNegocioDaVenda(
+      admin,
+      { organizationId: source.organization_id, webhookSourceId: source.id, requestId },
+      deduped.id,
+      vendaMapped,
+      await etapasDoFunil(admin, source.organization_id, source.default_pipeline_id as string | null),
+    );
+    await registrarCaptacao(admin, {
+      ...fonteDaCaptacao,
+      ...origemDaCaptacao,
+      ...dadosDaCaptacao,
+      leadId: deduped.id,
+      contactId: deduped.contactId,
+      outcome: "duplicado",
+    });
+    void audit({
+      action: "webhook.lead_received",
+      organizationId: source.organization_id,
+      resourceType: "crm_lead",
+      resourceId: deduped.id,
+      requestId,
+      metadata: {
+        webhook_source_id: source.id,
+        plataforma: vendaMapped.plataforma,
+        evento: vendaMapped.evento,
+        movido,
+      },
+    });
+    return respondWithLead(deduped.id);
+  }
+
   if (deduped) {
     // Mesmo envio repetido: 200 com o lead existente, nada é recriado — a
     // ferramenta que reenviou recebe sucesso e para de tentar.
@@ -530,10 +608,20 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     external_id?: string;
   } = {
     pipeline_id: source.default_pipeline_id,
-    stage_id: source.default_stage_id,
+    // Pedido novo da Kiwify/Cakto nasce na etapa do evento ("Pago",
+    // "Carrinho abandonado"), quando o funil tem uma etapa com esse nome.
+    stage_id: vendaMapped
+      ? (etapaDoEvento(
+          vendaMapped.evento,
+          await etapasDoFunil(admin, source.organization_id, source.default_pipeline_id as string | null),
+        ) ?? source.default_stage_id)
+      : source.default_stage_id,
     title: respondiMapped
       ? respondiLeadTitle(respondiMapped)
-      : (mapped.name ?? mapped.phone ?? mapped.email ?? "Lead sem nome"),
+      : vendaMapped?.custom_fields.produto
+        ? `${mapped.name ?? mapped.phone ?? mapped.email ?? "Comprador"} · ${vendaMapped.custom_fields.produto}`
+        : (mapped.name ?? mapped.phone ?? mapped.email ?? "Lead sem nome"),
+    ...(vendaMapped?.valorEmCentavos != null ? { value_cents: vendaMapped.valorEmCentavos } : {}),
     contact_id: contactId,
     tags: [],
     source: "webhook",
