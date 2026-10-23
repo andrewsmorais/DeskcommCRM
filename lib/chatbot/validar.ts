@@ -50,9 +50,38 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (lerConfig("mensagem_contem", no.data).palavras.length === 0)
           problemas.push(`escreva ao menos uma palavra no passo "${nome}".`);
         break;
-      case "transferir_atendente":
-        if (!lerConfig("transferir_atendente", no.data).user_id)
-          problemas.push(`escolha o atendente do passo "${nome}".`);
+      case "transferir_atendente": {
+        const c = lerConfig("transferir_atendente", no.data);
+        if (!c.user_id) problemas.push(`escolha o atendente do passo "${nome}".`);
+        if (c.espera_minutos > 0 && !c.espera_mensagem)
+          problemas.push(`escreva a mensagem de espera do passo "${nome}".`);
+        break;
+      }
+      case "transferir_equipe": {
+        const c = lerConfig("transferir_equipe", no.data);
+        if (c.espera_minutos > 0 && !c.espera_mensagem)
+          problemas.push(`escreva a mensagem de espera do passo "${nome}".`);
+        break;
+      }
+      case "enviar_midia":
+        if (!lerConfig("enviar_midia", no.data).storage_path)
+          problemas.push(`escolha o arquivo do passo "${nome}".`);
+        break;
+      case "agendar_horario": {
+        const c = lerConfig("agendar_horario", no.data);
+        if (!c.event_type_id) problemas.push(`escolha o tipo de atendimento do passo "${nome}".`);
+        if (!c.pergunta) problemas.push(`escreva a pergunta do passo "${nome}".`);
+        break;
+      }
+      case "negocio_funil": {
+        const c = lerConfig("negocio_funil", no.data);
+        if (!c.pipeline_id || !c.stage_id)
+          problemas.push(`escolha o funil e a etapa do passo "${nome}".`);
+        break;
+      }
+      case "acionar_fluxo":
+        if (!lerConfig("acionar_fluxo", no.data).flow_id)
+          problemas.push(`escolha o fluxo do passo "${nome}".`);
         break;
       case "pedir_avaliacao":
         if (!lerConfig("pedir_avaliacao", no.data).pergunta)

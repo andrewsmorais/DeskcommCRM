@@ -5,8 +5,9 @@
  * vêm do catálogo (`lib/chatbot/passos.ts`). Texto é aplicado ao sair do campo
  * (um desfazer por edição, não por letra); escolhas são aplicadas na hora.
  */
-import { useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { FileText, Loader2, Plus, Trash2, Upload, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,12 @@ export type OpcoesDoPainel = {
   atendentes: { id: string; nome: string }[];
   /** Follow-ups publicados (os roteiros de atendimento ficam de fora). */
   followups: { id: string; nome: string }[];
+  /** O fluxo aberto no editor (para subir arquivo e para "Acionar outro fluxo"). */
+  fluxoAtual: string;
+  fluxos: { id: string; nome: string; ligado: boolean }[];
+  /** Tipos de atendimento da Agenda. */
+  tiposDeAtendimento: { id: string; nome: string; ativo: boolean }[];
+  funis: { id: string; nome: string; etapas: { id: string; nome: string }[] }[];
 };
 
 type Props = {
@@ -329,7 +336,7 @@ function Campos({
         <>
           <p className="text-xs text-muted-foreground">
             {t(
-              "A conversa vai para a fila de atendentes, e a Distribuição de atendimento escolhe quem pega.",
+              "A conversa vai para a fila de atendentes e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.",
             )}
           </p>
           <Texto
@@ -339,6 +346,7 @@ function Campos({
             linhas={3}
             onCommit={(v) => aplicar({ mensagem: v })}
           />
+          <EsperaDoAtendente dados={dados} tipo="transferir_equipe" aplicar={aplicar} />
         </>
       );
     }
@@ -369,6 +377,7 @@ function Campos({
             linhas={3}
             onCommit={(v) => aplicar({ mensagem: v })}
           />
+          <EsperaDoAtendente dados={dados} tipo="transferir_atendente" aplicar={aplicar} />
         </>
       );
     }
@@ -599,6 +608,52 @@ function Campos({
             </p>
           </div>
           <SeResponder valor={c.se_responder} aplicar={aplicar} />
+        </>
+      );
+    }
+    case "enviar_midia":
+      return <EnviarMidia dados={dados} fluxoId={opcoes.fluxoAtual} aplicar={aplicar} />;
+    case "agendar_horario":
+      return <AgendarHorario dados={dados} opcoes={opcoes} aplicar={aplicar} />;
+    case "negocio_funil":
+      return <NegocioNoFunil dados={dados} opcoes={opcoes} aplicar={aplicar} />;
+    case "acionar_fluxo": {
+      const c = lerConfig("acionar_fluxo", dados);
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="acionar-fluxo">{t("Fluxo")}</Label>
+            <select
+              id="acionar-fluxo"
+              className={SELECT}
+              value={c.flow_id ?? ""}
+              onChange={(e) => {
+                const f = opcoes.fluxos.find((x) => x.id === e.target.value);
+                aplicar({ flow_id: f?.id ?? null, nome_do_fluxo: f?.nome ?? "" });
+              }}
+            >
+              <option value="">{t("Escolha um fluxo")}</option>
+              {opcoes.fluxos.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.id === opcoes.fluxoAtual
+                    ? `${f.nome} (${t("este fluxo — volta ao início")})`
+                    : f.ligado
+                      ? f.nome
+                      : `${f.nome} (${t("desligado")})`}
+                </option>
+              ))}
+            </select>
+          </div>
+          {c.flow_id && opcoes.fluxos.some((f) => f.id === c.flow_id && !f.ligado) ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {t("Esse fluxo está desligado: ligue-o, senão o contato fica sem resposta neste ponto.")}
+            </p>
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'Este fluxo termina aqui e o escolhido começa do início, com as respostas já guardadas ({{nome}}…). Para um submenu, crie o outro fluxo com "Iniciar por automação": ele pode ficar ligado junto com este. Escolha este mesmo fluxo para voltar ao menu.',
+            )}
+          </p>
         </>
       );
     }
@@ -1281,6 +1336,442 @@ function WebhookDoChatbot({
       <p className="text-xs text-muted-foreground">
         {t(
           'No POST vão o id da conversa, nome, telefone e e-mail do contato, a última mensagem e as respostas guardadas no fluxo. Resposta 2xx segue por "Deu certo"; erro, demora de mais de 8 segundos ou endereço recusado seguem por "Falhou". Sem ligação em "Falhou", o fluxo termina ali.',
+        )}
+      </p>
+    </>
+  );
+}
+
+function EsperaDoAtendente({
+  dados,
+  tipo,
+  aplicar,
+}: {
+  dados: NodeData;
+  tipo: "transferir_equipe" | "transferir_atendente";
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig(tipo, dados);
+  const ligada = c.espera_minutos > 0;
+  const [minutos, setMinutos] = useState(String(c.espera_minutos || 5));
+  const gravarMinutos = () => {
+    const n = Math.min(240, Math.max(1, Math.round(Number(minutos) || 5)));
+    setMinutos(String(n));
+    if (n !== c.espera_minutos) aplicar({ espera_minutos: n });
+  };
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-3">
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={ligada}
+          onChange={(e) =>
+            aplicar(
+              e.target.checked
+                ? {
+                    espera_minutos: Number(minutos) || 5,
+                    espera_mensagem:
+                      c.espera_mensagem ||
+                      t("Já já alguém da equipe te responde. Obrigado pela paciência!"),
+                  }
+                : { espera_minutos: 0 },
+            )
+          }
+        />
+        <span>
+          <span className="font-medium">{t("Mensagem de espera")}</span>
+          <span className="block text-xs text-muted-foreground">
+            {t("Se ninguém da equipe responder a tempo, o chatbot avisa o contato que a conversa não foi esquecida.")}
+          </span>
+        </span>
+      </label>
+      {ligada ? (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${tipo}-espera-min`}>{t("Mandar depois de (minutos)")}</Label>
+            <Input
+              id={`${tipo}-espera-min`}
+              type="number"
+              min={1}
+              max={240}
+              className="w-24"
+              value={minutos}
+              onChange={(e) => setMinutos(e.target.value)}
+              onBlur={gravarMinutos}
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${tipo}-espera-vezes`}>{t("Quantas vezes, no máximo")}</Label>
+            <select
+              id={`${tipo}-espera-vezes`}
+              className={SELECT}
+              value={c.espera_vezes}
+              onChange={(e) => aplicar({ espera_vezes: Number(e.target.value) })}
+            >
+              {[1, 2, 3].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Texto
+            id={`${tipo}-espera-msg`}
+            rotulo={t("Mensagem")}
+            valor={c.espera_mensagem}
+            linhas={3}
+            onCommit={(v) => aplicar({ espera_mensagem: v })}
+            ajuda={t(
+              "Para assim que alguém da equipe responder na conversa (pelo CRM ou pelo celular), ou quando a conversa for fechada.",
+            )}
+          />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+const ROTULO_DO_TIPO_DE_MIDIA: Record<string, string> = {
+  image: "Imagem",
+  video: "Vídeo",
+  audio: "Áudio",
+  document: "Documento",
+};
+
+function EnviarMidia({
+  dados,
+  fluxoId,
+  aplicar,
+}: {
+  dados: NodeData;
+  fluxoId: string;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("enviar_midia", dados);
+  const [subindo, setSubindo] = useState(false);
+  const [previa, setPrevia] = useState<string | null>(null);
+  const entrada = useRef<HTMLInputElement>(null);
+
+  // Link curto para mostrar a imagem/vídeo já escolhido (o bucket é privado).
+  useEffect(() => {
+    let vivo = true;
+    if (!c.storage_path || (c.tipo !== "image" && c.tipo !== "video")) return;
+    void fetch(`/api/v1/chatbot-flows/${fluxoId}/media?path=${encodeURIComponent(c.storage_path)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((corpo) => {
+        if (vivo) setPrevia(corpo?.data?.url ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, [c.storage_path, c.tipo, fluxoId]);
+
+  async function subir(arquivo: File) {
+    setSubindo(true);
+    try {
+      const form = new FormData();
+      form.append("file", arquivo);
+      const res = await fetch(`/api/v1/chatbot-flows/${fluxoId}/media`, { method: "POST", body: form });
+      const corpo = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(corpo?.error?.message ?? t("Não foi possível subir o arquivo."));
+        return;
+      }
+      setPrevia(null);
+      aplicar({
+        storage_path: corpo.data.storage_path,
+        tipo: corpo.data.tipo,
+        mime: corpo.data.mime,
+        nome_arquivo: corpo.data.nome_arquivo,
+      });
+    } finally {
+      setSubindo(false);
+      if (entrada.current) entrada.current.value = "";
+    }
+  }
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label>{t("Arquivo")}</Label>
+        {c.storage_path ? (
+          <div className="space-y-2 rounded-lg border border-border p-2">
+            {previa && c.tipo === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element -- link assinado e curto; não passa pelo otimizador
+              <img src={previa} alt={c.nome_arquivo} className="max-h-40 w-full rounded object-contain" />
+            ) : previa && c.tipo === "video" ? (
+              <video src={previa} controls className="max-h-40 w-full rounded" />
+            ) : null}
+            <p className="flex items-center gap-1.5 text-xs">
+              <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate">{c.nome_arquivo || t("Arquivo")}</span>
+              <span className="ml-auto shrink-0 text-muted-foreground">
+                {t(ROTULO_DO_TIPO_DE_MIDIA[c.tipo ?? ""] ?? "Arquivo")}
+              </span>
+            </p>
+          </div>
+        ) : null}
+        <input
+          ref={entrada}
+          type="file"
+          className="hidden"
+          accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void subir(f);
+          }}
+          data-testid="chatbot-midia-arquivo"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={subindo}
+          onClick={() => entrada.current?.click()}
+        >
+          {subindo ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+          )}
+          {c.storage_path ? t("Trocar arquivo") : t("Escolher arquivo")}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {t("Foto, vídeo, áudio ou documento (PDF, Word, Excel), até 16 MB.")}
+        </p>
+      </div>
+      {c.tipo !== "audio" ? (
+        <Texto
+          id="midia-legenda"
+          rotulo={t("Legenda (opcional)")}
+          valor={c.legenda}
+          linhas={3}
+          onCommit={(v) => aplicar({ legenda: v })}
+          ajuda={t('Vai junto com o arquivo. Use {{nome}} para incluir o que o contato respondeu em "Pedir para digitar".')}
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {t("Áudio sai sem legenda no WhatsApp. Se precisar de texto, use um \"Enviar mensagem\" antes.")}
+        </p>
+      )}
+    </>
+  );
+}
+
+function AgendarHorario({
+  dados,
+  opcoes,
+  aplicar,
+}: {
+  dados: NodeData;
+  opcoes: OpcoesDoPainel;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("agendar_horario", dados);
+  const tipo = opcoes.tiposDeAtendimento.find((x) => x.id === c.event_type_id);
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="agenda-tipo">{t("Tipo de atendimento")}</Label>
+        <select
+          id="agenda-tipo"
+          className={SELECT}
+          value={c.event_type_id ?? ""}
+          onChange={(e) => aplicar({ event_type_id: e.target.value || null })}
+        >
+          <option value="">{t("Escolha um tipo de atendimento")}</option>
+          {opcoes.tiposDeAtendimento.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.ativo ? x.nome : `${x.nome} (${t("desativado")})`}
+            </option>
+          ))}
+        </select>
+        {opcoes.tiposDeAtendimento.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {t("Nenhum tipo de atendimento ainda. Crie um em Agenda › Tipos de atendimento.")}
+          </p>
+        ) : tipo && !tipo.ativo ? (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            {t('Esse tipo está desativado: o chatbot vai seguir por "Sem horário livre".')}
+          </p>
+        ) : null}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="agenda-dono">{t("Agenda de quem")}</Label>
+        <select
+          id="agenda-dono"
+          className={SELECT}
+          value={c.owner_user_id ?? ""}
+          onChange={(e) => aplicar({ owner_user_id: e.target.value || null })}
+        >
+          <option value="">{t("O responsável padrão do atendimento")}</option>
+          {opcoes.atendentes.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.nome}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="agenda-qtd">{t("Horários oferecidos")}</Label>
+          <select
+            id="agenda-qtd"
+            className={SELECT}
+            value={c.quantidade}
+            onChange={(e) => aplicar({ quantidade: Number(e.target.value) })}
+          >
+            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="agenda-dias">{t("Nos próximos (dias)")}</Label>
+          <select
+            id="agenda-dias"
+            className={SELECT}
+            value={c.dias_a_frente}
+            onChange={(e) => aplicar({ dias_a_frente: Number(e.target.value) })}
+          >
+            {[1, 2, 3, 5, 7, 10, 14, 21, 30].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <Texto
+        id="agenda-pergunta"
+        rotulo={t("Pergunta")}
+        valor={c.pergunta}
+        linhas={2}
+        onCommit={(v) => aplicar({ pergunta: v })}
+        ajuda={t("Os horários vão numerados embaixo da pergunta, e o contato responde com o número.")}
+      />
+      <Texto
+        id="agenda-confirmacao"
+        rotulo={t("Mensagem quando marcar")}
+        valor={c.confirmacao}
+        linhas={2}
+        onCommit={(v) => aplicar({ confirmacao: v })}
+        ajuda={t("{{horario}} vira o horário escolhido, por exemplo segunda-feira 27/10 às 14:00.")}
+      />
+      <Texto
+        id="agenda-pendente"
+        rotulo={t("Mensagem quando a equipe precisa aprovar")}
+        valor={c.confirmacao_pendente}
+        linhas={2}
+        onCommit={(v) => aplicar({ confirmacao_pendente: v })}
+        ajuda={t("Para tipos de atendimento que pedem confirmação da equipe: o horário fica reservado, mas ainda não confirmado.")}
+      />
+      <Texto
+        id="agenda-invalida"
+        rotulo={t("Se a resposta não for um dos horários")}
+        valor={c.mensagem_invalida}
+        linhas={2}
+        onCommit={(v) => aplicar({ mensagem_invalida: v })}
+      />
+      <div className="space-y-1.5">
+        <Label htmlFor="agenda-tentativas">{t('Tentativas antes de seguir por "Não escolheu"')}</Label>
+        <select
+          id="agenda-tentativas"
+          className={SELECT}
+          value={c.tentativas}
+          onChange={(e) => aplicar({ tentativas: Number(e.target.value) })}
+        >
+          {[1, 2, 3, 4, 5].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'Os horários respeitam a jornada, as folgas, o que já está marcado e a agenda do Google de quem atende — os mesmos que a tela da Agenda mostra. O compromisso aparece na Agenda e no negócio do contato. Sem horário livre (ou agenda não configurada), segue por "Sem horário livre".',
+        )}
+      </p>
+    </>
+  );
+}
+
+function NegocioNoFunil({
+  dados,
+  opcoes,
+  aplicar,
+}: {
+  dados: NodeData;
+  opcoes: OpcoesDoPainel;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("negocio_funil", dados);
+  const funil = opcoes.funis.find((f) => f.id === c.pipeline_id);
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="funil-qual">{t("Funil")}</Label>
+        <select
+          id="funil-qual"
+          className={SELECT}
+          value={c.pipeline_id ?? ""}
+          onChange={(e) =>
+            aplicar({ pipeline_id: e.target.value || null, stage_id: null, nome_do_destino: "" })
+          }
+        >
+          <option value="">{t("Escolha um funil")}</option>
+          {opcoes.funis.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.nome}
+            </option>
+          ))}
+        </select>
+      </div>
+      {funil ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="funil-etapa">{t("Etapa")}</Label>
+          <select
+            id="funil-etapa"
+            className={SELECT}
+            value={c.stage_id ?? ""}
+            onChange={(e) => {
+              const etapa = funil.etapas.find((x) => x.id === e.target.value);
+              aplicar({
+                stage_id: etapa?.id ?? null,
+                nome_do_destino: etapa ? `${funil.nome} › ${etapa.nome}` : "",
+              });
+            }}
+          >
+            <option value="">{t("Escolha a etapa")}</option>
+            {funil.etapas.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <Texto
+        id="funil-titulo"
+        rotulo={t("Título do negócio novo (opcional)")}
+        valor={c.titulo}
+        placeholder={t("O nome do contato")}
+        onCommit={(v) => aplicar({ titulo: v })}
+        ajuda={t('Aceita {{nome}} com o que o contato respondeu, por exemplo "Orçamento — {{servico}}".')}
+      />
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "Se o contato já tem um negócio aberto neste funil, ele só muda de etapa. Se o negócio aberto está em outro funil, ele é levado para cá. Se não tem nenhum, um negócio novo nasce nesta etapa.",
         )}
       </p>
     </>

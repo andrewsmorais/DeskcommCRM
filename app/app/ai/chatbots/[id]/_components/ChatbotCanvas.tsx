@@ -25,7 +25,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Pencil, Plus, Redo2, Save, Search, Undo2, X } from "lucide-react";
+import { ArrowLeft, FlaskConical, Loader2, Pencil, Plus, Redo2, Save, Search, Undo2, X } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
 import { randomId } from "@/lib/random-id";
@@ -43,6 +43,7 @@ import {
 import { PassoNode, type NodeData } from "./node-types";
 import { IconeDoPasso, ICONE_DO_GRUPO } from "./icones";
 import { NodePanel, type OpcoesDoPainel } from "./NodePanel";
+import { TesteDoFluxo } from "./TesteDoFluxo";
 
 type Flow = { id: string; name: string; is_active: boolean; grafo: Grafo };
 
@@ -131,6 +132,8 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
   const [editandoNome, setEditandoNome] = useState(false);
   const [passado, setPassado] = useState<Foto[]>([]);
   const [futuro, setFuturo] = useState<Foto[]>([]);
+  const [testando, setTestando] = useState(false);
+  const [passoDoTeste, setPassoDoTeste] = useState<string | null>(null);
   const { screenToFlowPosition } = useReactFlow();
   const quadro = useRef<HTMLDivElement>(null);
 
@@ -316,7 +319,18 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
     );
   }, [busca, t]);
 
-  const noSelecionado = nodes.find((n) => n.id === selecionado) ?? null;
+  const noSelecionado = testando ? null : (nodes.find((n) => n.id === selecionado) ?? null);
+
+  // O passo em que o teste parou ganha destaque no quadro.
+  const nodesNaTela = useMemo(
+    () =>
+      testando && passoDoTeste
+        ? nodes.map((n) =>
+            n.id === passoDoTeste ? { ...n, className: "rounded-xl ring-4 ring-emerald-500/70" } : n,
+          )
+        : nodes,
+    [nodes, testando, passoDoTeste],
+  );
 
   const botaoRedondo =
     "flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:opacity-40";
@@ -368,6 +382,27 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
           data-testid="chatbot-salvar"
         >
           {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (testando) {
+              setTestando(false);
+              setPassoDoTeste(null);
+              return;
+            }
+            setSelecionado(null);
+            setTestando(true);
+          }}
+          className={`ml-1 flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors ${
+            testando
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
+          }`}
+          data-testid="chatbot-testar"
+        >
+          <FlaskConical className="h-4 w-4" />
+          {t("Testar")}
         </button>
         <span className="ml-2 flex items-center gap-1.5 text-sm" data-testid="chatbot-estado">
           {sujo ? (
@@ -509,7 +544,7 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
           }}
         >
           <ReactFlow
-            nodes={nodes}
+            nodes={nodesNaTela}
             edges={edges}
             nodeTypes={NODE_TYPES}
             onNodesChange={onNodesChange}
@@ -546,6 +581,21 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
             <MiniMap position="bottom-right" pannable zoomable className="!bg-surface" />
           </ReactFlow>
         </div>
+
+        {/* ── teste do fluxo ───────────────────────────────── */}
+        {testando ? (
+          <aside className="w-96 shrink-0 border-l border-border bg-surface">
+            <TesteDoFluxo
+              fotoDoDesenho={() => paraGrafo(nodes, edges)}
+              opcoes={opcoes}
+              onFechar={() => {
+                setTestando(false);
+                setPassoDoTeste(null);
+              }}
+              onPasso={setPassoDoTeste}
+            />
+          </aside>
+        ) : null}
 
         {/* ── configuração do passo selecionado ─────────────── */}
         {noSelecionado ? (

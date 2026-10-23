@@ -13,7 +13,14 @@
  *     `waiting_timer`, com `retomar_em`); quem acorda é `retomarFluxo`;
  *   - "WebHook" PARA com `pendente`: o executor faz a chamada (o motor não
  *     faz rede) e devolve a resposta em `continuarAposWebhook`;
- *   - transferir e finalizar encerram a participação do chatbot;
+ *   - "Agendar horário" também para com `pendente` duas vezes: para o executor
+ *     buscar os horários livres (`continuarComHorarios`) e para marcar o que o
+ *     contato escolheu (`continuarAposMarcar`);
+ *   - "Acionar outro fluxo" encerra este fluxo com `pendente`: o executor lê o
+ *     outro desenho e o começa com as mesmas respostas;
+ *   - transferir e finalizar encerram a participação do chatbot — a não ser a
+ *     mensagem de espera da transferência, que o relógio manda enquanto
+ *     ninguém da equipe responde (`proximaMensagemDeEspera`);
  *   - no máximo `LIMITE_DE_PASSOS` passos por mensagem: um desenho em círculo
  *     sem pergunta no meio não pode prender o worker nem inundar o contato.
  */
@@ -21,6 +28,7 @@ import {
   lerConfig,
   type CampoDoContato,
   type Grafo,
+  type TipoDeMidia,
   type TipoDePasso,
   ehTipoDePasso,
 } from "./passos";
@@ -56,6 +64,8 @@ export type SessaoDoChatbot = {
 
 export type Efeito =
   | { tipo: "enviar"; texto: string }
+  | { tipo: "midia"; storage_path: string; midia: TipoDeMidia; mime: string; legenda: string }
+  | { tipo: "negocio"; pipeline_id: string; stage_id: string; titulo: string }
   | { tipo: "transferir_equipe" }
   | { tipo: "transferir_atendente"; user_id: string | null }
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
@@ -78,13 +88,35 @@ export type ContextoDoTurno = {
   contato?: ContatoDoTurno;
 };
 
+/** O que o executor precisa fazer FORA do motor (rede, banco) antes de o fluxo seguir. */
+export type Pendente =
+  | { tipo: "webhook"; no: string }
+  /** Começar outro desenho: o executor lê o fluxo e chama `iniciarFluxo`. */
+  | { tipo: "fluxo"; no: string; flow_id: string }
+  /** Buscar os horários livres e devolver em `continuarComHorarios`. */
+  | { tipo: "horarios"; no: string }
+  /** Marcar o horário escolhido e devolver em `continuarAposMarcar`. */
+  | { tipo: "marcar"; no: string; inicio: string };
+
 export type ResultadoDoTurno = {
   sessao: SessaoDoChatbot;
   efeitos: Efeito[];
   passos: number;
   /** O fluxo parou num passo que o executor precisa fazer fora (rede) e devolver. */
-  pendente?: { tipo: "webhook"; no: string };
+  pendente?: Pendente;
 };
+
+/** Um horário oferecido: `inicio` é o instante (ISO); `quando`, o que o contato lê. */
+export type OfertaDeHorario = { inicio: string; quando: string };
+
+/** O que o executor devolve depois de tentar marcar. */
+export type ResultadoDaMarcacao =
+  | { ok: true; aguardaConfirmacao: boolean }
+  /** `ocupado` = o horário acabou de ser pego: o fluxo oferece de novo. */
+  | { ok: false; ocupado: boolean };
+
+/** Chave interna (não é variável de quem monta o fluxo): os horários oferecidos. */
+export const CHAVE_DOS_HORARIOS = "_horarios";
 
 /** O que o executor devolve depois de chamar o WebHook. */
 export type RespostaDoWebhook = { ok: boolean; status: number | null; corpo: unknown };
@@ -157,7 +189,29 @@ function textoDasOpcoes(pergunta: string, opcoes: string[]): string {
   return pergunta ? `${pergunta}\n\n${lista}` : lista;
 }
 
-const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha"]);
+const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha", "sem_horario"]);
+
+/** Os horários guardados na sessão; lixo vira lista vazia. */
+export function ofertasGuardadas(dados: Record<string, string>): OfertaDeHorario[] {
+  try {
+    const lista = JSON.parse(dados[CHAVE_DOS_HORARIOS] ?? "[]") as unknown;
+    if (!Array.isArray(lista)) return [];
+    return lista.filter(
+      (o): o is OfertaDeHorario =>
+        typeof o === "object" &&
+        o !== null &&
+        typeof (o as OfertaDeHorario).inicio === "string" &&
+        typeof (o as OfertaDeHorario).quando === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** As respostas guardadas sem as chaves internas (as que começam com "_"). */
+export function respostasVisiveis(dados: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(dados).filter(([k]) => !k.startsWith("_")));
+}
 
 function proximo(grafo: Grafo, deNo: string, saida: string): string | null {
   const ligacao =
@@ -221,6 +275,18 @@ function andar(
     sessao.status = status;
     sessao.no_atual = null;
     sessao.tentativas = 0;
+    return { sessao, efeitos, passos };
+  };
+  /** Transferiu. Com mensagem de espera, o relógio fica armado sobre a sessão transferida. */
+  const transferido = (
+    noId: string,
+    c: { espera_minutos: number; espera_mensagem: string },
+  ): ResultadoDoTurno => {
+    if (c.espera_minutos <= 0 || !c.espera_mensagem) return fim("transferred");
+    sessao.status = "transferred";
+    sessao.no_atual = noId;
+    sessao.tentativas = 0;
+    sessao.retomar_em = new Date(ctx.agora.getTime() + c.espera_minutos * 60_000).toISOString();
     return { sessao, efeitos, passos };
   };
   const esperarRelogio = (noId: string, ate: Date): ResultadoDoTurno => {
@@ -362,14 +428,84 @@ function andar(
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
         efeitos.push({ tipo: "transferir_equipe" });
-        return fim("transferred");
+        return transferido(no.id, c);
       }
       case "transferir_atendente": {
         const c = lerConfig("transferir_atendente", no.data);
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
         efeitos.push({ tipo: "transferir_atendente", user_id: c.user_id });
-        return fim("transferred");
+        return transferido(no.id, c);
+      }
+      case "enviar_midia": {
+        const c = lerConfig("enviar_midia", no.data);
+        if (c.storage_path && c.tipo)
+          efeitos.push({
+            tipo: "midia",
+            storage_path: c.storage_path,
+            midia: c.tipo,
+            mime: c.mime,
+            legenda: preencher(c.legenda, sessao.dados).trim(),
+          });
+        break;
+      }
+      case "negocio_funil": {
+        const c = lerConfig("negocio_funil", no.data);
+        if (c.pipeline_id && c.stage_id)
+          efeitos.push({
+            tipo: "negocio",
+            pipeline_id: c.pipeline_id,
+            stage_id: c.stage_id,
+            titulo: preencher(c.titulo, sessao.dados).trim(),
+          });
+        break;
+      }
+      case "acionar_fluxo": {
+        const c = lerConfig("acionar_fluxo", no.data);
+        const r = fim("completed");
+        return c.flow_id ? { ...r, pendente: { tipo: "fluxo", no: no.id, flow_id: c.flow_id } } : r;
+      }
+      case "agendar_horario": {
+        const c = lerConfig("agendar_horario", no.data);
+        if (!resposta) {
+          // Chegou no passo: o executor busca os horários livres.
+          sessao.no_atual = no.id;
+          sessao.status = "running";
+          sessao.tentativas = 0;
+          return { sessao, efeitos, passos, pendente: { tipo: "horarios", no: no.id } };
+        }
+        resposta = false;
+        const ofertas = ofertasGuardadas(sessao.dados);
+        if (ofertas.length === 0) {
+          sessao.no_atual = no.id;
+          sessao.status = "running";
+          return { sessao, efeitos, passos, pendente: { tipo: "horarios", no: no.id } };
+        }
+        const i =
+          ctx.mensagem === null ? null : opcaoEscolhida(ctx.mensagem, ofertas.map((o) => o.quando));
+        const escolhida = i === null ? undefined : ofertas[i];
+        if (escolhida) {
+          sessao.tentativas = 0;
+          sessao.dados.horario = escolhida.quando;
+          sessao.dados.horario_inicio = escolhida.inicio;
+          sessao.no_atual = no.id;
+          sessao.status = "running";
+          return { sessao, efeitos, passos, pendente: { tipo: "marcar", no: no.id, inicio: escolhida.inicio } };
+        }
+        sessao.tentativas += 1;
+        if (sessao.tentativas < c.tentativas) {
+          efeitos.push({
+            tipo: "enviar",
+            texto: `${c.mensagem_invalida}\n\n${textoDasOpcoes("", ofertas.map((o) => o.quando))}`,
+          });
+          sessao.no_atual = no.id;
+          sessao.status = "waiting_input";
+          return { sessao, efeitos, passos };
+        }
+        sessao.tentativas = 0;
+        delete sessao.dados[CHAVE_DOS_HORARIOS];
+        saida = "invalida";
+        break;
       }
       case "finalizar_conversa": {
         const c = lerConfig("finalizar_conversa", no.data);
@@ -567,4 +703,124 @@ export function continuarFluxo(
     return { sessao: { ...sessao, status: "completed", no_atual: null }, efeitos: [], passos: 0 };
   }
   return andar(grafo, sessao, sessao.no_atual, ctx, true);
+}
+
+/**
+ * Os horários livres chegaram (executor). Sem nenhum, segue por "Sem horário
+ * livre"; com horários, pergunta e espera a escolha.
+ */
+export function continuarComHorarios(
+  grafo: Grafo,
+  sessao: SessaoDoChatbot,
+  ofertas: OfertaDeHorario[],
+  ctx: ContextoDoTurno,
+): ResultadoDoTurno {
+  const parada = grafo.nodes.find((n) => n.id === sessao.no_atual && n.type === "agendar_horario");
+  if (!parada) {
+    return { sessao: { ...sessao, status: "completed", no_atual: null, retomar_em: null }, efeitos: [], passos: 0 };
+  }
+  const c = lerConfig("agendar_horario", parada.data);
+  const dados = { ...sessao.dados };
+  if (ofertas.length === 0) {
+    delete dados[CHAVE_DOS_HORARIOS];
+    const seguinte = proximo(grafo, parada.id, "sem_horario");
+    if (!seguinte)
+      return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos: [], passos: 0 };
+    return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
+  }
+  dados[CHAVE_DOS_HORARIOS] = JSON.stringify(ofertas);
+  return {
+    sessao: { ...sessao, dados, status: "waiting_input", no_atual: parada.id, retomar_em: null },
+    efeitos: [
+      {
+        tipo: "enviar",
+        texto: textoDasOpcoes(preencher(c.pergunta, dados).trim(), ofertas.map((o) => o.quando)),
+      },
+    ],
+    passos: 0,
+  };
+}
+
+/**
+ * O executor tentou marcar. Marcou: confirma ao contato e segue por "Marcou".
+ * O horário acabou de ser pego por outra pessoa: avisa e oferece de novo.
+ * Outra recusa (tipo desativado, sem responsável): segue por "Sem horário livre".
+ */
+export function continuarAposMarcar(
+  grafo: Grafo,
+  sessao: SessaoDoChatbot,
+  r: ResultadoDaMarcacao,
+  ctx: ContextoDoTurno,
+): ResultadoDoTurno {
+  const parada = grafo.nodes.find((n) => n.id === sessao.no_atual && n.type === "agendar_horario");
+  if (!parada) {
+    return { sessao: { ...sessao, status: "completed", no_atual: null, retomar_em: null }, efeitos: [], passos: 0 };
+  }
+  const c = lerConfig("agendar_horario", parada.data);
+  const dados = { ...sessao.dados };
+  delete dados[CHAVE_DOS_HORARIOS];
+  if (!r.ok && r.ocupado) {
+    return {
+      sessao: { ...sessao, dados, status: "running", no_atual: parada.id },
+      efeitos: [{ tipo: "enviar", texto: "Esse horário acabou de ser ocupado. Veja os que estão livres agora:" }],
+      passos: 0,
+      pendente: { tipo: "horarios", no: parada.id },
+    };
+  }
+  if (!r.ok) {
+    delete dados.horario;
+    delete dados.horario_inicio;
+    const seguinte = proximo(grafo, parada.id, "sem_horario");
+    if (!seguinte)
+      return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos: [], passos: 0 };
+    return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
+  }
+  dados.agendamento_status = r.aguardaConfirmacao ? "aguardando confirmação" : "confirmado";
+  const texto = preencher(r.aguardaConfirmacao ? c.confirmacao_pendente : c.confirmacao, dados).trim();
+  const efeitos: Efeito[] = texto ? [{ tipo: "enviar", texto }] : [];
+  const seguinte = proximo(grafo, parada.id, "proximo");
+  if (!seguinte)
+    return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos, passos: 0 };
+  const depois = andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
+  return { ...depois, efeitos: [...efeitos, ...depois.efeitos] };
+}
+
+/** O passo de início que outro fluxo usa para começar este ("Acionar outro fluxo"). */
+export function inicioParaAcionar(grafo: Grafo): string | null {
+  return (
+    grafo.nodes.find((n) => n.type === "inicio_automacao")?.id ??
+    grafo.nodes.find((n) => n.type === "inicio_canal")?.id ??
+    null
+  );
+}
+
+/**
+ * O relógio da espera venceu numa conversa transferida em que ninguém da
+ * equipe respondeu: a mensagem a mandar e a sessão com o próximo horário (ou
+ * sem relógio, quando foi a última vez). null = o passo não pede espera.
+ */
+export function proximaMensagemDeEspera(
+  grafo: Grafo,
+  sessao: SessaoDoChatbot,
+  agora: Date,
+): { texto: string; sessao: SessaoDoChatbot } | null {
+  const no = grafo.nodes.find((n) => n.id === sessao.no_atual);
+  if (!no || (no.type !== "transferir_equipe" && no.type !== "transferir_atendente")) return null;
+  const c = lerConfig(no.type, no.data);
+  if (c.espera_minutos <= 0 || !c.espera_mensagem) return null;
+  const texto = preencher(c.espera_mensagem, sessao.dados).trim();
+  if (!texto) return null;
+  const enviadas = sessao.tentativas + 1;
+  return {
+    texto,
+    sessao: {
+      ...sessao,
+      status: "transferred",
+      tentativas: enviadas,
+      retomar_em:
+        enviadas < c.espera_vezes
+          ? new Date(agora.getTime() + c.espera_minutos * 60_000).toISOString()
+          : null,
+    },
+  };
 }

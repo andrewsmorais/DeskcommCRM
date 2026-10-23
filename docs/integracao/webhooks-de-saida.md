@@ -272,6 +272,10 @@ um contato no WhatsApp:
 }
 ```
 
+`respostas` leva as variáveis do fluxo (`{{pedido}}`, `{{horario}}`…). Chaves
+internas do motor, que começam com `_` (a lista de horários oferecidos pelo
+passo "Agendar horário", por exemplo), ficam de fora.
+
 Cabeçalhos: `X-Webhook-Delivery` (uuid da chamada), `X-Webhook-Timestamp` e,
 com segredo, `X-Webhook-Signature: t=<ts>,v1=<HMAC-SHA256("<ts>.<delivery>.<corpo>")>`
 — a mesma conferência das automações (no GET o corpo é vazio). O passo

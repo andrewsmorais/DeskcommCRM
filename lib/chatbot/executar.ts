@@ -30,27 +30,52 @@ import type { ContatoDoTurno } from "./regras";
 import { randomUUID } from "node:crypto";
 import { insertInboxItem } from "@/lib/agent-engine/db/repository";
 import { enrollFollowupFlow } from "@/lib/followup/enroll";
+import { horariosLivresDaOrg } from "@/lib/agenda/consulta";
+import { rotuloLocal } from "@/lib/tempo/agora";
+import { marcarAgendamentoHandler } from "@/app/api/v1/agenda/agendamentos/_handler";
+import { levarContatoAoFunil } from "@/lib/leads/levar-ao-funil";
+import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { ApiError } from "@/lib/api/types";
 import {
+  continuarAposMarcar,
   continuarAposWebhook,
+  continuarComHorarios,
   continuarFluxo,
   iniciarFluxo,
+  inicioParaAcionar,
   inicioPorAutomacao,
   pontoDePartida,
+  proximaMensagemDeEspera,
   respondeMensagens,
+  respostasVisiveis,
   retomarFluxo,
   seguirAoResponder,
   type ContextoDoTurno,
   type Efeito,
+  type OfertaDeHorario,
+  type Pendente,
   type RespostaDoWebhook,
+  type ResultadoDaMarcacao,
   type ResultadoDoTurno,
   type SessaoDoChatbot,
 } from "./motor";
+import { midiaDoChatbotDaOrg } from "./midia";
+import { escolherOfertas } from "./ofertas";
 import { lerConfig } from "./passos";
 import { decifrarSegredosDoPasso } from "./segredos";
 import { chamarWebhookDoChatbot } from "./webhook";
 
 /** Teto de WebHooks numa mensagem só: um desenho em círculo não vira metralhadora. */
 export const WEBHOOKS_POR_TURNO = 3;
+
+/** Teto de "Acionar outro fluxo" numa mensagem só: dois fluxos que se chamam não giram para sempre. */
+export const SALTOS_POR_TURNO = 3;
+
+/** Teto de idas ao executor (WebHook, outro fluxo, horários, marcação) numa mensagem só. */
+export const PENDENTES_POR_TURNO = 8;
+
+/** Quem a mensagem de espera considera "a equipe respondeu": pessoa, pelo CRM ou pelo celular. */
+const ENVIO_DE_PESSOA = ["user", "crm", "external_device"];
 
 /** Depois de terminar, o fluxo só recomeça na mesma conversa passado este tempo. */
 export const HORAS_PARA_RECOMECAR = 6;
@@ -282,34 +307,218 @@ export async function atenderPeloChatbot(
 }
 
 /**
- * Grava cada trecho do turno e, quando o motor para num WebHook, faz a chamada
- * e devolve a resposta ao motor — até o fluxo parar de verdade (pergunta,
- * relógio, fim) ou o teto de chamadas por turno.
+ * Grava cada trecho do turno e, quando o motor para pedindo algo de fora
+ * (WebHook, outro fluxo, horários livres, marcação), faz e devolve ao motor —
+ * até o fluxo parar de verdade (pergunta, relógio, fim) ou um dos tetos.
  */
 async function conduzir(
   pool: pg.Pool,
   admin: SupabaseClient,
   e: EntradaDoChatbot,
-  fluxoId: string,
-  grafo: Grafo,
+  fluxoInicial: string,
+  grafoInicial: Grafo,
   sessaoId: string | null,
   inicial: ResultadoDoTurno,
-  ctx: ContextoDoTurno,
+  ctxInicial: ContextoDoTurno,
   log: Log,
 ): Promise<void> {
+  let fluxoId = fluxoInicial;
+  let grafo = grafoInicial;
+  let ctx = ctxInicial;
   let resultado = inicial;
   let id = sessaoId;
-  for (let chamadas = 0; ; chamadas++) {
+  let webhooks = 0;
+  let saltos = 0;
+  for (let pendentes = 0; ; pendentes++) {
     const gravada = await concluirTurno(pool, admin, e, fluxoId, id, resultado, log);
     id = gravada.id;
-    if (!resultado.pendente) return;
-    if (chamadas >= WEBHOOKS_POR_TURNO) {
-      log.warn("chatbot: teto de WebHooks por mensagem — fluxo encerrado", { flow_id: fluxoId });
+    const pendente: Pendente | undefined = resultado.pendente;
+    if (!pendente) return;
+    if (pendentes >= PENDENTES_POR_TURNO) {
+      log.warn("chatbot: teto de passos externos por mensagem — fluxo encerrado", { flow_id: fluxoId });
       await encerrarSessao(pool, e.organizationId, gravada.id, "completed");
       return;
     }
-    const resposta = await fazerWebhook(pool, admin, e, fluxoId, grafo, resultado, ctx, log);
-    resultado = continuarAposWebhook(grafo, resultado.sessao, resposta, ctx);
+    switch (pendente.tipo) {
+      case "webhook": {
+        if (++webhooks > WEBHOOKS_POR_TURNO) {
+          log.warn("chatbot: teto de WebHooks por mensagem — fluxo encerrado", { flow_id: fluxoId });
+          await encerrarSessao(pool, e.organizationId, gravada.id, "completed");
+          return;
+        }
+        const resposta = await fazerWebhook(pool, admin, e, fluxoId, grafo, resultado, ctx, log);
+        resultado = continuarAposWebhook(grafo, resultado.sessao, resposta, ctx);
+        break;
+      }
+      case "fluxo": {
+        if (++saltos > SALTOS_POR_TURNO) {
+          log.warn("chatbot: teto de 'Acionar outro fluxo' por mensagem — fluxo encerrado", {
+            flow_id: fluxoId,
+          });
+          return;
+        }
+        const alvo = await fluxoParaAcionar(pool, e.organizationId, pendente.flow_id);
+        if (!alvo) {
+          log.info("chatbot: 'Acionar outro fluxo' apontou fluxo desligado ou sem início", {
+            flow_id: fluxoId,
+            alvo: pendente.flow_id,
+          });
+          // A sessão deste fluxo já terminou; a equipe fica sabendo por quê.
+          await concluirTurno(
+            pool,
+            admin,
+            e,
+            fluxoId,
+            id,
+            {
+              sessao: resultado.sessao,
+              efeitos: [
+                {
+                  tipo: "nota",
+                  texto:
+                    "O chatbot tentou abrir outro fluxo, mas ele está desligado, não existe mais ou não tem passo de início.",
+                },
+              ],
+              passos: 0,
+            },
+            log,
+          );
+          return;
+        }
+        // O fluxo anterior pode ter mudado etiqueta ou campo: o novo enxerga.
+        ctx = { ...ctx, contato: (await lerContatoDoTurno(pool, e)) ?? ctx.contato };
+        log.info("chatbot: fluxo acionou outro fluxo", { de: fluxoId, para: alvo.id });
+        resultado = iniciarFluxo(alvo.grafo, alvo.inicio, ctx, respostasVisiveis(resultado.sessao.dados));
+        fluxoId = alvo.id;
+        grafo = alvo.grafo;
+        // Rodada nova no outro fluxo (a avaliação de cada rodada fica separada).
+        id = null;
+        break;
+      }
+      case "horarios": {
+        const ofertas = await buscarHorarios(admin, e, grafo, pendente.no, log);
+        resultado = continuarComHorarios(grafo, resultado.sessao, ofertas, ctx);
+        break;
+      }
+      case "marcar": {
+        const r = await marcarHorario(admin, e, fluxoId, grafo, pendente, gravada.id, log);
+        resultado = continuarAposMarcar(grafo, resultado.sessao, r, ctx);
+        break;
+      }
+    }
+  }
+}
+
+/** O fluxo que "Acionar outro fluxo" começa — ligado, desta organização, com passo de início. */
+async function fluxoParaAcionar(
+  pool: pg.Pool,
+  org: string,
+  flowId: string,
+): Promise<{ id: string; grafo: Grafo; inicio: string } | null> {
+  const { rows } = await pool.query<{ id: string; grafo: unknown }>(
+    `select id, grafo from chatbot_flows where organization_id = $1 and id = $2 and is_active`,
+    [org, flowId],
+  );
+  const g = grafoSchema.safeParse(rows[0]?.grafo);
+  if (!rows[0] || !g.success) return null;
+  const inicio = inicioParaAcionar(g.data);
+  return inicio ? { id: rows[0].id, grafo: g.data, inicio } : null;
+}
+
+async function lerContatoDoTurno(pool: pg.Pool, e: EntradaDoChatbot): Promise<ContatoDoTurno | null> {
+  const { rows } = await pool.query<{
+    tags: string[] | null;
+    nome: string | null;
+    email: string | null;
+    aniversario: string | null;
+    custom_fields: Record<string, unknown> | null;
+  }>(
+    `select tags, coalesce(name, display_name) as nome, email, birthdate::text as aniversario, custom_fields
+       from contacts where organization_id = $1 and id = $2`,
+    [e.organizationId, e.contactId],
+  );
+  return rows[0] ? contatoDoTurno(rows[0]) : null;
+}
+
+/** Os horários livres do passo "Agendar horário" — a mesma consulta da Agenda e da IA. */
+async function buscarHorarios(
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  grafo: Grafo,
+  noId: string,
+  log: Log,
+): Promise<OfertaDeHorario[]> {
+  const no = grafo.nodes.find((n) => n.id === noId);
+  if (!no) return [];
+  const c = lerConfig("agendar_horario", no.data);
+  if (!c.event_type_id) return [];
+  const agora = new Date();
+  try {
+    const consulta = await horariosLivresDaOrg(admin, e.organizationId, {
+      eventTypeId: c.event_type_id,
+      ownerUserId: c.owner_user_id,
+      de: agora,
+      ate: new Date(agora.getTime() + c.dias_a_frente * 86_400_000),
+      agora,
+    });
+    if (!consulta.ok) {
+      log.info("chatbot: agenda recusou a consulta de horários", { motivo: consulta.codigo });
+      return [];
+    }
+    return escolherOfertas(consulta.slots, consulta.fusoDaRegra, c.quantidade).map((s) => ({
+      inicio: s.inicio.toISOString(),
+      quando: rotuloLocal(s.inicio, consulta.fusoDaRegra),
+    }));
+  } catch (err) {
+    log.warn("chatbot: consulta de horários falhou", { erro: String(err).slice(0, 160) });
+    return [];
+  }
+}
+
+/**
+ * Marca o horário escolhido pelo MESMO handler da tela e da IA: confere de
+ * novo que está livre, reserva, cria o vínculo com o negócio e audita. A chave
+ * de idempotência é da sessão + horário: o replay de um evento não marca duas
+ * vezes.
+ */
+async function marcarHorario(
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  grafo: Grafo,
+  pendente: Extract<Pendente, { tipo: "marcar" }>,
+  sessaoId: string,
+  log: Log,
+): Promise<ResultadoDaMarcacao> {
+  const no = grafo.nodes.find((n) => n.id === pendente.no);
+  const c = no ? lerConfig("agendar_horario", no.data) : null;
+  if (!c?.event_type_id) return { ok: false, ocupado: false };
+  try {
+    const r = await marcarAgendamentoHandler(
+      admin,
+      {
+        organization_id: e.organizationId,
+        actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
+        requestId: `chatbot:${fluxoId}:${sessaoId}`,
+        idempotencyKey: `chatbot:${sessaoId}:${pendente.inicio}`,
+      },
+      {
+        event_type_id: c.event_type_id,
+        starts_at: pendente.inicio,
+        contact_id: e.contactId,
+        conversation_id: e.conversationId,
+        ...(c.owner_user_id ? { owner_user_id: c.owner_user_id } : {}),
+      },
+    );
+    log.info("chatbot: horário marcado", { flow_id: fluxoId, status: String(r.status ?? "") });
+    return { ok: true, aguardaConfirmacao: r.status === "pending" };
+  } catch (err) {
+    if (err instanceof ApiError) {
+      log.info("chatbot: a agenda recusou a marcação", { flow_id: fluxoId, codigo: err.code });
+      return { ok: false, ocupado: err.code === "agenda_horario_indisponivel" };
+    }
+    log.warn("chatbot: marcação falhou", { flow_id: fluxoId, erro: String(err).slice(0, 160) });
+    return { ok: false, ocupado: false };
   }
 }
 
@@ -346,7 +555,7 @@ async function fazerWebhook(
       conversationId: e.conversationId,
       contato: { id: e.contactId, ...(rows[0] ?? { nome: null, telefone: null, email: null }) },
       mensagem: ctx.mensagem,
-      respostas: resultado.sessao.dados,
+      respostas: respostasVisiveis(resultado.sessao.dados),
     },
     segredos,
   );
@@ -381,36 +590,13 @@ async function concluirTurno(
   resultado: ResultadoDoTurno,
   log: Log,
 ): Promise<SessaoDoTurno> {
-  const token = resultado.sessao.status === "waiting_timer" ? randomUUID() : null;
+  const token = temRelogio(resultado.sessao) ? randomUUID() : null;
   const gravada = await gravarSessao(pool, e, fluxoId, sessaoAnteriorId, resultado.sessao, token);
 
   await executarEfeitos(pool, admin, e, fluxoId, gravada, resultado.efeitos, log);
 
-  if (token && resultado.sessao.retomar_em) {
-    // O relógio vira um comando no barramento, com hora marcada: o drain do
-    // worker só o pega a partir de `next_attempt_at`. Sem cron novo.
-    await pool.query(
-      `insert into event_log
-         (organization_id, event_type, entity_kind, entity_id, payload, metadata, next_attempt_at)
-       values ($1, 'chatbot.retomada_requested', 'chatbot_session', $2, $3::jsonb, $4::jsonb, $5)`,
-      [
-        e.organizationId,
-        gravada.id,
-        JSON.stringify({
-          session_id: gravada.id,
-          token,
-          conversation_id: e.conversationId,
-          contact_id: e.contactId,
-          channel_session_id: e.channelSessionId,
-          inbound_message_id: e.inboundMessageId,
-          boundary: e.inboundMessageId ? null : (e.boundary ?? null),
-          proativo: Boolean(e.proativo),
-        } satisfies PedidoDeRetomada),
-        JSON.stringify({ source: "chatbot", flow_id: fluxoId }),
-        resultado.sessao.retomar_em,
-      ],
-    );
-  }
+  if (token && resultado.sessao.retomar_em)
+    await agendarRetomada(pool, e, fluxoId, gravada.id, token, resultado.sessao.retomar_em);
   log.info("chatbot: turno conduzido pelo fluxo", {
     flow_id: fluxoId,
     session_id: gravada.id,
@@ -421,6 +607,46 @@ async function concluirTurno(
     pendente: resultado.pendente?.tipo ?? null,
   });
   return gravada;
+}
+
+/**
+ * O relógio vira um comando no barramento, com hora marcada: o drain do worker
+ * só o pega a partir de `next_attempt_at`. Sem cron novo.
+ */
+async function agendarRetomada(
+  pool: pg.Pool,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  sessaoId: string,
+  token: string,
+  quando: string,
+): Promise<void> {
+  await pool.query(
+    `insert into event_log
+       (organization_id, event_type, entity_kind, entity_id, payload, metadata, next_attempt_at)
+     values ($1, 'chatbot.retomada_requested', 'chatbot_session', $2, $3::jsonb, $4::jsonb, $5)`,
+    [
+      e.organizationId,
+      sessaoId,
+      JSON.stringify({
+        session_id: sessaoId,
+        token,
+        conversation_id: e.conversationId,
+        contact_id: e.contactId,
+        channel_session_id: e.channelSessionId,
+        inbound_message_id: e.inboundMessageId,
+        boundary: e.inboundMessageId ? null : (e.boundary ?? null),
+        proativo: Boolean(e.proativo),
+      } satisfies PedidoDeRetomada),
+      JSON.stringify({ source: "chatbot", flow_id: fluxoId }),
+      quando,
+    ],
+  );
+}
+
+/** A sessão para no relógio: espera do fluxo, ou mensagem de espera de uma transferência. */
+function temRelogio(s: SessaoDoChatbot): boolean {
+  return Boolean(s.retomar_em) && (s.status === "waiting_timer" || s.status === "transferred");
 }
 
 /** O que viaja no `chatbot.inicio_requested` (ação de automação "Iniciar chatbot"). */
@@ -507,6 +733,13 @@ export async function iniciarChatbotPorAutomacao(
         and status in ('waiting_input', 'waiting_timer', 'running')`,
     [organizationId, pedido.conversation_id],
   );
+  // Uma transferência com mensagem de espera para de mandar: o fluxo novo é quem fala agora.
+  await pool.query(
+    `update chatbot_sessions set retomar_em = null, retomada_token = null, updated_at = now()
+      where organization_id = $1 and conversation_id = $2
+        and status = 'transferred' and retomada_token is not null`,
+    [organizationId, pedido.conversation_id],
+  );
 
   const e: EntradaDoChatbot = {
     organizationId,
@@ -564,15 +797,21 @@ export async function retomarChatbotPeloRelogio(
   log: Log,
 ): Promise<DesfechoDaRetomada> {
   const { rows } = await pool.query<
-    SessaoGravada & { retomar_em: string | null; timezone: string | null }
+    SessaoGravada & {
+      retomar_em: string | null;
+      timezone: string | null;
+      ended_at: string | null;
+      started_at: string;
+    }
   >(
     `select s.id, s.flow_id, s.status, s.no_atual, s.tentativas, s.collected_data, s.retomar_em,
+            s.ended_at::text as ended_at, s.started_at::text as started_at,
             f.grafo, f.is_active, o.timezone
        from chatbot_sessions s
        join chatbot_flows f on f.id = s.flow_id and f.organization_id = s.organization_id
        join organizations o on o.id = s.organization_id
       where s.organization_id = $1 and s.id = $2
-        and s.status = 'waiting_timer' and s.retomada_token = $3::uuid`,
+        and s.status in ('waiting_timer', 'transferred') and s.retomada_token = $3::uuid`,
     [organizationId, pedido.session_id, pedido.token],
   );
   const sessao = rows[0];
@@ -580,6 +819,9 @@ export async function retomarChatbotPeloRelogio(
 
   if (sessao.retomar_em && new Date(sessao.retomar_em).getTime() > Date.now() + 1_000)
     return { adiarAte: sessao.retomar_em };
+
+  if (sessao.status === "transferred")
+    return mandarMensagemDeEspera(pool, admin, pedido, organizationId, sessao, log);
 
   const g = grafoSchema.safeParse(sessao.grafo);
   if (!sessao.is_active || !g.success) {
@@ -652,6 +894,119 @@ export async function retomarChatbotPeloRelogio(
   return "retomou";
 }
 
+/**
+ * "Fluxo de espera": a conversa foi transferida e o relógio da mensagem de
+ * espera venceu. Só manda se ninguém da EQUIPE respondeu desde a transferência
+ * (mensagem de pessoa — pelo CRM ou pelo celular; a do próprio chatbot não
+ * conta) e se a conversa segue aberta. Senão, desarma em silêncio.
+ */
+async function mandarMensagemDeEspera(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  pedido: PedidoDeRetomada,
+  organizationId: string,
+  sessao: SessaoGravada & { ended_at: string | null; started_at: string },
+  log: Log,
+): Promise<DesfechoDaRetomada> {
+  const desarmar = async () => {
+    await pool.query(
+      `update chatbot_sessions set retomar_em = null, retomada_token = null, updated_at = now()
+        where organization_id = $1 and id = $2`,
+      [organizationId, sessao.id],
+    );
+    return "descartado" as const;
+  };
+  const g = grafoSchema.safeParse(sessao.grafo);
+  if (!sessao.is_active || !g.success) return desarmar();
+
+  const { rows: estado } = await pool.query<{
+    status: string;
+    is_blocked: boolean | null;
+    respondeu: boolean;
+  }>(
+    `select c.status, ct.is_blocked,
+            exists (
+              select 1 from messages m
+               where m.organization_id = c.organization_id and m.conversation_id = c.id
+                 and m.direction = 'outbound' and m.sent_via = any($4::text[])
+                 and m.created_at > coalesce($3::timestamptz, '-infinity'::timestamptz)
+            ) as respondeu
+       from conversations c
+       join contacts ct on ct.id = c.contact_id and ct.organization_id = c.organization_id
+      where c.organization_id = $1 and c.id = $2 and c.is_group = false`,
+    [organizationId, pedido.conversation_id, sessao.ended_at, ENVIO_DE_PESSOA],
+  );
+  const conversa = estado[0];
+  if (
+    !conversa ||
+    conversa.respondeu ||
+    conversa.is_blocked === true ||
+    ["closed", "resolved", "archived"].includes(conversa.status)
+  ) {
+    log.info("chatbot: mensagem de espera desarmada — a equipe respondeu ou a conversa fechou", {
+      session_id: sessao.id,
+    });
+    return desarmar();
+  }
+
+  const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
+  if (!acesso.liberado) return desarmar();
+
+  if (pedido.channel_session_id) {
+    const abre = await adiarAteAJanelaAbrir(admin, organizationId, pedido.channel_session_id);
+    if (abre) return { adiarAte: abre };
+  }
+
+  const proxima = proximaMensagemDeEspera(
+    g.data,
+    {
+      no_atual: sessao.no_atual,
+      status: "transferred",
+      tentativas: sessao.tentativas ?? 0,
+      dados: dadosDeTexto(sessao.collected_data),
+    },
+    new Date(),
+  );
+  if (!proxima) return desarmar();
+
+  const e: EntradaDoChatbot = {
+    organizationId,
+    conversationId: pedido.conversation_id,
+    contactId: pedido.contact_id,
+    channelSessionId: pedido.channel_session_id,
+    inboundMessageId: pedido.inbound_message_id,
+    boundary: pedido.boundary ?? null,
+    proativo: pedido.proativo ?? false,
+    referencia: `${pedido.session_id}:espera:${proxima.sessao.tentativas}`,
+  };
+  const token = proxima.sessao.retomar_em ? randomUUID() : null;
+  // A sessão anda ANTES do envio (mesma regra de `concluirTurno`): um replay
+  // do evento não manda a mesma mensagem de espera duas vezes.
+  await pool.query(
+    `update chatbot_sessions
+        set tentativas = $3, retomar_em = $4, retomada_token = $5, updated_at = now()
+      where organization_id = $1 and id = $2`,
+    [organizationId, sessao.id, proxima.sessao.tentativas, proxima.sessao.retomar_em, token],
+  );
+  await executarEfeitos(
+    pool,
+    admin,
+    e,
+    sessao.flow_id,
+    { id: sessao.id, started_at: sessao.started_at },
+    [{ tipo: "enviar", texto: proxima.texto }],
+    log,
+  );
+  if (token && proxima.sessao.retomar_em)
+    await agendarRetomada(pool, e, sessao.flow_id, sessao.id, token, proxima.sessao.retomar_em);
+  log.info("chatbot: mensagem de espera enviada", {
+    flow_id: sessao.flow_id,
+    session_id: sessao.id,
+    vez: proxima.sessao.tentativas,
+  });
+  return "retomou";
+}
+
 async function encerrarSessao(
   pool: pg.Pool,
   org: string,
@@ -702,7 +1057,7 @@ async function gravarSessao(
       JSON.stringify(s.dados),
       terminal,
       sessaoId,
-      s.status === "waiting_timer" ? (s.retomar_em ?? null) : null,
+      temRelogio(s) ? (s.retomar_em ?? null) : null,
       token,
     ],
   );
@@ -775,32 +1130,91 @@ async function executarEfeitos(
     boundary = parseServiceBoundary(b[0] ?? null);
   }
 
+  const enviar = async (corpo: Record<string, unknown>) => {
+    if (!e.channelSessionId || !boundary) {
+      log.warn("chatbot: sem número ou atendimento para enviar — mensagem não saiu");
+      return;
+    }
+    await espacarEnvio(e.channelSessionId);
+    const enviada = (await sendMessageHandler(
+      admin,
+      {
+        organization_id: e.organizationId,
+        serviceBoundary: boundary,
+        ...(e.proativo
+          ? { proactiveContext: { organizationId: e.organizationId, contactId: e.contactId } }
+          : {}),
+        actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
+        requestId,
+      },
+      { conversation_id: e.conversationId, ...corpo } as Parameters<typeof sendMessageHandler>[2],
+    )) as { status?: string } | null;
+    if (enviada?.status === "failed")
+      log.warn("chatbot: envio marcado como falho", { flow_id: fluxoId });
+  };
+
   for (const efeito of efeitos) {
     try {
       switch (efeito.tipo) {
-        case "enviar": {
-          if (!e.channelSessionId || !boundary) {
-            log.warn("chatbot: sem número ou atendimento para enviar — mensagem não saiu");
+        case "enviar":
+          await enviar({ type: "text", body: efeito.texto });
+          break;
+        case "midia": {
+          // Só arquivo do chatbot DESTA organização: o desenho é gravável pela
+          // tela, e a cópia é feita com service role.
+          const destino = await midiaDoChatbotDaOrg(admin, {
+            organizationId: e.organizationId,
+            conversationId: e.conversationId,
+            origem: efeito.storage_path,
+          });
+          if (!destino) {
+            log.warn("chatbot: arquivo do passo 'Enviar mídia' não pôde ser preparado", {
+              flow_id: fluxoId,
+            });
             break;
           }
-          await espacarEnvio(e.channelSessionId);
-          const enviada = (await sendMessageHandler(
+          await enviar({
+            type: efeito.midia,
+            media_storage_path: destino,
+            ...(efeito.mime ? { media_mime: efeito.mime } : {}),
+            ...(efeito.legenda && efeito.midia !== "audio" ? { body: efeito.legenda } : {}),
+          });
+          break;
+        }
+        case "negocio": {
+          // A MESMA regra da automação "Criar ou mover negócio": move o negócio
+          // aberto do contato no funil, transfere o que está aberto em outro
+          // funil, ou cria — nunca dois negócios abertos para o mesmo contato.
+          const { rows: c } = await pool.query<{
+            name: string | null;
+            display_name: string | null;
+            phone_number: string | null;
+          }>(
+            `select name, display_name, phone_number from contacts where organization_id = $1 and id = $2`,
+            [e.organizationId, e.contactId],
+          );
+          const titulo =
+            efeito.titulo || (c[0] ? (nomeDoContato(c[0]) ?? c[0].phone_number) : null) || "Contato do chatbot";
+          const r = await levarContatoAoFunil(
             admin,
             {
               organization_id: e.organizationId,
-              serviceBoundary: boundary,
-              ...(e.proativo
-                ? { proactiveContext: { organizationId: e.organizationId, contactId: e.contactId } }
-                : {}),
               actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
               requestId,
             },
-            { conversation_id: e.conversationId, type: "text", body: efeito.texto } as Parameters<
-              typeof sendMessageHandler
-            >[2],
-          )) as { status?: string } | null;
-          if (enviada?.status === "failed")
-            log.warn("chatbot: envio marcado como falho", { flow_id: fluxoId });
+            { id: e.contactId },
+            efeito.pipeline_id,
+            efeito.stage_id,
+            {
+              tituloNovo: titulo.length >= 2 ? titulo.slice(0, 200) : "Contato do chatbot",
+              source: "chatbot",
+              quem: "pelo chatbot",
+            },
+          );
+          if (!r.ok) {
+            log.warn("chatbot: negócio não foi para o funil", { flow_id: fluxoId, motivo: r.error });
+            await notaInterna(`O chatbot não conseguiu pôr o contato no funil (${r.error}).`);
+          }
           break;
         }
         case "etiquetas": {

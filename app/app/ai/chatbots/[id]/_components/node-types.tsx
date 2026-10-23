@@ -54,7 +54,14 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       return [...c.adicionar.map((e) => `+${e}`), ...c.remover.map((e) => `−${e}`)].join(" ");
     }
     case "transferir_equipe":
-    case "transferir_atendente":
+    case "transferir_atendente": {
+      const c = lerConfig(tipo, dados);
+      const espera =
+        c.espera_minutos > 0 && c.espera_mensagem
+          ? `⏳ ${t("Espera")}: ${c.espera_minutos} min${c.espera_vezes > 1 ? ` × ${c.espera_vezes}` : ""}`
+          : "";
+      return [c.mensagem, espera].filter(Boolean).join("\n");
+    }
     case "finalizar_conversa":
       return (dados as { mensagem?: string })?.mensagem ?? "";
     case "bloco_de_notas":
@@ -106,6 +113,25 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     case "multi_condicional": {
       const n = lerConfig("multi_condicional", dados).regras.length;
       return n === 1 ? t("1 regra") : `${n} ${t("regras")}`;
+    }
+    case "enviar_midia": {
+      const c = lerConfig("enviar_midia", dados);
+      if (!c.storage_path) return "";
+      return [`📎 ${c.nome_arquivo || t("Arquivo")}`, c.legenda].filter(Boolean).join("\n");
+    }
+    case "agendar_horario": {
+      const c = lerConfig("agendar_horario", dados);
+      return c.event_type_id
+        ? `${t("Oferece")} ${c.quantidade} ${t("horários dos próximos")} ${c.dias_a_frente} ${t("dias")}`
+        : "";
+    }
+    case "negocio_funil": {
+      const c = lerConfig("negocio_funil", dados);
+      return c.stage_id ? c.nome_do_destino : "";
+    }
+    case "acionar_fluxo": {
+      const c = lerConfig("acionar_fluxo", dados);
+      return c.flow_id ? `→ ${c.nome_do_fluxo}` : "";
     }
   }
 }

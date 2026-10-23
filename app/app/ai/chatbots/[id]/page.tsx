@@ -24,7 +24,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
   if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) redirect("/403");
 
   const db = await createClient();
-  const [flowRes, canais, pessoasRes, followupsRes] = await Promise.all([
+  const [flowRes, canais, pessoasRes, followupsRes, fluxosRes, tiposRes, funisRes, etapasRes] = await Promise.all([
     db
       .from("chatbot_flows")
       .select("id, name, is_active, grafo")
@@ -44,6 +44,28 @@ export default async function ChatbotEditorPage({ params }: Props) {
       .eq("status", "active")
       .neq("surface", "atendimento")
       .order("name"),
+    db
+      .from("chatbot_flows")
+      .select("id, name, is_active")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db
+      .from("calendar_event_types")
+      .select("id, name, is_active")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db
+      .from("crm_pipelines")
+      .select("id, name")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position"),
+    db
+      .from("crm_stages")
+      .select("id, name, pipeline_id")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position"),
   ]);
 
   if (!flowRes.data) notFound();
@@ -72,6 +94,24 @@ export default async function ChatbotEditorPage({ params }: Props) {
           nome: nomes.get(String(p.user_id)) ?? `${String(p.user_id).slice(0, 8)} · ${p.role}`,
         })),
         followups: (followupsRes.data ?? []).map((f) => ({ id: String(f.id), nome: String(f.name) })),
+        fluxoAtual: flowRes.data.id,
+        fluxos: (fluxosRes.data ?? []).map((f) => ({
+          id: String(f.id),
+          nome: String(f.name),
+          ligado: Boolean(f.is_active),
+        })),
+        tiposDeAtendimento: (tiposRes.data ?? []).map((tipo) => ({
+          id: String(tipo.id),
+          nome: String(tipo.name),
+          ativo: Boolean(tipo.is_active),
+        })),
+        funis: (funisRes.data ?? []).map((f) => ({
+          id: String(f.id),
+          nome: String(f.name),
+          etapas: (etapasRes.data ?? [])
+            .filter((e) => e.pipeline_id === f.id)
+            .map((e) => ({ id: String(e.id), nome: String(e.name) })),
+        })),
       }}
     />
   );

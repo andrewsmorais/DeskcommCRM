@@ -1017,6 +1017,8 @@ export const AUDIT_ACTIONS = [
   "chatbot_flow.updated",
   /** Um fluxo de chatbot foi excluído. */
   "chatbot_flow.deleted",
+  /** Um arquivo foi subido para o passo "Enviar mídia" de um fluxo de chatbot. */
+  "chatbot_flow.media_uploaded",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

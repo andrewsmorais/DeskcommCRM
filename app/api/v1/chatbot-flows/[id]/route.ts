@@ -16,7 +16,8 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
-import { grafoSchema } from "@/lib/chatbot/passos";
+import { grafoSchema, lerConfig } from "@/lib/chatbot/passos";
+import { caminhoDoChatbotDaOrg } from "@/lib/chatbot/midia";
 import { respondeMensagens } from "@/lib/chatbot/motor";
 import { problemasDoGrafo } from "@/lib/chatbot/validar";
 import { cifrarSegredosDoGrafo } from "@/lib/chatbot/segredos";
@@ -84,6 +85,22 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   if (!atual) return fail("not_found", "Fluxo não encontrado.", 404, { requestId });
 
   const { grafo: grafoRecebido, is_active, ...meta } = parsed.data;
+
+  // O arquivo do "Enviar mídia" é copiado com service role na hora do envio: só
+  // aceita arquivo que esta organização subiu para o chatbot.
+  const midiaDeFora = (grafoRecebido?.nodes ?? []).some((n) => {
+    if (n.type !== "enviar_midia") return false;
+    const caminho = lerConfig("enviar_midia", n.data).storage_path;
+    return caminho !== null && !caminhoDoChatbotDaOrg(caminho, auth.org.orgId);
+  });
+  if (midiaDeFora) {
+    return fail(
+      "validation_failed",
+      'O arquivo de um passo "Enviar mídia" não foi subido por esta empresa. Escolha o arquivo de novo.',
+      422,
+      { requestId },
+    );
+  }
 
   // Segredo do passo "WebHook" nunca é gravado em texto: o desenho é lido por
   // todo membro da organização (lib/chatbot/segredos.ts).

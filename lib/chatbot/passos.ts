@@ -66,6 +66,22 @@ export const regraSchema = z.object({
 });
 export type Regra = z.infer<typeof regraSchema>;
 
+/**
+ * "Fluxo de espera" (na Umbler, o bot que roda quando o atendente demora): nos
+ * passos de transferir, se ninguém da equipe responder em `espera_minutos`, o
+ * chatbot manda `espera_mensagem` — até `espera_vezes` vezes, uma a cada
+ * intervalo. Para assim que uma PESSOA responder na conversa. 0 = desligado.
+ */
+const ESPERA_DO_ATENDENTE = {
+  espera_minutos: z.number().int().min(0).max(240).default(0),
+  espera_mensagem: z.string().trim().max(1000).default(""),
+  espera_vezes: z.number().int().min(1).max(3).default(1),
+};
+
+/** Tipos de arquivo que o passo "Enviar mídia" manda (os mesmos da conversa). */
+export const TIPOS_DE_MIDIA = ["image", "video", "audio", "document"] as const;
+export type TipoDeMidia = (typeof TIPOS_DE_MIDIA)[number];
+
 /** O que fazer se o contato mandar mensagem enquanto o fluxo espera o relógio. */
 const SE_RESPONDER = z.enum(["seguir", "esperar"]).default("seguir");
 
@@ -130,10 +146,12 @@ export const configDoPasso = {
    */
   transferir_equipe: z.object({
     mensagem: z.string().trim().max(1000).default(""),
+    ...ESPERA_DO_ATENDENTE,
   }),
   transferir_atendente: z.object({
     user_id: z.string().uuid().nullable().default(null),
     mensagem: z.string().trim().max(1000).default(""),
+    ...ESPERA_DO_ATENDENTE,
   }),
   editar_etiquetas: z.object({
     adicionar: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
@@ -236,6 +254,73 @@ export const configDoPasso = {
   bloco_de_notas: z.object({
     texto: z.string().max(4000).default(""),
   }),
+  /**
+   * Foto, vídeo, áudio ou documento. O arquivo fica no Storage da organização
+   * (`whatsapp-media/<org>/chatbot/<fluxo>/…`, subido pela tela) e, no envio, é
+   * COPIADO para a pasta da conversa — o mesmo caminho das fotos do catálogo:
+   * a conversa mostra o arquivo e a LGPD o apaga junto com ela.
+   */
+  enviar_midia: z.object({
+    storage_path: z.string().max(500).nullable().default(null),
+    tipo: z.enum(TIPOS_DE_MIDIA).nullable().default(null),
+    mime: z.string().max(160).default(""),
+    nome_arquivo: z.string().max(200).default(""),
+    /** Texto que vai junto (legenda). Aceita {{variavel}}. */
+    legenda: z.string().trim().max(1024).default(""),
+  }),
+  /**
+   * Oferece os próximos horários livres de um tipo de atendimento da Agenda e
+   * marca o que o contato escolher — a mesma consulta e a mesma marcação que o
+   * agente de IA usa (`lib/agenda/consulta.ts` + `marcarAgendamentoHandler`).
+   */
+  agendar_horario: z.object({
+    event_type_id: z.string().uuid().nullable().default(null),
+    /** null = o responsável padrão do tipo de atendimento. */
+    owner_user_id: z.string().uuid().nullable().default(null),
+    pergunta: z.string().trim().max(1000).default("Escolha um horário:"),
+    quantidade: z.number().int().min(2).max(10).default(5),
+    dias_a_frente: z.number().int().min(1).max(30).default(7),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não entendi. Responda com o número de um dos horários."),
+    tentativas: z.number().int().min(1).max(5).default(2),
+    confirmacao: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Pronto! Seu horário ficou marcado para {{horario}}. Até lá!"),
+    /** Atendimento que a equipe aprova antes: o horário fica reservado, não confirmado. */
+    confirmacao_pendente: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Separei {{horario}} para você. A equipe confirma em breve."),
+  }),
+  /**
+   * Põe o contato no funil: se ele já tem negócio aberto naquele funil, o
+   * negócio vai para a etapa escolhida; se não tem, nasce nela. Pelos mesmos
+   * handlers da tela (audita, emite `lead.created` / `lead.stage_changed`).
+   */
+  negocio_funil: z.object({
+    pipeline_id: z.string().uuid().nullable().default(null),
+    stage_id: z.string().uuid().nullable().default(null),
+    /** Título do negócio novo. Vazio = o nome do contato. Aceita {{variavel}}. */
+    titulo: z.string().trim().max(200).default(""),
+    /** Só para o resumo no quadro ("Vendas › Interessado"); quem decide são os ids. */
+    nome_do_destino: z.string().max(240).default(""),
+  }),
+  /**
+   * Encerra este fluxo e começa outro (ou este mesmo, do início — o "voltar
+   * ao menu"), levando as respostas já guardadas. O fluxo chamado precisa
+   * estar ligado.
+   */
+  acionar_fluxo: z.object({
+    flow_id: z.string().uuid().nullable().default(null),
+    /** Só para o resumo no quadro; quem decide é o id. */
+    nome_do_fluxo: z.string().max(120).default(""),
+  }),
 } as const;
 
 export type TipoDePasso = keyof typeof configDoPasso;
@@ -328,6 +413,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "enviar_midia",
+    grupo: "acao",
+    nome: "Enviar mídia",
+    descricao: "Envie uma foto, vídeo, áudio ou PDF para o contato.",
+    icone: "Paperclip",
+    cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
     tipo: "pedir_escolher",
     grupo: "acao",
     nome: "Pedir para escolher",
@@ -346,10 +440,37 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "agendar_horario",
+    grupo: "acao",
+    nome: "Agendar horário",
+    descricao: "Ofereça os horários livres da Agenda e marque o que o contato escolher.",
+    icone: "CalendarCheck",
+    cor: "text-emerald-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "negocio_funil",
+    grupo: "acao",
+    nome: "Negócio no funil",
+    descricao: "Crie o negócio do contato numa etapa do funil, ou mova o que ele já tem.",
+    icone: "Kanban",
+    cor: "text-indigo-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "acionar_fluxo",
+    grupo: "acao",
+    nome: "Acionar outro fluxo",
+    descricao: "Encerre este fluxo e comece outro chatbot (ou volte ao início deste).",
+    icone: "Workflow",
+    cor: "text-violet-500",
+    temEntrada: true,
+  },
+  {
     tipo: "transferir_equipe",
     grupo: "acao",
     nome: "Transferir para a equipe",
-    descricao: "Passe a conversa para a fila de atendentes humanos.",
+    descricao: "Passe a conversa para a fila de atendentes: ela fica como Aguardando até alguém pegar.",
     icone: "Users",
     cor: "text-red-400",
     temEntrada: true,
@@ -544,9 +665,16 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Deu certo" },
         { id: "falha", rotulo: "Falhou" },
       ];
+    case "agendar_horario":
+      return [
+        { id: "proximo", rotulo: "Marcou" },
+        { id: "sem_horario", rotulo: "Sem horário livre" },
+        { id: "invalida", rotulo: "Não escolheu" },
+      ];
     case "transferir_equipe":
     case "transferir_atendente":
     case "finalizar_conversa":
+    case "acionar_fluxo":
     case "bloco_de_notas":
       return [];
     default:
