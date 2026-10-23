@@ -244,3 +244,37 @@ Para migrar:
 3. Passe a deduplicar pelo `X-Webhook-Delivery`.
 4. Pare de ler o `X-Deskcomm-Signature`. Quando ele for removido, as notas da
    versão avisam com antecedência.
+
+## Passo "WebHook" do chatbot
+
+O editor de chatbot tem um passo que chama um endereço no meio da conversa e
+usa a resposta no fluxo (código em `lib/chatbot/webhook.ts`). Ele difere da
+ação das automações em três pontos, todos por causa de quem está esperando —
+um contato no WhatsApp:
+
+- **Uma tentativa só, com teto de 8 segundos.** Erro, demora ou endereço
+  recusado seguem pela saída "Falhou" do passo.
+- **A resposta importa.** Responda JSON; os campos que o passo pedir
+  (`pedido.status`, `itens.0.nome`) viram variáveis do fluxo. O código HTTP
+  fica em `{{webhook_status}}`.
+- **GET ou POST.** A URL aceita `{{variavel}}`, codificada para URL. No POST o
+  corpo é sempre esta projeção — nunca a linha do banco:
+
+```json
+{
+  "evento": "chatbot.webhook",
+  "enviado_em": "2026-10-23T13:30:00.000Z",
+  "fluxo": { "id": "<uuid>", "passo": "<id do passo>" },
+  "conversa": { "id": "<uuid>" },
+  "contato": { "id": "<uuid>", "nome": "Ana", "telefone": "+5511999990000", "email": null },
+  "mensagem": "última mensagem do contato, ou null",
+  "respostas": { "pedido": "1234" }
+}
+```
+
+Cabeçalhos: `X-Webhook-Delivery` (uuid da chamada), `X-Webhook-Timestamp` e,
+com segredo, `X-Webhook-Signature: t=<ts>,v1=<HMAC-SHA256("<ts>.<delivery>.<corpo>")>`
+— a mesma conferência das automações (no GET o corpo é vazio). O passo
+também aceita um valor para o cabeçalho `Authorization`. Segredo e
+autorização ficam cifrados no desenho do fluxo; quem abre o editor nunca os
+vê de volta. Redirect não é seguido.

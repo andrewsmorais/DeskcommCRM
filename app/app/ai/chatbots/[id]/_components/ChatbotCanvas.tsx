@@ -169,10 +169,20 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: nome.trim() || flow.name, grafo: paraGrafo(nodes, edges) }),
       });
+      const corpo = await res.json().catch(() => null);
       if (!res.ok) {
-        const corpo = await res.json().catch(() => null);
         toast.error(corpo?.error?.message ?? t("Não foi possível salvar o fluxo."));
         return false;
+      }
+      // O servidor cifra o segredo do WebHook: a tela troca o texto digitado
+      // pela versão salva, para o segredo não ficar aberto na memória da página.
+      const salvos = (corpo?.data?.grafo?.nodes ?? []) as { id: string; data: NodeData }[];
+      if (salvos.length > 0) {
+        setNodes((atuais) =>
+          atuais.map((n) =>
+            n.type === "webhook" ? { ...n, data: salvos.find((x) => x.id === n.id)?.data ?? n.data } : n,
+          ),
+        );
       }
       setSujo(false);
       toast.success(t("Fluxo salvo."));
@@ -180,7 +190,7 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
     } finally {
       setSalvando(false);
     }
-  }, [flow.id, flow.name, nome, nodes, edges, t]);
+  }, [flow.id, flow.name, nome, nodes, edges, setNodes, t]);
 
   async function alternarLigado(valor: boolean) {
     if (valor && sujo && !(await salvar())) return;

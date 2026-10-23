@@ -20,6 +20,7 @@ export const GRUPOS_DE_PASSO = [
   { id: "condicao", nome: "Condição" },
   { id: "acao", nome: "Ação" },
   { id: "finalizacao", nome: "Finalização" },
+  { id: "integracao", nome: "Integrações" },
   { id: "utilitarios", nome: "Utilitários" },
 ] as const;
 export type GrupoDePasso = (typeof GRUPOS_DE_PASSO)[number]["id"];
@@ -192,6 +193,29 @@ export const configDoPasso = {
   /** Abre um aviso na Central de avisos, com link para a conversa. */
   notificar_atendente: z.object({
     mensagem: z.string().trim().max(500).default(""),
+  }),
+  /**
+   * Chama um endereço de fora (n8n, Make, o sistema do cliente) e guarda
+   * partes da resposta em variáveis. Segredo e autorização ficam CIFRADOS no
+   * desenho (`*_enc`): o texto puro só passa pela rota que salva, que o cifra
+   * (lib/chatbot/segredos.ts). Quem chama é lib/chatbot/webhook.ts.
+   */
+  webhook: z.object({
+    /** Aceita {{variavel}} (vai codificada para URL). */
+    url: z.string().trim().max(2000).default(""),
+    metodo: z.enum(["POST", "GET"]).default("POST"),
+    campos: z
+      .array(
+        z.object({
+          /** Caminho no JSON da resposta: `status`, `pedido.status`, `itens.0.nome`. */
+          caminho: z.string().trim().min(1).max(120),
+          variavel: CHAVE,
+        }),
+      )
+      .max(10)
+      .default([]),
+    segredo_enc: z.string().max(4000).nullable().default(null),
+    autorizacao_enc: z.string().max(4000).nullable().default(null),
   }),
   bloco_de_notas: z.object({
     texto: z.string().max(4000).default(""),
@@ -396,6 +420,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "webhook",
+    grupo: "integracao",
+    nome: "WebHook",
+    descricao: "Chame um sistema de fora (n8n, Make, sua loja) e use a resposta no fluxo.",
+    icone: "Webhook",
+    cor: "text-pink-500",
+    temEntrada: true,
+  },
+  {
     tipo: "bloco_de_notas",
     grupo: "utilitarios",
     nome: "Bloco de notas",
@@ -471,6 +504,11 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         { id: "proximo", rotulo: "Avaliou" },
         { id: "invalida", rotulo: "Não avaliou" },
+      ];
+    case "webhook":
+      return [
+        { id: "proximo", rotulo: "Deu certo" },
+        { id: "falha", rotulo: "Falhou" },
       ];
     case "transferir_equipe":
     case "transferir_atendente":

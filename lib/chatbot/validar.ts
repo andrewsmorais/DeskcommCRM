@@ -56,6 +56,13 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (!lerConfig("pedir_feedback", no.data).pergunta)
           problemas.push(`escreva a pergunta do passo "${nome}".`);
         break;
+      case "webhook": {
+        const c = lerConfig("webhook", no.data);
+        if (!c.url) problemas.push(`escreva o endereço do passo "${nome}".`);
+        else if (!/^https?:\/\/[^\s/]+/i.test(c.url))
+          problemas.push(`o endereço do passo "${nome}" precisa começar com https://.`);
+        break;
+      }
       case "criar_nota":
         if (!lerConfig("criar_nota", no.data).texto)
           problemas.push(`escreva o texto do passo "${nome}".`);

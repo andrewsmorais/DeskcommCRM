@@ -11,6 +11,8 @@
  *     (sessão `waiting_input`);
  *   - "Aguardar intervalo" e "Aguardar até" PARAM no relógio (sessão
  *     `waiting_timer`, com `retomar_em`); quem acorda é `retomarFluxo`;
+ *   - "WebHook" PARA com `pendente`: o executor faz a chamada (o motor não
+ *     faz rede) e devolve a resposta em `continuarAposWebhook`;
  *   - transferir e finalizar encerram a participação do chatbot;
  *   - no máximo `LIMITE_DE_PASSOS` passos por mensagem: um desenho em círculo
  *     sem pergunta no meio não pode prender o worker nem inundar o contato.
@@ -75,7 +77,16 @@ export type ContextoDoTurno = {
   contato?: ContatoDoTurno;
 };
 
-export type ResultadoDoTurno = { sessao: SessaoDoChatbot; efeitos: Efeito[]; passos: number };
+export type ResultadoDoTurno = {
+  sessao: SessaoDoChatbot;
+  efeitos: Efeito[];
+  passos: number;
+  /** O fluxo parou num passo que o executor precisa fazer fora (rede) e devolver. */
+  pendente?: { tipo: "webhook"; no: string };
+};
+
+/** O que o executor devolve depois de chamar o WebHook. */
+export type RespostaDoWebhook = { ok: boolean; status: number | null; corpo: unknown };
 
 type No = Grafo["nodes"][number];
 
@@ -145,13 +156,16 @@ function textoDasOpcoes(pergunta: string, opcoes: string[]): string {
   return pergunta ? `${pergunta}\n\n${lista}` : lista;
 }
 
+const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha"]);
+
 function proximo(grafo: Grafo, deNo: string, saida: string): string | null {
   const ligacao =
     grafo.edges.find((e) => e.source === deNo && (e.sourceHandle ?? "proximo") === saida) ??
     // Ligação feita antes de o passo ter saídas nomeadas: vale como "proximo".
-    // Nunca a de "Valor inválido": o valor gravado não pode cair no caminho do erro.
+    // Nunca uma saída de erro ("Valor inválido", "Não avaliou", "Falhou"): o
+    // caminho do acerto não pode cair no caminho do erro.
     (saida === "proximo"
-      ? grafo.edges.find((e) => e.source === deNo && e.sourceHandle !== "invalido")
+      ? grafo.edges.find((e) => e.source === deNo && !SAIDAS_DE_ERRO.has(e.sourceHandle ?? ""))
       : undefined);
   return ligacao?.target ?? null;
 }
@@ -413,6 +427,11 @@ function andar(
         efeitos.push({ tipo: "notificar", texto, modelo });
         break;
       }
+      case "webhook":
+        sessao.no_atual = no.id;
+        sessao.status = "running";
+        sessao.tentativas = 0;
+        return { sessao, efeitos, passos, pendente: { tipo: "webhook", no: no.id } };
       case "aguardar_intervalo":
         return esperarRelogio(no.id, fimDoIntervalo(lerConfig("aguardar_intervalo", no.data), ctx.agora));
       case "aguardar_ate":
@@ -461,6 +480,50 @@ export function retomarFluxo(
     };
   }
   return andar(grafo, { ...sessao, status: "running" }, seguinte, ctx, false);
+}
+
+/** `a.b.0.c` dentro do JSON; só valor simples (texto, número, sim/não) conta. */
+export function valorNoCaminho(corpo: unknown, caminho: string): string | null {
+  let atual: unknown = corpo;
+  for (const parte of caminho.split(".")) {
+    if (atual === null || typeof atual !== "object") return null;
+    atual = Array.isArray(atual) ? atual[Number(parte)] : (atual as Record<string, unknown>)[parte];
+  }
+  if (typeof atual === "string") return atual.slice(0, 1000);
+  if (typeof atual === "number" || typeof atual === "boolean") return String(atual);
+  return null;
+}
+
+/**
+ * Continua o fluxo depois do WebHook: guarda `{{webhook_status}}` e os campos
+ * pedidos da resposta, e segue por "Deu certo" ou "Falhou". "Falhou" sem
+ * ligação encerra o fluxo — seguir pelo caminho do sucesso mandaria ao contato
+ * uma resposta com as variáveis vazias.
+ */
+export function continuarAposWebhook(
+  grafo: Grafo,
+  sessao: SessaoDoChatbot,
+  resposta: RespostaDoWebhook,
+  ctx: ContextoDoTurno,
+): ResultadoDoTurno {
+  const parada = grafo.nodes.find((n) => n.id === sessao.no_atual && n.type === "webhook");
+  const encerrado = (): ResultadoDoTurno => ({
+    sessao: { ...sessao, status: "completed", no_atual: null, tentativas: 0, retomar_em: null },
+    efeitos: [],
+    passos: 0,
+  });
+  if (!parada) return encerrado();
+  const c = lerConfig("webhook", parada.data);
+  const dados: Record<string, string> = { ...sessao.dados, webhook_status: String(resposta.status ?? 0) };
+  if (resposta.ok) {
+    for (const campo of c.campos) {
+      const valor = valorNoCaminho(resposta.corpo, campo.caminho);
+      dados[campo.variavel] = valor ?? "";
+    }
+  }
+  const seguinte = proximo(grafo, parada.id, resposta.ok ? "proximo" : "falha");
+  if (!seguinte) return { ...encerrado(), sessao: { ...encerrado().sessao, dados } };
+  return andar(grafo, { ...sessao, dados, status: "running" }, seguinte, ctx, false);
 }
 
 /** O passo de espera em que a sessão parou deixa a mensagem nova acordar o fluxo? */

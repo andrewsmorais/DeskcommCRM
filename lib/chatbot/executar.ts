@@ -30,15 +30,24 @@ import type { ContatoDoTurno } from "./regras";
 import { randomUUID } from "node:crypto";
 import { insertInboxItem } from "@/lib/agent-engine/db/repository";
 import {
+  continuarAposWebhook,
   continuarFluxo,
   iniciarFluxo,
   pontoDePartida,
   retomarFluxo,
   seguirAoResponder,
+  type ContextoDoTurno,
   type Efeito,
+  type RespostaDoWebhook,
   type ResultadoDoTurno,
   type SessaoDoChatbot,
 } from "./motor";
+import { lerConfig } from "./passos";
+import { decifrarSegredosDoPasso } from "./segredos";
+import { chamarWebhookDoChatbot } from "./webhook";
+
+/** Teto de WebHooks numa mensagem só: um desenho em círculo não vira metralhadora. */
+export const WEBHOOKS_POR_TURNO = 3;
 
 /** Depois de terminar, o fluxo só recomeça na mesma conversa passado este tempo. */
 export const HORAS_PARA_RECOMECAR = 6;
@@ -247,8 +256,94 @@ export async function atenderPeloChatbot(
       ? retomarFluxo(grafo, sessaoAnterior, ctx)
       : continuarFluxo(grafo, sessaoAnterior, ctx);
 
-  await concluirTurno(pool, admin, e, fluxoId, sessaoId, resultado, log);
+  await conduzir(pool, admin, e, fluxoId, grafo, sessaoId, resultado, ctx, log);
   return "atendeu";
+}
+
+/**
+ * Grava cada trecho do turno e, quando o motor para num WebHook, faz a chamada
+ * e devolve a resposta ao motor — até o fluxo parar de verdade (pergunta,
+ * relógio, fim) ou o teto de chamadas por turno.
+ */
+async function conduzir(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  grafo: Grafo,
+  sessaoId: string | null,
+  inicial: ResultadoDoTurno,
+  ctx: ContextoDoTurno,
+  log: Log,
+): Promise<void> {
+  let resultado = inicial;
+  let id = sessaoId;
+  for (let chamadas = 0; ; chamadas++) {
+    const gravada = await concluirTurno(pool, admin, e, fluxoId, id, resultado, log);
+    id = gravada.id;
+    if (!resultado.pendente) return;
+    if (chamadas >= WEBHOOKS_POR_TURNO) {
+      log.warn("chatbot: teto de WebHooks por mensagem — fluxo encerrado", { flow_id: fluxoId });
+      await encerrarSessao(pool, e.organizationId, gravada.id, "completed");
+      return;
+    }
+    const resposta = await fazerWebhook(pool, admin, e, fluxoId, grafo, resultado, ctx, log);
+    resultado = continuarAposWebhook(grafo, resultado.sessao, resposta, ctx);
+  }
+}
+
+async function fazerWebhook(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  grafo: Grafo,
+  resultado: ResultadoDoTurno,
+  ctx: ContextoDoTurno,
+  log: Log,
+): Promise<RespostaDoWebhook> {
+  const no = grafo.nodes.find((n) => n.id === resultado.pendente?.no);
+  if (!no) return { ok: false, status: null, corpo: null };
+  const c = lerConfig("webhook", no.data);
+  const segredos = await decifrarSegredosDoPasso(admin, c);
+  // Segredo gravado que não abre: não chama sem ele (sairia sem assinatura ou
+  // sem autorização) — segue por "Falhou".
+  if ((c.segredo_enc && !segredos.segredo) || (c.autorizacao_enc && !segredos.autorizacao)) {
+    log.warn("chatbot: segredo do WebHook não pôde ser decifrado — chamada não feita", { flow_id: fluxoId });
+    return { ok: false, status: null, corpo: null };
+  }
+  const { rows } = await pool.query<{ nome: string | null; telefone: string | null; email: string | null }>(
+    `select coalesce(name, display_name) as nome, phone_number as telefone, email
+       from contacts where organization_id = $1 and id = $2`,
+    [e.organizationId, e.contactId],
+  );
+  const r = await chamarWebhookDoChatbot(
+    c,
+    {
+      fluxoId,
+      passoId: no.id,
+      conversationId: e.conversationId,
+      contato: { id: e.contactId, ...(rows[0] ?? { nome: null, telefone: null, email: null }) },
+      mensagem: ctx.mensagem,
+      respostas: resultado.sessao.dados,
+    },
+    segredos,
+  );
+  let destino = "";
+  try {
+    destino = new URL(c.url.replace(/\{\{[^}]*\}\}/g, "x")).hostname;
+  } catch {
+    destino = "url_invalida";
+  }
+  // Só o host vai para o log: a URL pode levar a resposta do contato.
+  log.info("chatbot: WebHook chamado", {
+    flow_id: fluxoId,
+    destino,
+    status: r.status,
+    ok: r.ok,
+    erro: r.erro ?? null,
+  });
+  return r;
 }
 
 /**
@@ -264,7 +359,7 @@ async function concluirTurno(
   sessaoAnteriorId: string | null,
   resultado: ResultadoDoTurno,
   log: Log,
-): Promise<void> {
+): Promise<SessaoDoTurno> {
   const token = resultado.sessao.status === "waiting_timer" ? randomUUID() : null;
   const gravada = await gravarSessao(pool, e, fluxoId, sessaoAnteriorId, resultado.sessao, token);
 
@@ -300,7 +395,9 @@ async function concluirTurno(
     retomar_em: resultado.sessao.retomar_em ?? null,
     passos: resultado.passos,
     efeitos: resultado.efeitos.map((x) => x.tipo),
+    pendente: resultado.pendente?.tipo ?? null,
   });
+  return gravada;
 }
 
 /** O que viaja no `chatbot.retomada_requested`. */
@@ -397,6 +494,12 @@ export async function retomarChatbotPeloRelogio(
     channelSessionId: pedido.channel_session_id,
     inboundMessageId: pedido.inbound_message_id,
   };
+  const ctxDaRetomada: ContextoDoTurno = {
+    mensagem: null,
+    agora: new Date(),
+    fuso: sessao.timezone || "America/Sao_Paulo",
+    contato: contatoDoTurno(conversa),
+  };
   const resultado = retomarFluxo(
     g.data,
     {
@@ -405,14 +508,9 @@ export async function retomarChatbotPeloRelogio(
       tentativas: sessao.tentativas ?? 0,
       dados: dadosDeTexto(sessao.collected_data),
     },
-    {
-      mensagem: null,
-      agora: new Date(),
-      fuso: sessao.timezone || "America/Sao_Paulo",
-      contato: contatoDoTurno(conversa),
-    },
+    ctxDaRetomada,
   );
-  await concluirTurno(pool, admin, e, sessao.flow_id, sessao.id, resultado, log);
+  await conduzir(pool, admin, e, sessao.flow_id, g.data, sessao.id, resultado, ctxDaRetomada, log);
   return "retomou";
 }
 

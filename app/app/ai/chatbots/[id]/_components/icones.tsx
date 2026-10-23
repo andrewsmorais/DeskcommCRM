@@ -23,6 +23,7 @@ import {
   Network,
   NotebookPen,
   Play,
+  Plug,
   Search,
   Split,
   Star,
@@ -31,6 +32,7 @@ import {
   TextCursorInput,
   UserPen,
   Users,
+  Webhook,
   Wrench,
   Zap,
   type LucideIcon,
@@ -58,6 +60,7 @@ const ICONES: Record<string, LucideIcon> = {
   TextCursorInput,
   UserPen,
   Users,
+  Webhook,
 };
 
 /** Ícone do cabeçalho de cada grupo do menu, como na Umbler. */
@@ -66,6 +69,7 @@ export const ICONE_DO_GRUPO: Record<string, LucideIcon> = {
   condicao: GitBranch,
   acao: Zap,
   finalizacao: Flag,
+  integracao: Plug,
   utilitarios: Wrench,
 };
 

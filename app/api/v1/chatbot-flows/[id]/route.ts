@@ -18,6 +18,8 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
 import { grafoSchema } from "@/lib/chatbot/passos";
 import { problemasDoGrafo } from "@/lib/chatbot/validar";
+import { cifrarSegredosDoGrafo } from "@/lib/chatbot/segredos";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +82,23 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     .maybeSingle();
   if (!atual) return fail("not_found", "Fluxo não encontrado.", 404, { requestId });
 
-  const { grafo, is_active, ...meta } = parsed.data;
+  const { grafo: grafoRecebido, is_active, ...meta } = parsed.data;
+
+  // Segredo do passo "WebHook" nunca é gravado em texto: o desenho é lido por
+  // todo membro da organização (lib/chatbot/segredos.ts).
+  let grafo = grafoRecebido;
+  if (grafo !== undefined) {
+    const cifrado = await cifrarSegredosDoGrafo(createAdminClient(), grafo);
+    if (cifrado === null) {
+      return fail(
+        "encryption_unavailable",
+        "A instalação não tem a chave de cifra configurada, então o segredo do WebHook não pode ser guardado. Tire o segredo do passo ou peça a quem administra a VPS.",
+        422,
+        { requestId },
+      );
+    }
+    grafo = cifrado;
+  }
 
   // Ligar exige um desenho que o motor consiga rodar: o que vai ser gravado
   // agora, ou o que já está gravado.

@@ -95,6 +95,10 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const nomes = [t("Dom"), t("Seg"), t("Ter"), t("Qua"), t("Qui"), t("Sex"), t("Sáb")];
       return `${t("Até")} ${c.hora}${todos ? "" : ` (${c.dias.slice().sort().map((d) => nomes[d]).join(", ")})`}`;
     }
+    case "webhook": {
+      const c = lerConfig("webhook", dados);
+      return c.url ? `${c.metodo} ${c.url}` : "";
+    }
     case "multi_condicional": {
       const n = lerConfig("multi_condicional", dados).regras.length;
       return n === 1 ? t("1 regra") : `${n} ${t("regras")}`;

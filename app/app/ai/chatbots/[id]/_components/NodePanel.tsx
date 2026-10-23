@@ -501,6 +501,8 @@ function Campos({
     }
     case "aguardar_intervalo":
       return <AguardarIntervalo dados={dados} aplicar={aplicar} />;
+    case "webhook":
+      return <WebhookDoChatbot dados={dados} aplicar={aplicar} />;
     case "aguardar_ate": {
       const c = lerConfig("aguardar_ate", dados);
       const nomes = [
@@ -1055,6 +1057,180 @@ function AguardarIntervalo({
         <p className="text-xs text-muted-foreground">{t("No máximo 30 dias.")}</p>
       </div>
       <SeResponder valor={c.se_responder} aplicar={aplicar} />
+    </>
+  );
+}
+
+function SegredoDoWebhook({
+  id,
+  rotulo,
+  ajuda,
+  placeholder,
+  definido,
+  pendente,
+  aoDigitar,
+  aoRemover,
+}: {
+  id: string;
+  rotulo: string;
+  ajuda: string;
+  placeholder?: string;
+  definido: boolean;
+  pendente: boolean;
+  aoDigitar: (v: string) => void;
+  aoRemover: () => void;
+}) {
+  const t = useT();
+  const [v, setV] = useState("");
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{rotulo}</Label>
+      <Input
+        id={id}
+        type="password"
+        autoComplete="off"
+        value={v}
+        placeholder={definido ? t("Definido — digite para trocar") : placeholder}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => v.trim() && aoDigitar(v.trim())}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {pendente ? t("Será cifrado quando você salvar o fluxo.") : ajuda}
+        </p>
+        {definido || pendente ? (
+          <button
+            type="button"
+            className="shrink-0 text-xs text-destructive hover:underline"
+            onClick={() => {
+              setV("");
+              aoRemover();
+            }}
+          >
+            {t("Remover")}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function WebhookDoChatbot({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("webhook", dados);
+  const [campos, setCampos] = useState(c.campos);
+  const gravar = (lista: typeof campos) => {
+    const limpa = lista
+      .map((x) => ({ caminho: x.caminho.trim(), variavel: comoChave(x.variavel) }))
+      .filter((x) => x.caminho && x.variavel)
+      .slice(0, 10);
+    aplicar({ campos: limpa });
+  };
+  const textoPendente = (k: string) => typeof dados[k] === "string" && (dados[k] as string).length > 0;
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="webhook-metodo">{t("Método")}</Label>
+        <select
+          id="webhook-metodo"
+          className={SELECT}
+          value={c.metodo}
+          onChange={(e) => aplicar({ metodo: e.target.value })}
+        >
+          <option value="POST">{t("POST — envia os dados da conversa")}</option>
+          <option value="GET">{t("GET — só consulta o endereço")}</option>
+        </select>
+      </div>
+      <Texto
+        id="webhook-url"
+        rotulo={t("Endereço (URL)")}
+        valor={c.url}
+        placeholder="https://"
+        onCommit={(v) => aplicar({ url: v.trim() })}
+        ajuda={t(
+          "Use {{nome}} para pôr uma resposta do contato no endereço, por exemplo https://sualoja.example.com/pedidos/{{pedido}}. Endereço interno da VPS é recusado.",
+        )}
+      />
+      <div className="space-y-1.5">
+        <Label>{t("Guardar da resposta")}</Label>
+        {campos.map((x, i) => (
+          <div key={`${i}-${campos.length}`} className="flex items-center gap-1.5">
+            <Input
+              value={x.caminho}
+              placeholder="pedido.status"
+              aria-label={t("Campo da resposta")}
+              onChange={(e) => setCampos(campos.map((y, j) => (j === i ? { ...y, caminho: e.target.value } : y)))}
+              onBlur={() => gravar(campos)}
+            />
+            <span className="text-xs text-muted-foreground">→</span>
+            <Input
+              value={x.variavel}
+              placeholder="status"
+              aria-label={t("Guardar em")}
+              onChange={(e) => setCampos(campos.map((y, j) => (j === i ? { ...y, variavel: e.target.value } : y)))}
+              onBlur={() => gravar(campos)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const nova = campos.filter((_, j) => j !== i);
+                setCampos(nova);
+                gravar(nova);
+              }}
+              className="text-muted-foreground hover:text-destructive"
+              aria-label={t("Remover campo")}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+        {campos.length < 10 ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setCampos([...campos, { caminho: "", variavel: "" }])}
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            {t("Adicionar campo")}
+          </Button>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'Se o sistema responder {"pedido": {"status": "enviado"}}, o campo pedido.status guardado em status vira {{status}} nas mensagens seguintes. O código HTTP fica em {{webhook_status}}.',
+          )}
+        </p>
+      </div>
+      <SegredoDoWebhook
+        id="webhook-segredo"
+        rotulo={t("Segredo de assinatura (opcional)")}
+        ajuda={t("Com segredo, cada chamada sai assinada (X-Webhook-Signature), como nas automações.")}
+        definido={Boolean(c.segredo_enc)}
+        pendente={textoPendente("segredo")}
+        aoDigitar={(v) => aplicar({ segredo: v })}
+        aoRemover={() => aplicar({ segredo: "", segredo_enc: "" })}
+      />
+      <SegredoDoWebhook
+        id="webhook-autorizacao"
+        rotulo={t("Cabeçalho Authorization (opcional)")}
+        placeholder="Bearer abc123"
+        ajuda={t("Para APIs que pedem chave: o valor vai inteiro no cabeçalho Authorization.")}
+        definido={Boolean(c.autorizacao_enc)}
+        pendente={textoPendente("autorizacao")}
+        aoDigitar={(v) => aplicar({ autorizacao: v })}
+        aoRemover={() => aplicar({ autorizacao: "", autorizacao_enc: "" })}
+      />
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'No POST vão o id da conversa, nome, telefone e e-mail do contato, a última mensagem e as respostas guardadas no fluxo. Resposta 2xx segue por "Deu certo"; erro, demora de mais de 8 segundos ou endereço recusado seguem por "Falhou". Sem ligação em "Falhou", o fluxo termina ali.',
+        )}
+      </p>
     </>
   );
 }
