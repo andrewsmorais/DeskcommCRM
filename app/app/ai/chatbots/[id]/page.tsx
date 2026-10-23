@@ -24,7 +24,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
   if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) redirect("/403");
 
   const db = await createClient();
-  const [flowRes, canais, pessoasRes] = await Promise.all([
+  const [flowRes, canais, pessoasRes, followupsRes] = await Promise.all([
     db
       .from("chatbot_flows")
       .select("id, name, is_active, grafo")
@@ -37,6 +37,13 @@ export default async function ChatbotEditorPage({ params }: Props) {
       .select("user_id, role")
       .eq("organization_id", activeOrg.orgId)
       .is("revoked_at", null),
+    db
+      .from("followup_flow_pointers")
+      .select("id, name, surface")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("status", "active")
+      .neq("surface", "atendimento")
+      .order("name"),
   ]);
 
   if (!flowRes.data) notFound();
@@ -64,6 +71,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
           id: String(p.user_id),
           nome: nomes.get(String(p.user_id)) ?? `${String(p.user_id).slice(0, 8)} · ${p.role}`,
         })),
+        followups: (followupsRes.data ?? []).map((f) => ({ id: String(f.id), nome: String(f.name) })),
       }}
     />
   );

@@ -190,6 +190,15 @@ export const configDoPasso = {
     dias: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([0, 1, 2, 3, 4, 5, 6]),
     se_responder: SE_RESPONDER,
   }),
+  /**
+   * Põe o contato num dos follow-ups publicados do CRM (os mesmos que o agente
+   * de IA arma), pelo mesmo caminho da tela e das automações
+   * (`enrollFollowupFlow`). Roteiro de atendimento não entra: ele começa na
+   * conversa, não por inscrição.
+   */
+  iniciar_followup: z.object({
+    pointer_id: z.string().uuid().nullable().default(null),
+  }),
   /** Abre um aviso na Central de avisos, com link para a conversa. */
   notificar_atendente: z.object({
     mensagem: z.string().trim().max(500).default(""),
@@ -381,6 +390,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Peça um comentário sobre o atendimento. Fica junto da nota.",
     icone: "MessageSquareQuote",
     cor: "text-yellow-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "iniciar_followup",
+    grupo: "acao",
+    nome: "Iniciar follow-up",
+    descricao: "Ponha o contato num dos follow-ups do CRM (os mesmos que o agente de IA usa).",
+    icone: "Repeat",
+    cor: "text-emerald-500",
     temEntrada: true,
   },
   {

@@ -238,3 +238,27 @@ describe("média de satisfação na lista de chatbots", () => {
     ).toEqual({ a: { media: 4, total: 2 } });
   });
 });
+
+describe("Iniciar follow-up", () => {
+  const ponteiro = "5f5f5f5f-0000-4000-8000-000000000001";
+  it("vira efeito com o follow-up escolhido e o fluxo segue", () => {
+    const g: Grafo = {
+      nodes: [
+        no("ini", "inicio_canal"),
+        no("fu", "iniciar_followup", { pointer_id: ponteiro }),
+        no("fim", "enviar_mensagem", { texto: "Te chamo de novo amanhã." }),
+      ],
+      edges: [liga("ini", "fu"), liga("fu", "fim")],
+    };
+    expect(iniciarFluxo(g, "ini", ctx("oi")).efeitos).toEqual([
+      { tipo: "followup", pointer_id: ponteiro },
+      { tipo: "enviar", texto: "Te chamo de novo amanhã." },
+    ]);
+  });
+  it("sem follow-up escolhido não faz nada e impede ligar", async () => {
+    const g: Grafo = { nodes: [no("ini", "inicio_canal"), no("fu", "iniciar_followup")], edges: [liga("ini", "fu")] };
+    expect(iniciarFluxo(g, "ini", ctx("oi")).efeitos).toEqual([]);
+    const { problemasDoGrafo } = await import("./validar");
+    expect(problemasDoGrafo(g)).toContain('escolha o follow-up do passo "Iniciar follow-up".');
+  });
+});

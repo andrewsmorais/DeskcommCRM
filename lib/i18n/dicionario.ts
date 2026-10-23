@@ -4370,6 +4370,11 @@ export const DICIONARIO: Traducoes = {
   "Fluxos automáticos sem custo de IA — triagem, FAQ e desvios antes do agente.": { es: "Flujos automáticos sin costo de IA: clasificación, preguntas frecuentes y desvíos antes del agente." },
   "Automatizar sem IA": { es: "Automatizar sin IA" },
   // ─── Chatbot fase 2: condições, campo do contato, nota ───
+  "Escolha um follow-up": { es: "Elige un seguimiento" },
+  "Nenhum follow-up publicado ainda. Crie e publique um em IA › Follow-ups.": { es: "Todavía no hay ningún seguimiento publicado. Crea y publica uno en IA › Seguimientos." },
+  "O contato entra no follow-up como se o agente de IA o tivesse armado. Se ele já estiver em outro follow-up ativo, fica no que está — e a conversa ganha uma nota dizendo isso.": { es: "El contacto entra en el seguimiento como si el agente de IA lo hubiera activado. Si ya está en otro seguimiento activo, se queda en ese, y la conversación recibe una nota que lo indica." },
+  "Iniciar follow-up": { es: "Iniciar seguimiento" },
+  "Ponha o contato num dos follow-ups do CRM (os mesmos que o agente de IA usa).": { es: "Pon al contacto en uno de los seguimientos del CRM (los mismos que usa el agente de IA)." },
   "Definido — digite para trocar": { es: "Definido: escribe para cambiarlo" },
   "Será cifrado quando você salvar o fluxo.": { es: "Se cifrará cuando guardes el flujo." },
   "Método": { es: "Método" },

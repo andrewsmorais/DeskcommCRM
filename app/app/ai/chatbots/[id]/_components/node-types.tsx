@@ -95,6 +95,8 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const nomes = [t("Dom"), t("Seg"), t("Ter"), t("Qua"), t("Qui"), t("Sex"), t("Sáb")];
       return `${t("Até")} ${c.hora}${todos ? "" : ` (${c.dias.slice().sort().map((d) => nomes[d]).join(", ")})`}`;
     }
+    case "iniciar_followup":
+      return "";
     case "webhook": {
       const c = lerConfig("webhook", dados);
       return c.url ? `${c.metodo} ${c.url}` : "";

@@ -63,6 +63,10 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
           problemas.push(`o endereço do passo "${nome}" precisa começar com https://.`);
         break;
       }
+      case "iniciar_followup":
+        if (!lerConfig("iniciar_followup", no.data).pointer_id)
+          problemas.push(`escolha o follow-up do passo "${nome}".`);
+        break;
       case "criar_nota":
         if (!lerConfig("criar_nota", no.data).texto)
           problemas.push(`escreva o texto do passo "${nome}".`);

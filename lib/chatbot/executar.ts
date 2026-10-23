@@ -29,6 +29,7 @@ import { grafoSchema, type Grafo } from "./passos";
 import type { ContatoDoTurno } from "./regras";
 import { randomUUID } from "node:crypto";
 import { insertInboxItem } from "@/lib/agent-engine/db/repository";
+import { enrollFollowupFlow } from "@/lib/followup/enroll";
 import {
   continuarAposWebhook,
   continuarFluxo,
@@ -752,6 +753,33 @@ async function executarEfeitos(
           await gravarAvaliacao({ comentou: true });
           await notaInterna(`Comentário do contato sobre o atendimento: ${efeito.texto}`);
           break;
+        case "followup": {
+          // O mesmo caminho da tela e das automações: valida o fluxo publicado,
+          // escolhe o agente que arma, recusa o segundo follow-up ativo do contato.
+          const r = await enrollFollowupFlow(admin, {
+            organizationId: e.organizationId,
+            pointerId: efeito.pointer_id,
+            contactId: e.contactId,
+            actorUserId: null,
+            requestId,
+            ...(boundary ? { resolveServiceBoundary: async () => boundary } : {}),
+          });
+          const { rows: fluxo } = await pool.query<{ name: string }>(
+            `select name from followup_flow_pointers where organization_id = $1 and id = $2`,
+            [e.organizationId, efeito.pointer_id],
+          );
+          const nomeDoFollowup = fluxo[0]?.name ?? "follow-up";
+          if (r.ok) {
+            await notaInterna(`O chatbot pôs o contato no follow-up "${nomeDoFollowup}".`);
+          } else {
+            log.warn("chatbot: follow-up não iniciado", { flow_id: fluxoId, codigo: r.code });
+            if (r.code === "conflict")
+              await notaInterna(
+                `O chatbot tentou o follow-up "${nomeDoFollowup}", mas o contato já está em outro follow-up ativo.`,
+              );
+          }
+          break;
+        }
         case "notificar": {
           // O aviso da Central leva só o texto que quem montou o fluxo
           // escreveu, sem as respostas do contato (o título do aviso sai do

@@ -62,6 +62,7 @@ export type Efeito =
   | { tipo: "nota"; texto: string }
   | { tipo: "campo_contato"; campo: CampoDoContato; chave: string; valor: string }
   | { tipo: "avaliacao"; nota: number; escala: "1_5" | "0_10" }
+  | { tipo: "followup"; pointer_id: string }
   | { tipo: "feedback"; texto: string }
   /** `texto` com as respostas do contato; `modelo` é o que quem montou o fluxo escreveu, sem elas. */
   | { tipo: "notificar"; texto: string; modelo: string }
@@ -418,6 +419,11 @@ function andar(
         const texto = (ctx.mensagem ?? "").trim().slice(0, 2000);
         sessao.dados.feedback = texto;
         if (texto) efeitos.push({ tipo: "feedback", texto });
+        break;
+      }
+      case "iniciar_followup": {
+        const c = lerConfig("iniciar_followup", no.data);
+        if (c.pointer_id) efeitos.push({ tipo: "followup", pointer_id: c.pointer_id });
         break;
       }
       case "notificar_atendente": {

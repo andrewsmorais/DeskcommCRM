@@ -27,6 +27,8 @@ import type { NodeData } from "./node-types";
 export type OpcoesDoPainel = {
   canais: { id: string; nome: string }[];
   atendentes: { id: string; nome: string }[];
+  /** Follow-ups publicados (os roteiros de atendimento ficam de fora). */
+  followups: { id: string; nome: string }[];
 };
 
 type Props = {
@@ -503,6 +505,36 @@ function Campos({
       return <AguardarIntervalo dados={dados} aplicar={aplicar} />;
     case "webhook":
       return <WebhookDoChatbot dados={dados} aplicar={aplicar} />;
+    case "iniciar_followup": {
+      const c = lerConfig("iniciar_followup", dados);
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="followup">{t("Follow-up")}</Label>
+            <select
+              id="followup"
+              className={SELECT}
+              value={c.pointer_id ?? ""}
+              onChange={(e) => aplicar({ pointer_id: e.target.value || null })}
+            >
+              <option value="">{t("Escolha um follow-up")}</option>
+              {opcoes.followups.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {opcoes.followups.length === 0
+              ? t("Nenhum follow-up publicado ainda. Crie e publique um em IA › Follow-ups.")
+              : t(
+                  "O contato entra no follow-up como se o agente de IA o tivesse armado. Se ele já estiver em outro follow-up ativo, fica no que está — e a conversa ganha uma nota dizendo isso.",
+                )}
+          </p>
+        </>
+      );
+    }
     case "aguardar_ate": {
       const c = lerConfig("aguardar_ate", dados);
       const nomes = [
