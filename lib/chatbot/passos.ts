@@ -47,13 +47,26 @@ export const regraSchema = z.object({
   /** Nome da variável, ou o campo do contato (nome/email/aniversario/<chave personalizada>). */
   chave: z.string().trim().max(40).default(""),
   operador: z
-    .enum(["tem", "nao_tem", "igual", "diferente", "contem", "preenchido", "vazio"])
+    .enum([
+      "tem",
+      "nao_tem",
+      "igual",
+      "diferente",
+      "contem",
+      "preenchido",
+      "vazio",
+      "maior_ou_igual",
+      "menor_ou_igual",
+    ])
     .default("tem"),
   valor: z.string().trim().max(200).default(""),
   /** Nome da saída no quadro (só no Multi-condicional). */
   rotulo: z.string().trim().max(40).default(""),
 });
 export type Regra = z.infer<typeof regraSchema>;
+
+/** O que fazer se o contato mandar mensagem enquanto o fluxo espera o relógio. */
+const SE_RESPONDER = z.enum(["seguir", "esperar"]).default("seguir");
 
 export const configDoPasso = {
   inicio_canal: z.object({
@@ -141,6 +154,44 @@ export const configDoPasso = {
       .min(1)
       .max(8)
       .default([regraSchema.parse({}), regraSchema.parse({})]),
+  }),
+  /** Nota de satisfação: 1 a 5 ou 0 a 10. Fica guardada em {{avaliacao}}. */
+  pedir_avaliacao: z.object({
+    pergunta: z
+      .string()
+      .trim()
+      .max(2000)
+      .default("De 1 a 5, que nota você dá para o nosso atendimento?"),
+    escala: z.enum(["1_5", "0_10"]).default("1_5"),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não entendi. Responda só com o número da nota."),
+    tentativas: z.number().int().min(1).max(5).default(2),
+  }),
+  /** Comentário livre. Fica guardado em {{feedback}} e junto da nota. */
+  pedir_feedback: z.object({
+    pergunta: z
+      .string()
+      .trim()
+      .max(2000)
+      .default("Quer deixar um comentário sobre o atendimento?"),
+  }),
+  aguardar_intervalo: z.object({
+    quantidade: z.number().int().min(1).max(999).default(5),
+    unidade: z.enum(["segundos", "minutos", "horas", "dias"]).default("minutos"),
+    se_responder: SE_RESPONDER,
+  }),
+  aguardar_ate: z.object({
+    hora: HORA.default("09:00"),
+    /** 0 = domingo … 6 = sábado. */
+    dias: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([0, 1, 2, 3, 4, 5, 6]),
+    se_responder: SE_RESPONDER,
+  }),
+  /** Abre um aviso na Central de avisos, com link para a conversa. */
+  notificar_atendente: z.object({
+    mensagem: z.string().trim().max(500).default(""),
   }),
   bloco_de_notas: z.object({
     texto: z.string().max(4000).default(""),
@@ -291,6 +342,51 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "pedir_avaliacao",
+    grupo: "acao",
+    nome: "Pedir para avaliar",
+    descricao: "Peça uma nota para o atendimento (1 a 5 ou 0 a 10).",
+    icone: "Star",
+    cor: "text-yellow-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "pedir_feedback",
+    grupo: "acao",
+    nome: "Pedir feedback escrito",
+    descricao: "Peça um comentário sobre o atendimento. Fica junto da nota.",
+    icone: "MessageSquareQuote",
+    cor: "text-yellow-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "notificar_atendente",
+    grupo: "acao",
+    nome: "Notificar atendente",
+    descricao: "Abra um aviso na Central de avisos, com link para a conversa.",
+    icone: "BellRing",
+    cor: "text-orange-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "aguardar_intervalo",
+    grupo: "acao",
+    nome: "Aguardar intervalo",
+    descricao: "Espere um tempo (segundos, minutos, horas ou dias) antes de seguir.",
+    icone: "Hourglass",
+    cor: "text-purple-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "aguardar_ate",
+    grupo: "acao",
+    nome: "Aguardar até",
+    descricao: "Pause o fluxo até um horário (ex.: amanhã às 9h) e siga dali.",
+    icone: "AlarmClock",
+    cor: "text-purple-400",
+    temEntrada: true,
+  },
+  {
     tipo: "finalizar_conversa",
     grupo: "finalizacao",
     nome: "Finalizar conversa",
@@ -370,6 +466,11 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         { id: "proximo", rotulo: "Gravado" },
         { id: "invalido", rotulo: "Valor inválido" },
+      ];
+    case "pedir_avaliacao":
+      return [
+        { id: "proximo", rotulo: "Avaliou" },
+        { id: "invalida", rotulo: "Não avaliou" },
       ];
     case "transferir_equipe":
     case "transferir_atendente":

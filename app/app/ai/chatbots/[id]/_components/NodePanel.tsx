@@ -413,6 +413,141 @@ function Campos({
     }
     case "multi_condicional":
       return <MultiCondicional dados={dados} aplicar={aplicar} />;
+    case "pedir_avaliacao": {
+      const c = lerConfig("pedir_avaliacao", dados);
+      return (
+        <>
+          <Texto
+            id="avaliar-pergunta"
+            rotulo={t("Pergunta")}
+            valor={c.pergunta}
+            linhas={3}
+            onCommit={(v) => aplicar({ pergunta: v })}
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor="avaliar-escala">{t("Escala")}</Label>
+            <select
+              id="avaliar-escala"
+              className={SELECT}
+              value={c.escala}
+              onChange={(e) => aplicar({ escala: e.target.value })}
+            >
+              <option value="1_5">{t("De 1 a 5")}</option>
+              <option value="0_10">{t("De 0 a 10")}</option>
+            </select>
+          </div>
+          <Texto
+            id="avaliar-invalida"
+            rotulo={t("Se a resposta não for uma nota")}
+            valor={c.mensagem_invalida}
+            linhas={2}
+            onCommit={(v) => aplicar({ mensagem_invalida: v })}
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor="avaliar-tentativas">
+              {t('Tentativas antes de seguir por "Não avaliou"')}
+            </Label>
+            <select
+              id="avaliar-tentativas"
+              className={SELECT}
+              value={c.tentativas}
+              onChange={(e) => aplicar({ tentativas: Number(e.target.value) })}
+            >
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'A nota fica em {{avaliacao}}, aparece na conversa como nota interna e entra na média da lista de chatbots. Para separar nota boa de ruim, ligue a um "Definir condição" com "É maior ou igual a".',
+            )}
+          </p>
+        </>
+      );
+    }
+    case "pedir_feedback": {
+      const c = lerConfig("pedir_feedback", dados);
+      return (
+        <Texto
+          id="feedback-pergunta"
+          rotulo={t("Pergunta")}
+          valor={c.pergunta}
+          linhas={3}
+          onCommit={(v) => aplicar({ pergunta: v })}
+          ajuda={t(
+            "O comentário do contato vai para a conversa como nota interna e fica em {{feedback}}.",
+          )}
+        />
+      );
+    }
+    case "notificar_atendente": {
+      const c = lerConfig("notificar_atendente", dados);
+      return (
+        <Texto
+          id="notificar-msg"
+          rotulo={t("Motivo do aviso")}
+          valor={c.mensagem}
+          linhas={3}
+          placeholder={t("Ex.: Cliente quer falar sobre cancelamento")}
+          onCommit={(v) => aplicar({ mensagem: v })}
+          ajuda={t(
+            "Abre um aviso na Central de avisos, com som e notificação para a equipe, que leva à conversa. As respostas do contato ({{nome}}) entram só na nota da conversa, não no aviso.",
+          )}
+        />
+      );
+    }
+    case "aguardar_intervalo":
+      return <AguardarIntervalo dados={dados} aplicar={aplicar} />;
+    case "aguardar_ate": {
+      const c = lerConfig("aguardar_ate", dados);
+      const nomes = [
+        t("Domingo"),
+        t("Segunda"),
+        t("Terça"),
+        t("Quarta"),
+        t("Quinta"),
+        t("Sexta"),
+        t("Sábado"),
+      ];
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="ate-hora">{t("Horário")}</Label>
+            <Input
+              id="ate-hora"
+              type="time"
+              value={c.hora}
+              onChange={(e) => e.target.value && aplicar({ hora: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t("Nos dias")}</Label>
+            {nomes.map((n, i) => (
+              <label key={i} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={c.dias.includes(i)}
+                  disabled={c.dias.length === 1 && c.dias.includes(i)}
+                  onChange={(e) =>
+                    aplicar({
+                      dias: e.target.checked ? [...c.dias, i].sort() : c.dias.filter((d) => d !== i),
+                    })
+                  }
+                />
+                {n}
+              </label>
+            ))}
+            <p className="text-xs text-muted-foreground">
+              {t("O fluxo segue no próximo horário marcado, no fuso horário da empresa.")}
+            </p>
+          </div>
+          <SeResponder valor={c.se_responder} aplicar={aplicar} />
+        </>
+      );
+    }
     case "bloco_de_notas": {
       const c = lerConfig("bloco_de_notas", dados);
       return (
@@ -763,6 +898,8 @@ function EditorDeRegra({
               <option value="nao_tem">{t("Não contém")}</option>
               <option value="preenchido">{t("Está preenchido")}</option>
               <option value="vazio">{t("Está vazio")}</option>
+              <option value="maior_ou_igual">{t("É maior ou igual a (número)")}</option>
+              <option value="menor_ou_igual">{t("É menor ou igual a (número)")}</option>
             </>
           )}
         </select>
@@ -840,5 +977,84 @@ function MultiCondicional({
         )}
       </p>
     </div>
+  );
+}
+
+function SeResponder({
+  valor,
+  aplicar,
+}: {
+  valor: "seguir" | "esperar";
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  return (
+    <div className="space-y-1.5">
+      <Label>{t("Se o contato mandar mensagem antes")}</Label>
+      {(["seguir", "esperar"] as const).map((v) => (
+        <label key={v} className="flex items-start gap-2 text-sm">
+          <input
+            type="radio"
+            name="se-responder"
+            className="mt-1"
+            checked={valor === v}
+            onChange={() => aplicar({ se_responder: v })}
+          />
+          {v === "seguir"
+            ? t("Seguir o fluxo na hora")
+            : t("Continuar esperando (a mensagem fica para a equipe ver)")}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function AguardarIntervalo({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("aguardar_intervalo", dados);
+  const [qtd, setQtd] = useState(String(c.quantidade));
+  const gravar = () => {
+    const n = Math.min(999, Math.max(1, Math.round(Number(qtd) || 1)));
+    setQtd(String(n));
+    if (n !== c.quantidade) aplicar({ quantidade: n });
+  };
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="intervalo-qtd">{t("Esperar")}</Label>
+        <div className="flex gap-2">
+          <Input
+            id="intervalo-qtd"
+            type="number"
+            min={1}
+            max={999}
+            className="w-24"
+            value={qtd}
+            onChange={(e) => setQtd(e.target.value)}
+            onBlur={gravar}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+          <select
+            aria-label={t("Unidade")}
+            className={SELECT}
+            value={c.unidade}
+            onChange={(e) => aplicar({ unidade: e.target.value })}
+          >
+            <option value="segundos">{t("segundos")}</option>
+            <option value="minutos">{t("minutos")}</option>
+            <option value="horas">{t("horas")}</option>
+            <option value="dias">{t("dias")}</option>
+          </select>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("No máximo 30 dias.")}</p>
+      </div>
+      <SeResponder valor={c.se_responder} aplicar={aplicar} />
+    </>
   );
 }

@@ -1,6 +1,6 @@
 /**
  * Isolamento entre organizações e papel de escrita — tabelas do Chatbot Builder
- * (0486/0489/0490) e do faturamento do ChatAI Online (0484/0487).
+ * (0486/0489/0490/0491) e do faturamento do ChatAI Online (0484/0487).
  *
  * Duas organizações reais, cada uma com usuário próprio, falando com o banco
  * como `authenticated` + JWT (o mesmo caminho do PostgREST com a anon key).
@@ -9,8 +9,9 @@
  *
  *   - chatbot_flows: membro lê só a própria org; `viewer` e `agent` não
  *     escrevem; `manager` escreve (é o papel que a rota exige).
- *   - chatbot_sessions / chatbot_nodes / chatbot_edges: membro lê só a própria
- *     org; ninguém com JWT grava (quem grava é o motor no worker).
+ *   - chatbot_sessions / chatbot_nodes / chatbot_edges / chatbot_avaliacoes:
+ *     membro lê só a própria org; ninguém com JWT grava (quem grava é o motor
+ *     no worker).
  *   - subscriptions: cada org lê só a própria assinatura; ninguém com JWT grava.
  *   - asaas_customers, org_aquisicao: server-only — `authenticated` não lê.
  */
@@ -111,9 +112,13 @@ beforeAll(async () => {
       "insert into public.conversations (organization_id, contact_id, channel_session_id, status) values ($1, $2, $3, 'open') returning id",
       [org, contato.rows[0].id, numero.rows[0].id],
     );
-    await q(
-      "insert into public.chatbot_sessions (organization_id, flow_id, conversation_id, status, no_atual) values ($1, $2, $3, 'waiting_input', 'x') on conflict do nothing",
+    const sessao = await q(
+      "insert into public.chatbot_sessions (organization_id, flow_id, conversation_id, status, no_atual) values ($1, $2, $3, 'waiting_input', 'x') on conflict (organization_id, conversation_id, flow_id) do update set status = excluded.status returning id, started_at",
       [org, flow, conversa.rows[0].id],
+    );
+    await q(
+      "insert into public.chatbot_avaliacoes (organization_id, flow_id, session_id, rodada_em, conversation_id, nota, escala) values ($1, $2, $3, $4, $5, 5, '1_5') on conflict do nothing",
+      [org, flow, sessao.rows[0].id, sessao.rows[0].started_at, conversa.rows[0].id],
     );
     await q(
       "insert into public.subscriptions (organization_id, status, plan_type, billing_cycle, seats) values ($1, 'trialing', 'essencial', 'monthly', 1) on conflict do nothing",
@@ -130,7 +135,14 @@ beforeAll(async () => {
 afterAll(() => pool.end());
 
 describe("chatbot e faturamento: cada organização só enxerga o que é seu", () => {
-  for (const tabela of ["chatbot_flows", "chatbot_sessions", "chatbot_nodes", "chatbot_edges", "subscriptions"]) {
+  for (const tabela of [
+    "chatbot_flows",
+    "chatbot_sessions",
+    "chatbot_nodes",
+    "chatbot_edges",
+    "chatbot_avaliacoes",
+    "subscriptions",
+  ]) {
     it(`${tabela}: lê ≥1 da própria org e 0 da outra, nos dois sentidos`, async () => {
       expect(await contar(MANAGER_A, tabela, ORG_A)).toBeGreaterThanOrEqual(1);
       expect(await contar(MANAGER_A, tabela, ORG_B)).toBe(0);
@@ -169,7 +181,7 @@ describe("chatbot_flows: escrever exige manager", () => {
 });
 
 describe("estado do motor e assinatura: ninguém com JWT grava", () => {
-  for (const tabela of ["chatbot_sessions", "chatbot_nodes", "chatbot_edges"]) {
+  for (const tabela of ["chatbot_sessions", "chatbot_nodes", "chatbot_edges", "chatbot_avaliacoes"]) {
     it(`${tabela}: manager não altera nem apaga`, async () => {
       await expect(como(MANAGER_A, `update public.${tabela} set organization_id = organization_id`)).rejects.toThrow(
         /permission denied/,

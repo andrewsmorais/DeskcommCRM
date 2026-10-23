@@ -53,6 +53,12 @@ export function valorAtualDoCampo(contato: ContatoDoTurno, chave: string): strin
 
 const NEGA = new Set(["nao_tem", "diferente"]);
 
+/** "4", "4,5", " 10 " → número; texto sem número → null. */
+export function comoNumero(texto: string): number | null {
+  const m = texto.trim().replace(",", ".").match(/^-?\d+(?:\.\d+)?$/);
+  return m ? Number(m[0]) : null;
+}
+
 export function regraVale(
   r: Regra,
   ctx: { mensagem: string | null; dados: Record<string, string>; contato: ContatoDoTurno },
@@ -70,6 +76,13 @@ export function regraVale(
         : valorAtualDoCampo(ctx.contato, r.chave);
   const texto = normalizar(bruto);
   switch (r.operador) {
+    case "maior_ou_igual":
+    case "menor_ou_igual": {
+      const a = comoNumero(bruto);
+      const b = comoNumero(r.valor);
+      if (a === null || b === null) return false;
+      return r.operador === "maior_ou_igual" ? a >= b : a <= b;
+    }
     case "preenchido":
       return texto !== "";
     case "vazio":
@@ -117,6 +130,12 @@ export function descreverRegra(r: Regra): string {
       case "tem":
         s = `${alvo} contém ${v}`;
         break;
+      case "maior_ou_igual":
+        s = `${alvo} ≥ ${r.valor || "…"}`;
+        break;
+      case "menor_ou_igual":
+        s = `${alvo} ≤ ${r.valor || "…"}`;
+        break;
     }
   }
   return s.length > 40 ? `${s.slice(0, 39)}…` : s;
@@ -129,6 +148,8 @@ export function problemaDaRegra(r: Regra): string | null {
     return r.fonte === "variavel" ? "escolha a resposta guardada" : "escolha o campo do contato";
   if (r.operador !== "preenchido" && r.operador !== "vazio" && !r.valor)
     return "escreva o valor para comparar";
+  if ((r.operador === "maior_ou_igual" || r.operador === "menor_ou_igual") && comoNumero(r.valor) === null)
+    return "escreva um número para comparar";
   return null;
 }
 
@@ -168,4 +189,19 @@ export function valorDoCampo(campo: CampoDoContato, bruto: string, hoje = new Da
       return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     }
   }
+}
+
+/**
+ * A nota que o contato deu: o primeiro número da mensagem ("5", "nota 4",
+ * "10!") ou, sem número, a quantidade de estrelas ("⭐⭐⭐⭐"). Fora da escala → null.
+ */
+export function notaDaResposta(resposta: string, escala: "1_5" | "0_10"): number | null {
+  const [min, max] = escala === "1_5" ? [1, 5] : [0, 10];
+  const numero = resposta.match(/\d{1,2}/);
+  let nota: number | null = numero ? Number(numero[0]) : null;
+  if (nota === null) {
+    const estrelas = [...resposta].filter((c) => c === "⭐" || c === "★").length;
+    nota = estrelas > 0 ? estrelas : null;
+  }
+  return nota !== null && nota >= min && nota <= max ? nota : null;
 }

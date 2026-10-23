@@ -23,7 +23,7 @@ import { avisoDeEventoMorto, IA_QUE_NAO_RESPONDEU } from "@/lib/event-log/aviso-
 import { TIPOS_DERIVAVEIS, DERIVACAO_TERMINADA } from "@/lib/messaging/media/derivable";
 import { decidirElegibilidadeDaConversa } from "@/lib/ai/elegibilidade/consulta-pg";
 import { deveCederTurnoAoRetorno } from "@/lib/followup/ceder-turno-ao-retorno";
-import { atenderPeloChatbot } from "@/lib/chatbot/executar";
+import { atenderPeloChatbot, retomarChatbotPeloRelogio } from "@/lib/chatbot/executar";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const DRAIN_CONSUMER = "agent-engine";
@@ -575,6 +575,13 @@ export async function runDrainLoop(
         error: (err instanceof Error ? err.message : String(err)).slice(0, 300),
       });
     }
+    try {
+      drained += await drenarRetomadasDoChatbot(pool, log);
+    } catch (err) {
+      log.error("drain: retomada do chatbot falhou", {
+        error: (err instanceof Error ? err.message : String(err)).slice(0, 300),
+      });
+    }
     if (signal.aborted) break;
     // Lote CHEIO é sinal de backlog: há mais evento esperando do que caberia no
     // lote, e pagar o intervalo antes de voltar só empurra a fila para frente.
@@ -595,4 +602,107 @@ export async function runDrainLoop(
       signal.addEventListener("abort", finish, { once: true });
     });
   }
+}
+
+export const RETOMADA_DO_CHATBOT = "chatbot.retomada_requested";
+
+const CHATBOT_QUE_NAO_RETOMOU = {
+  titulo: "Um chatbot parado em \"Aguardar\" não voltou a andar",
+  consequencia:
+    "O fluxo esperava o relógio para continuar e a retomada falhou; o contato não recebeu o resto do fluxo. " +
+    "Abra as conversas e continue o atendimento pela equipe.",
+  rearme:
+    "Enquanto este aviso estiver aberto, outras retomadas que falharem não abrem aviso novo: " +
+    "marque-o como resolvido depois de conferir.",
+} as const;
+const LOTE_DE_RETOMADAS = 20;
+
+const pedidoDeRetomadaSchema = z.object({
+  session_id: z.string().uuid(),
+  token: z.string().uuid(),
+  conversation_id: z.string().uuid(),
+  contact_id: z.string().uuid(),
+  channel_session_id: z.string().uuid().nullable(),
+  inbound_message_id: z.string().uuid(),
+});
+
+/**
+ * O relógio do chatbot ("Aguardar intervalo" / "Aguardar até"): consome os
+ * `chatbot.retomada_requested` cuja hora chegou (`next_attempt_at`). Quem os
+ * emite é `lib/chatbot/executar.ts`, ao parar um fluxo no relógio.
+ *
+ * Mesmo contrato do despacho: claim CAS pending→processing, órfão em
+ * processing volta à fila pelo timeout, 5 tentativas e `dead`. `organization_id`
+ * vem da linha do evento, nunca do payload.
+ */
+export async function drenarRetomadasDoChatbot(pool: pg.Pool, log: Logger): Promise<number> {
+  await pool.query(
+    `update event_log set status = 'pending', updated_at = now()
+      where event_type = $2 and status = 'processing' and $1 = any(consumed_by)
+        and updated_at < now() - interval '5 minutes'`,
+    [DRAIN_CONSUMER, RETOMADA_DO_CHATBOT],
+  );
+  const { rows: eventos } = await pool.query<EventRow>(
+    `update event_log e
+        set status = 'processing', attempts = e.attempts + 1,
+            consumed_by = array_append(array_remove(coalesce(e.consumed_by, '{}'), $1), $1),
+            updated_at = now()
+      where e.id in (
+        select id from event_log
+         where event_type = $2 and status = 'pending'
+           and (next_attempt_at is null or next_attempt_at <= now())
+         order by next_attempt_at nulls first, created_at
+         limit $3
+         for update skip locked
+      )
+      returning id, organization_id, payload, attempts, created_at`,
+    [DRAIN_CONSUMER, RETOMADA_DO_CHATBOT, LOTE_DE_RETOMADAS],
+  );
+
+  for (const evento of eventos) {
+    const pedido = pedidoDeRetomadaSchema.safeParse(evento.payload);
+    try {
+      const desfecho = pedido.success
+        ? await retomarChatbotPeloRelogio(pool, createAdminClient(), pedido.data, evento.organization_id, log)
+        : "descartado";
+      if (typeof desfecho === "object") {
+        await pool.query(
+          `update event_log
+              set status = 'pending', attempts = greatest(attempts - 1, 0),
+                  next_attempt_at = greatest($2::timestamptz, now() + interval '5 seconds'), updated_at = now()
+            where id = $1`,
+          [evento.id, desfecho.adiarAte],
+        );
+        continue;
+      }
+      await pool.query(`update event_log set status = 'done', updated_at = now() where id = $1`, [evento.id]);
+    } catch (err) {
+      const mensagem = (err instanceof Error ? err.message : String(err)).slice(0, 300);
+      const terminal = evento.attempts >= 5;
+      await pool.query(
+        `update event_log
+            set status = $2, last_error = $3, next_attempt_at = now() + interval '30 seconds', updated_at = now()
+          where id = $1`,
+        [evento.id, terminal ? "dead" : "pending", mensagem],
+      );
+      log.error("drain: retomada do chatbot falhou", { event_id: evento.id, terminal, error: mensagem });
+      if (terminal) {
+        // Morreu: o fluxo não volta a andar sozinho. A Central avisa, uma vez
+        // enquanto o aviso estiver aberto (dedupe por título).
+        const { title, body } = avisoDeEventoMorto({
+          eventType: RETOMADA_DO_CHATBOT,
+          tentativas: evento.attempts,
+          motivo: mensagem,
+          efeito: CHATBOT_QUE_NAO_RETOMOU,
+        });
+        await insertInboxItem(
+          pool,
+          evento.organization_id,
+          { kind: "event_dead", severity: "warn", title, body },
+          "kind_e_titulo",
+        ).catch(() => undefined);
+      }
+    }
+  }
+  return eventos.length;
 }

@@ -1,0 +1,7 @@
+---
+impacto: capacidade_nova
+secao: adicionado
+titulo: Chatbot — Aguardar intervalo, Aguardar até, Pedir para avaliar, Pedir feedback escrito e Notificar atendente
+---
+
+Mais cinco passos no editor de chatbot, no modelo da Umbler Talk. "Aguardar intervalo" (segundos a dias, até 30 dias) e "Aguardar até" (um horário, em dias escolhidos, no fuso da empresa) param o fluxo no relógio e seguem sozinhos na hora marcada; o passo diz o que fazer se o contato escrever antes — seguir na hora ou continuar esperando. A retomada é um comando agendado no barramento de eventos, drenado pelo mesmo worker do atendimento (sem cron novo), e nunca anda duas vezes. "Pedir para avaliar" pede uma nota de 1 a 5 ou de 0 a 10 (aceita "5", "nota 4", estrelas), guarda em {{avaliacao}}, registra na conversa como nota interna e entra na média dos últimos 30 dias mostrada no cartão do fluxo na lista de chatbots. "Pedir feedback escrito" guarda o comentário em {{feedback}} e o põe na conversa. "Notificar atendente" abre um aviso na Central de avisos, com som e notificação para a equipe, levando à conversa — o título do aviso traz só o texto de quem montou o fluxo, nunca a resposta do contato. As regras de condição ganharam "é maior ou igual a" e "é menor ou igual a", para separar nota boa de ruim. Schema: migration 0491 (`chatbot_sessions.retomar_em`/`retomada_token`, tabela `chatbot_avaliacoes`, aviso `chatbot_aviso`).

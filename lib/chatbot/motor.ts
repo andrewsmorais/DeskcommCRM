@@ -6,8 +6,11 @@
  *
  * Regras que valem para todo passo:
  *   - um passo sem ligação de saída termina o fluxo (sessão `completed`);
- *   - "Pedir para escolher" e "Pedir para digitar" PARAM e esperam a próxima
- *     mensagem do contato (sessão `waiting_input`);
+ *   - "Pedir para escolher", "Pedir para digitar", "Pedir para avaliar" e
+ *     "Pedir feedback escrito" PARAM e esperam a próxima mensagem do contato
+ *     (sessão `waiting_input`);
+ *   - "Aguardar intervalo" e "Aguardar até" PARAM no relógio (sessão
+ *     `waiting_timer`, com `retomar_em`); quem acorda é `retomarFluxo`;
  *   - transferir e finalizar encerram a participação do chatbot;
  *   - no máximo `LIMITE_DE_PASSOS` passos por mensagem: um desenho em círculo
  *     sem pergunta no meio não pode prender o worker nem inundar o contato.
@@ -22,22 +25,31 @@ import {
 import {
   contatoVazio,
   normalizar,
+  notaDaResposta,
   regraVale,
   valorDoCampo,
   type ContatoDoTurno,
 } from "./regras";
+import { fimDoIntervalo, proximoHorario } from "./relogio";
 
 export { normalizar };
 
 export const LIMITE_DE_PASSOS = 40;
 
-export type StatusDaSessao = "running" | "waiting_input" | "completed" | "transferred";
+export type StatusDaSessao =
+  | "running"
+  | "waiting_input"
+  | "waiting_timer"
+  | "completed"
+  | "transferred";
 
 export type SessaoDoChatbot = {
   no_atual: string | null;
   status: StatusDaSessao;
   tentativas: number;
   dados: Record<string, string>;
+  /** ISO. Só em `waiting_timer`: quando o fluxo volta a andar. */
+  retomar_em?: string | null;
 };
 
 export type Efeito =
@@ -47,6 +59,10 @@ export type Efeito =
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
   | { tipo: "campo_contato"; campo: CampoDoContato; chave: string; valor: string }
+  | { tipo: "avaliacao"; nota: number; escala: "1_5" | "0_10" }
+  | { tipo: "feedback"; texto: string }
+  /** `texto` com as respostas do contato; `modelo` é o que quem montou o fluxo escreveu, sem elas. */
+  | { tipo: "notificar"; texto: string; modelo: string }
   | { tipo: "finalizar" };
 
 export type ContextoDoTurno = {
@@ -185,10 +201,18 @@ function andar(
   let resposta = respondendo;
   let passos = 0;
 
+  sessao.retomar_em = null;
   const fim = (status: StatusDaSessao): ResultadoDoTurno => {
     sessao.status = status;
     sessao.no_atual = null;
     sessao.tentativas = 0;
+    return { sessao, efeitos, passos };
+  };
+  const esperarRelogio = (noId: string, ate: Date): ResultadoDoTurno => {
+    sessao.status = "waiting_timer";
+    sessao.no_atual = noId;
+    sessao.tentativas = 0;
+    sessao.retomar_em = ate.toISOString();
     return { sessao, efeitos, passos };
   };
 
@@ -338,6 +362,64 @@ function andar(
         efeitos.push({ tipo: "finalizar" });
         return fim("completed");
       }
+      case "pedir_avaliacao": {
+        const c = lerConfig("pedir_avaliacao", no.data);
+        if (!resposta) {
+          const pergunta = preencher(c.pergunta, sessao.dados).trim();
+          if (pergunta) efeitos.push({ tipo: "enviar", texto: pergunta });
+          sessao.no_atual = no.id;
+          sessao.status = "waiting_input";
+          sessao.tentativas = 0;
+          return { sessao, efeitos, passos };
+        }
+        resposta = false;
+        const nota = ctx.mensagem === null ? null : notaDaResposta(ctx.mensagem, c.escala);
+        if (nota !== null) {
+          sessao.tentativas = 0;
+          sessao.dados.avaliacao = String(nota);
+          efeitos.push({ tipo: "avaliacao", nota, escala: c.escala });
+          break;
+        }
+        sessao.tentativas += 1;
+        if (sessao.tentativas < c.tentativas) {
+          efeitos.push({ tipo: "enviar", texto: c.mensagem_invalida });
+          sessao.no_atual = no.id;
+          sessao.status = "waiting_input";
+          return { sessao, efeitos, passos };
+        }
+        sessao.tentativas = 0;
+        saida = "invalida";
+        break;
+      }
+      case "pedir_feedback": {
+        const c = lerConfig("pedir_feedback", no.data);
+        if (!resposta) {
+          const pergunta = preencher(c.pergunta, sessao.dados).trim();
+          if (pergunta) efeitos.push({ tipo: "enviar", texto: pergunta });
+          sessao.no_atual = no.id;
+          sessao.status = "waiting_input";
+          return { sessao, efeitos, passos };
+        }
+        resposta = false;
+        const texto = (ctx.mensagem ?? "").trim().slice(0, 2000);
+        sessao.dados.feedback = texto;
+        if (texto) efeitos.push({ tipo: "feedback", texto });
+        break;
+      }
+      case "notificar_atendente": {
+        const { mensagem } = lerConfig("notificar_atendente", no.data);
+        const texto = preencher(mensagem, sessao.dados).trim();
+        const modelo = mensagem.replace(/\{\{[^}]*\}\}/g, "…").trim();
+        efeitos.push({ tipo: "notificar", texto, modelo });
+        break;
+      }
+      case "aguardar_intervalo":
+        return esperarRelogio(no.id, fimDoIntervalo(lerConfig("aguardar_intervalo", no.data), ctx.agora));
+      case "aguardar_ate":
+        return esperarRelogio(
+          no.id,
+          proximoHorario(lerConfig("aguardar_ate", no.data), ctx.agora, ctx.fuso),
+        );
       case "bloco_de_notas":
         return fim("completed");
     }
@@ -357,6 +439,37 @@ export function sessaoNova(): SessaoDoChatbot {
 /** Começa o fluxo a partir do passo de início. */
 export function iniciarFluxo(grafo: Grafo, inicio: string, ctx: ContextoDoTurno): ResultadoDoTurno {
   return andar(grafo, sessaoNova(), inicio, ctx, false);
+}
+
+/**
+ * Acorda o fluxo parado no relógio: segue pela saída do passo de espera.
+ * `ctx.mensagem` é a mensagem que chegou durante a espera (quando o passo diz
+ * "seguir se o contato responder") ou null (quando foi o relógio que venceu).
+ */
+export function retomarFluxo(
+  grafo: Grafo,
+  sessao: SessaoDoChatbot,
+  ctx: ContextoDoTurno,
+): ResultadoDoTurno {
+  const parada = sessao.status === "waiting_timer" && sessao.no_atual ? sessao.no_atual : null;
+  const seguinte = parada ? proximo(grafo, parada, "proximo") : null;
+  if (!seguinte) {
+    return {
+      sessao: { ...sessao, status: "completed", no_atual: null, retomar_em: null },
+      efeitos: [],
+      passos: 0,
+    };
+  }
+  return andar(grafo, { ...sessao, status: "running" }, seguinte, ctx, false);
+}
+
+/** O passo de espera em que a sessão parou deixa a mensagem nova acordar o fluxo? */
+export function seguirAoResponder(grafo: Grafo, noId: string | null): boolean {
+  const no = grafo.nodes.find((n) => n.id === noId);
+  if (no?.type === "aguardar_intervalo")
+    return lerConfig("aguardar_intervalo", no.data).se_responder === "seguir";
+  if (no?.type === "aguardar_ate") return lerConfig("aguardar_ate", no.data).se_responder === "seguir";
+  return true;
 }
 
 /** Continua a conversa que estava parada esperando resposta. */

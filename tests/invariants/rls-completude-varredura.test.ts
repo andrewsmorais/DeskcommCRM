@@ -93,6 +93,7 @@ const PROVA_PROPRIA: readonly Excecao[] = [
   { tabela: "chatbot_sessions", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: leitura positiva local e negativa cruzada; escrita direta authenticated negada — quem grava é o motor no worker (0490)" },
   { tabela: "chatbot_nodes", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: leitura positiva local e negativa cruzada; escrita authenticated negada, tabela sem uso desde a 0489" },
   { tabela: "chatbot_edges", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: leitura positiva local e negativa cruzada; escrita authenticated negada, tabela sem uso desde a 0489" },
+  { tabela: "chatbot_avaliacoes", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: leitura positiva local e negativa cruzada; escrita authenticated negada — quem grava é o motor no worker (0491)" },
   { tabela: "subscriptions", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: cada uma lê só a própria assinatura; UPDATE authenticated negado (não se dá plano melhor)" },
   { tabela: "asaas_customers", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — server-only: authenticated barrado com permission denied até na própria org (0487)" },
   { tabela: "org_aquisicao", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — server-only: authenticated barrado com permission denied até na própria org (0484)" },

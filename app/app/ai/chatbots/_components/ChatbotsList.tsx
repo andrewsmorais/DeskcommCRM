@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, GitBranch, Circle } from "lucide-react";
+import { Plus, GitBranch, Circle, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -50,7 +50,15 @@ const STATUS_COLOR: Record<Flow["status"], string> = {
   archived: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
-export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string }) {
+export function ChatbotsList({
+  flows: initial,
+  satisfacao = {},
+}: {
+  flows: Flow[];
+  orgId: string;
+  /** Média (escala de 5) e quantidade de notas dos últimos 30 dias, por fluxo. */
+  satisfacao?: Record<string, { media: number; total: number }>;
+}) {
   const router = useRouter();
   const t = useT();
   const tagDeData = useTagDeIdioma();
@@ -205,6 +213,26 @@ export function ChatbotsList({ flows: initial }: { flows: Flow[]; orgId: string 
                     })}
                   </span>
                 </div>
+                {satisfacao[flow.id] ? (
+                  <div
+                    className="mt-2 flex items-center gap-1 text-xs text-muted-foreground"
+                    data-testid="satisfacao-do-fluxo"
+                  >
+                    <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-500" aria-hidden />
+                    <span className="font-medium text-foreground">
+                      {satisfacao[flow.id]!.media.toLocaleString(tagDeData, {
+                        maximumFractionDigits: 1,
+                        minimumFractionDigits: 1,
+                      })}
+                    </span>
+                    <span>
+                      · {satisfacao[flow.id]!.total}{" "}
+                      {satisfacao[flow.id]!.total === 1
+                        ? t("avaliação nos últimos 30 dias")
+                        : t("avaliações nos últimos 30 dias")}
+                    </span>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ))}

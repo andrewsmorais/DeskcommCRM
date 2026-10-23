@@ -116,6 +116,17 @@ export async function pushDoAvisoDaCentral(
     };
   }
 
+  // O título é o que quem montou o fluxo escreveu no passo (pode citar o que o
+  // contato respondeu, como no cartão da Central); o corpo é fixo.
+  if (item.kind === "chatbot_aviso") {
+    return {
+      title: truncar(item.title),
+      body: traduzir("O chatbot pediu que alguém da equipe olhe esta conversa.", idioma),
+      tag,
+      href: destinoDaPassagem(item),
+    };
+  }
+
   if (som === "pessoa") {
     return {
       title: traduzir("A IA passou uma conversa para a equipe", idioma),

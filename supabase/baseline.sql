@@ -10122,6 +10122,9 @@ alter table public.agent_inbox_items
     -- sugerido (plano N1) ou falta preço de catálogo — a Central acompanha
     -- até as duas pendências sumirem, ou até a proposta ser enviada/descartada.
     'proposta_pronta_para_revisao',
+    -- (migration 0491) o passo "Notificar atendente" do chatbot abre um aviso
+    -- com link para a conversa (ref_kind='conversation').
+    'chatbot_aviso',
     'other'
   ));
 
@@ -44320,7 +44323,50 @@ end $$;
 
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
 
--- ---- varreduras finais de novo, depois das tabelas do chatbot (0486/0489/0490) ----
+-- ---- chatbot: espera no relógio e avaliação (migration 0491) ----
+-- O `kind` novo da Central (`chatbot_aviso`) mora no bloco ÚNICO de
+-- `agent_inbox_items_kind_check`, mais acima (#159: um bloco por constraint).
+alter table public.chatbot_sessions
+  add column if not exists retomar_em timestamptz,
+  add column if not exists retomada_token uuid;
+
+create index if not exists idx_chatbot_sessions_relogio
+  on public.chatbot_sessions (retomar_em)
+  where status = 'waiting_timer';
+
+create table if not exists public.chatbot_avaliacoes (
+  id               uuid        not null default gen_random_uuid() primary key,
+  organization_id  uuid        not null references public.organizations(id) on delete cascade,
+  flow_id          uuid        references public.chatbot_flows(id) on delete set null,
+  session_id       uuid        references public.chatbot_sessions(id) on delete set null,
+  rodada_em        timestamptz not null,
+  conversation_id  uuid        not null references public.conversations(id) on delete cascade,
+  nota             smallint,
+  escala           text,
+  comentou         boolean     not null default false,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  constraint chatbot_avaliacoes_rodada_unica unique (organization_id, conversation_id, rodada_em),
+  constraint chatbot_avaliacoes_escala_check check (escala is null or escala in ('1_5', '0_10')),
+  constraint chatbot_avaliacoes_nota_na_escala check (
+    nota is null
+    or (escala = '1_5' and nota between 1 and 5)
+    or (escala = '0_10' and nota between 0 and 10)
+  )
+);
+create index if not exists idx_chatbot_avaliacoes_fluxo
+  on public.chatbot_avaliacoes (organization_id, flow_id, created_at desc);
+
+alter table public.chatbot_avaliacoes enable row level security;
+revoke all on public.chatbot_avaliacoes from anon;
+revoke insert, update, delete, truncate on public.chatbot_avaliacoes from authenticated;
+drop policy if exists chatbot_avaliacoes_leitura on public.chatbot_avaliacoes;
+create policy chatbot_avaliacoes_leitura on public.chatbot_avaliacoes
+  for select to authenticated
+  using (organization_id in (select public.fn_user_org_ids()));
+do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
+
+-- ---- varreduras finais de novo, depois das tabelas do chatbot (0486/0489/0490/0491) ----
 -- As duas chamadas da 0274/0325 ficaram ANTES dos blocos do chatbot, que vieram
 -- depois no apêndice. Repetidas aqui, no fim, para a instalação nova chegar ao
 -- mesmo conjunto de RLS e travas que a atualização. Idempotentes.

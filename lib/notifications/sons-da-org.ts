@@ -72,6 +72,9 @@ export function somDoAviso(aviso: { kind: string; ref_kind: string | null; title
   // o modelo, os itens e os preços é decisão de quem responde ao cliente. Sem
   // este som o rascunho ficava esperando, e o aviso não existia fora da Central.
   if (aviso.kind === "proposta_pronta_para_revisao") return "pessoa";
+  // O chatbot só abre este aviso quando quem montou o fluxo pediu uma pessoa
+  // ("Notificar atendente"), e é o equivalente da notificação da Umbler.
+  if (aviso.kind === "chatbot_aviso") return "pessoa";
   if (ehAvisoDeEtapa(aviso)) return "venda";
   // A IA ficou sem saldo no provedor (`espera-de-saldo.ts`): as respostas estão
   // paradas até alguém recarregar — é o aviso que mais pede uma pessoa.

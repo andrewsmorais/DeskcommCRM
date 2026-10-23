@@ -27,10 +27,14 @@ import { normalizarTag } from "@/lib/contacts/tag-normalizada";
 import { contactPatchSchema, type ContactPatch } from "@/lib/schemas/contacts";
 import { grafoSchema, type Grafo } from "./passos";
 import type { ContatoDoTurno } from "./regras";
+import { randomUUID } from "node:crypto";
+import { insertInboxItem } from "@/lib/agent-engine/db/repository";
 import {
   continuarFluxo,
   iniciarFluxo,
   pontoDePartida,
+  retomarFluxo,
+  seguirAoResponder,
   type Efeito,
   type ResultadoDoTurno,
   type SessaoDoChatbot,
@@ -57,6 +61,7 @@ type Log = {
 type SessaoGravada = {
   id: string;
   flow_id: string;
+  status: string;
   no_atual: string | null;
   tentativas: number;
   collected_data: Record<string, unknown> | null;
@@ -102,10 +107,11 @@ export async function atenderPeloChatbot(
   let sessaoEsperando: SessaoGravada | null;
   try {
     const { rows } = await pool.query<SessaoGravada>(
-      `select s.id, s.flow_id, s.no_atual, s.tentativas, s.collected_data, f.grafo, f.is_active
+      `select s.id, s.flow_id, s.status, s.no_atual, s.tentativas, s.collected_data, f.grafo, f.is_active
          from chatbot_sessions s
          join chatbot_flows f on f.id = s.flow_id and f.organization_id = s.organization_id
-        where s.organization_id = $1 and s.conversation_id = $2 and s.status = 'waiting_input'
+        where s.organization_id = $1 and s.conversation_id = $2
+          and s.status in ('waiting_input', 'waiting_timer')
         order by s.updated_at desc
         limit 1`,
       [e.organizationId, e.conversationId],
@@ -174,10 +180,19 @@ export async function atenderPeloChatbot(
     sessaoId = sessaoEsperando.id;
     sessaoAnterior = {
       no_atual: sessaoEsperando.no_atual,
-      status: "waiting_input",
+      status: sessaoEsperando.status === "waiting_timer" ? "waiting_timer" : "waiting_input",
       tentativas: sessaoEsperando.tentativas ?? 0,
       dados: dadosDeTexto(sessaoEsperando.collected_data),
     };
+    // Parado no relógio e o passo diz "continuar esperando": a mensagem fica
+    // para a equipe ver na conversa, e nem o chatbot nem a IA respondem agora.
+    if (sessaoAnterior.status === "waiting_timer" && !seguirAoResponder(grafo, sessaoAnterior.no_atual)) {
+      log.info("chatbot: mensagem durante a espera — o fluxo segue esperando o relógio", {
+        flow_id: fluxoId,
+        session_id: sessaoId,
+      });
+      return "atendeu";
+    }
   } else {
     const { rows: fluxos } = await pool.query<{ id: string; grafo: unknown }>(
       `select id, grafo from chatbot_flows
@@ -226,23 +241,179 @@ export async function atenderPeloChatbot(
     fuso: conversa.timezone || "America/Sao_Paulo",
     contato: contatoDoTurno(conversa),
   };
-  const resultado: ResultadoDoTurno = sessaoAnterior
-    ? continuarFluxo(grafo, sessaoAnterior, ctx)
-    : iniciarFluxo(grafo, inicio!, ctx);
+  const resultado: ResultadoDoTurno = !sessaoAnterior
+    ? iniciarFluxo(grafo, inicio!, ctx)
+    : sessaoAnterior.status === "waiting_timer"
+      ? retomarFluxo(grafo, sessaoAnterior, ctx)
+      : continuarFluxo(grafo, sessaoAnterior, ctx);
 
-  // Grava a sessão ANTES dos efeitos: se o envio falhar no meio, a próxima
-  // mensagem não reinicia o fluxo do começo nem repete a pergunta já feita.
-  sessaoId = await gravarSessao(pool, e, fluxoId, sessaoId, resultado.sessao);
+  await concluirTurno(pool, admin, e, fluxoId, sessaoId, resultado, log);
+  return "atendeu";
+}
 
-  await executarEfeitos(pool, admin, e, fluxoId, resultado.efeitos, log);
-  log.info("chatbot: mensagem conduzida pelo fluxo", {
+/**
+ * Grava a sessão, executa os efeitos e, se o fluxo parou no relógio, agenda a
+ * retomada. A sessão vai ANTES dos efeitos: se o envio falhar no meio, a
+ * próxima mensagem não reinicia o fluxo do começo nem repete a pergunta feita.
+ */
+async function concluirTurno(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  sessaoAnteriorId: string | null,
+  resultado: ResultadoDoTurno,
+  log: Log,
+): Promise<void> {
+  const token = resultado.sessao.status === "waiting_timer" ? randomUUID() : null;
+  const gravada = await gravarSessao(pool, e, fluxoId, sessaoAnteriorId, resultado.sessao, token);
+
+  await executarEfeitos(pool, admin, e, fluxoId, gravada, resultado.efeitos, log);
+
+  if (token && resultado.sessao.retomar_em) {
+    // O relógio vira um comando no barramento, com hora marcada: o drain do
+    // worker só o pega a partir de `next_attempt_at`. Sem cron novo.
+    await pool.query(
+      `insert into event_log
+         (organization_id, event_type, entity_kind, entity_id, payload, metadata, next_attempt_at)
+       values ($1, 'chatbot.retomada_requested', 'chatbot_session', $2, $3::jsonb, $4::jsonb, $5)`,
+      [
+        e.organizationId,
+        gravada.id,
+        JSON.stringify({
+          session_id: gravada.id,
+          token,
+          conversation_id: e.conversationId,
+          contact_id: e.contactId,
+          channel_session_id: e.channelSessionId,
+          inbound_message_id: e.inboundMessageId,
+        } satisfies PedidoDeRetomada),
+        JSON.stringify({ source: "chatbot", flow_id: fluxoId }),
+        resultado.sessao.retomar_em,
+      ],
+    );
+  }
+  log.info("chatbot: turno conduzido pelo fluxo", {
     flow_id: fluxoId,
-    session_id: sessaoId,
+    session_id: gravada.id,
     status: resultado.sessao.status,
+    retomar_em: resultado.sessao.retomar_em ?? null,
     passos: resultado.passos,
     efeitos: resultado.efeitos.map((x) => x.tipo),
   });
-  return "atendeu";
+}
+
+/** O que viaja no `chatbot.retomada_requested`. */
+export type PedidoDeRetomada = {
+  session_id: string;
+  token: string;
+  conversation_id: string;
+  contact_id: string;
+  channel_session_id: string | null;
+  /** A mensagem que levou o fluxo à espera — dá a fronteira do atendimento ao envio. */
+  inbound_message_id: string;
+};
+
+export type DesfechoDaRetomada = "retomou" | "descartado" | { adiarAte: string };
+
+/**
+ * O relógio de "Aguardar intervalo" / "Aguardar até" venceu: acorda o fluxo.
+ * Chamado pelo drain do worker para cada `chatbot.retomada_requested`.
+ *
+ * Descarta (sem erro) quando a espera já não é esta: o contato respondeu e o
+ * fluxo seguiu, o fluxo foi desligado, um atendente assumiu. O token gravado na
+ * sessão é o que amarra o evento à espera que o criou.
+ */
+export async function retomarChatbotPeloRelogio(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  pedido: PedidoDeRetomada,
+  organizationId: string,
+  log: Log,
+): Promise<DesfechoDaRetomada> {
+  const { rows } = await pool.query<
+    SessaoGravada & { retomar_em: string | null; timezone: string | null }
+  >(
+    `select s.id, s.flow_id, s.status, s.no_atual, s.tentativas, s.collected_data, s.retomar_em,
+            f.grafo, f.is_active, o.timezone
+       from chatbot_sessions s
+       join chatbot_flows f on f.id = s.flow_id and f.organization_id = s.organization_id
+       join organizations o on o.id = s.organization_id
+      where s.organization_id = $1 and s.id = $2
+        and s.status = 'waiting_timer' and s.retomada_token = $3::uuid`,
+    [organizationId, pedido.session_id, pedido.token],
+  );
+  const sessao = rows[0];
+  if (!sessao) return "descartado";
+
+  if (sessao.retomar_em && new Date(sessao.retomar_em).getTime() > Date.now() + 1_000)
+    return { adiarAte: sessao.retomar_em };
+
+  const g = grafoSchema.safeParse(sessao.grafo);
+  if (!sessao.is_active || !g.success) {
+    await encerrarSessao(pool, organizationId, sessao.id, "completed");
+    return "descartado";
+  }
+
+  const { rows: estado } = await pool.query<{
+    assignee_kind: string | null;
+    is_blocked: boolean | null;
+    tags: string[] | null;
+    nome: string | null;
+    email: string | null;
+    aniversario: string | null;
+    custom_fields: Record<string, unknown> | null;
+  }>(
+    `select c.assignee_kind, ct.is_blocked,
+            ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
+            ct.birthdate::text as aniversario, ct.custom_fields
+       from conversations c
+       join contacts ct on ct.id = c.contact_id and ct.organization_id = c.organization_id
+      where c.organization_id = $1 and c.id = $2 and c.is_group = false`,
+    [organizationId, pedido.conversation_id],
+  );
+  const conversa = estado[0];
+  if (!conversa || conversa.assignee_kind === "user" || conversa.is_blocked === true) {
+    await encerrarSessao(pool, organizationId, sessao.id, "completed");
+    return "descartado";
+  }
+
+  const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
+  if (!acesso.liberado) {
+    log.info("chatbot: retomada sem assinatura ativa — fluxo encerrado", { motivo: acesso.motivo });
+    await encerrarSessao(pool, organizationId, sessao.id, "completed");
+    return "descartado";
+  }
+
+  if (pedido.channel_session_id) {
+    const abre = await adiarAteAJanelaAbrir(admin, organizationId, pedido.channel_session_id);
+    if (abre) return { adiarAte: abre };
+  }
+
+  const e: EntradaDoChatbot = {
+    organizationId,
+    conversationId: pedido.conversation_id,
+    contactId: pedido.contact_id,
+    channelSessionId: pedido.channel_session_id,
+    inboundMessageId: pedido.inbound_message_id,
+  };
+  const resultado = retomarFluxo(
+    g.data,
+    {
+      no_atual: sessao.no_atual,
+      status: "waiting_timer",
+      tentativas: sessao.tentativas ?? 0,
+      dados: dadosDeTexto(sessao.collected_data),
+    },
+    {
+      mensagem: null,
+      agora: new Date(),
+      fuso: sessao.timezone || "America/Sao_Paulo",
+      contato: contatoDoTurno(conversa),
+    },
+  );
+  await concluirTurno(pool, admin, e, sessao.flow_id, sessao.id, resultado, log);
+  return "retomou";
 }
 
 async function encerrarSessao(
@@ -253,7 +424,8 @@ async function encerrarSessao(
 ): Promise<void> {
   await pool.query(
     `update chatbot_sessions
-        set status = $3, no_atual = null, ended_at = now(), updated_at = now()
+        set status = $3, no_atual = null, ended_at = now(), updated_at = now(),
+            retomar_em = null, retomada_token = null
       where organization_id = $1 and id = $2`,
     [org, id, status],
   );
@@ -265,13 +437,14 @@ async function gravarSessao(
   fluxoId: string,
   sessaoId: string | null,
   s: SessaoDoChatbot,
-): Promise<string> {
+  token: string | null,
+): Promise<SessaoDoTurno> {
   const terminal = TERMINAIS.has(s.status);
-  const { rows } = await pool.query<{ id: string }>(
+  const { rows } = await pool.query<SessaoDoTurno>(
     `insert into chatbot_sessions
        (organization_id, flow_id, conversation_id, status, no_atual, tentativas, collected_data,
-        started_at, updated_at, ended_at)
-     values ($1, $2, $3, $4, $5, $6, $7::jsonb, now(), now(), case when $8 then now() end)
+        started_at, updated_at, ended_at, retomar_em, retomada_token)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb, now(), now(), case when $8 then now() end, $10, $11)
      on conflict (organization_id, conversation_id, flow_id) do update
        set status = excluded.status,
            no_atual = excluded.no_atual,
@@ -279,8 +452,10 @@ async function gravarSessao(
            collected_data = excluded.collected_data,
            started_at = case when $9::uuid is null then now() else chatbot_sessions.started_at end,
            updated_at = now(),
-           ended_at = excluded.ended_at
-     returning id`,
+           ended_at = excluded.ended_at,
+           retomar_em = excluded.retomar_em,
+           retomada_token = excluded.retomada_token
+     returning id, started_at::text as started_at`,
     [
       e.organizationId,
       fluxoId,
@@ -291,22 +466,68 @@ async function gravarSessao(
       JSON.stringify(s.dados),
       terminal,
       sessaoId,
+      s.status === "waiting_timer" ? (s.retomar_em ?? null) : null,
+      token,
     ],
   );
   const gravada = rows[0];
   if (!gravada) throw new Error("chatbot_sessao_nao_gravada");
-  return gravada.id;
+  return gravada;
 }
+
+/** A sessão como gravada: o id e o início da rodada (a chave da avaliação). */
+type SessaoDoTurno = { id: string; started_at: string };
 
 async function executarEfeitos(
   pool: pg.Pool,
   admin: SupabaseClient,
   e: EntradaDoChatbot,
   fluxoId: string,
+  sessao: SessaoDoTurno,
   efeitos: Efeito[],
   log: Log,
 ): Promise<void> {
   if (efeitos.length === 0) return;
+  const requestId = `chatbot:${fluxoId}:${e.inboundMessageId}`;
+  const notaInterna = async (texto: string) => {
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into conversation_notes (organization_id, conversation_id, body, created_by_name)
+       values ($1, $2, $3, 'Chatbot')
+       returning id`,
+      [e.organizationId, e.conversationId, texto.slice(0, 2000)],
+    );
+    void audit({
+      action: "conversation.note_added",
+      actorUserId: null,
+      organizationId: e.organizationId,
+      resourceType: "conversation_note",
+      resourceId: rows[0]?.id ?? null,
+      requestId,
+      bypassedRls: true,
+      metadata: { conversation_id: e.conversationId, source: "chatbot", flow_id: fluxoId },
+    });
+  };
+  const gravarAvaliacao = (campos: { nota?: number; escala?: string; comentou?: boolean }) =>
+    pool.query(
+      `insert into chatbot_avaliacoes
+         (organization_id, flow_id, session_id, rodada_em, conversation_id, nota, escala, comentou)
+       values ($1, $2, $3, $4::timestamptz, $5, $6, $7, coalesce($8, false))
+       on conflict (organization_id, conversation_id, rodada_em) do update
+         set nota = coalesce(excluded.nota, chatbot_avaliacoes.nota),
+             escala = coalesce(excluded.escala, chatbot_avaliacoes.escala),
+             comentou = chatbot_avaliacoes.comentou or excluded.comentou,
+             updated_at = now()`,
+      [
+        e.organizationId,
+        fluxoId,
+        sessao.id,
+        sessao.started_at,
+        e.conversationId,
+        campos.nota ?? null,
+        campos.escala ?? null,
+        campos.comentou ?? null,
+      ],
+    );
   const { rows: b } = await pool.query(
     `select organization_id, contact_id, conversation_id, service_revision::float8 as service_revision,
             demanda_id, demanda_revision::float8 as demanda_revision
@@ -417,24 +638,39 @@ async function executarEfeitos(
             });
           break;
         }
-        case "nota": {
+        case "nota":
           // Nota interna: a equipe vê na conversa, o contato nunca.
-          const { rows } = await pool.query<{ id: string }>(
-            `insert into conversation_notes (organization_id, conversation_id, body, created_by_name)
-             values ($1, $2, $3, 'Chatbot')
-             returning id`,
-            [e.organizationId, e.conversationId, efeito.texto.slice(0, 2000)],
+          await notaInterna(efeito.texto);
+          break;
+        case "avaliacao": {
+          await gravarAvaliacao({ nota: efeito.nota, escala: efeito.escala });
+          const de = efeito.escala === "1_5" ? 5 : 10;
+          await notaInterna(`Avaliação do atendimento: ${efeito.nota} de ${de}.`);
+          break;
+        }
+        case "feedback":
+          // O texto do contato fica na conversa (nota interna); a tabela de
+          // avaliações guarda só que houve comentário.
+          await gravarAvaliacao({ comentou: true });
+          await notaInterna(`Comentário do contato sobre o atendimento: ${efeito.texto}`);
+          break;
+        case "notificar": {
+          // O aviso da Central leva só o texto que quem montou o fluxo
+          // escreveu, sem as respostas do contato (o título do aviso sai do
+          // CRM em push); o texto preenchido fica na conversa, como nota.
+          if (efeito.texto) await notaInterna(`Aviso do chatbot: ${efeito.texto}`);
+          await insertInboxItem(
+            pool,
+            e.organizationId,
+            {
+              kind: "chatbot_aviso",
+              severity: "warn",
+              title: (efeito.modelo || "O chatbot pediu atenção nesta conversa").slice(0, 200),
+              refKind: "conversation",
+              refId: e.conversationId,
+            },
+            "kind_e_ref",
           );
-          void audit({
-            action: "conversation.note_added",
-            actorUserId: null,
-            organizationId: e.organizationId,
-            resourceType: "conversation_note",
-            resourceId: rows[0]?.id ?? null,
-            requestId: `chatbot:${fluxoId}:${e.inboundMessageId}`,
-            bypassedRls: true,
-            metadata: { conversation_id: e.conversationId, source: "chatbot", flow_id: fluxoId },
-          });
           break;
         }
         case "campo_contato": {
@@ -464,7 +700,7 @@ async function executarEfeitos(
             {
               organization_id: e.organizationId,
               actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
-              requestId: `chatbot:${fluxoId}:${e.inboundMessageId}`,
+              requestId,
             },
             e.contactId,
             valido.data,

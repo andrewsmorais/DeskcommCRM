@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
+import { satisfacaoDosFluxos } from "@/lib/chatbot/satisfacao";
 import { ChatbotsList } from "./_components/ChatbotsList";
 
 export const dynamic = "force-dynamic";
@@ -22,5 +23,7 @@ export default async function ChatbotsListPage() {
     .eq("organization_id", activeOrg.orgId)
     .order("created_at", { ascending: false });
 
-  return <ChatbotsList flows={flows ?? []} orgId={activeOrg.orgId} />;
+  const satisfacao = await satisfacaoDosFluxos(db, activeOrg.orgId);
+
+  return <ChatbotsList flows={flows ?? []} orgId={activeOrg.orgId} satisfacao={satisfacao} />;
 }

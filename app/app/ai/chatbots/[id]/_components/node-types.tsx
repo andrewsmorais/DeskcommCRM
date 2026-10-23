@@ -71,6 +71,30 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     }
     case "definir_condicao":
       return descreverRegra(lerConfig("definir_condicao", dados).regra);
+    case "pedir_avaliacao": {
+      const c = lerConfig("pedir_avaliacao", dados);
+      return `${c.pergunta} (${c.escala === "1_5" ? "1–5" : "0–10"}) → {{avaliacao}}`;
+    }
+    case "pedir_feedback":
+      return `${lerConfig("pedir_feedback", dados).pergunta} → {{feedback}}`;
+    case "notificar_atendente":
+      return lerConfig("notificar_atendente", dados).mensagem;
+    case "aguardar_intervalo": {
+      const c = lerConfig("aguardar_intervalo", dados);
+      const unidades: Record<string, string> = {
+        segundos: t("segundos"),
+        minutos: t("minutos"),
+        horas: t("horas"),
+        dias: t("dias"),
+      };
+      return `${t("Esperar")} ${c.quantidade} ${unidades[c.unidade]}`;
+    }
+    case "aguardar_ate": {
+      const c = lerConfig("aguardar_ate", dados);
+      const todos = c.dias.length === 7;
+      const nomes = [t("Dom"), t("Seg"), t("Ter"), t("Qua"), t("Qui"), t("Sex"), t("Sáb")];
+      return `${t("Até")} ${c.hora}${todos ? "" : ` (${c.dias.slice().sort().map((d) => nomes[d]).join(", ")})`}`;
+    }
     case "multi_condicional": {
       const n = lerConfig("multi_condicional", dados).regras.length;
       return n === 1 ? t("1 regra") : `${n} ${t("regras")}`;

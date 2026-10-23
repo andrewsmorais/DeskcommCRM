@@ -96,6 +96,7 @@ export const KIND_LABEL = {
   followup_sem_agente: "Um follow-up está publicado e não está disparando",
   proposta_travada: "Uma proposta ficou presa em envio e voltou a rascunho",
   proposta_pronta_para_revisao: "Uma proposta está pronta para revisão",
+  chatbot_aviso: "O chatbot pediu atenção numa conversa",
   other: "Aviso do assistente",
 } as const satisfies Record<InboxKind, string>;
 

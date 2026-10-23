@@ -48,6 +48,14 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (!lerConfig("transferir_atendente", no.data).user_id)
           problemas.push(`escolha o atendente do passo "${nome}".`);
         break;
+      case "pedir_avaliacao":
+        if (!lerConfig("pedir_avaliacao", no.data).pergunta)
+          problemas.push(`escreva a pergunta do passo "${nome}".`);
+        break;
+      case "pedir_feedback":
+        if (!lerConfig("pedir_feedback", no.data).pergunta)
+          problemas.push(`escreva a pergunta do passo "${nome}".`);
+        break;
       case "criar_nota":
         if (!lerConfig("criar_nota", no.data).texto)
           problemas.push(`escreva o texto do passo "${nome}".`);
