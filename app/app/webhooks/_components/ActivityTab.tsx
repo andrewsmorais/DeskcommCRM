@@ -105,6 +105,8 @@ const MOTIVO_DA_PARADA: Record<string, string> = {
   flow_not_active:
     "O funil escolhido não está ativo, então a inscrição não foi feita. Ative o funil ou escolha outro na automação.",
   live_enrollment_exists: "O contato já está em um funil ativo — esta ação não inscreve duas vezes.",
+  chatbot_flow_not_found: "O chatbot escolhido nesta automação não existe mais. Abra a automação e escolha outro.",
+  chatbot_flow_off: "O chatbot escolhido nesta automação está desligado. Ligue o chatbot ou escolha outro.",
   consent_declined: "O contato não autorizou o recebimento de mensagens de marketing.",
   fora_do_pre_go_live:
     "O número deste canal ainda não entrou no pré-go-live, então a mensagem escrita pela IA não sai por ele.",

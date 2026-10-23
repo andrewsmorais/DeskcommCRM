@@ -5261,6 +5261,12 @@ export const DICIONARIO: Traducoes = {
   "O contato já está em um funil ativo — esta ação não inscreve duas vezes.": {
     es: "El contacto ya está en un embudo activo, así que esta acción no lo inscribe de nuevo.",
   },
+  "O chatbot escolhido nesta automação não existe mais. Abra a automação e escolha outro.": {
+    es: "El chatbot elegido en esta automatización ya no existe. Abre la automatización y elige otro.",
+  },
+  "O chatbot escolhido nesta automação está desligado. Ligue o chatbot ou escolha outro.": {
+    es: "El chatbot elegido en esta automatización está apagado. Enciéndelo o elige otro.",
+  },
   "O contato não autorizou o recebimento de mensagens de marketing.": {
     es: "El contacto no autorizó recibir mensajes de marketing.",
   },

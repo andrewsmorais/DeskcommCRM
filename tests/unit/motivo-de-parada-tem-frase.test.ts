@@ -90,6 +90,13 @@ const ORIGENS: DeclaracaoDeOrigem[] = [
     produtor: { arquivo: "lib/automation/guarda-do-contato.ts" },
   },
   {
+    arquivo: "lib/automation/actions/start-chatbot-flow.ts",
+    expressao: "guarda.reason",
+    porque:
+      "o início de chatbot por automação usa a mesma guarda do contato antes de emitir o pedido; o código do bloqueio chega pelo `reason` do resultado",
+    produtor: { arquivo: "lib/automation/guarda-do-contato.ts" },
+  },
+  {
     arquivo: "lib/automation/actions/send-ai-message.ts",
     expressao: "acesso.motivo",
     porque:
