@@ -89,6 +89,13 @@ const PROVA_PROPRIA: readonly Excecao[] = [
   { tabela: "channel_routing_responsibles", razao: "tests/invariants/channel-routing.test.ts — JWT do tenant B não lê responsáveis de A; revogação remove vínculo e claim revalida membro ativo" },
   { tabela: "channel_connection_requests", razao: "tests/invariants/channel-routing.test.ts — recibo privado sem SELECT authenticated; reserva admin com MFA e finalização service-only cercada por org e lease" },
   { tabela: "appointment_recovery_receipts", razao: "tests/invariants/agenda-presenca-acl.test.ts — leitura/escrita direta anon/authenticated negadas, escrita service_role negada e RPC service-only valida a tupla org/evento nos dois sentidos A/B" },
+  { tabela: "chatbot_flows", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: lê ≥1 da própria e 0 da outra nos dois sentidos; viewer/agent não escrevem, manager escreve só na própria (0490)" },
+  { tabela: "chatbot_sessions", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: leitura positiva local e negativa cruzada; escrita direta authenticated negada — quem grava é o motor no worker (0490)" },
+  { tabela: "chatbot_nodes", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: leitura positiva local e negativa cruzada; escrita authenticated negada, tabela sem uso desde a 0489" },
+  { tabela: "chatbot_edges", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: leitura positiva local e negativa cruzada; escrita authenticated negada, tabela sem uso desde a 0489" },
+  { tabela: "subscriptions", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — duas orgs reais por JWT: cada uma lê só a própria assinatura; UPDATE authenticated negado (não se dá plano melhor)" },
+  { tabela: "asaas_customers", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — server-only: authenticated barrado com permission denied até na própria org (0487)" },
+  { tabela: "org_aquisicao", razao: "tests/invariants/chatbot-e-faturamento-isolamento.test.ts — server-only: authenticated barrado com permission denied até na própria org (0484)" },
   { tabela: "event_service_origins", razao: "tests/invariants/service-event-origin.test.ts — recibo server-only, authenticated sem leitura/escrita, RPC rejeita tenant B real" },
   { tabela: "platform_support_sessions", razao: "tests/invariants/suporte-temporario.test.ts — grant por sessão, readonly e nenhuma escrita direta authenticated" },
   {

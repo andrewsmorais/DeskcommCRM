@@ -13,6 +13,7 @@ import { WahaSessionError } from "@/lib/waha/client";
 import { sincronizarRecebimentoDeGrupos } from "@/lib/grupos/sincronizar-filtro";
 import { comReservaDeCota, ErroDaReservaDeCota } from "@/lib/billing/reserva";
 import { canUse, getOrganizationBilling } from "@/lib/billing";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
 import { loadOnboardingChannel } from "@/lib/channels/onboarding-session";
 
 const channelSchema = z.object({
@@ -66,6 +67,8 @@ export async function connectWahaChannel(
     throw new ChannelConnectionError("idempotency_key_required", 422);
   try {
     return await comReservaDeCota(input.organizationId, "whatsapp", async () => {
+      // Sem planos à venda, sem cota de WhatsApp.
+      if (!assinaturaExigida()) return executarConexao(authDb, serviceDb, waha, input);
       const leitura = await getOrganizationBilling(input.organizationId);
       if (!leitura.ok) throw new ChannelConnectionError("billing_unavailable", 503);
       const { data: receipt, error: receiptError } = await serviceDb

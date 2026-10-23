@@ -1,8 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ ler: vi.fn() }));
 vi.mock("@/lib/billing", () => ({ getOrganizationBilling: mock.ler }));
 import { exigirRecursoDoPlano, verificarRecursoDoPlano } from "./acesso";
 import { RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "./catalogo";
+
+// Estes casos medem a camada comercial LIGADA (EXIGIR_ASSINATURA=true, como no
+// ChatAI Online). Desligada é o padrão — ver lib/billing/exigencia.ts.
+beforeEach(() => {
+  vi.stubEnv("EXIGIR_ASSINATURA", "true");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 
 beforeEach(() => vi.clearAllMocks());
 describe("o plano selecionado autoriza a mesma capacidade no CRM e no runtime", () => {

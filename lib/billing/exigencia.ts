@@ -12,8 +12,11 @@
  *   - leitura do plano indisponível → libera. Um soluço do banco não pode
  *     tirar do ar quem paga; a tela já mostra `FalhaNaLeituraDoPlano`.
  *
- * `EXIGIR_ASSINATURA=false` desliga a exigência (instalação self-host sem
- * venda). O padrão é exigir, porque este fork é o SaaS.
+ * `EXIGIR_ASSINATURA=true` liga toda a camada comercial (este bloqueio, a cota
+ * de agentes, os recursos e limites por plano). O padrão é DESLIGADO: uma
+ * atualização não pode trancar a instalação de quem não vende planos, nem
+ * pedir edição de `.env` para continuar funcionando (doutrina de packaging).
+ * O ChatAI Online liga no `.env` da VPS.
  */
 import type { BillingReadResult } from "@/lib/billing";
 
@@ -24,7 +27,7 @@ export type AcessoPeloPlano =
 export function assinaturaExigida(
   ambiente: Record<string, string | undefined> = process.env,
 ): boolean {
-  return (ambiente.EXIGIR_ASSINATURA ?? "true").trim().toLowerCase() !== "false";
+  return (ambiente.EXIGIR_ASSINATURA ?? "false").trim().toLowerCase() === "true";
 }
 
 export function decidirAcessoPeloPlano(

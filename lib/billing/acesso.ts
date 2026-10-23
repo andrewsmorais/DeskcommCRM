@@ -1,4 +1,5 @@
 import { getOrganizationBilling } from "@/lib/billing";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
 import { fail } from "@/lib/api/wrappers";
 import { PLANOS_COMERCIAIS, RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "./catalogo";
 
@@ -16,6 +17,8 @@ export async function verificarRecursoDoPlano(
   orgId: string,
   recurso: RecursoDoPlano,
 ): Promise<AcessoAoRecurso> {
+  // Instalação que não vende planos: nenhum recurso depende de plano.
+  if (!assinaturaExigida()) return { ok: true };
   const leitura = await getOrganizationBilling(orgId);
   if (!leitura.ok)
     return {

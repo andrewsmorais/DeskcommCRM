@@ -25,14 +25,14 @@ const leitura = (billing: OrganizationBilling | null): BillingReadResult => ({ o
 
 describe("quem entra sem assinatura", () => {
   it("assinatura ativa ou teste em dia entra", () => {
-    expect(decidirAcessoPeloPlano(leitura(plano()), { ambiente: {} })).toEqual({
+    expect(decidirAcessoPeloPlano(leitura(plano()), { ambiente: { EXIGIR_ASSINATURA: "true" } })).toEqual({
       liberado: true,
       motivo: "ativo",
     });
   });
 
   it("conta criada sem plano não entra", () => {
-    expect(decidirAcessoPeloPlano(leitura(null), { ambiente: {} })).toEqual({
+    expect(decidirAcessoPeloPlano(leitura(null), { ambiente: { EXIGIR_ASSINATURA: "true" } })).toEqual({
       liberado: false,
       motivo: "sem_plano",
     });
@@ -40,13 +40,13 @@ describe("quem entra sem assinatura", () => {
 
   it("teste vencido ou pagamento atrasado não entra", () => {
     const r = decidirAcessoPeloPlano(leitura(plano({ is_active: false, status: "past_due" })), {
-      ambiente: {},
+      ambiente: { EXIGIR_ASSINATURA: "true" },
     });
     expect(r).toEqual({ liberado: false, motivo: "vencido" });
   });
 
   it("super-admin e suporte passam", () => {
-    expect(decidirAcessoPeloPlano(leitura(null), { isento: true, ambiente: {} }).liberado).toBe(
+    expect(decidirAcessoPeloPlano(leitura(null), { isento: true, ambiente: { EXIGIR_ASSINATURA: "true" } }).liberado).toBe(
       true,
     );
   });
@@ -54,7 +54,7 @@ describe("quem entra sem assinatura", () => {
   it("leitura do plano fora do ar não derruba quem paga", () => {
     const r = decidirAcessoPeloPlano(
       { ok: false, reason: "consulta_indisponivel" },
-      { ambiente: {} },
+      { ambiente: { EXIGIR_ASSINATURA: "true" } },
     );
     expect(r.liberado).toBe(true);
   });

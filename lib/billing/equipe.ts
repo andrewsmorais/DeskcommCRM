@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOrganizationBilling } from "@/lib/billing";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
 import { comReservaDeCota } from "./reserva";
 
 export class ErroDaCotaDeEquipe extends Error {
@@ -85,6 +86,7 @@ export async function comCotaDeEquipe<T>(
         );
       if (data) return operacao(); // Replay de quem já ocupa a vaga, inclusive no downgrade.
     }
+    if (!assinaturaExigida()) return operacao(); // Sem planos à venda, sem limite de atendentes.
     const cota = await consultarCotaDaEquipe(db, orgId);
     if (!cota.billing?.is_active)
       throw new ErroDaCotaDeEquipe(

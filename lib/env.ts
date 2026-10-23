@@ -510,9 +510,10 @@ const schema = z.object({
   // super-admin muda por agente. Ver lib/ai/agents/config-tecnica.ts.
   PLATAFORMA_IA_PROVEDOR: z.string().optional().default("openai"),
   PLATAFORMA_IA_MODELO: z.string().optional().default("gpt-5.4-nano"),
-  // Sem assinatura ativa o CRM fecha e o agente para (lib/billing/exigencia.ts).
-  // `false` desliga, para instalação sem venda.
-  EXIGIR_ASSINATURA: z.enum(["true", "false"]).optional().default("true"),
+  // Liga a camada comercial: sem assinatura ativa o CRM fecha e o agente para,
+  // e valem cota de agentes, recursos e limites por plano (lib/billing/exigencia.ts).
+  // Desligada por padrão; o ChatAI Online liga com `true`.
+  EXIGIR_ASSINATURA: z.enum(["true", "false"]).optional().default("false"),
   // Onde o cliente escolhe e paga o plano (página de vendas com o checkout).
   PAGINA_DE_PLANOS_URL: z.string().optional().default("https://chataionline.io/#precos"),
 

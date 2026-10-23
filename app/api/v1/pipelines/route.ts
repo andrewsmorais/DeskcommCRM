@@ -9,6 +9,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  */
 import { randomUUID } from "node:crypto";
 import { getOrganizationBilling, canUse } from "@/lib/billing";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
@@ -99,25 +100,28 @@ export async function POST(req: NextRequest): Promise<Response> {
           503,
           { requestId },
         );
-      const leituraDoPlano = await getOrganizationBilling(orgId);
-      if (!leituraDoPlano.ok) {
-        return fail(
-          "internal_error",
-          t("Não foi possível confirmar seu plano. Tente novamente antes de criar um funil."),
-          503,
-          { requestId },
-        );
-      }
-      const billing = leituraDoPlano.billing;
-      const check = canUse(billing, "pipelines", count);
-      if (!check.ok) {
-        const msg = t(
-          "Seu plano {plano} permite até {limite} {recurso}. Faça upgrade para ampliar.",
-        )
-          .replace("{plano}", billing?.plan_name || "Gratuito")
-          .replace("{limite}", String(check.limite))
-          .replace("{recurso}", "pipelines");
-        return fail("billing_limit", msg, 403, { requestId });
+      // Sem planos à venda (EXIGIR_ASSINATURA desligado), sem cota de funis.
+      if (assinaturaExigida()) {
+        const leituraDoPlano = await getOrganizationBilling(orgId);
+        if (!leituraDoPlano.ok) {
+          return fail(
+            "internal_error",
+            t("Não foi possível confirmar seu plano. Tente novamente antes de criar um funil."),
+            503,
+            { requestId },
+          );
+        }
+        const billing = leituraDoPlano.billing;
+        const check = canUse(billing, "pipelines", count);
+        if (!check.ok) {
+          const msg = t(
+            "Seu plano {plano} permite até {limite} {recurso}. Faça upgrade para ampliar.",
+          )
+            .replace("{plano}", billing?.plan_name || "Gratuito")
+            .replace("{limite}", String(check.limite))
+            .replace("{recurso}", "pipelines");
+          return fail("billing_limit", msg, 403, { requestId });
+        }
       }
 
       let json: unknown;
