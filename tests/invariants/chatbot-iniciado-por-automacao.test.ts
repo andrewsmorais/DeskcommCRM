@@ -64,15 +64,6 @@ const entrada = (inboundMessageId: string) => ({
   channelSessionId: SESSION,
   inboundMessageId,
 });
-const sessao = async () =>
-  (
-    await pool.query<{ status: string; no_atual: string | null; retomar_em: string | null; retomada_token: string | null }>(
-      `select status, no_atual, retomar_em, retomada_token from chatbot_sessions
-        where organization_id = $1 and conversation_id = $2 and flow_id = $3`,
-      [ORG, CONV, FLOW],
-    )
-  ).rows[0];
-
 const no = (id: string, type: string, data: Record<string, unknown> = {}) => ({
   id,
   type,
