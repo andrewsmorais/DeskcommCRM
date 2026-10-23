@@ -63,6 +63,7 @@ const ICONES: Record<string, LucideIcon> = {
   UserPen,
   Users,
   Webhook,
+  Zap,
 };
 
 /** Ícone do cabeçalho de cada grupo do menu, como na Umbler. */

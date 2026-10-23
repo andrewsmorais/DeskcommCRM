@@ -158,6 +158,26 @@ function Campos({
   );
 
   switch (tipo) {
+    case "inicio_automacao":
+      return (
+        <div className="space-y-2 text-xs text-muted-foreground">
+          <p>
+            {t(
+              "Este fluxo não responde a mensagens: ele começa quando uma automação manda, e pode ficar ligado junto com o fluxo de atendimento.",
+            )}
+          </p>
+          <p>
+            {t(
+              'Para usar: em Automações, crie uma regra (ex.: "Quando um lead mudar de etapa", para a etapa "Pago") com a ação "Iniciar chatbot" e escolha este fluxo.',
+            )}
+          </p>
+          <p>
+            {t(
+              "As informações do negócio chegam como variáveis: {{produto}}, {{link_checkout}}, {{valor}}, {{evento_da_venda}} e os outros campos do negócio.",
+            )}
+          </p>
+        </div>
+      );
     case "inicio_canal": {
       const c = lerConfig("inicio_canal", dados);
       return (

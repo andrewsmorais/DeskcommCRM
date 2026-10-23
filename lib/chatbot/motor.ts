@@ -242,6 +242,7 @@ function andar(
 
     switch (tipo) {
       case "inicio_canal":
+      case "inicio_automacao":
         break;
       case "enviar_mensagem": {
         const c = lerConfig("enviar_mensagem", no.data);
@@ -461,9 +462,24 @@ export function sessaoNova(): SessaoDoChatbot {
   return { no_atual: null, status: "running", tentativas: 0, dados: {} };
 }
 
-/** Começa o fluxo a partir do passo de início. */
-export function iniciarFluxo(grafo: Grafo, inicio: string, ctx: ContextoDoTurno): ResultadoDoTurno {
-  return andar(grafo, sessaoNova(), inicio, ctx, false);
+/** Começa o fluxo a partir do passo de início. `dados` = variáveis que já chegam prontas (automação). */
+export function iniciarFluxo(
+  grafo: Grafo,
+  inicio: string,
+  ctx: ContextoDoTurno,
+  dados: Record<string, string> = {},
+): ResultadoDoTurno {
+  return andar(grafo, { ...sessaoNova(), dados: { ...dados } }, inicio, ctx, false);
+}
+
+/** O passo "Iniciar por automação" do desenho, se houver. */
+export function inicioPorAutomacao(grafo: Grafo): string | null {
+  return grafo.nodes.find((n) => n.type === "inicio_automacao")?.id ?? null;
+}
+
+/** O desenho responde a mensagens que chegam (tem "Iniciar por um canal")? */
+export function respondeMensagens(grafo: Grafo): boolean {
+  return grafo.nodes.some((n) => n.type === "inicio_canal");
 }
 
 /**

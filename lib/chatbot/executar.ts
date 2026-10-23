@@ -19,7 +19,7 @@ import { getOrganizationBilling } from "@/lib/billing";
 import { decidirAcessoPeloPlano } from "@/lib/billing/exigencia";
 import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { espacarEnvio } from "@/lib/automation/throttle";
-import { parseServiceBoundary } from "@/lib/atendimento/fronteira";
+import { parseServiceBoundary, type ServiceBoundary } from "@/lib/atendimento/fronteira";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { patchContactHandler } from "@/app/api/v1/contacts/_handler";
 import { audit } from "@/lib/audit";
@@ -34,7 +34,9 @@ import {
   continuarAposWebhook,
   continuarFluxo,
   iniciarFluxo,
+  inicioPorAutomacao,
   pontoDePartida,
+  respondeMensagens,
   retomarFluxo,
   seguirAoResponder,
   type ContextoDoTurno,
@@ -60,7 +62,17 @@ export type EntradaDoChatbot = {
   conversationId: string;
   contactId: string;
   channelSessionId: string | null;
-  inboundMessageId: string;
+  /** A mensagem do contato que acordou o fluxo; null quando foi uma automação. */
+  inboundMessageId: string | null;
+  /**
+   * Fronteira do atendimento já resolvida — a da automação que iniciou o fluxo
+   * (`serviceForAutomation`). Sem ela, sai da mensagem que chegou.
+   */
+  boundary?: ServiceBoundary | null;
+  /** Fluxo iniciado pela empresa, não pelo contato: o envio passa pelas guardas de contato proativo. */
+  proativo?: boolean;
+  /** Para o requestId quando não há mensagem (id do pedido de início). */
+  referencia?: string;
 };
 
 type Log = {
@@ -111,7 +123,7 @@ function dadosDeTexto(v: Record<string, unknown> | null): Record<string, string>
 export async function atenderPeloChatbot(
   pool: pg.Pool,
   admin: SupabaseClient,
-  e: EntradaDoChatbot,
+  e: EntradaDoChatbot & { inboundMessageId: string },
   log: Log,
 ): Promise<DesfechoDoChatbot> {
   let sessaoEsperando: SessaoGravada | null;
@@ -204,18 +216,26 @@ export async function atenderPeloChatbot(
       return "atendeu";
     }
   } else {
+    // Vários fluxos podem estar ligados, mas só um responde a mensagens (tem
+    // "Iniciar por um canal"); os de "Iniciar por automação" esperam a regra.
     const { rows: fluxos } = await pool.query<{ id: string; grafo: unknown }>(
       `select id, grafo from chatbot_flows
         where organization_id = $1 and is_active
         order by updated_at desc
-        limit 1`,
+        limit 50`,
       [e.organizationId],
     );
-    if (!fluxos[0]) return "nao_atende";
-    const g = grafoSchema.safeParse(fluxos[0].grafo);
-    if (!g.success) return "nao_atende";
-    fluxoId = fluxos[0].id;
-    grafo = g.data;
+    let escolhido: { id: string; grafo: Grafo } | null = null;
+    for (const f of fluxos) {
+      const g = grafoSchema.safeParse(f.grafo);
+      if (g.success && respondeMensagens(g.data)) {
+        escolhido = { id: f.id, grafo: g.data };
+        break;
+      }
+    }
+    if (!escolhido) return "nao_atende";
+    fluxoId = escolhido.id;
+    grafo = escolhido.grafo;
 
     // Já rodou nesta conversa há pouco: não recomeça a cada "obrigado".
     const { rows: recente } = await pool.query<{ id: string }>(
@@ -383,6 +403,8 @@ async function concluirTurno(
           contact_id: e.contactId,
           channel_session_id: e.channelSessionId,
           inbound_message_id: e.inboundMessageId,
+          boundary: e.inboundMessageId ? null : (e.boundary ?? null),
+          proativo: Boolean(e.proativo),
         } satisfies PedidoDeRetomada),
         JSON.stringify({ source: "chatbot", flow_id: fluxoId }),
         resultado.sessao.retomar_em,
@@ -401,6 +423,115 @@ async function concluirTurno(
   return gravada;
 }
 
+/** O que viaja no `chatbot.inicio_requested` (ação de automação "Iniciar chatbot"). */
+export type PedidoDeInicio = {
+  flow_id: string;
+  contact_id: string;
+  conversation_id: string;
+  channel_session_id: string;
+  /** A fronteira do atendimento que a automação resolveu (`serviceForAutomation`). */
+  boundary: ServiceBoundary;
+  /** Variáveis prontas para o fluxo: campos do negócio, produto, link do checkout. */
+  variaveis: Record<string, string>;
+  /** A regra que mandou — vai no log e no requestId. */
+  regra_id: string | null;
+};
+
+export type DesfechoDoInicio = "iniciou" | "descartado" | { adiarAte: string };
+
+/**
+ * Uma automação mandou começar um fluxo de "Iniciar por automação" para um
+ * contato. Chamado pelo drain do worker para cada `chatbot.inicio_requested`.
+ *
+ * Descarta (sem erro) quando não cabe: fluxo desligado ou sem esse início,
+ * atendente humano com a conversa, contato bloqueado, organização sem plano.
+ * Se o contato estava parado em outro fluxo (esperando resposta ou relógio),
+ * aquele fluxo termina e este começa — a automação é o fato mais novo (ex.: o
+ * carrinho abandonado vira compra aprovada).
+ */
+export async function iniciarChatbotPorAutomacao(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  pedido: PedidoDeInicio,
+  organizationId: string,
+  log: Log,
+): Promise<DesfechoDoInicio> {
+  const { rows: fluxos } = await pool.query<{ id: string; grafo: unknown; is_active: boolean }>(
+    `select id, grafo, is_active from chatbot_flows where organization_id = $1 and id = $2`,
+    [organizationId, pedido.flow_id],
+  );
+  const fluxo = fluxos[0];
+  const g = grafoSchema.safeParse(fluxo?.grafo);
+  const inicio = g.success ? inicioPorAutomacao(g.data) : null;
+  if (!fluxo?.is_active || !g.success || !inicio) {
+    log.info("chatbot: automação pediu fluxo desligado ou sem 'Iniciar por automação'", {
+      flow_id: pedido.flow_id,
+    });
+    return "descartado";
+  }
+
+  const { rows: estado } = await pool.query<{
+    assignee_kind: string | null;
+    is_blocked: boolean | null;
+    timezone: string | null;
+    tags: string[] | null;
+    nome: string | null;
+    email: string | null;
+    aniversario: string | null;
+    custom_fields: Record<string, unknown> | null;
+  }>(
+    `select c.assignee_kind, ct.is_blocked, o.timezone,
+            ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
+            ct.birthdate::text as aniversario, ct.custom_fields
+       from conversations c
+       join contacts ct on ct.id = c.contact_id and ct.organization_id = c.organization_id
+       join organizations o on o.id = c.organization_id
+      where c.organization_id = $1 and c.id = $2 and c.contact_id = $3 and c.is_group = false`,
+    [organizationId, pedido.conversation_id, pedido.contact_id],
+  );
+  const conversa = estado[0];
+  if (!conversa || conversa.assignee_kind === "user" || conversa.is_blocked === true) return "descartado";
+
+  const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
+  if (!acesso.liberado) return "descartado";
+
+  const abre = await adiarAteAJanelaAbrir(admin, organizationId, pedido.channel_session_id);
+  if (abre) return { adiarAte: abre };
+
+  // O fato mais novo vence: quem estava parado em outro fluxo sai dele.
+  await pool.query(
+    `update chatbot_sessions
+        set status = 'completed', no_atual = null, ended_at = now(), updated_at = now(),
+            retomar_em = null, retomada_token = null
+      where organization_id = $1 and conversation_id = $2
+        and status in ('waiting_input', 'waiting_timer', 'running')`,
+    [organizationId, pedido.conversation_id],
+  );
+
+  const e: EntradaDoChatbot = {
+    organizationId,
+    conversationId: pedido.conversation_id,
+    contactId: pedido.contact_id,
+    channelSessionId: pedido.channel_session_id,
+    inboundMessageId: null,
+    boundary: pedido.boundary,
+    proativo: true,
+    referencia: `regra:${pedido.regra_id ?? "?"}`,
+  };
+  const ctx: ContextoDoTurno = {
+    mensagem: null,
+    agora: new Date(),
+    fuso: conversa.timezone || "America/Sao_Paulo",
+    contato: contatoDoTurno(conversa),
+  };
+  const resultado = iniciarFluxo(g.data, inicio, ctx, pedido.variaveis);
+  // `null` = rodada nova: a gravação reinicia `started_at` mesmo que o fluxo
+  // já tenha rodado nesta conversa (a avaliação de cada rodada fica separada).
+  await conduzir(pool, admin, e, fluxo.id, g.data, null, resultado, ctx, log);
+  log.info("chatbot: fluxo iniciado por automação", { flow_id: fluxo.id, regra_id: pedido.regra_id });
+  return "iniciou";
+}
+
 /** O que viaja no `chatbot.retomada_requested`. */
 export type PedidoDeRetomada = {
   session_id: string;
@@ -409,7 +540,10 @@ export type PedidoDeRetomada = {
   contact_id: string;
   channel_session_id: string | null;
   /** A mensagem que levou o fluxo à espera — dá a fronteira do atendimento ao envio. */
-  inbound_message_id: string;
+  inbound_message_id: string | null;
+  /** Fluxo iniciado por automação (sem mensagem): a fronteira dela. */
+  boundary?: ServiceBoundary | null;
+  proativo?: boolean;
 };
 
 export type DesfechoDaRetomada = "retomou" | "descartado" | { adiarAte: string };
@@ -494,6 +628,9 @@ export async function retomarChatbotPeloRelogio(
     contactId: pedido.contact_id,
     channelSessionId: pedido.channel_session_id,
     inboundMessageId: pedido.inbound_message_id,
+    boundary: pedido.boundary ?? null,
+    proativo: pedido.proativo ?? false,
+    referencia: pedido.session_id,
   };
   const ctxDaRetomada: ContextoDoTurno = {
     mensagem: null,
@@ -587,7 +724,7 @@ async function executarEfeitos(
   log: Log,
 ): Promise<void> {
   if (efeitos.length === 0) return;
-  const requestId = `chatbot:${fluxoId}:${e.inboundMessageId}`;
+  const requestId = `chatbot:${fluxoId}:${e.inboundMessageId ?? e.referencia ?? sessao.id}`;
   const notaInterna = async (texto: string) => {
     const { rows } = await pool.query<{ id: string }>(
       `insert into conversation_notes (organization_id, conversation_id, body, created_by_name)
@@ -627,13 +764,16 @@ async function executarEfeitos(
         campos.comentou ?? null,
       ],
     );
-  const { rows: b } = await pool.query(
-    `select organization_id, contact_id, conversation_id, service_revision::float8 as service_revision,
-            demanda_id, demanda_revision::float8 as demanda_revision
-       from messages where organization_id = $1 and id = $2 and direction = 'inbound'`,
-    [e.organizationId, e.inboundMessageId],
-  );
-  const boundary = parseServiceBoundary(b[0] ?? null);
+  let boundary = e.boundary ?? null;
+  if (!boundary && e.inboundMessageId) {
+    const { rows: b } = await pool.query(
+      `select organization_id, contact_id, conversation_id, service_revision::float8 as service_revision,
+              demanda_id, demanda_revision::float8 as demanda_revision
+         from messages where organization_id = $1 and id = $2 and direction = 'inbound'`,
+      [e.organizationId, e.inboundMessageId],
+    );
+    boundary = parseServiceBoundary(b[0] ?? null);
+  }
 
   for (const efeito of efeitos) {
     try {
@@ -649,8 +789,11 @@ async function executarEfeitos(
             {
               organization_id: e.organizationId,
               serviceBoundary: boundary,
+              ...(e.proativo
+                ? { proactiveContext: { organizationId: e.organizationId, contactId: e.contactId } }
+                : {}),
               actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
-              requestId: `chatbot:${fluxoId}:${e.inboundMessageId}`,
+              requestId,
             },
             { conversation_id: e.conversationId, type: "text", body: efeito.texto } as Parameters<
               typeof sendMessageHandler

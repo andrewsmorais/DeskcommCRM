@@ -13,6 +13,7 @@ export type ActionType =
   | "assign_owner"
   | "call_webhook"
   | "start_message_flow"
+  | "start_chatbot_flow"
   | "create_task";
 
 export const TRIGGER_LABELS: Record<TriggerEvent, string> = {
@@ -57,6 +58,7 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   assign_owner: "Atribuir a um atendente",
   call_webhook: "Avisar outro sistema (webhook)",
   start_message_flow: "Iniciar fluxo de mensagem",
+  start_chatbot_flow: "Iniciar chatbot",
   // #1540 — a ação que não fala com o cliente: o lembrete é da equipe.
   create_task: "Criar tarefa interna (sem mensagem ao cliente)",
 };

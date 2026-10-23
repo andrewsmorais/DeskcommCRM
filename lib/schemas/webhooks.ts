@@ -132,6 +132,11 @@ export const actionSchema = z.discriminatedUnion("type", [
     type: z.literal("start_message_flow"),
     config: z.object({ flow_pointer_id: z.string().uuid() }),
   }),
+  // Começa um fluxo de chatbot de "Iniciar por automação" (Kiwify, Cakto, etapa do funil).
+  z.object({
+    type: z.literal("start_chatbot_flow"),
+    config: z.object({ chatbot_flow_id: z.string().uuid(), channel_session_id: z.string().uuid() }),
+  }),
   // #1540 — a ação que NUNCA fala com o cliente: grava `crm_tasks` e avisa o
   // responsável. Advocacia, saúde e serviços regulados precisam do lembrete e
   // não da mensagem; é a diferença entre o sistema lembrar a equipe e o

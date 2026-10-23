@@ -19,6 +19,8 @@ export type NodeData = Record<string, unknown>;
 function resumo(tipo: string, dados: unknown, t: (s: string) => string): string {
   if (!ehTipoDePasso(tipo)) return "";
   switch (tipo) {
+    case "inicio_automacao":
+      return t("Quando uma automação mandar");
     case "inicio_canal": {
       const c = lerConfig("inicio_canal", dados);
       return c.gatilho === "palavra_chave"

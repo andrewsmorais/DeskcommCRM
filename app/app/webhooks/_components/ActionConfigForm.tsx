@@ -34,6 +34,7 @@ export type ActionItem =
   | { type: "assign_owner"; config: { user_id: string } }
   | { type: "call_webhook"; config: { url: string; secret?: string; secret_enc?: string; include_owner?: boolean } }
   | { type: "start_message_flow"; config: { flow_pointer_id: string } }
+  | { type: "start_chatbot_flow"; config: { chatbot_flow_id: string; channel_session_id: string } }
   // #1540 — o lembrete interno: mesmos campos do schema da API e do nó de fluxo.
   | {
       type: "create_task";
@@ -61,6 +62,8 @@ export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
       return { type, config: { url: "" } };
     case "start_message_flow":
       return { type, config: { flow_pointer_id: "" } };
+    case "start_chatbot_flow":
+      return { type, config: { chatbot_flow_id: "", channel_session_id: "" } };
     // #1540 — o lembrete interno: mesma forma que o schema da API exige.
     case "create_task":
       return {
@@ -543,6 +546,75 @@ function StartMessageFlowForm({ config, onChange }: FormProps<{ flow_pointer_id:
   );
 }
 
+function StartChatbotFlowForm({
+  config,
+  onChange,
+}: FormProps<{ chatbot_flow_id: string; channel_session_id: string }>) {
+  const t = useT();
+  const { data, isLoading } = useQuery({
+    queryKey: ["chatbot", "flows", "list"],
+    queryFn: async () => {
+      const res = await apiClient.get<{
+        data: { id: string; name: string; is_active: boolean; inicia_por_automacao?: boolean }[];
+      }>("/api/v1/chatbot-flows");
+      return res.data;
+    },
+  });
+  const { data: sessions } = useChannelSessions();
+  const fluxos = (data ?? []).filter((f) => f.is_active && f.inicia_por_automacao);
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label>{t("Chatbot")}</Label>
+        <Select
+          value={config.chatbot_flow_id}
+          onValueChange={(v) => onChange({ ...config, chatbot_flow_id: v })}
+          disabled={isLoading}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Escolha um chatbot ligado")} />
+          </SelectTrigger>
+          <SelectContent>
+            {fluxos.map((f) => (
+              <SelectItem key={f.id} value={f.id}>
+                {f.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {!isLoading && fluxos.length === 0
+            ? t(
+                'Nenhum chatbot pronto. Em Chatbots, monte um fluxo que comece com "Iniciar por automação" e ligue-o.',
+              )
+            : t(
+                'Só aparecem chatbots ligados que começam com "Iniciar por automação". Os campos do negócio chegam como variáveis, por exemplo {{produto}} e {{link_checkout}}.',
+              )}
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Número de WhatsApp")}</Label>
+        <Select
+          value={config.channel_session_id}
+          onValueChange={(v) => onChange({ ...config, channel_session_id: v })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Escolha o número que vai falar")} />
+          </SelectTrigger>
+          <SelectContent>
+            {(sessions ?? []).map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {channelLabel(s)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 export function ActionConfigForm({
   action,
   onChange,
@@ -596,6 +668,13 @@ export function ActionConfigForm({
     case "start_message_flow":
       return (
         <StartMessageFlowForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "start_chatbot_flow":
+      return (
+        <StartChatbotFlowForm
           config={action.config}
           onChange={(config) => onChange({ type: action.type, config })}
         />

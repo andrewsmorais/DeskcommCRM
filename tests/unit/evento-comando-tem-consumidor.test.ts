@@ -51,6 +51,11 @@ const CONSUMIDORES_FORA_DO_REGISTRY: Record<string, string> = {
     "Quem é o dono é config: AGENT_DISPATCH_CONSUMER ('engine' default | 'native'), " +
     "e o invariante tests/invariants/agent-dispatch-single-consumer.test.ts prova " +
     "que nunca são os dois.",
+  "chatbot.inicio_requested":
+    "lib/agent-engine/edge/crm/drain.ts (`drenarComandosDoChatbot`) — o worker do agent-engine " +
+    "é o único processo com o pool do banco que o executor do chatbot usa; a ação de automação " +
+    "`start_chatbot_flow` só emite o pedido. Provado em " +
+    "tests/invariants/chatbot-iniciado-por-automacao.test.ts.",
 };
 
 /**

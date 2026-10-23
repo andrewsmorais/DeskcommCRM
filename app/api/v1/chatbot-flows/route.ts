@@ -11,6 +11,8 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
+import { grafoSchema } from "@/lib/chatbot/passos";
+import { inicioPorAutomacao } from "@/lib/chatbot/motor";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +30,19 @@ export async function GET(_req: NextRequest) {
   const db = await createClient();
   const { data, error } = await db
     .from("chatbot_flows")
-    .select("id, name, description, status, is_active, trigger_channel, created_at, updated_at")
+    .select("id, name, description, status, is_active, trigger_channel, created_at, updated_at, grafo")
     .eq("organization_id", auth.org.orgId)
     .order("created_at", { ascending: false });
 
   if (error) return fail("db_error", error.message, 500, { requestId });
 
-  return ok(data, { requestId });
+  // O desenho não sai na lista (ele traz o segredo cifrado do WebHook); sai só
+  // o que a escolha da automação precisa saber: o fluxo começa por automação?
+  const lista = (data ?? []).map(({ grafo, ...fluxo }) => {
+    const g = grafoSchema.safeParse(grafo);
+    return { ...fluxo, inicia_por_automacao: g.success && inicioPorAutomacao(g.data) !== null };
+  });
+  return ok(lista, { requestId });
 }
 
 export async function POST(req: NextRequest) {

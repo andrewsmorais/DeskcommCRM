@@ -70,6 +70,13 @@ export type Regra = z.infer<typeof regraSchema>;
 const SE_RESPONDER = z.enum(["seguir", "esperar"]).default("seguir");
 
 export const configDoPasso = {
+  /**
+   * Começa quando uma AUTOMAÇÃO manda (ação "Iniciar chatbot"): compra aprovada
+   * na Kiwify, negócio que mudou de etapa, etiqueta nova. Não responde a
+   * mensagem nenhuma — quem escolhe o contato é a regra. Um fluxo só com este
+   * início pode ficar ligado junto com o fluxo de atendimento.
+   */
+  inicio_automacao: z.object({}),
   inicio_canal: z.object({
     /** null = qualquer número de WhatsApp da empresa. */
     channel_session_id: z.string().uuid().nullable().default(null),
@@ -255,6 +262,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Inicia quando o contato entra através de um canal.",
     icone: "MessageCircle",
     cor: "text-green-500",
+    temEntrada: false,
+  },
+  {
+    tipo: "inicio_automacao",
+    grupo: "inicio",
+    nome: "Iniciar por automação",
+    descricao: "Começa quando uma automação manda — ex.: compra aprovada na Kiwify ou na Cakto.",
+    icone: "Zap",
+    cor: "text-amber-500",
     temEntrada: false,
   },
   {

@@ -11,8 +11,14 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
   const problemas: string[] = [];
   const ids = new Set(grafo.nodes.map((n) => n.id));
   const inicios = grafo.nodes.filter((n) => n.type === "inicio_canal");
+  const porAutomacao = grafo.nodes.filter((n) => n.type === "inicio_automacao");
 
-  if (inicios.length === 0) problemas.push('coloque o passo "Iniciar por um canal".');
+  if (inicios.length === 0 && porAutomacao.length === 0)
+    problemas.push('coloque o passo "Iniciar por um canal" ou "Iniciar por automação".');
+  for (const inicio of porAutomacao) {
+    if (!grafo.edges.some((e) => e.source === inicio.id && ids.has(e.target)))
+      problemas.push('ligue o "Iniciar por automação" ao primeiro passo do fluxo.');
+  }
   for (const inicio of inicios) {
     if (!grafo.edges.some((e) => e.source === inicio.id && ids.has(e.target)))
       problemas.push('ligue o "Iniciar por um canal" ao primeiro passo do fluxo.');

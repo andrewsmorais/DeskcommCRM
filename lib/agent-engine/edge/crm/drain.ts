@@ -23,7 +23,12 @@ import { avisoDeEventoMorto, IA_QUE_NAO_RESPONDEU } from "@/lib/event-log/aviso-
 import { TIPOS_DERIVAVEIS, DERIVACAO_TERMINADA } from "@/lib/messaging/media/derivable";
 import { decidirElegibilidadeDaConversa } from "@/lib/ai/elegibilidade/consulta-pg";
 import { deveCederTurnoAoRetorno } from "@/lib/followup/ceder-turno-ao-retorno";
-import { atenderPeloChatbot, retomarChatbotPeloRelogio } from "@/lib/chatbot/executar";
+import {
+  atenderPeloChatbot,
+  iniciarChatbotPorAutomacao,
+  retomarChatbotPeloRelogio,
+} from "@/lib/chatbot/executar";
+import { parseServiceBoundary, type ServiceBoundary } from "@/lib/atendimento/fronteira";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const DRAIN_CONSUMER = "agent-engine";
@@ -576,7 +581,7 @@ export async function runDrainLoop(
       });
     }
     try {
-      drained += await drenarRetomadasDoChatbot(pool, log);
+      drained += await drenarComandosDoChatbot(pool, log);
     } catch (err) {
       log.error("drain: retomada do chatbot falhou", {
         error: (err instanceof Error ? err.message : String(err)).slice(0, 300),
@@ -605,17 +610,25 @@ export async function runDrainLoop(
 }
 
 export const RETOMADA_DO_CHATBOT = "chatbot.retomada_requested";
+export const INICIO_DO_CHATBOT = "chatbot.inicio_requested";
+const COMANDOS_DO_CHATBOT = [RETOMADA_DO_CHATBOT, INICIO_DO_CHATBOT];
 
-const CHATBOT_QUE_NAO_RETOMOU = {
-  titulo: "Um chatbot parado em \"Aguardar\" não voltou a andar",
+const CHATBOT_QUE_NAO_ANDOU = {
+  titulo: "Um chatbot não começou ou não voltou a andar",
   consequencia:
-    "O fluxo esperava o relógio para continuar e a retomada falhou; o contato não recebeu o resto do fluxo. " +
-    "Abra as conversas e continue o atendimento pela equipe.",
+    "Uma automação mandou iniciar um fluxo, ou um fluxo parado em \"Aguardar\" ia continuar, e a tentativa falhou; " +
+    "o contato não recebeu as mensagens do fluxo. Abra as conversas e continue o atendimento pela equipe.",
   rearme:
-    "Enquanto este aviso estiver aberto, outras retomadas que falharem não abrem aviso novo: " +
+    "Enquanto este aviso estiver aberto, outras falhas iguais não abrem aviso novo: " +
     "marque-o como resolvido depois de conferir.",
 } as const;
-const LOTE_DE_RETOMADAS = 20;
+const LOTE_DE_COMANDOS = 20;
+
+const fronteiraSchema = z.unknown().transform((v, c) => {
+  const b = parseServiceBoundary(v);
+  if (!b) c.addIssue({ code: "custom", message: "fronteira inválida" });
+  return b as ServiceBoundary;
+});
 
 const pedidoDeRetomadaSchema = z.object({
   session_id: z.string().uuid(),
@@ -623,48 +636,81 @@ const pedidoDeRetomadaSchema = z.object({
   conversation_id: z.string().uuid(),
   contact_id: z.string().uuid(),
   channel_session_id: z.string().uuid().nullable(),
-  inbound_message_id: z.string().uuid(),
+  inbound_message_id: z.string().uuid().nullable(),
+  boundary: fronteiraSchema.nullable().optional(),
+  proativo: z.boolean().optional(),
+});
+
+const pedidoDeInicioSchema = z.object({
+  flow_id: z.string().uuid(),
+  contact_id: z.string().uuid(),
+  conversation_id: z.string().uuid(),
+  channel_session_id: z.string().uuid(),
+  boundary: fronteiraSchema,
+  variaveis: z.record(z.string(), z.string()).default({}),
+  regra_id: z.string().nullable().default(null),
 });
 
 /**
- * O relógio do chatbot ("Aguardar intervalo" / "Aguardar até"): consome os
- * `chatbot.retomada_requested` cuja hora chegou (`next_attempt_at`). Quem os
- * emite é `lib/chatbot/executar.ts`, ao parar um fluxo no relógio.
+ * Os comandos do chatbot no barramento, consumidos aqui no worker (o único
+ * processo com o pool do banco que o executor usa):
+ *   - `chatbot.retomada_requested` — o relógio de "Aguardar intervalo" /
+ *     "Aguardar até" venceu (`next_attempt_at`); emitido por lib/chatbot/executar.ts;
+ *   - `chatbot.inicio_requested` — a ação de automação "Iniciar chatbot"
+ *     (lib/automation/actions/start-chatbot-flow.ts) mandou começar um fluxo.
  *
  * Mesmo contrato do despacho: claim CAS pending→processing, órfão em
- * processing volta à fila pelo timeout, 5 tentativas e `dead`. `organization_id`
- * vem da linha do evento, nunca do payload.
+ * processing volta à fila pelo timeout, 5 tentativas e `dead` com aviso na
+ * Central. `organization_id` vem da linha do evento, nunca do payload.
  */
-export async function drenarRetomadasDoChatbot(pool: pg.Pool, log: Logger): Promise<number> {
+export async function drenarComandosDoChatbot(pool: pg.Pool, log: Logger): Promise<number> {
   await pool.query(
     `update event_log set status = 'pending', updated_at = now()
-      where event_type = $2 and status = 'processing' and $1 = any(consumed_by)
+      where event_type = any($2::text[]) and status = 'processing' and $1 = any(consumed_by)
         and updated_at < now() - interval '5 minutes'`,
-    [DRAIN_CONSUMER, RETOMADA_DO_CHATBOT],
+    [DRAIN_CONSUMER, COMANDOS_DO_CHATBOT],
   );
-  const { rows: eventos } = await pool.query<EventRow>(
+  const { rows: eventos } = await pool.query<EventRow & { event_type: string }>(
     `update event_log e
         set status = 'processing', attempts = e.attempts + 1,
             consumed_by = array_append(array_remove(coalesce(e.consumed_by, '{}'), $1), $1),
             updated_at = now()
       where e.id in (
         select id from event_log
-         where event_type = $2 and status = 'pending'
+         where event_type = any($2::text[]) and status = 'pending'
            and (next_attempt_at is null or next_attempt_at <= now())
          order by next_attempt_at nulls first, created_at
          limit $3
          for update skip locked
       )
-      returning id, organization_id, payload, attempts, created_at`,
-    [DRAIN_CONSUMER, RETOMADA_DO_CHATBOT, LOTE_DE_RETOMADAS],
+      returning id, organization_id, event_type, payload, attempts, created_at`,
+    [DRAIN_CONSUMER, COMANDOS_DO_CHATBOT, LOTE_DE_COMANDOS],
   );
 
   for (const evento of eventos) {
-    const pedido = pedidoDeRetomadaSchema.safeParse(evento.payload);
     try {
-      const desfecho = pedido.success
-        ? await retomarChatbotPeloRelogio(pool, createAdminClient(), pedido.data, evento.organization_id, log)
-        : "descartado";
+      let desfecho: string | { adiarAte: string } = "descartado";
+      if (evento.event_type === INICIO_DO_CHATBOT) {
+        const pedido = pedidoDeInicioSchema.safeParse(evento.payload);
+        if (pedido.success)
+          desfecho = await iniciarChatbotPorAutomacao(
+            pool,
+            createAdminClient(),
+            pedido.data,
+            evento.organization_id,
+            log,
+          );
+      } else {
+        const pedido = pedidoDeRetomadaSchema.safeParse(evento.payload);
+        if (pedido.success)
+          desfecho = await retomarChatbotPeloRelogio(
+            pool,
+            createAdminClient(),
+            pedido.data,
+            evento.organization_id,
+            log,
+          );
+      }
       if (typeof desfecho === "object") {
         await pool.query(
           `update event_log
@@ -685,15 +731,18 @@ export async function drenarRetomadasDoChatbot(pool: pg.Pool, log: Logger): Prom
           where id = $1`,
         [evento.id, terminal ? "dead" : "pending", mensagem],
       );
-      log.error("drain: retomada do chatbot falhou", { event_id: evento.id, terminal, error: mensagem });
+      log.error("drain: comando do chatbot falhou", {
+        event_id: evento.id,
+        event_type: evento.event_type,
+        terminal,
+        error: mensagem,
+      });
       if (terminal) {
-        // Morreu: o fluxo não volta a andar sozinho. A Central avisa, uma vez
-        // enquanto o aviso estiver aberto (dedupe por título).
         const { title, body } = avisoDeEventoMorto({
-          eventType: RETOMADA_DO_CHATBOT,
+          eventType: evento.event_type,
           tentativas: evento.attempts,
           motivo: mensagem,
-          efeito: CHATBOT_QUE_NAO_RETOMOU,
+          efeito: CHATBOT_QUE_NAO_ANDOU,
         });
         await insertInboxItem(
           pool,
@@ -706,3 +755,6 @@ export async function drenarRetomadasDoChatbot(pool: pg.Pool, log: Logger): Prom
   }
   return eventos.length;
 }
+
+/** Nome antigo (fase 2): o relógio era o único comando do chatbot. */
+export const drenarRetomadasDoChatbot = drenarComandosDoChatbot;

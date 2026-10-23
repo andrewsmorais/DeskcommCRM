@@ -17,6 +17,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
 import { grafoSchema } from "@/lib/chatbot/passos";
+import { respondeMensagens } from "@/lib/chatbot/motor";
 import { problemasDoGrafo } from "@/lib/chatbot/validar";
 import { cifrarSegredosDoGrafo } from "@/lib/chatbot/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -76,7 +77,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const db = await createClient();
   const { data: atual } = await db
     .from("chatbot_flows")
-    .select("id, grafo, revisao")
+    .select("id, grafo, revisao, is_active")
     .eq("id", id)
     .eq("organization_id", auth.org.orgId)
     .maybeSingle();
@@ -122,13 +123,32 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     update.status = is_active ? "active" : "draft";
   }
 
-  if (is_active === true) {
-    const { error: erroDosOutros } = await db
+  // Só UM fluxo ligado responde a mensagens ("Iniciar por um canal"). Fluxos
+  // que só começam por automação ficam ligados juntos — cada automação escolhe
+  // o seu. Ligar (ou passar a responder mensagens) desliga os outros que respondem.
+  const ficaLigado = is_active ?? Boolean(atual.is_active);
+  const desenhoFinal = grafoSchema.safeParse(grafo ?? atual.grafo);
+  if (ficaLigado && desenhoFinal.success && respondeMensagens(desenhoFinal.data)) {
+    const { data: outros, error: erroAoLer } = await db
       .from("chatbot_flows")
-      .update({ is_active: false, status: "draft", updated_at: new Date().toISOString() })
+      .select("id, grafo")
       .eq("organization_id", auth.org.orgId)
       .eq("is_active", true)
       .neq("id", id);
+    const concorrentes = (outros ?? [])
+      .filter((f) => {
+        const g = grafoSchema.safeParse(f.grafo);
+        return g.success && respondeMensagens(g.data);
+      })
+      .map((f) => String(f.id));
+    const { error: erroDosOutros } =
+      erroAoLer || concorrentes.length === 0
+        ? { error: erroAoLer }
+        : await db
+            .from("chatbot_flows")
+            .update({ is_active: false, status: "draft", updated_at: new Date().toISOString() })
+            .eq("organization_id", auth.org.orgId)
+            .in("id", concorrentes);
     if (erroDosOutros)
       return fail("internal_error", "Não foi possível desligar os outros fluxos.", 500, {
         requestId,
