@@ -21,7 +21,12 @@ import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { espacarEnvio } from "@/lib/automation/throttle";
 import { parseServiceBoundary } from "@/lib/atendimento/fronteira";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
+import { patchContactHandler } from "@/app/api/v1/contacts/_handler";
+import { audit } from "@/lib/audit";
+import { normalizarTag } from "@/lib/contacts/tag-normalizada";
+import { contactPatchSchema, type ContactPatch } from "@/lib/schemas/contacts";
 import { grafoSchema, type Grafo } from "./passos";
+import type { ContatoDoTurno } from "./regras";
 import {
   continuarFluxo,
   iniciarFluxo,
@@ -60,6 +65,27 @@ type SessaoGravada = {
 };
 
 const TERMINAIS = new Set(["completed", "transferred"]);
+
+/** O contato como o motor o enxerga em "Definir condição". */
+function contatoDoTurno(c: {
+  tags: string[] | null;
+  nome: string | null;
+  email: string | null;
+  aniversario: string | null;
+  custom_fields: Record<string, unknown> | null;
+}): ContatoDoTurno {
+  const personalizados: Record<string, string> = {};
+  for (const [k, v] of Object.entries(c.custom_fields ?? {}))
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+      personalizados[k] = String(v);
+  return {
+    tags: c.tags ?? [],
+    nome: c.nome,
+    email: c.email,
+    aniversario: c.aniversario,
+    personalizados,
+  };
+}
 
 function dadosDeTexto(v: Record<string, unknown> | null): Record<string, string> {
   const saida: Record<string, string> = {};
@@ -104,8 +130,15 @@ export async function atenderPeloChatbot(
     assignee_kind: string | null;
     is_blocked: boolean | null;
     timezone: string | null;
+    tags: string[] | null;
+    nome: string | null;
+    email: string | null;
+    aniversario: string | null;
+    custom_fields: Record<string, unknown> | null;
   }>(
-    `select c.assignee_kind, ct.is_blocked, o.timezone
+    `select c.assignee_kind, ct.is_blocked, o.timezone,
+            ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
+            ct.birthdate::text as aniversario, ct.custom_fields
        from conversations c
        join contacts ct on ct.id = c.contact_id and ct.organization_id = c.organization_id
        join organizations o on o.id = c.organization_id
@@ -191,6 +224,7 @@ export async function atenderPeloChatbot(
     mensagem: texto,
     agora: new Date(),
     fuso: conversa.timezone || "America/Sao_Paulo",
+    contato: contatoDoTurno(conversa),
   };
   const resultado: ResultadoDoTurno = sessaoAnterior
     ? continuarFluxo(grafo, sessaoAnterior, ctx)
@@ -312,12 +346,13 @@ async function executarEfeitos(
             [e.organizationId, e.contactId],
           );
           const antes = rows[0]?.tags ?? [];
-          const remover = new Set(efeito.remover.map((t) => t.toLowerCase()));
+          // Mesma forma que o resto do CRM grava (minúscula, até 40): "VIP"
+          // gravado cru não casaria com o filtro de etiqueta da tela.
+          const remover = new Set(efeito.remover.map(normalizarTag));
+          const adicionar = [...new Set(efeito.adicionar.map(normalizarTag).filter(Boolean))];
           const depois = [
-            ...antes.filter((t) => !remover.has(t.toLowerCase())),
-            ...efeito.adicionar.filter(
-              (t) => !antes.some((a) => a.toLowerCase() === t.toLowerCase()),
-            ),
+            ...antes.filter((t) => !remover.has(normalizarTag(t))),
+            ...adicionar.filter((t) => !antes.some((a) => normalizarTag(a) === t)),
           ];
           const novas = depois.filter((t) => !antes.includes(t));
           await pool.query(
@@ -380,6 +415,60 @@ async function executarEfeitos(
             log.warn("chatbot: transferência para atendente falhou", {
               erro: error.message.slice(0, 120),
             });
+          break;
+        }
+        case "nota": {
+          // Nota interna: a equipe vê na conversa, o contato nunca.
+          const { rows } = await pool.query<{ id: string }>(
+            `insert into conversation_notes (organization_id, conversation_id, body, created_by_name)
+             values ($1, $2, $3, 'Chatbot')
+             returning id`,
+            [e.organizationId, e.conversationId, efeito.texto.slice(0, 2000)],
+          );
+          void audit({
+            action: "conversation.note_added",
+            actorUserId: null,
+            organizationId: e.organizationId,
+            resourceType: "conversation_note",
+            resourceId: rows[0]?.id ?? null,
+            requestId: `chatbot:${fluxoId}:${e.inboundMessageId}`,
+            bypassedRls: true,
+            metadata: { conversation_id: e.conversationId, source: "chatbot", flow_id: fluxoId },
+          });
+          break;
+        }
+        case "campo_contato": {
+          // Pelo mesmo handler da tela: audita antes/depois, emite
+          // `contact.updated`, recusa contato anonimizado (LGPD).
+          let patch: ContactPatch;
+          if (efeito.campo === "nome") patch = { name: efeito.valor, display_name: efeito.valor };
+          else if (efeito.campo === "email") patch = { email: efeito.valor };
+          else if (efeito.campo === "aniversario") patch = { birthdate: efeito.valor };
+          else {
+            const { rows } = await pool.query<{ custom_fields: Record<string, unknown> | null }>(
+              `select custom_fields from contacts where organization_id = $1 and id = $2`,
+              [e.organizationId, e.contactId],
+            );
+            patch = { custom_fields: { ...(rows[0]?.custom_fields ?? {}), [efeito.chave]: efeito.valor } };
+          }
+          const valido = contactPatchSchema.safeParse(patch);
+          if (!valido.success) {
+            log.warn("chatbot: valor recusado para o campo do contato", {
+              flow_id: fluxoId,
+              campo: efeito.campo,
+            });
+            break;
+          }
+          await patchContactHandler(
+            admin,
+            {
+              organization_id: e.organizationId,
+              actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
+              requestId: `chatbot:${fluxoId}:${e.inboundMessageId}`,
+            },
+            e.contactId,
+            valido.data,
+          );
           break;
         }
         case "finalizar": {

@@ -12,7 +12,22 @@
  *   - no máximo `LIMITE_DE_PASSOS` passos por mensagem: um desenho em círculo
  *     sem pergunta no meio não pode prender o worker nem inundar o contato.
  */
-import { lerConfig, type Grafo, type TipoDePasso, ehTipoDePasso } from "./passos";
+import {
+  lerConfig,
+  type CampoDoContato,
+  type Grafo,
+  type TipoDePasso,
+  ehTipoDePasso,
+} from "./passos";
+import {
+  contatoVazio,
+  normalizar,
+  regraVale,
+  valorDoCampo,
+  type ContatoDoTurno,
+} from "./regras";
+
+export { normalizar };
 
 export const LIMITE_DE_PASSOS = 40;
 
@@ -30,6 +45,8 @@ export type Efeito =
   | { tipo: "transferir_equipe" }
   | { tipo: "transferir_atendente"; user_id: string | null }
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
+  | { tipo: "nota"; texto: string }
+  | { tipo: "campo_contato"; campo: CampoDoContato; chave: string; valor: string }
   | { tipo: "finalizar" };
 
 export type ContextoDoTurno = {
@@ -38,16 +55,13 @@ export type ContextoDoTurno = {
   agora: Date;
   /** Fuso da organização, ex.: "America/Sao_Paulo". */
   fuso: string;
+  /** Etiquetas e campos do contato, para "Definir condição". Ausente = contato vazio. */
+  contato?: ContatoDoTurno;
 };
 
 export type ResultadoDoTurno = { sessao: SessaoDoChatbot; efeitos: Efeito[]; passos: number };
 
 type No = Grafo["nodes"][number];
-
-/** Minúsculas, sem acento, espaços colapsados — para comparar o que o contato digitou. */
-export function normalizar(texto: string): string {
-  return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-}
 
 /** Troca {{variavel}} pelo que o contato respondeu em "Pedir para digitar". */
 export function preencher(texto: string, dados: Record<string, string>): string {
@@ -119,7 +133,10 @@ function proximo(grafo: Grafo, deNo: string, saida: string): string | null {
   const ligacao =
     grafo.edges.find((e) => e.source === deNo && (e.sourceHandle ?? "proximo") === saida) ??
     // Ligação feita antes de o passo ter saídas nomeadas: vale como "proximo".
-    (saida === "proximo" ? grafo.edges.find((e) => e.source === deNo) : undefined);
+    // Nunca a de "Valor inválido": o valor gravado não pode cair no caminho do erro.
+    (saida === "proximo"
+      ? grafo.edges.find((e) => e.source === deNo && e.sourceHandle !== "invalido")
+      : undefined);
   return ligacao?.target ?? null;
 }
 
@@ -156,6 +173,14 @@ function andar(
   const efeitos: Efeito[] = [];
   const sessao: SessaoDoChatbot = { ...sessaoInicial, dados: { ...sessaoInicial.dados } };
   const porId = new Map(grafo.nodes.map((n) => [n.id, n]));
+  // Cópia do contato que acompanha o que o próprio fluxo grava neste turno:
+  // "Editar etiquetas" seguido de "Definir condição" enxerga a etiqueta nova.
+  const base = ctx.contato ?? contatoVazio();
+  const contato: ContatoDoTurno = {
+    ...base,
+    tags: [...base.tags],
+    personalizados: { ...base.personalizados },
+  };
   let atual: string | null = inicio;
   let resposta = respondendo;
   let passos = 0;
@@ -251,8 +276,45 @@ function andar(
       }
       case "editar_etiquetas": {
         const c = lerConfig("editar_etiquetas", no.data);
-        if (c.adicionar.length || c.remover.length)
+        if (c.adicionar.length || c.remover.length) {
           efeitos.push({ tipo: "etiquetas", adicionar: c.adicionar, remover: c.remover });
+          const sai = new Set(c.remover.map(normalizar));
+          contato.tags = contato.tags.filter((t) => !sai.has(normalizar(t)));
+          for (const t of c.adicionar)
+            if (!contato.tags.some((x) => normalizar(x) === normalizar(t))) contato.tags.push(t);
+        }
+        break;
+      }
+      case "criar_nota": {
+        const texto = preencher(lerConfig("criar_nota", no.data).texto, sessao.dados).trim();
+        if (texto) efeitos.push({ tipo: "nota", texto });
+        break;
+      }
+      case "campo_contato": {
+        const c = lerConfig("campo_contato", no.data);
+        const valor = valorDoCampo(c.campo, preencher(c.valor, sessao.dados));
+        if (valor === null || (c.campo === "personalizado" && !c.chave)) {
+          saida = "invalido";
+          break;
+        }
+        efeitos.push({ tipo: "campo_contato", campo: c.campo, chave: c.chave, valor });
+        if (c.campo === "personalizado") contato.personalizados[c.chave] = valor;
+        else contato[c.campo] = valor;
+        break;
+      }
+      case "definir_condicao": {
+        const c = lerConfig("definir_condicao", no.data);
+        saida = regraVale(c.regra, { mensagem: ctx.mensagem, dados: sessao.dados, contato })
+          ? "sim"
+          : "nao";
+        break;
+      }
+      case "multi_condicional": {
+        const c = lerConfig("multi_condicional", no.data);
+        const i = c.regras.findIndex((r) =>
+          regraVale(r, { mensagem: ctx.mensagem, dados: sessao.dados, contato }),
+        );
+        saida = i >= 0 ? `regra-${i}` : "nenhuma";
         break;
       }
       case "transferir_equipe": {
@@ -281,6 +343,9 @@ function andar(
     }
 
     atual = proximo(grafo, no.id, saida);
+    // "Valor inválido" sem ligação: o fluxo segue pelo caminho normal em vez de
+    // morrer ali — quem não desenhou o "pedir de novo" não perde o resto.
+    if (!atual && saida === "invalido") atual = proximo(grafo, no.id, "proximo");
   }
   return fim("completed");
 }

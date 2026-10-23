@@ -13,7 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/hooks/i18n/useT";
-import { ehTipoDePasso, lerConfig, metaDoPasso } from "@/lib/chatbot/passos";
+import {
+  ehTipoDePasso,
+  lerConfig,
+  metaDoPasso,
+  regraSchema,
+  type Regra,
+} from "@/lib/chatbot/passos";
 
 import { IconeDoPasso } from "./icones";
 import type { NodeData } from "./node-types";
@@ -38,6 +44,17 @@ const textoParaLista = (s: string) =>
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+
+/** Nome de variável ou de campo personalizado: minúsculas, números e _. */
+const comoChave = (v: string) =>
+  v
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_]/g, "_")
+    .replace(/^[0-9]/, "_$&")
+    .slice(0, 40);
 
 const SELECT =
   "h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-hidden focus:border-primary";
@@ -366,6 +383,36 @@ function Campos({
         />
       );
     }
+    case "criar_nota": {
+      const c = lerConfig("criar_nota", dados);
+      return (
+        <Texto
+          id="nota-interna"
+          rotulo={t("Texto da nota")}
+          valor={c.texto}
+          linhas={5}
+          onCommit={(v) => aplicar({ texto: v })}
+          ajuda={t(
+            'A nota aparece na conversa só para a equipe. Use {{nome}} para incluir o que o contato respondeu em "Pedir para digitar".',
+          )}
+        />
+      );
+    }
+    case "campo_contato":
+      return <CampoDoContato dados={dados} aplicar={aplicar} />;
+    case "definir_condicao": {
+      const c = lerConfig("definir_condicao", dados);
+      return (
+        <>
+          <EditorDeRegra id="regra" regra={c.regra} onChange={(regra) => aplicar({ regra })} />
+          <p className="text-xs text-muted-foreground">
+            {t('Se a regra valer, segue por "Regra atendida"; senão, por "Regra não atendida".')}
+          </p>
+        </>
+      );
+    }
+    case "multi_condicional":
+      return <MultiCondicional dados={dados} aplicar={aplicar} />;
     case "bloco_de_notas": {
       const c = lerConfig("bloco_de_notas", dados);
       return (
@@ -544,6 +591,253 @@ function Horarios({
       ) : null}
       <p className="text-xs text-muted-foreground">
         {t("Usa o fuso horário da empresa. Uma faixa como 22:00 até 06:00 passa da meia-noite.")}
+      </p>
+    </div>
+  );
+}
+
+function CampoDoContato({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("campo_contato", dados);
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="campo-qual">{t("Campo")}</Label>
+        <select
+          id="campo-qual"
+          className={SELECT}
+          value={c.campo}
+          onChange={(e) => aplicar({ campo: e.target.value })}
+        >
+          <option value="nome">{t("Nome")}</option>
+          <option value="email">{t("E-mail")}</option>
+          <option value="aniversario">{t("Aniversário")}</option>
+          <option value="personalizado">{t("Campo personalizado")}</option>
+        </select>
+      </div>
+      {c.campo === "personalizado" ? (
+        <Texto
+          id="campo-chave"
+          rotulo={t("Nome do campo personalizado")}
+          valor={c.chave}
+          placeholder="cidade"
+          onCommit={(v) => aplicar({ chave: comoChave(v) })}
+          ajuda={t("Letras minúsculas, números e _. O mesmo nome usado na ficha do contato.")}
+        />
+      ) : null}
+      <Texto
+        id="campo-valor"
+        rotulo={t("Valor a gravar")}
+        valor={c.valor}
+        placeholder="{{resposta}}"
+        onCommit={(v) => aplicar({ valor: v })}
+        ajuda={
+          c.campo === "aniversario"
+            ? t("Use {{nome}} para gravar o que o contato digitou. A data precisa vir como dd/mm/aaaa.")
+            : t('Use {{nome}} para gravar o que o contato respondeu em "Pedir para digitar".')
+        }
+      />
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'Se o valor não servir (um e-mail sem @, uma data que não existe), nada é gravado e o fluxo segue por "Valor inválido" — ligue essa saída de volta à pergunta para pedir de novo.',
+        )}
+      </p>
+    </>
+  );
+}
+
+const CAMPOS_FIXOS = ["nome", "email", "aniversario"];
+
+function EditorDeRegra({
+  id,
+  regra,
+  onChange,
+}: {
+  id: string;
+  regra: Regra;
+  onChange: (r: Regra) => void;
+}) {
+  const t = useT();
+  const mudar = (parcial: Partial<Regra>) => onChange({ ...regra, ...parcial });
+  const etiqueta = regra.fonte === "etiqueta";
+  const semValor = regra.operador === "preenchido" || regra.operador === "vazio";
+  const campoOutro = regra.fonte === "campo_contato" && !CAMPOS_FIXOS.includes(regra.chave);
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor={`${id}-fonte`}>{t("Olhar para")}</Label>
+        <select
+          id={`${id}-fonte`}
+          className={SELECT}
+          value={regra.fonte}
+          onChange={(e) => {
+            const fonte = e.target.value as Regra["fonte"];
+            const operador =
+              fonte === "etiqueta"
+                ? regra.operador === "nao_tem" || regra.operador === "diferente"
+                  ? "nao_tem"
+                  : "tem"
+                : regra.operador === "tem"
+                  ? "contem"
+                  : regra.operador === "nao_tem"
+                    ? "diferente"
+                    : regra.operador;
+            mudar({
+              fonte,
+              operador,
+              chave: fonte === "campo_contato" ? "nome" : fonte === "variavel" ? regra.chave : "",
+            });
+          }}
+        >
+          <option value="etiqueta">{t("Etiqueta do contato")}</option>
+          <option value="variavel">{t("Resposta guardada")}</option>
+          <option value="campo_contato">{t("Campo do contato")}</option>
+          <option value="mensagem">{t("Última mensagem do contato")}</option>
+        </select>
+      </div>
+
+      {regra.fonte === "variavel" ? (
+        <Texto
+          id={`${id}-var`}
+          rotulo={t("Nome da resposta")}
+          valor={regra.chave}
+          placeholder="resposta"
+          onCommit={(v) => mudar({ chave: comoChave(v) })}
+          ajuda={t('O nome que você pôs em "Guardar a resposta em", no "Pedir para digitar".')}
+        />
+      ) : null}
+
+      {regra.fonte === "campo_contato" ? (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-campo`}>{t("Campo")}</Label>
+            <select
+              id={`${id}-campo`}
+              className={SELECT}
+              value={campoOutro ? "__outro" : regra.chave}
+              onChange={(e) => mudar({ chave: e.target.value === "__outro" ? "" : e.target.value })}
+            >
+              <option value="nome">{t("Nome")}</option>
+              <option value="email">{t("E-mail")}</option>
+              <option value="aniversario">{t("Aniversário")}</option>
+              <option value="__outro">{t("Campo personalizado")}</option>
+            </select>
+          </div>
+          {campoOutro ? (
+            <Texto
+              id={`${id}-chave`}
+              rotulo={t("Nome do campo personalizado")}
+              valor={regra.chave}
+              placeholder="cidade"
+              onCommit={(v) => mudar({ chave: comoChave(v) })}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      <div className="space-y-1.5">
+        <Label htmlFor={`${id}-op`}>{t("Condição")}</Label>
+        <select
+          id={`${id}-op`}
+          className={SELECT}
+          value={regra.operador}
+          onChange={(e) => mudar({ operador: e.target.value as Regra["operador"] })}
+        >
+          {etiqueta ? (
+            <>
+              <option value="tem">{t("Tem a etiqueta")}</option>
+              <option value="nao_tem">{t("Não tem a etiqueta")}</option>
+            </>
+          ) : (
+            <>
+              <option value="igual">{t("É igual a")}</option>
+              <option value="diferente">{t("É diferente de")}</option>
+              <option value="contem">{t("Contém")}</option>
+              <option value="nao_tem">{t("Não contém")}</option>
+              <option value="preenchido">{t("Está preenchido")}</option>
+              <option value="vazio">{t("Está vazio")}</option>
+            </>
+          )}
+        </select>
+      </div>
+
+      {semValor ? null : (
+        <Texto
+          id={`${id}-valor`}
+          rotulo={etiqueta ? t("Etiqueta") : t("Valor")}
+          valor={regra.valor}
+          onCommit={(v) => mudar({ valor: v })}
+          ajuda={t("Maiúsculas e acentos não importam.")}
+        />
+      )}
+    </div>
+  );
+}
+
+function MultiCondicional({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("multi_condicional", dados);
+  const gravar = (regras: Regra[]) => aplicar({ regras });
+  return (
+    <div className="space-y-4">
+      {c.regras.map((r, i) => (
+        <div key={`${i}-${c.regras.length}`} className="space-y-3 rounded-lg border border-border p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold">
+              {t("Regra")} {i + 1}
+            </span>
+            <button
+              type="button"
+              disabled={c.regras.length <= 1}
+              onClick={() => gravar(c.regras.filter((_, j) => j !== i))}
+              className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+              aria-label={t("Remover regra")}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <Texto
+            id={`multi-${i}-rotulo`}
+            rotulo={t("Nome da saída (opcional)")}
+            valor={r.rotulo}
+            placeholder={t("Ex.: Financeiro")}
+            onCommit={(v) => gravar(c.regras.map((x, j) => (j === i ? { ...x, rotulo: v } : x)))}
+          />
+          <EditorDeRegra
+            id={`multi-${i}`}
+            regra={r}
+            onChange={(nova) => gravar(c.regras.map((x, j) => (j === i ? nova : x)))}
+          />
+        </div>
+      ))}
+      {c.regras.length < 8 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => gravar([...c.regras, regraSchema.parse({})])}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          {t("Adicionar regra")}
+        </Button>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'Vale a primeira regra que bater, de cima para baixo. Se nenhuma bater, segue por "Nenhuma regra".',
+        )}
       </p>
     </div>
   );

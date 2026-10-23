@@ -736,6 +736,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "endpoint oficial de produção do provedor de cobrança Asaas autorizado pelo proprietário para assinaturas dos planos. É o destino da API, e não a marca que aparece na interface.",
   },
+  "asaas.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "domínio das páginas de pagamento do Asaas (fatura, Pix, boleto). `lib/billing/fatura-em-aberto.ts` só aceita link de cobrança cujo host seja asaas.com ou subdomínio dele, para o botão \"Pagar a fatura em aberto\" nunca abrir endereço que não seja do fornecedor.",
+  },
   "api-sandbox.asaas.com": {
     categoria: "FORNECEDOR",
     motivo:

@@ -10,6 +10,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 
 import { useT } from "@/hooks/i18n/useT";
 import { lerConfig, metaDoPasso, saidasDoPasso, ehTipoDePasso } from "@/lib/chatbot/passos";
+import { descreverRegra } from "@/lib/chatbot/regras";
 import { IconeDoPasso } from "./icones";
 
 export type NodeData = Record<string, unknown>;
@@ -56,6 +57,24 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       return (dados as { mensagem?: string })?.mensagem ?? "";
     case "bloco_de_notas":
       return lerConfig("bloco_de_notas", dados).texto;
+    case "criar_nota":
+      return lerConfig("criar_nota", dados).texto;
+    case "campo_contato": {
+      const c = lerConfig("campo_contato", dados);
+      const nomes: Record<string, string> = {
+        nome: t("Nome"),
+        email: t("E-mail"),
+        aniversario: t("Aniversário"),
+      };
+      const campo = c.campo === "personalizado" ? c.chave || "…" : nomes[c.campo];
+      return c.valor ? `${campo} ← ${c.valor}` : "";
+    }
+    case "definir_condicao":
+      return descreverRegra(lerConfig("definir_condicao", dados).regra);
+    case "multi_condicional": {
+      const n = lerConfig("multi_condicional", dados).regras.length;
+      return n === 1 ? t("1 regra") : `${n} ${t("regras")}`;
+    }
   }
 }
 

@@ -13,6 +13,8 @@
  */
 import { z } from "zod";
 
+import { descreverRegra } from "./regras";
+
 export const GRUPOS_DE_PASSO = [
   { id: "inicio", nome: "Início" },
   { id: "condicao", nome: "Condição" },
@@ -23,6 +25,35 @@ export const GRUPOS_DE_PASSO = [
 export type GrupoDePasso = (typeof GRUPOS_DE_PASSO)[number]["id"];
 
 const HORA = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use o formato 08:30.");
+
+/** Campos do contato que o passo "Campo do contato" grava e "Definir condição" lê. */
+export const CAMPOS_DO_CONTATO = ["nome", "email", "aniversario", "personalizado"] as const;
+export type CampoDoContato = (typeof CAMPOS_DO_CONTATO)[number];
+
+const CHAVE = z
+  .string()
+  .trim()
+  .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.");
+
+/**
+ * Uma regra de "Definir condição" / "Multi-condicional". O que ela olha:
+ *   - `etiqueta`      — o contato tem (ou não) a etiqueta `valor`;
+ *   - `variavel`      — o que foi guardado em "Pedir para digitar" (`chave`);
+ *   - `campo_contato` — nome, e-mail, aniversário ou campo personalizado (`chave`);
+ *   - `mensagem`      — a última mensagem do contato.
+ */
+export const regraSchema = z.object({
+  fonte: z.enum(["etiqueta", "variavel", "campo_contato", "mensagem"]).default("etiqueta"),
+  /** Nome da variável, ou o campo do contato (nome/email/aniversario/<chave personalizada>). */
+  chave: z.string().trim().max(40).default(""),
+  operador: z
+    .enum(["tem", "nao_tem", "igual", "diferente", "contem", "preenchido", "vazio"])
+    .default("tem"),
+  valor: z.string().trim().max(200).default(""),
+  /** Nome da saída no quadro (só no Multi-condicional). */
+  rotulo: z.string().trim().max(40).default(""),
+});
+export type Regra = z.infer<typeof regraSchema>;
 
 export const configDoPasso = {
   inicio_canal: z.object({
@@ -90,6 +121,27 @@ export const configDoPasso = {
   finalizar_conversa: z.object({
     mensagem: z.string().trim().max(1000).default(""),
   }),
+  /** Nota interna na conversa (`conversation_notes`): a equipe vê, o contato não. */
+  criar_nota: z.object({
+    texto: z.string().trim().max(2000).default(""),
+  }),
+  campo_contato: z.object({
+    campo: z.enum(CAMPOS_DO_CONTATO).default("nome"),
+    /** Só para `personalizado`: a chave em `contacts.custom_fields`. */
+    chave: CHAVE.or(z.literal("")).default(""),
+    /** Aceita {{variavel}} — o caso comum é gravar o que o contato digitou. */
+    valor: z.string().trim().max(500).default(""),
+  }),
+  definir_condicao: z.object({
+    regra: regraSchema.default(regraSchema.parse({})),
+  }),
+  multi_condicional: z.object({
+    regras: z
+      .array(regraSchema)
+      .min(1)
+      .max(8)
+      .default([regraSchema.parse({}), regraSchema.parse({})]),
+  }),
   bloco_de_notas: z.object({
     texto: z.string().max(4000).default(""),
   }),
@@ -149,6 +201,24 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "definir_condicao",
+    grupo: "condicao",
+    nome: "Definir condição",
+    descricao: "Siga por um caminho ou outro conforme uma regra (etiqueta, resposta ou campo).",
+    icone: "Split",
+    cor: "text-sky-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "multi_condicional",
+    grupo: "condicao",
+    nome: "Multi-condicional",
+    descricao: "Várias regras, uma saída para cada. Vale a primeira que bater.",
+    icone: "Network",
+    cor: "text-sky-500",
+    temEntrada: true,
+  },
+  {
     tipo: "enviar_mensagem",
     grupo: "acao",
     nome: "Enviar mensagem",
@@ -200,6 +270,24 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Adicione ou remova etiquetas do contato.",
     icone: "Tag",
     cor: "text-slate-300",
+    temEntrada: true,
+  },
+  {
+    tipo: "campo_contato",
+    grupo: "acao",
+    nome: "Campo do contato",
+    descricao: "Grave nome, e-mail, aniversário ou um campo personalizado no contato.",
+    icone: "UserPen",
+    cor: "text-indigo-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "criar_nota",
+    grupo: "acao",
+    nome: "Criar uma nota",
+    descricao: "Deixe uma nota interna na conversa. A equipe vê, o contato não.",
+    icone: "NotebookPen",
+    cor: "text-amber-500",
     temEntrada: true,
   },
   {
@@ -265,6 +353,23 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         { id: "sim", rotulo: "Nos dias marcados" },
         { id: "nao", rotulo: "Nos outros dias" },
+      ];
+    case "definir_condicao":
+      return [
+        { id: "sim", rotulo: "Regra atendida" },
+        { id: "nao", rotulo: "Regra não atendida" },
+      ];
+    case "multi_condicional": {
+      const c = lerConfig("multi_condicional", dados);
+      return [
+        ...c.regras.map((r, i) => ({ id: `regra-${i}`, rotulo: r.rotulo || descreverRegra(r) })),
+        { id: "nenhuma", rotulo: "Nenhuma regra" },
+      ];
+    }
+    case "campo_contato":
+      return [
+        { id: "proximo", rotulo: "Gravado" },
+        { id: "invalido", rotulo: "Valor inválido" },
       ];
     case "transferir_equipe":
     case "transferir_atendente":

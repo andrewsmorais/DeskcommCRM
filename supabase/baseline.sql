@@ -42333,9 +42333,7 @@ BEGIN
         WHERE conrelid = 'public.subscriptions'::regclass 
           AND conname = 'subscriptions_organization_id_fkey'
     ) THEN
-        ALTER TABLE public.subscriptions 
-            ADD CONSTRAINT subscriptions_organization_id_fkey 
-            FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+        ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
     END IF;
 
     IF NOT EXISTS (
@@ -42343,9 +42341,7 @@ BEGIN
         WHERE conrelid = 'public.subscriptions'::regclass 
           AND conname = 'subscriptions_plan_id_fkey'
     ) THEN
-        ALTER TABLE public.subscriptions 
-            ADD CONSTRAINT subscriptions_plan_id_fkey 
-            FOREIGN KEY (plan_id) REFERENCES public.plans(id);
+        ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.plans(id);
     END IF;
 END $$;
 
@@ -42484,9 +42480,7 @@ BEGIN
         WHERE conrelid = 'public.asaas_customers'::regclass 
           AND conname = 'asaas_customers_organization_id_fkey'
     ) THEN
-        ALTER TABLE public.asaas_customers 
-            ADD CONSTRAINT asaas_customers_organization_id_fkey 
-            FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+        ALTER TABLE public.asaas_customers ADD CONSTRAINT asaas_customers_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
     END IF;
 END $$;
 
@@ -44184,11 +44178,7 @@ create table if not exists public.chatbot_flows (
 );
 create index if not exists idx_chatbot_flows_org on public.chatbot_flows (organization_id);
 alter table public.chatbot_flows enable row level security;
-do $$ begin
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='chatbot_flows' and policyname='tenant_isolation_chatbot_flows_all') then
-    create policy tenant_isolation_chatbot_flows_all on public.chatbot_flows for all using (organization_id in (select public.fn_user_org_ids()));
-  end if;
-end $$;
+-- (a policy desta tabela mora no bloco da migration 0490, mais abaixo)
 
 create table if not exists public.chatbot_nodes (
   id               uuid        not null default gen_random_uuid() primary key,
@@ -44205,11 +44195,7 @@ create table if not exists public.chatbot_nodes (
 create index if not exists idx_chatbot_nodes_flow on public.chatbot_nodes (flow_id);
 create index if not exists idx_chatbot_nodes_org on public.chatbot_nodes (organization_id);
 alter table public.chatbot_nodes enable row level security;
-do $$ begin
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='chatbot_nodes' and policyname='tenant_isolation_chatbot_nodes_all') then
-    create policy tenant_isolation_chatbot_nodes_all on public.chatbot_nodes for all using (organization_id in (select public.fn_user_org_ids()));
-  end if;
-end $$;
+-- (a policy desta tabela mora no bloco da migration 0490, mais abaixo)
 
 create table if not exists public.chatbot_edges (
   id               uuid        not null default gen_random_uuid() primary key,
@@ -44226,11 +44212,7 @@ create index if not exists idx_chatbot_edges_flow on public.chatbot_edges (flow_
 create index if not exists idx_chatbot_edges_org on public.chatbot_edges (organization_id);
 create index if not exists idx_chatbot_edges_source on public.chatbot_edges (source_node_id);
 alter table public.chatbot_edges enable row level security;
-do $$ begin
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='chatbot_edges' and policyname='tenant_isolation_chatbot_edges_all') then
-    create policy tenant_isolation_chatbot_edges_all on public.chatbot_edges for all using (organization_id in (select public.fn_user_org_ids()));
-  end if;
-end $$;
+-- (a policy desta tabela mora no bloco da migration 0490, mais abaixo)
 
 create table if not exists public.chatbot_sessions (
   id                  uuid        not null default gen_random_uuid() primary key,
@@ -44249,11 +44231,7 @@ create index if not exists idx_chatbot_sessions_org on public.chatbot_sessions (
 create index if not exists idx_chatbot_sessions_conversation on public.chatbot_sessions (conversation_id);
 create index if not exists idx_chatbot_sessions_flow on public.chatbot_sessions (flow_id);
 alter table public.chatbot_sessions enable row level security;
-do $$ begin
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='chatbot_sessions' and policyname='tenant_isolation_chatbot_sessions_all') then
-    create policy tenant_isolation_chatbot_sessions_all on public.chatbot_sessions for all using (organization_id in (select public.fn_user_org_ids()));
-  end if;
-end $$;
+-- (a policy desta tabela mora no bloco da migration 0490, mais abaixo)
 
 -- ---- chatbot: grafo do desenho e estado do motor (migration 0489) ----
 -- migration 0489 — Chatbot Builder: o desenho salvo de uma vez e o estado do motor

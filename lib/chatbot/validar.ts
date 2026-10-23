@@ -5,6 +5,7 @@
  * Mensagens escritas para quem monta o fluxo, não para quem programa.
  */
 import { ehTipoDePasso, lerConfig, metaDoPasso, type Grafo } from "./passos";
+import { problemaDaRegra } from "./regras";
 
 export function problemasDoGrafo(grafo: Grafo): string[] {
   const problemas: string[] = [];
@@ -46,6 +47,28 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
       case "transferir_atendente":
         if (!lerConfig("transferir_atendente", no.data).user_id)
           problemas.push(`escolha o atendente do passo "${nome}".`);
+        break;
+      case "criar_nota":
+        if (!lerConfig("criar_nota", no.data).texto)
+          problemas.push(`escreva o texto do passo "${nome}".`);
+        break;
+      case "campo_contato": {
+        const c = lerConfig("campo_contato", no.data);
+        if (c.campo === "personalizado" && !c.chave)
+          problemas.push(`no passo "${nome}", dê um nome ao campo personalizado.`);
+        if (!c.valor) problemas.push(`no passo "${nome}", escreva o valor a gravar.`);
+        break;
+      }
+      case "definir_condicao": {
+        const p = problemaDaRegra(lerConfig("definir_condicao", no.data).regra);
+        if (p) problemas.push(`no passo "${nome}", ${p}.`);
+        break;
+      }
+      case "multi_condicional":
+        lerConfig("multi_condicional", no.data).regras.forEach((r, i) => {
+          const p = problemaDaRegra(r);
+          if (p) problemas.push(`no passo "${nome}", regra ${i + 1}: ${p}.`);
+        });
         break;
     }
   }

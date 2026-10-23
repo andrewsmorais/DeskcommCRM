@@ -36,10 +36,14 @@ const umFunil = () => [funilRow({ id: PIPE, name: "Pedidos", slug: "pedidos", is
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("POST /api/v1/pipelines", () => {
   it("falha de consulta do plano responde 503 antes de criar o funil", async () => {
+    // O limite de funis por plano só vale com a camada comercial ligada
+    // (lib/billing/exigencia.ts — desligada por padrão).
+    vi.stubEnv("EXIGIR_ASSINATURA", "true");
     authOk();
     const db = makeDb({ pipelines: umFunil() });
     vi.mocked(getOrganizationBilling).mockResolvedValueOnce({ ok: false, reason: "consulta_indisponivel" });
