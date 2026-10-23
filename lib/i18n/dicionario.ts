@@ -7640,6 +7640,12 @@ export const DICIONARIO: Traducoes = {
     },
   "Conta suspensa": { es: "Cuenta suspendida" },
   // Tela /assinatura (lib/billing/exigencia.ts) e agente sem IA configurada.
+  "Há uma cobrança vencida": { es: "Hay un cobro vencido" },
+  "Há uma cobrança em aberto": { es: "Hay un cobro pendiente" },
+  "vencimento": { es: "vencimiento" },
+  "Pagar a fatura em aberto": { es: "Pagar la factura pendiente" },
+  "Depois de pagar, o acesso volta sozinho em alguns minutos. Pix costuma ser na hora.": { es: "Después de pagar, el acceso vuelve solo en unos minutos. Pix suele ser al instante." },
+  "Escolher outro plano": { es: "Elegir otro plan" },
   "Sua assinatura não está ativa": { es: "Tu suscripción no está activa" },
   "Escolha um plano para começar a usar": { es: "Elige un plan para empezar a usar" },
   "O período de teste terminou ou o pagamento não foi confirmado. Enquanto isso, o CRM e os agentes ficam pausados.": { es: "El período de prueba terminó o el pago no se confirmó. Mientras tanto, el CRM y los agentes quedan en pausa." },

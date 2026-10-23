@@ -10,6 +10,7 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { localeDeData } from "@/lib/i18n/datas";
 import { getOrganizationBilling } from "@/lib/billing";
 import { enderecoDosPlanos } from "@/lib/billing/pagina-de-planos";
+import { faturaEmAberto } from "@/lib/billing/fatura-em-aberto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CancelSubscription } from "@/components/app/CancelSubscription";
 import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
@@ -34,6 +35,8 @@ export default async function BillingPage() {
   // ligado na instalação; desligado, o recurso não existe para ninguém.
   const comDisparo = await disparoEmMassaLigado();
   const billing = leituraDoPlano.ok ? leituraDoPlano.billing : null;
+  // Assinatura parada: o caminho de volta é pagar a cobrança aberta no Asaas.
+  const fatura = billing && !billing.is_active ? await faturaEmAberto(activeOrg.orgId) : null;
   const equipe = billing
     ? await consultarCotaDaEquipe(admin, activeOrg.orgId).catch(() => null)
     : null;
@@ -127,8 +130,24 @@ export default async function BillingPage() {
             )}
 
             <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-              <Button asChild>
-                <a href={enderecoDosPlanos(activeOrg.orgId)} target="_blank" rel="noopener noreferrer">
+              {fatura ? (
+                <Button asChild>
+                  <a
+                    href={fatura.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="fatura-em-aberto"
+                  >
+                    {t("Pagar a fatura em aberto")}
+                  </a>
+                </Button>
+              ) : null}
+              <Button asChild variant={fatura ? "outline" : "default"}>
+                <a
+                  href={enderecoDosPlanos(activeOrg.orgId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   {t("Ver outros planos")}
                 </a>
               </Button>
@@ -176,18 +195,20 @@ export default async function BillingPage() {
             </p>
             <h3 className="mt-6 text-base font-medium">{t("Recursos do plano")}</h3>
             <ul className="mt-3 space-y-2 text-sm">
-              {Object.entries(RECURSOS_DO_PLANO).filter(([key]) => comDisparo || key !== "campanhas").map(([key, oferta]) => (
-                <li key={key} className="flex justify-between gap-3">
-                  <span>{oferta.nome}</span>
-                  <span className="text-muted-foreground">
-                    {planoInclui(billing.plan_slug, key as RecursoDoPlano)
-                      ? billing.is_active
-                        ? t("Incluído")
-                        : t("Assinatura inativa")
-                      : `${t("A partir de")} ${oferta.desde === "impulso" ? "Impulso" : "Escala"}`}
-                  </span>
-                </li>
-              ))}
+              {Object.entries(RECURSOS_DO_PLANO)
+                .filter(([key]) => comDisparo || key !== "campanhas")
+                .map(([key, oferta]) => (
+                  <li key={key} className="flex justify-between gap-3">
+                    <span>{oferta.nome}</span>
+                    <span className="text-muted-foreground">
+                      {planoInclui(billing.plan_slug, key as RecursoDoPlano)
+                        ? billing.is_active
+                          ? t("Incluído")
+                          : t("Assinatura inativa")
+                        : `${t("A partir de")} ${oferta.desde === "impulso" ? "Impulso" : "Escala"}`}
+                    </span>
+                  </li>
+                ))}
             </ul>
           </Card>
 
@@ -206,7 +227,11 @@ export default async function BillingPage() {
           </p>
           <div className="mt-6">
             <Button asChild>
-              <a href={enderecoDosPlanos(activeOrg.orgId)} target="_blank" rel="noopener noreferrer">
+              <a
+                href={enderecoDosPlanos(activeOrg.orgId)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {t("Escolher um plano")}
               </a>
             </Button>

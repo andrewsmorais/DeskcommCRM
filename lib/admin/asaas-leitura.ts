@@ -36,7 +36,10 @@ export function ambienteDoAsaas(): { configurado: boolean; base: string | null; 
   return { configurado: true, base, sandbox: base.includes("sandbox") };
 }
 
-async function get<T>(caminho: string, query: Record<string, string | number> = {}): Promise<LeituraAsaas<T>> {
+export async function get<T>(
+  caminho: string,
+  query: Record<string, string | number> = {},
+): Promise<LeituraAsaas<T>> {
   const amb = ambienteDoAsaas();
   if (!amb.configurado || !amb.base) return { ok: false, motivo: "sem_chave_do_asaas" };
   const url = new URL(`${amb.base}${caminho}`);
@@ -113,8 +116,14 @@ export interface CobrancaDoAsaas {
   forma: string | null;
 }
 
-export async function lerCobrancas(status: string, limite = 20): Promise<LeituraAsaas<{ total: number | null; itens: CobrancaDoAsaas[] }>> {
-  const r = await get<{ totalCount?: unknown; data?: unknown }>("/v3/payments", { status, limit: limite });
+export async function lerCobrancas(
+  status: string,
+  limite = 20,
+): Promise<LeituraAsaas<{ total: number | null; itens: CobrancaDoAsaas[] }>> {
+  const r = await get<{ totalCount?: unknown; data?: unknown }>("/v3/payments", {
+    status,
+    limit: limite,
+  });
   if (!r.ok) return r;
   const lista = Array.isArray(r.dados.data) ? (r.dados.data as Record<string, unknown>[]) : [];
   return {
@@ -142,8 +151,14 @@ export interface AssinaturaDoAsaas {
   forma: string | null;
 }
 
-export async function lerAssinaturas(status: "ACTIVE" | "INACTIVE" | "EXPIRED", limite = 20): Promise<LeituraAsaas<{ total: number | null; itens: AssinaturaDoAsaas[] }>> {
-  const r = await get<{ totalCount?: unknown; data?: unknown }>("/v3/subscriptions", { status, limit: limite });
+export async function lerAssinaturas(
+  status: "ACTIVE" | "INACTIVE" | "EXPIRED",
+  limite = 20,
+): Promise<LeituraAsaas<{ total: number | null; itens: AssinaturaDoAsaas[] }>> {
+  const r = await get<{ totalCount?: unknown; data?: unknown }>("/v3/subscriptions", {
+    status,
+    limit: limite,
+  });
   if (!r.ok) return r;
   const lista = Array.isArray(r.dados.data) ? (r.dados.data as Record<string, unknown>[]) : [];
   return {
@@ -165,7 +180,8 @@ export async function lerAssinaturas(status: "ACTIVE" | "INACTIVE" | "EXPIRED", 
 export const MOTIVO_LEGIVEL: Record<string, string> = {
   sem_chave_do_asaas: "A chave do Asaas não está configurada neste servidor (ASAAS_API_KEY).",
   asaas_indisponivel: "Não consegui falar com o Asaas agora.",
-  asaas_http_401: "O Asaas recusou a chave. Confira se ela é do ambiente certo (produção ou sandbox).",
+  asaas_http_401:
+    "O Asaas recusou a chave. Confira se ela é do ambiente certo (produção ou sandbox).",
   asaas_http_403: "O Asaas recusou o acesso a este dado com a chave atual.",
   asaas_http_429: "O Asaas pediu para esperar um pouco. Tente de novo em instantes.",
 };
