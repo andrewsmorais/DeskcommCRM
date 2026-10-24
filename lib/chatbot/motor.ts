@@ -76,7 +76,44 @@ export type Efeito =
   | { tipo: "feedback"; texto: string }
   /** `texto` com as respostas do contato; `modelo` é o que quem montou o fluxo escreveu, sem elas. */
   | { tipo: "notificar"; texto: string; modelo: string }
+  /** Bloqueia o contato (`contacts.is_blocked`). Vem antes de "finalizar". */
+  | { tipo: "bloquear" }
+  /** Abre o pedido de exclusão dos dados (LGPD), que um admin aprova. */
+  | { tipo: "pedido_exclusao" }
   | { tipo: "finalizar" };
+
+/**
+ * O que as condições "da conversa" leem — o executor busca no banco uma vez
+ * por turno; o teste da tela deixa quem testa escolher.
+ */
+export type FatosDaConversa = {
+  /** Número de WhatsApp (channel_session_id). */
+  canal: string | null;
+  /** Atendente com a conversa (assigned_to_user_id). */
+  atendente: string | null;
+  /** ISO da última mensagem do contato. */
+  ultima_entrada_em: string | null;
+  /** A última mensagem da conversa é do contato (ninguém respondeu ainda). */
+  aguardando_resposta: boolean;
+  /** Nenhuma mensagem do contato antes deste atendimento. */
+  primeira_conversa: boolean;
+  /** Alguém da equipe pode assumir agora. */
+  equipe_disponivel: boolean;
+  /** O agente de IA ou outro chatbot está atendendo a conversa. */
+  outro_bot: boolean;
+};
+
+export function fatosVazios(): FatosDaConversa {
+  return {
+    canal: null,
+    atendente: null,
+    ultima_entrada_em: null,
+    aguardando_resposta: false,
+    primeira_conversa: false,
+    equipe_disponivel: false,
+    outro_bot: false,
+  };
+}
 
 export type ContextoDoTurno = {
   /** Texto da mensagem do contato que disparou este turno (null = sem texto, ex.: áudio). */
@@ -86,6 +123,10 @@ export type ContextoDoTurno = {
   fuso: string;
   /** Etiquetas e campos do contato, para "Definir condição". Ausente = contato vazio. */
   contato?: ContatoDoTurno;
+  /** Para as condições da conversa (canal, atendente, presença…). Ausente = tudo "não". */
+  conversa?: FatosDaConversa;
+  /** Sorteio do "Distribuir fluxo", entre 0 e 1. Ausente = Math.random. */
+  sorteio?: () => number;
 };
 
 /** O que o executor precisa fazer FORA do motor (rede, banco) antes de o fluxo seguir. */
@@ -266,6 +307,7 @@ function andar(
     tags: [...base.tags],
     personalizados: { ...base.personalizados },
   };
+  const fatos = ctx.conversa ?? fatosVazios();
   let atual: string | null = inicio;
   let resposta = respondendo;
   let passos = 0;
@@ -309,7 +351,74 @@ function andar(
     switch (tipo) {
       case "inicio_canal":
       case "inicio_automacao":
+      case "inicio_manual":
         break;
+      case "distribuir_fluxo": {
+        const c = lerConfig("distribuir_fluxo", no.data);
+        const total = c.saidas.reduce((t, x) => t + x.peso, 0);
+        let alvo = (ctx.sorteio ?? Math.random)() * total;
+        let i = 0;
+        for (; i < c.saidas.length - 1; i++) {
+          alvo -= c.saidas[i]!.peso;
+          if (alvo < 0) break;
+        }
+        saida = `saida-${i}`;
+        break;
+      }
+      case "contato_ativo": {
+        const c = lerConfig("contato_ativo", no.data);
+        const ultima = fatos.ultima_entrada_em ? new Date(fatos.ultima_entrada_em).getTime() : NaN;
+        saida = ctx.agora.getTime() - ultima <= c.horas * 3_600_000 ? "sim" : "nao";
+        break;
+      }
+      case "tem_etiqueta": {
+        const c = lerConfig("tem_etiqueta", no.data);
+        const tem = (t: string) => contato.tags.some((x) => normalizar(x) === normalizar(t));
+        saida =
+          c.etiquetas.length > 0 &&
+          (c.modo === "todas" ? c.etiquetas.every(tem) : c.etiquetas.some(tem))
+            ? "sim"
+            : "nao";
+        break;
+      }
+      case "primeira_conversa":
+        saida = fatos.primeira_conversa ? "sim" : "nao";
+        break;
+      case "canal_da_conversa":
+        saida =
+          fatos.canal && lerConfig("canal_da_conversa", no.data).canais.includes(fatos.canal)
+            ? "sim"
+            : "nao";
+        break;
+      case "atendente_da_conversa": {
+        const c = lerConfig("atendente_da_conversa", no.data);
+        saida =
+          fatos.atendente && (c.atendentes.length === 0 || c.atendentes.includes(fatos.atendente))
+            ? "sim"
+            : "nao";
+        break;
+      }
+      case "presenca_do_atendente":
+        saida = fatos.equipe_disponivel ? "sim" : "nao";
+        break;
+      case "bot_paralelo":
+        saida = fatos.outro_bot ? "sim" : "nao";
+        break;
+      case "status_da_conversa":
+        saida = fatos.aguardando_resposta ? "sim" : "nao";
+        break;
+      case "bloquear_contato": {
+        const c = lerConfig("bloquear_contato", no.data);
+        if (c.mensagem) efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
+        efeitos.push({ tipo: "bloquear" }, { tipo: "finalizar" });
+        return fim("completed");
+      }
+      case "excluir_contato": {
+        const c = lerConfig("excluir_contato", no.data);
+        if (c.mensagem) efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
+        efeitos.push({ tipo: "pedido_exclusao" });
+        break;
+      }
       case "enviar_mensagem": {
         const c = lerConfig("enviar_mensagem", no.data);
         const texto = preencher(c.texto, sessao.dados).trim();
@@ -608,6 +717,11 @@ export function iniciarFluxo(
   return andar(grafo, { ...sessaoNova(), dados: { ...dados } }, inicio, ctx, false);
 }
 
+/** O passo "Iniciar manualmente" do desenho, se houver. */
+export function inicioManual(grafo: Grafo): string | null {
+  return grafo.nodes.find((n) => n.type === "inicio_manual")?.id ?? null;
+}
+
 /** O passo "Iniciar por automação" do desenho, se houver. */
 export function inicioPorAutomacao(grafo: Grafo): string | null {
   return grafo.nodes.find((n) => n.type === "inicio_automacao")?.id ?? null;
@@ -789,6 +903,7 @@ export function continuarAposMarcar(
 export function inicioParaAcionar(grafo: Grafo): string | null {
   return (
     grafo.nodes.find((n) => n.type === "inicio_automacao")?.id ??
+    grafo.nodes.find((n) => n.type === "inicio_manual")?.id ??
     grafo.nodes.find((n) => n.type === "inicio_canal")?.id ??
     null
   );

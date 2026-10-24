@@ -43,6 +43,7 @@ import {
   continuarFluxo,
   iniciarFluxo,
   inicioParaAcionar,
+  inicioManual,
   inicioPorAutomacao,
   pontoDePartida,
   proximaMensagemDeEspera,
@@ -52,6 +53,7 @@ import {
   seguirAoResponder,
   type ContextoDoTurno,
   type Efeito,
+  type FatosDaConversa,
   type OfertaDeHorario,
   type Pendente,
   type RespostaDoWebhook,
@@ -61,6 +63,8 @@ import {
 } from "./motor";
 import { midiaDoChatbotDaOrg } from "./midia";
 import { escolherOfertas } from "./ofertas";
+import { quemPodeAssumirAgora } from "@/lib/escalacao/disponibilidade";
+import { createLgpdRequest } from "@/lib/lgpd/repository";
 import { lerConfig } from "./passos";
 import { decifrarSegredosDoPasso } from "./segredos";
 import { chamarWebhookDoChatbot } from "./webhook";
@@ -73,6 +77,12 @@ export const SALTOS_POR_TURNO = 3;
 
 /** Teto de idas ao executor (WebHook, outro fluxo, horários, marcação) numa mensagem só. */
 export const PENDENTES_POR_TURNO = 8;
+
+/**
+ * Marca interna da sessão começada por um ATENDENTE ("Iniciar manualmente"): a
+ * conversa é dele, e mesmo assim o chatbot responde até o fluxo terminar.
+ */
+export const CHAVE_MANUAL = "_manual";
 
 /** Quem a mensagem de espera considera "a equipe respondeu": pessoa, pelo CRM ou pelo celular. */
 const ENVIO_DE_PESSOA = ["user", "crm", "external_device"];
@@ -199,7 +209,8 @@ export async function atenderPeloChatbot(
     [e.organizationId, e.conversationId],
   );
   const conversa = estado[0];
-  if (!conversa || conversa.assignee_kind === "user" || conversa.is_blocked === true) {
+  const manual = Boolean(sessaoEsperando && dadosDeTexto(sessaoEsperando.collected_data)[CHAVE_MANUAL]);
+  if (!conversa || (conversa.assignee_kind === "user" && !manual) || conversa.is_blocked === true) {
     if (sessaoEsperando)
       await encerrarSessao(pool, e.organizationId, sessaoEsperando.id, "completed");
     return "nao_atende";
@@ -290,11 +301,12 @@ export async function atenderPeloChatbot(
     if (abre) return { adiarAte: abre };
   }
 
-  const ctx = {
+  const ctx: ContextoDoTurno = {
     mensagem: texto,
     agora: new Date(),
     fuso: conversa.timezone || "America/Sao_Paulo",
     contato: contatoDoTurno(conversa),
+    conversa: await lerFatosDaConversa(pool, e, fluxoId, grafo),
   };
   const resultado: ResultadoDoTurno = !sessaoAnterior
     ? iniciarFluxo(grafo, inicio!, ctx)
@@ -386,9 +398,17 @@ async function conduzir(
           return;
         }
         // O fluxo anterior pode ter mudado etiqueta ou campo: o novo enxerga.
-        ctx = { ...ctx, contato: (await lerContatoDoTurno(pool, e)) ?? ctx.contato };
+        ctx = {
+          ...ctx,
+          contato: (await lerContatoDoTurno(pool, e)) ?? ctx.contato,
+          conversa: await lerFatosDaConversa(pool, e, alvo.id, alvo.grafo),
+        };
         log.info("chatbot: fluxo acionou outro fluxo", { de: fluxoId, para: alvo.id });
-        resultado = iniciarFluxo(alvo.grafo, alvo.inicio, ctx, respostasVisiveis(resultado.sessao.dados));
+        resultado = iniciarFluxo(alvo.grafo, alvo.inicio, ctx, {
+          ...respostasVisiveis(resultado.sessao.dados),
+          // Fluxo começado por um atendente segue sendo dele no fluxo chamado.
+          ...(resultado.sessao.dados[CHAVE_MANUAL] ? { [CHAVE_MANUAL]: "1" } : {}),
+        });
         fluxoId = alvo.id;
         grafo = alvo.grafo;
         // Rodada nova no outro fluxo (a avaliação de cada rodada fica separada).
@@ -438,6 +458,79 @@ async function lerContatoDoTurno(pool: pg.Pool, e: EntradaDoChatbot): Promise<Co
     [e.organizationId, e.contactId],
   );
   return rows[0] ? contatoDoTurno(rows[0]) : null;
+}
+
+/** Os passos que leem os fatos da conversa: sem nenhum no desenho, nada é consultado. */
+const PASSOS_QUE_LEEM_A_CONVERSA = new Set([
+  "contato_ativo",
+  "primeira_conversa",
+  "canal_da_conversa",
+  "atendente_da_conversa",
+  "presenca_do_atendente",
+  "bot_paralelo",
+  "status_da_conversa",
+]);
+
+/**
+ * Os fatos que "O contato está ativo?", "Primeira conversa?", "Canal",
+ * "Atendente", "Presença", "Bot paralelo" e "Status da conversa" leem — uma
+ * consulta por turno, e só quando o desenho tem um desses passos.
+ */
+async function lerFatosDaConversa(
+  pool: pg.Pool,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  grafo: Grafo,
+): Promise<FatosDaConversa | undefined> {
+  if (!grafo.nodes.some((n) => PASSOS_QUE_LEEM_A_CONVERSA.has(n.type))) return undefined;
+  try {
+    const { rows } = await pool.query<{
+      channel_session_id: string | null;
+      assigned_to_user_id: string | null;
+      last_inbound_at: string | null;
+      aguardando: boolean;
+      primeira: boolean;
+      ia_ativa: boolean;
+      outro_chatbot: boolean;
+    }>(
+      `select c.channel_session_id, c.assigned_to_user_id, c.last_inbound_at::text as last_inbound_at,
+              (c.last_inbound_at is not null
+                 and (c.last_outbound_at is null or c.last_inbound_at > c.last_outbound_at)) as aguardando,
+              not exists (
+                select 1 from messages m
+                 where m.organization_id = c.organization_id and m.contact_id = c.contact_id
+                   and m.direction = 'inbound'
+                   and m.created_at < coalesce(c.service_started_at, c.created_at)
+              ) as primeira,
+              (c.active_ai_agent_id is not null
+                 and (c.bot_silenced_until is null or c.bot_silenced_until < now())) as ia_ativa,
+              exists (
+                select 1 from chatbot_sessions s
+                 where s.organization_id = c.organization_id and s.conversation_id = c.id
+                   and s.flow_id <> $3 and s.status in ('waiting_input', 'waiting_timer')
+              ) as outro_chatbot
+         from conversations c
+        where c.organization_id = $1 and c.id = $2`,
+      [e.organizationId, e.conversationId, fluxoId],
+    );
+    const c = rows[0];
+    if (!c) return undefined;
+    const equipe = grafo.nodes.some((n) => n.type === "presenca_do_atendente")
+      ? (await quemPodeAssumirAgora(pool, e.organizationId, new Date())).disponiveis > 0
+      : false;
+    return {
+      canal: c.channel_session_id,
+      atendente: c.assigned_to_user_id,
+      ultima_entrada_em: c.last_inbound_at,
+      aguardando_resposta: c.aguardando,
+      primeira_conversa: c.primeira,
+      equipe_disponivel: equipe,
+      outro_bot: c.ia_ativa || c.outro_chatbot,
+    };
+  } catch {
+    // Sem os fatos, as condições seguem por "não" — o fluxo não para por isso.
+    return undefined;
+  }
 }
 
 /** Os horários livres do passo "Agendar horário" — a mesma consulta da Agenda e da IA. */
@@ -661,6 +754,10 @@ export type PedidoDeInicio = {
   variaveis: Record<string, string>;
   /** A regra que mandou — vai no log e no requestId. */
   regra_id: string | null;
+  /** Começado por um atendente na Inbox ("Iniciar manualmente"), não por uma regra. */
+  manual?: boolean;
+  /** Quem começou (manual). */
+  iniciado_por?: string | null;
 };
 
 export type DesfechoDoInicio = "iniciou" | "descartado" | { adiarAte: string };
@@ -688,7 +785,7 @@ export async function iniciarChatbotPorAutomacao(
   );
   const fluxo = fluxos[0];
   const g = grafoSchema.safeParse(fluxo?.grafo);
-  const inicio = g.success ? inicioPorAutomacao(g.data) : null;
+  const inicio = g.success ? (pedido.manual ? inicioManual(g.data) : inicioPorAutomacao(g.data)) : null;
   if (!fluxo?.is_active || !g.success || !inicio) {
     log.info("chatbot: automação pediu fluxo desligado ou sem 'Iniciar por automação'", {
       flow_id: pedido.flow_id,
@@ -716,7 +813,9 @@ export async function iniciarChatbotPorAutomacao(
     [organizationId, pedido.conversation_id, pedido.contact_id],
   );
   const conversa = estado[0];
-  if (!conversa || conversa.assignee_kind === "user" || conversa.is_blocked === true) return "descartado";
+  // O atendente que começou o fluxo está com a conversa — e quis o chatbot nela.
+  if (!conversa || (conversa.assignee_kind === "user" && !pedido.manual) || conversa.is_blocked === true)
+    return "descartado";
 
   const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
   if (!acesso.liberado) return "descartado";
@@ -749,19 +848,26 @@ export async function iniciarChatbotPorAutomacao(
     inboundMessageId: null,
     boundary: pedido.boundary,
     proativo: true,
-    referencia: `regra:${pedido.regra_id ?? "?"}`,
+    referencia: pedido.manual ? `manual:${pedido.iniciado_por ?? "?"}` : `regra:${pedido.regra_id ?? "?"}`,
   };
   const ctx: ContextoDoTurno = {
     mensagem: null,
     agora: new Date(),
     fuso: conversa.timezone || "America/Sao_Paulo",
     contato: contatoDoTurno(conversa),
+    conversa: await lerFatosDaConversa(pool, e, fluxo.id, g.data),
   };
-  const resultado = iniciarFluxo(g.data, inicio, ctx, pedido.variaveis);
+  const resultado = iniciarFluxo(g.data, inicio, ctx, {
+    ...pedido.variaveis,
+    ...(pedido.manual ? { [CHAVE_MANUAL]: "1" } : {}),
+  });
   // `null` = rodada nova: a gravação reinicia `started_at` mesmo que o fluxo
   // já tenha rodado nesta conversa (a avaliação de cada rodada fica separada).
   await conduzir(pool, admin, e, fluxo.id, g.data, null, resultado, ctx, log);
-  log.info("chatbot: fluxo iniciado por automação", { flow_id: fluxo.id, regra_id: pedido.regra_id });
+  log.info(pedido.manual ? "chatbot: fluxo iniciado por atendente" : "chatbot: fluxo iniciado por automação", {
+    flow_id: fluxo.id,
+    regra_id: pedido.regra_id,
+  });
   return "iniciou";
 }
 
@@ -847,7 +953,8 @@ export async function retomarChatbotPeloRelogio(
     [organizationId, pedido.conversation_id],
   );
   const conversa = estado[0];
-  if (!conversa || conversa.assignee_kind === "user" || conversa.is_blocked === true) {
+  const manual = Boolean(dadosDeTexto(sessao.collected_data)[CHAVE_MANUAL]);
+  if (!conversa || (conversa.assignee_kind === "user" && !manual) || conversa.is_blocked === true) {
     await encerrarSessao(pool, organizationId, sessao.id, "completed");
     return "descartado";
   }
@@ -879,6 +986,7 @@ export async function retomarChatbotPeloRelogio(
     agora: new Date(),
     fuso: sessao.timezone || "America/Sao_Paulo",
     contato: contatoDoTurno(conversa),
+    conversa: await lerFatosDaConversa(pool, e, sessao.flow_id, g.data),
   };
   const resultado = retomarFluxo(
     g.data,
@@ -1387,6 +1495,73 @@ async function executarEfeitos(
             },
             e.contactId,
             valido.data,
+          );
+          break;
+        }
+        case "bloquear": {
+          // Igual ao "parar de receber" da entrada: nem chatbot, nem IA, nem
+          // campanha escrevem mais para este contato.
+          await pool.query(
+            `update contacts set is_blocked = true, blocked_reason = 'chatbot', blocked_at = now(), updated_at = now()
+              where organization_id = $1 and id = $2`,
+            [e.organizationId, e.contactId],
+          );
+          void audit({
+            action: "contact.blocked",
+            actorUserId: null,
+            organizationId: e.organizationId,
+            resourceType: "contact",
+            resourceId: e.contactId,
+            requestId,
+            bypassedRls: true,
+            metadata: { reason: "chatbot", contact_id: e.contactId, flow_id: fluxoId },
+          });
+          await notaInterna("O chatbot bloqueou este contato: ele não recebe mais mensagens.");
+          break;
+        }
+        case "pedido_exclusao": {
+          // Um pedido aberto por contato basta: repetir a frase não abre outro.
+          const { rows: aberto } = await pool.query<{ id: string }>(
+            `select id from lgpd_requests
+              where organization_id = $1 and contact_id = $2 and request_type = 'redact'
+                and status in ('received', 'processing')
+              limit 1`,
+            [e.organizationId, e.contactId],
+          );
+          if (aberto[0]) break;
+          // Fica "recebido" até um admin aprovar em Configurações › LGPD — o
+          // chatbot nunca dispara o apagamento sozinho.
+          const pedido = await createLgpdRequest({
+            organizationId: e.organizationId,
+            requestType: "redact",
+            source: "manual",
+            contactId: e.contactId,
+            receivedAt: new Date(),
+            slaDays: 15,
+            payload: { origem: "chatbot", flow_id: fluxoId, conversation_id: e.conversationId },
+          });
+          void audit({
+            action: "lgpd.redact_received",
+            actorUserId: null,
+            organizationId: e.organizationId,
+            resourceType: "lgpd_request",
+            resourceId: pedido.id,
+            requestId,
+            bypassedRls: true,
+            metadata: { origem: "chatbot", flow_id: fluxoId, due_at: pedido.due_at },
+          });
+          await notaInterna("O contato pediu a exclusão dos dados. O pedido (LGPD) espera a aprovação de um admin.");
+          await insertInboxItem(
+            pool,
+            e.organizationId,
+            {
+              kind: "chatbot_aviso",
+              severity: "warn",
+              title: "Pedido de exclusão de dados (LGPD) aberto pelo chatbot",
+              refKind: "conversation",
+              refId: e.conversationId,
+            },
+            "kind_e_ref",
           );
           break;
         }

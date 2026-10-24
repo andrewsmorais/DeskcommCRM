@@ -11,13 +11,21 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
   const problemas: string[] = [];
   const ids = new Set(grafo.nodes.map((n) => n.id));
   const inicios = grafo.nodes.filter((n) => n.type === "inicio_canal");
-  const porAutomacao = grafo.nodes.filter((n) => n.type === "inicio_automacao");
+  const porAutomacao = grafo.nodes.filter(
+    (n) => n.type === "inicio_automacao" || n.type === "inicio_manual",
+  );
 
   if (inicios.length === 0 && porAutomacao.length === 0)
-    problemas.push('coloque o passo "Iniciar por um canal" ou "Iniciar por automação".');
+    problemas.push(
+      'coloque o passo "Iniciar por um canal", "Iniciar por automação" ou "Iniciar manualmente".',
+    );
   for (const inicio of porAutomacao) {
     if (!grafo.edges.some((e) => e.source === inicio.id && ids.has(e.target)))
-      problemas.push('ligue o "Iniciar por automação" ao primeiro passo do fluxo.');
+      problemas.push(
+        inicio.type === "inicio_manual"
+          ? 'ligue o "Iniciar manualmente" ao primeiro passo do fluxo.'
+          : 'ligue o "Iniciar por automação" ao primeiro passo do fluxo.',
+      );
   }
   for (const inicio of inicios) {
     if (!grafo.edges.some((e) => e.source === inicio.id && ids.has(e.target)))
@@ -79,6 +87,14 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
           problemas.push(`escolha o funil e a etapa do passo "${nome}".`);
         break;
       }
+      case "tem_etiqueta":
+        if (lerConfig("tem_etiqueta", no.data).etiquetas.length === 0)
+          problemas.push(`escreva ao menos uma etiqueta no passo "${nome}".`);
+        break;
+      case "canal_da_conversa":
+        if (lerConfig("canal_da_conversa", no.data).canais.length === 0)
+          problemas.push(`escolha ao menos um número no passo "${nome}".`);
+        break;
       case "acionar_fluxo":
         if (!lerConfig("acionar_fluxo", no.data).flow_id)
           problemas.push(`escolha o fluxo do passo "${nome}".`);

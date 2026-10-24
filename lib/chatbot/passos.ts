@@ -93,6 +93,13 @@ export const configDoPasso = {
    * início pode ficar ligado junto com o fluxo de atendimento.
    */
   inicio_automacao: z.object({}),
+  /**
+   * Começa quando um ATENDENTE aciona o fluxo numa conversa (botão na Inbox):
+   * pesquisa de satisfação no fim, menu de pagamento, coleta de dados. Como o
+   * de automação, não responde a mensagem nenhuma por conta própria — pode
+   * ficar ligado junto com o fluxo de atendimento.
+   */
+  inicio_manual: z.object({}),
   inicio_canal: z.object({
     /** null = qualquer número de WhatsApp da empresa. */
     channel_session_id: z.string().uuid().nullable().default(null),
@@ -223,6 +230,71 @@ export const configDoPasso = {
    */
   iniciar_followup: z.object({
     pointer_id: z.string().uuid().nullable().default(null),
+  }),
+  /**
+   * Teste A/B: cada contato segue por UMA das saídas, sorteada pelo peso
+   * (pesos 70 e 30 = 70% e 30% dos contatos).
+   */
+  distribuir_fluxo: z.object({
+    saidas: z
+      .array(
+        z.object({
+          rotulo: z.string().trim().max(40).default(""),
+          peso: z.number().int().min(1).max(100).default(50),
+        }),
+      )
+      .min(2)
+      .max(6)
+      .default([
+        { rotulo: "A", peso: 50 },
+        { rotulo: "B", peso: 50 },
+      ]),
+  }),
+  /** O contato mandou mensagem nas últimas N horas? (a janela de 24h do WhatsApp) */
+  contato_ativo: z.object({
+    horas: z.number().int().min(1).max(720).default(24),
+  }),
+  /** Atalho de "Definir condição" só para etiquetas: tem alguma (ou todas) destas? */
+  tem_etiqueta: z.object({
+    etiquetas: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    modo: z.enum(["alguma", "todas"]).default("alguma"),
+  }),
+  /** É o primeiro atendimento do contato (nenhuma mensagem antes deste atendimento)? */
+  primeira_conversa: z.object({}),
+  /** A conversa é por um destes números de WhatsApp? */
+  canal_da_conversa: z.object({
+    canais: z.array(z.string().uuid()).max(20).default([]),
+  }),
+  /** Quem está com a conversa: um destes atendentes? (lista vazia = qualquer atendente) */
+  atendente_da_conversa: z.object({
+    atendentes: z.array(z.string().uuid()).max(50).default([]),
+  }),
+  /** Alguém da equipe pode assumir agora (disponível, com folga, no horário)? */
+  presenca_do_atendente: z.object({}),
+  /** O agente de IA, ou outro chatbot, está atendendo esta conversa agora? */
+  bot_paralelo: z.object({}),
+  /** O contato está esperando resposta (a última mensagem é dele)? */
+  status_da_conversa: z.object({}),
+  /**
+   * Bloqueia o contato (como o "parar de receber": nem chatbot, nem IA, nem
+   * campanha escrevem mais) e finaliza a conversa. A mensagem, se houver, sai
+   * ANTES — depois de bloqueado, o envio é recusado.
+   */
+  bloquear_contato: z.object({
+    mensagem: z.string().trim().max(1000).default(""),
+  }),
+  /**
+   * "Excluir contato" respeitando a LGPD: abre o pedido de exclusão dos dados,
+   * que um admin aprova em Configurações › LGPD (o mesmo caminho de todo
+   * pedido). O chatbot nunca apaga dado sozinho: uma frase mal entendida não
+   * pode destruir o histórico de um cliente.
+   */
+  excluir_contato: z.object({
+    mensagem: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Recebemos seu pedido. Seus dados serão excluídos em até 15 dias úteis."),
   }),
   /** Abre um aviso na Central de avisos, com link para a conversa. */
   notificar_atendente: z.object({
@@ -359,6 +431,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: false,
   },
   {
+    tipo: "inicio_manual",
+    grupo: "inicio",
+    nome: "Iniciar manualmente",
+    descricao: "Começa quando um atendente aciona o fluxo numa conversa.",
+    icone: "Hand",
+    cor: "text-sky-500",
+    temEntrada: false,
+  },
+  {
     tipo: "horarios",
     grupo: "condicao",
     nome: "Horários",
@@ -401,6 +482,87 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Várias regras, uma saída para cada. Vale a primeira que bater.",
     icone: "Network",
     cor: "text-sky-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "distribuir_fluxo",
+    grupo: "condicao",
+    nome: "Distribuir fluxo",
+    descricao: "Divida os contatos entre caminhos, pelo peso de cada um (teste A/B).",
+    icone: "Shuffle",
+    cor: "text-violet-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "contato_ativo",
+    grupo: "condicao",
+    nome: "O contato está ativo?",
+    descricao: "Verifica se o contato mandou mensagem nas últimas 24 horas.",
+    icone: "UserCheck",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "tem_etiqueta",
+    grupo: "condicao",
+    nome: "Etiquetas",
+    descricao: "Siga por um caminho se o contato tiver uma etiqueta.",
+    icone: "Tag",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "primeira_conversa",
+    grupo: "condicao",
+    nome: "Primeira conversa?",
+    descricao: "Verifica se é o primeiro atendimento do contato.",
+    icone: "Sparkles",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "canal_da_conversa",
+    grupo: "condicao",
+    nome: "Canal da conversa",
+    descricao: "Verifica por qual número de WhatsApp a conversa está acontecendo.",
+    icone: "MessageCircle",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "atendente_da_conversa",
+    grupo: "condicao",
+    nome: "Atendente da conversa",
+    descricao: "Verifica quem é o atendente responsável pela conversa.",
+    icone: "Headset",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "presenca_do_atendente",
+    grupo: "condicao",
+    nome: "Presença do atendente",
+    descricao: "Verifica se alguém da equipe está disponível para atender agora.",
+    icone: "Activity",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "bot_paralelo",
+    grupo: "condicao",
+    nome: "Bot paralelo em execução",
+    descricao: "Verifica se o agente de IA ou outro chatbot está atendendo esta conversa.",
+    icone: "GitBranch",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "status_da_conversa",
+    grupo: "condicao",
+    nome: "Status da conversa",
+    descricao: "Verifica se o contato está esperando resposta.",
+    icone: "Hourglass",
+    cor: "text-orange-500",
     temEntrada: true,
   },
   {
@@ -566,6 +728,24 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "bloquear_contato",
+    grupo: "acao",
+    nome: "Bloquear contato",
+    descricao: "Bloqueia o contato e finaliza a conversa: ninguém mais escreve para ele.",
+    icone: "Ban",
+    cor: "text-amber-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "excluir_contato",
+    grupo: "acao",
+    nome: "Excluir contato",
+    descricao: "Abre o pedido de exclusão dos dados do contato (LGPD) para um admin aprovar.",
+    icone: "UserX",
+    cor: "text-amber-500",
+    temEntrada: true,
+  },
+  {
     tipo: "finalizar_conversa",
     grupo: "finalizacao",
     nome: "Finalizar conversa",
@@ -665,6 +845,54 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Deu certo" },
         { id: "falha", rotulo: "Falhou" },
       ];
+    case "distribuir_fluxo": {
+      const c = lerConfig("distribuir_fluxo", dados);
+      const total = c.saidas.reduce((t, x) => t + x.peso, 0) || 1;
+      return c.saidas.map((x, i) => ({
+        id: `saida-${i}`,
+        rotulo: `${x.rotulo || String.fromCharCode(65 + i)} · ${Math.round((x.peso / total) * 100)}%`,
+      }));
+    }
+    case "contato_ativo":
+      return [
+        { id: "sim", rotulo: "Ativo" },
+        { id: "nao", rotulo: "Inativo" },
+      ];
+    case "tem_etiqueta":
+      return [
+        { id: "sim", rotulo: "Tem" },
+        { id: "nao", rotulo: "Não tem" },
+      ];
+    case "primeira_conversa":
+      return [
+        { id: "sim", rotulo: "Primeira vez" },
+        { id: "nao", rotulo: "Já conversou antes" },
+      ];
+    case "canal_da_conversa":
+      return [
+        { id: "sim", rotulo: "Um dos números" },
+        { id: "nao", rotulo: "Outro número" },
+      ];
+    case "atendente_da_conversa":
+      return [
+        { id: "sim", rotulo: "É um deles" },
+        { id: "nao", rotulo: "Outro ou ninguém" },
+      ];
+    case "presenca_do_atendente":
+      return [
+        { id: "sim", rotulo: "Alguém disponível" },
+        { id: "nao", rotulo: "Ninguém disponível" },
+      ];
+    case "bot_paralelo":
+      return [
+        { id: "sim", rotulo: "Tem outro bot" },
+        { id: "nao", rotulo: "Só este" },
+      ];
+    case "status_da_conversa":
+      return [
+        { id: "sim", rotulo: "Esperando resposta" },
+        { id: "nao", rotulo: "Já respondido" },
+      ];
     case "agendar_horario":
       return [
         { id: "proximo", rotulo: "Marcou" },
@@ -675,6 +903,7 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
     case "transferir_atendente":
     case "finalizar_conversa":
     case "acionar_fluxo":
+    case "bloquear_contato":
     case "bloco_de_notas":
       return [];
     default:

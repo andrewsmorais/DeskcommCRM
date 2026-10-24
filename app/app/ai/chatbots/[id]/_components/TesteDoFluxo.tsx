@@ -8,7 +8,7 @@
  * fluxo) é imitado e a tela diz isso.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FlaskConical, Paperclip, RotateCcw, Send, X } from "lucide-react";
+import { FlaskConical, Paperclip, RotateCcw, Send, SlidersHorizontal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import {
   comecarPorAutomacao,
   comecarTeste,
   enviarNoTeste,
+  mudarSituacao,
   pularEspera,
   responderWebhookNoTeste,
   type BolhaDoTeste,
@@ -58,7 +59,8 @@ export function TesteDoFluxo({ fotoDoDesenho, opcoes, onFechar, onPasso }: Props
   const recomecar = () => {
     const novo = fotoDoDesenho();
     setGrafo(novo);
-    setEstado(comecarTeste(novo));
+    // A situação escolhida continua valendo: quem testa a mesma condição recomeça várias vezes.
+    setEstado(comecarTeste(novo, estado.fatos));
     setTexto("");
   };
   // Durante um "Aguardar" a mensagem do cliente também conta: o passo decide se o fluxo segue.
@@ -99,6 +101,8 @@ export function TesteDoFluxo({ fotoDoDesenho, opcoes, onFechar, onPasso }: Props
           "Teste com o desenho como está na tela, mesmo sem salvar. Nada é enviado no WhatsApp nem gravado no CRM.",
         )}
       </p>
+
+      <Situacao estado={estado} opcoes={opcoes} onMudar={(p) => setEstado(mudarSituacao(estado, p))} />
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
         {estado.bolhas.length === 0 ? (
@@ -266,6 +270,10 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
     }
     case "finalizou":
       return `— ${t("Conversa finalizada")} —`;
+    case "bloqueou":
+      return `⛔ ${t("Contato bloqueado: ninguém mais escreve para ele")}`;
+    case "pedido_exclusao":
+      return `🗑 ${t("Pedido de exclusão dos dados (LGPD) aberto para um admin aprovar")}`;
     case "horarios_de_exemplo":
       return `📅 ${t("No teste, os horários são de exemplo. No WhatsApp eles vêm da Agenda.")}`;
     case "marcou_de_exemplo":
@@ -285,4 +293,70 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
     case "limite":
       return t("O fluxo deu voltas demais numa mensagem só e foi encerrado. Confira as ligações.");
   }
+}
+
+/** As respostas das condições "da conversa" no teste — no WhatsApp elas vêm do CRM. */
+function Situacao({
+  estado,
+  opcoes,
+  onMudar,
+}: {
+  estado: EstadoDoTeste;
+  opcoes: OpcoesDoPainel;
+  onMudar: (p: Partial<EstadoDoTeste["fatos"]>) => void;
+}) {
+  const t = useT();
+  const f = estado.fatos;
+  const marca = (rotulo: string, valor: boolean, chave: "primeira_conversa" | "equipe_disponivel" | "outro_bot") => (
+    <label className="flex items-center gap-2">
+      <input type="checkbox" checked={valor} onChange={(e) => onMudar({ [chave]: e.target.checked })} />
+      {rotulo}
+    </label>
+  );
+  return (
+    <details className="border-b border-border px-4 py-2 text-xs" data-testid="chatbot-teste-situacao">
+      <summary className="flex cursor-pointer items-center gap-1.5 text-muted-foreground">
+        <SlidersHorizontal className="h-3.5 w-3.5" />
+        {t("Situação do teste")}
+      </summary>
+      <div className="mt-2 space-y-1.5">
+        {marca(t("Primeira conversa do contato"), f.primeira_conversa, "primeira_conversa")}
+        {marca(t("Alguém da equipe disponível"), f.equipe_disponivel, "equipe_disponivel")}
+        {marca(t("Agente de IA ou outro chatbot na conversa"), f.outro_bot, "outro_bot")}
+        <label className="flex items-center gap-2">
+          <span className="w-24 shrink-0">{t("Número")}</span>
+          <select
+            className="h-7 flex-1 rounded-md border border-border bg-background px-1"
+            value={f.canal ?? ""}
+            onChange={(e) => onMudar({ canal: e.target.value || null })}
+          >
+            <option value="">{t("Nenhum")}</option>
+            {opcoes.canais.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="w-24 shrink-0">{t("Atendente")}</span>
+          <select
+            className="h-7 flex-1 rounded-md border border-border bg-background px-1"
+            value={f.atendente ?? ""}
+            onChange={(e) => onMudar({ atendente: e.target.value || null })}
+          >
+            <option value="">{t("Ninguém")}</option>
+            {opcoes.atendentes.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="text-muted-foreground">
+          {t("Vale a partir da próxima mensagem. No WhatsApp, essas respostas vêm do CRM.")}
+        </p>
+      </div>
+    </details>
+  );
 }

@@ -12,7 +12,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
 import { grafoSchema } from "@/lib/chatbot/passos";
-import { inicioPorAutomacao } from "@/lib/chatbot/motor";
+import { inicioManual, inicioPorAutomacao } from "@/lib/chatbot/motor";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,11 @@ export async function GET(_req: NextRequest) {
   // o que a escolha da automação precisa saber: o fluxo começa por automação?
   const lista = (data ?? []).map(({ grafo, ...fluxo }) => {
     const g = grafoSchema.safeParse(grafo);
-    return { ...fluxo, inicia_por_automacao: g.success && inicioPorAutomacao(g.data) !== null };
+    return {
+      ...fluxo,
+      inicia_por_automacao: g.success && inicioPorAutomacao(g.data) !== null,
+      inicia_manualmente: g.success && inicioManual(g.data) !== null,
+    };
   });
   return ok(lista, { requestId });
 }

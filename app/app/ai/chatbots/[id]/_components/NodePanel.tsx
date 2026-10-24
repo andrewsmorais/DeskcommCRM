@@ -185,6 +185,199 @@ function Campos({
           </p>
         </div>
       );
+    case "inicio_manual":
+      return (
+        <div className="space-y-2 text-xs text-muted-foreground">
+          <p>
+            {t(
+              "Este fluxo começa quando um atendente aciona na conversa: na Inbox, o botão do robô no topo da conversa lista os chatbots ligados com este início.",
+            )}
+          </p>
+          <p>
+            {t(
+              "Bom para pesquisa de satisfação no fim do atendimento, menu de pagamento ou coleta de dados. O chatbot responde até o fluxo terminar, mesmo com a conversa no nome do atendente.",
+            )}
+          </p>
+        </div>
+      );
+    case "distribuir_fluxo":
+      return <DistribuirFluxo dados={dados} aplicar={aplicar} />;
+    case "contato_ativo": {
+      const c = lerConfig("contato_ativo", dados);
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="ativo-horas">{t("Mensagem do contato nas últimas (horas)")}</Label>
+            <select
+              id="ativo-horas"
+              className={SELECT}
+              value={c.horas}
+              onChange={(e) => aplicar({ horas: Number(e.target.value) })}
+            >
+              {[1, 6, 12, 24, 48, 72, 168].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'Ativo = o contato mandou mensagem dentro desse tempo. 24 horas é a janela do WhatsApp: fora dela, escrever primeiro tem mais risco de bloqueio.',
+            )}
+          </p>
+        </>
+      );
+    }
+    case "tem_etiqueta": {
+      const c = lerConfig("tem_etiqueta", dados);
+      return (
+        <>
+          <Texto
+            id="etq-lista"
+            rotulo={t("Etiquetas")}
+            valor={listaParaTexto(c.etiquetas)}
+            onCommit={(v) => aplicar({ etiquetas: textoParaLista(v) })}
+            ajuda={t("Separe com vírgula. Maiúsculas e acentos não importam.")}
+          />
+          <div className="space-y-1.5">
+            <Label>{t("Segue por \"Tem\" quando o contato tem")}</Label>
+            {(["alguma", "todas"] as const).map((m) => (
+              <label key={m} className="flex items-center gap-2 text-sm">
+                <input type="radio" name="etq-modo" checked={c.modo === m} onChange={() => aplicar({ modo: m })} />
+                {m === "alguma" ? t("Qualquer uma delas") : t("Todas elas")}
+              </label>
+            ))}
+          </div>
+        </>
+      );
+    }
+    case "primeira_conversa":
+      return (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'Segue por "Primeira vez" quando o contato nunca tinha mandado mensagem antes deste atendimento. Bom para dar boas-vindas a quem chega e um "que bom te ver de novo" a quem volta.',
+          )}
+        </p>
+      );
+    case "canal_da_conversa": {
+      const c = lerConfig("canal_da_conversa", dados);
+      return (
+        <div className="space-y-1.5">
+          <Label>{t("Números de WhatsApp")}</Label>
+          {opcoes.canais.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("Nenhum número conectado ainda.")}</p>
+          ) : (
+            opcoes.canais.map((canal) => (
+              <label key={canal.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={c.canais.includes(canal.id)}
+                  onChange={(e) =>
+                    aplicar({
+                      canais: e.target.checked ? [...c.canais, canal.id] : c.canais.filter((x) => x !== canal.id),
+                    })
+                  }
+                />
+                {canal.nome}
+              </label>
+            ))
+          )}
+          <p className="text-xs text-muted-foreground">
+            {t('Se a conversa for por um dos números marcados, segue por "Um dos números".')}
+          </p>
+        </div>
+      );
+    }
+    case "atendente_da_conversa": {
+      const c = lerConfig("atendente_da_conversa", dados);
+      return (
+        <div className="space-y-1.5">
+          <Label>{t("Atendentes")}</Label>
+          {opcoes.atendentes.map((a) => (
+            <label key={a.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={c.atendentes.includes(a.id)}
+                onChange={(e) =>
+                  aplicar({
+                    atendentes: e.target.checked ? [...c.atendentes, a.id] : c.atendentes.filter((x) => x !== a.id),
+                  })
+                }
+              />
+              {a.nome}
+            </label>
+          ))}
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'Segue por "É um deles" quando a conversa está com um dos marcados. Sem ninguém marcado: quando a conversa está com qualquer atendente.',
+            )}
+          </p>
+        </div>
+      );
+    }
+    case "presenca_do_atendente":
+      return (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'Segue por "Alguém disponível" quando há atendente marcado como disponível, com vaga e dentro do horário de trabalho — a mesma regra da Distribuição de atendimento. Use antes de transferir: sem ninguém, avise o horário de atendimento.',
+          )}
+        </p>
+      );
+    case "bot_paralelo":
+      return (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'Segue por "Tem outro bot" quando o agente de IA está atendendo esta conversa ou outro chatbot está esperando resposta nela.',
+          )}
+        </p>
+      );
+    case "status_da_conversa":
+      return (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'Segue por "Esperando resposta" quando a última mensagem da conversa é do contato. Útil depois de um "Aguardar": se ninguém respondeu, o chatbot avisa ou transfere.',
+          )}
+        </p>
+      );
+    case "bloquear_contato": {
+      const c = lerConfig("bloquear_contato", dados);
+      return (
+        <>
+          <Texto
+            id="bloquear-msg"
+            rotulo={t("Mensagem antes de bloquear (opcional)")}
+            valor={c.mensagem}
+            linhas={3}
+            onCommit={(v) => aplicar({ mensagem: v })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "O contato fica bloqueado como quem pediu para sair: nem chatbot, nem agente de IA, nem campanha escrevem mais para ele. A conversa é finalizada. Para desbloquear, abra a ficha do contato.",
+            )}
+          </p>
+        </>
+      );
+    }
+    case "excluir_contato": {
+      const c = lerConfig("excluir_contato", dados);
+      return (
+        <>
+          <Texto
+            id="excluir-msg"
+            rotulo={t("Mensagem ao contato")}
+            valor={c.mensagem}
+            linhas={3}
+            onCommit={(v) => aplicar({ mensagem: v })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Pela LGPD, o chatbot não apaga nada sozinho: ele abre o pedido de exclusão dos dados, avisa a equipe na Central e deixa uma nota na conversa. Um admin aprova em Configurações › LGPD, e os dados são anonimizados em até 15 dias úteis.",
+            )}
+          </p>
+        </>
+      );
+    }
     case "inicio_canal": {
       const c = lerConfig("inicio_canal", dados);
       return (
@@ -1775,5 +1968,87 @@ function NegocioNoFunil({
         )}
       </p>
     </>
+  );
+}
+
+function DistribuirFluxo({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("distribuir_fluxo", dados);
+  const [saidas, setSaidas] = useState(c.saidas);
+  const gravar = (lista: typeof saidas) =>
+    aplicar({
+      saidas: lista.map((x) => ({
+        rotulo: x.rotulo.trim().slice(0, 40),
+        peso: Math.min(100, Math.max(1, Math.round(Number(x.peso) || 1))),
+      })),
+    });
+  const total = saidas.reduce((n, x) => n + (Number(x.peso) || 0), 0) || 1;
+  return (
+    <div className="space-y-2">
+      <Label>{t("Caminhos e pesos")}</Label>
+      {saidas.map((x, i) => (
+        <div key={`${i}-${saidas.length}`} className="flex items-center gap-1.5">
+          <Input
+            value={x.rotulo}
+            placeholder={String.fromCharCode(65 + i)}
+            aria-label={`${t("Nome do caminho")} ${i + 1}`}
+            onChange={(e) => setSaidas(saidas.map((y, j) => (j === i ? { ...y, rotulo: e.target.value } : y)))}
+            onBlur={() => gravar(saidas)}
+          />
+          <Input
+            type="number"
+            min={1}
+            max={100}
+            className="w-20"
+            value={x.peso}
+            aria-label={`${t("Peso")} ${i + 1}`}
+            onChange={(e) => setSaidas(saidas.map((y, j) => (j === i ? { ...y, peso: Number(e.target.value) } : y)))}
+            onBlur={() => gravar(saidas)}
+          />
+          <span className="w-10 text-right text-xs text-muted-foreground">
+            {Math.round(((Number(x.peso) || 0) / total) * 100)}%
+          </span>
+          <button
+            type="button"
+            disabled={saidas.length <= 2}
+            onClick={() => {
+              const nova = saidas.filter((_, j) => j !== i);
+              setSaidas(nova);
+              gravar(nova);
+            }}
+            className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+            aria-label={t("Remover caminho")}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+      {saidas.length < 6 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const nova = [...saidas, { rotulo: String.fromCharCode(65 + saidas.length), peso: 50 }];
+            setSaidas(nova);
+            gravar(nova);
+          }}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          {t("Adicionar caminho")}
+        </Button>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "Cada contato segue por um caminho sorteado pelo peso. Pesos 70 e 30 mandam 70% dos contatos para o primeiro e 30% para o segundo — bom para testar duas mensagens e ver qual vende mais.",
+        )}
+      </p>
+    </div>
   );
 }

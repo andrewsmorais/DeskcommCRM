@@ -21,6 +21,34 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
   switch (tipo) {
     case "inicio_automacao":
       return t("Quando uma automação mandar");
+    case "inicio_manual":
+      return t("Quando um atendente acionar na conversa");
+    case "distribuir_fluxo":
+      return "";
+    case "contato_ativo":
+      return `${t("Mensagem do contato nas últimas")} ${lerConfig("contato_ativo", dados).horas}h`;
+    case "tem_etiqueta": {
+      const c = lerConfig("tem_etiqueta", dados);
+      if (c.etiquetas.length === 0) return "";
+      return `${c.modo === "todas" ? t("Todas") : t("Alguma")}: ${c.etiquetas.join(", ")}`;
+    }
+    case "canal_da_conversa": {
+      const n = lerConfig("canal_da_conversa", dados).canais.length;
+      return n === 0 ? "" : n === 1 ? t("1 número") : `${n} ${t("números")}`;
+    }
+    case "atendente_da_conversa": {
+      const n = lerConfig("atendente_da_conversa", dados).atendentes.length;
+      return n === 0 ? t("Qualquer atendente") : n === 1 ? t("1 atendente") : `${n} ${t("atendentes")}`;
+    }
+    case "primeira_conversa":
+    case "presenca_do_atendente":
+    case "bot_paralelo":
+    case "status_da_conversa":
+      return "";
+    case "bloquear_contato":
+      return lerConfig("bloquear_contato", dados).mensagem;
+    case "excluir_contato":
+      return t("Abre o pedido LGPD para um admin aprovar");
     case "inicio_canal": {
       const c = lerConfig("inicio_canal", dados);
       return c.gatilho === "palavra_chave"

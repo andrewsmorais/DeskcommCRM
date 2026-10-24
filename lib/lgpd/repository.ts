@@ -21,7 +21,8 @@ export interface CreateLgpdRequestInput {
    * `retention` = a exclusão por fim do prazo de exportação
    * (`lib/exportacao/exclusao.ts`), aceita pelo CHECK desde a migration 0483.
    */
-  source: "nuvemshop" | "admin_panel" | "api" | "retention";
+  /** `manual` = pedido feito pelo próprio contato na conversa (passo "Excluir contato" do chatbot). */
+  source: "nuvemshop" | "admin_panel" | "api" | "retention" | "manual";
   contactId?: string | null;
   externalCustomerId?: string | null;
   receivedAt: Date;

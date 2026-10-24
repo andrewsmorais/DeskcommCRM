@@ -32,6 +32,7 @@ import { OwnerBadge } from "@/components/kanban/OwnerBadge";
 import { comandoDaConversa, ROTULO_DO_MOTIVO } from "@/lib/inbox/comando-da-conversa";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
+import { IniciarChatbotButton } from "@/components/inbox/IniciarChatbotButton";
 import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
@@ -250,6 +251,8 @@ export function ConversationHeader({
         {!conversation.is_group && c?.id && (
           <DialButton contactId={c.id} hasPhone={!!c.phone_number} />
         )}
+        {/* O chatbot não atende grupo; e só aparece com chatbot de início manual ligado. */}
+        {!conversation.is_group && !encerrada && <IniciarChatbotButton conversationId={conversation.id} />}
         {isOpen && (
           <Button
             size="sm"

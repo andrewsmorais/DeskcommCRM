@@ -16,7 +16,9 @@ import {
   continuarAposWebhook,
   continuarComHorarios,
   continuarFluxo,
+  fatosVazios,
   iniciarFluxo,
+  inicioManual,
   inicioParaAcionar,
   inicioPorAutomacao,
   normalizar,
@@ -25,6 +27,7 @@ import {
   seguirAoResponder,
   type ContextoDoTurno,
   type Efeito,
+  type FatosDaConversa,
   type OfertaDeHorario,
   type ResultadoDoTurno,
   type SessaoDoChatbot,
@@ -46,6 +49,8 @@ export type EventoDoTeste =
   | { tipo: "aviso"; texto: string }
   | { tipo: "negocio"; stage_id: string }
   | { tipo: "finalizou" }
+  | { tipo: "bloqueou" }
+  | { tipo: "pedido_exclusao" }
   | { tipo: "horarios_de_exemplo" }
   | { tipo: "marcou_de_exemplo" }
   | { tipo: "abriria_fluxo"; flow_id: string }
@@ -82,6 +87,8 @@ export type EstadoDoTeste = {
   espera: EsperaDoTeste;
   /** Onde o fluxo parou (para o quadro destacar o passo). */
   noAtual: string | null;
+  /** A "situação" da conversa no teste — quem testa escolhe (canal, atendente, presença…). */
+  fatos: FatosDaConversa;
 };
 
 export type OpcoesDoTeste = { fluxoAtual: string; fuso: string; agora?: () => Date };
@@ -89,11 +96,27 @@ export type OpcoesDoTeste = { fluxoAtual: string; fuso: string; agora?: () => Da
 const LIMITE_DE_IDAS = 8;
 
 function ctxDe(estado: EstadoDoTeste, mensagem: string | null, o: OpcoesDoTeste): ContextoDoTurno {
-  return { mensagem, agora: o.agora?.() ?? new Date(), fuso: o.fuso, contato: estado.contato };
+  return {
+    mensagem,
+    agora: o.agora?.() ?? new Date(),
+    fuso: o.fuso,
+    contato: estado.contato,
+    conversa: estado.fatos,
+  };
+}
+
+/** Situação padrão do teste: contato novo, alguém da equipe disponível, sem número escolhido. */
+export function fatosDoTeste(): FatosDaConversa {
+  return { ...fatosVazios(), primeira_conversa: true, equipe_disponivel: true };
+}
+
+/** Quem testa muda a situação (vale a partir da próxima mensagem). */
+export function mudarSituacao(estado: EstadoDoTeste, parcial: Partial<FatosDaConversa>): EstadoDoTeste {
+  return { ...estado, fatos: { ...estado.fatos, ...parcial } };
 }
 
 /** Começo do teste: o fluxo de canal espera a primeira mensagem; o de automação, o botão. */
-export function comecarTeste(grafo: Grafo): EstadoDoTeste {
+export function comecarTeste(grafo: Grafo, fatos: FatosDaConversa = fatosDoTeste()): EstadoDoTeste {
   const porCanal = grafo.nodes.some((n) => n.type === "inicio_canal");
   return {
     sessao: null,
@@ -101,6 +124,7 @@ export function comecarTeste(grafo: Grafo): EstadoDoTeste {
     bolhas: [],
     espera: porCanal ? { tipo: "mensagem" } : { tipo: "comecar" },
     noAtual: null,
+    fatos,
   };
 }
 
@@ -124,7 +148,13 @@ export function enviarNoTeste(
   texto: string,
   o: OpcoesDoTeste,
 ): EstadoDoTeste {
-  const base: EstadoDoTeste = { ...estado, bolhas: [...estado.bolhas, { de: "contato", texto }] };
+  const agora = o.agora?.() ?? new Date();
+  // O contato acabou de escrever: está ativo e esperando resposta.
+  const base: EstadoDoTeste = {
+    ...estado,
+    bolhas: [...estado.bolhas, { de: "contato", texto }],
+    fatos: { ...estado.fatos, ultima_entrada_em: agora.toISOString(), aguardando_resposta: true },
+  };
   const ctx = ctxDe(base, texto, o);
   const s = estado.sessao;
   if (!s) {
@@ -140,9 +170,9 @@ export function enviarNoTeste(
   return comEvento(base, { tipo: "ja_terminou" });
 }
 
-/** Fluxo de "Iniciar por automação": como se a regra tivesse mandado. */
+/** Fluxo de "Iniciar por automação" ou "Iniciar manualmente": como se a regra (ou o atendente) mandasse. */
 export function comecarPorAutomacao(grafo: Grafo, estado: EstadoDoTeste, o: OpcoesDoTeste): EstadoDoTeste {
-  const inicio = inicioPorAutomacao(grafo);
+  const inicio = inicioPorAutomacao(grafo) ?? inicioManual(grafo);
   if (!inicio) return comEvento(estado, { tipo: "ja_terminou" });
   const ctx = ctxDe(estado, null, o);
   return aplicar(grafo, estado, iniciarFluxo(grafo, inicio, ctx), ctx, o);
@@ -322,6 +352,12 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         break;
       case "finalizar":
         bolhas.push({ de: "evento", evento: { tipo: "finalizou" } });
+        break;
+      case "bloquear":
+        bolhas.push({ de: "evento", evento: { tipo: "bloqueou" } });
+        break;
+      case "pedido_exclusao":
+        bolhas.push({ de: "evento", evento: { tipo: "pedido_exclusao" } });
         break;
     }
   }
