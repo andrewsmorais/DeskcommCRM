@@ -4527,8 +4527,6 @@ export const DICIONARIO: Traducoes = {
   "Bloquear contato": { es: "Bloquear contacto" },
   "Bloqueia o contato e finaliza a conversa: ninguém mais escreve para ele.": { es: "Bloquea al contacto y finaliza la conversación: nadie más le escribe." },
   "Abre o pedido de exclusão dos dados do contato (LGPD) para um admin aprovar.": { es: "Abre la solicitud de eliminación de los datos del contacto (LGPD) para que un admin la apruebe." },
-  "Ativo": { es: "Activo" },
-  "Inativo": { es: "Inactivo" },
   "Tem": { es: "Tiene" },
   "Não tem": { es: "No tiene" },
   "Primeira vez": { es: "Primera vez" },
