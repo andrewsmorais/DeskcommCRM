@@ -1503,9 +1503,9 @@ function EnviarMidia({
           <div className="space-y-2 rounded-lg border border-border p-2">
             {previa && c.tipo === "image" ? (
               // eslint-disable-next-line @next/next/no-img-element -- link assinado e curto; não passa pelo otimizador
-              <img src={previa} alt={c.nome_arquivo} className="max-h-40 w-full rounded object-contain" />
+              <img src={previa} alt={c.nome_arquivo} className="max-h-40 w-full rounded-md object-contain" />
             ) : previa && c.tipo === "video" ? (
-              <video src={previa} controls className="max-h-40 w-full rounded" />
+              <video src={previa} controls className="max-h-40 w-full rounded-md" />
             ) : null}
             <p className="flex items-center gap-1.5 text-xs">
               <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
