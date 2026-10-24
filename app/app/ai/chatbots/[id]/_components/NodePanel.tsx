@@ -242,12 +242,24 @@ function Campos({
           />
           <div className="space-y-1.5">
             <Label>{t("Segue por \"Tem\" quando o contato tem")}</Label>
-            {(["alguma", "todas"] as const).map((m) => (
-              <label key={m} className="flex items-center gap-2 text-sm">
-                <input type="radio" name="etq-modo" checked={c.modo === m} onChange={() => aplicar({ modo: m })} />
-                {m === "alguma" ? t("Qualquer uma delas") : t("Todas elas")}
-              </label>
-            ))}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="etq-modo"
+                checked={c.modo === "alguma"}
+                onChange={() => aplicar({ modo: "alguma" })}
+              />
+              {t("Qualquer uma delas")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="etq-modo"
+                checked={c.modo === "todas"}
+                onChange={() => aplicar({ modo: "todas" })}
+              />
+              {t("Todas elas")}
+            </label>
           </div>
         </>
       );
