@@ -649,6 +649,12 @@ const pedidoDeInicioSchema = z.object({
   boundary: fronteiraSchema,
   variaveis: z.record(z.string(), z.string()).default({}),
   regra_id: z.string().nullable().default(null),
+  // "Iniciar manualmente" (Inbox, POST /api/v1/conversations/[id]/chatbot).
+  // Sem estes dois campos aqui o Zod os descartava em silêncio: o pedido do
+  // atendente chegava ao executor como pedido de automação, procurava o início
+  // por automação e era descartado — o botão nunca fazia nada.
+  manual: z.boolean().optional(),
+  iniciado_por: z.string().uuid().nullable().optional(),
 });
 
 /**
@@ -692,6 +698,11 @@ export async function drenarComandosDoChatbot(pool: pg.Pool, log: Logger): Promi
       let desfecho: string | { adiarAte: string } = "descartado";
       if (evento.event_type === INICIO_DO_CHATBOT) {
         const pedido = pedidoDeInicioSchema.safeParse(evento.payload);
+        if (!pedido.success)
+          log.warn("drain: pedido de início do chatbot malformado — descartado", {
+            event_id: evento.id,
+            campos: pedido.error.issues.map((i) => i.path.join(".")).slice(0, 5),
+          });
         if (pedido.success)
           desfecho = await iniciarChatbotPorAutomacao(
             pool,
@@ -702,6 +713,11 @@ export async function drenarComandosDoChatbot(pool: pg.Pool, log: Logger): Promi
           );
       } else {
         const pedido = pedidoDeRetomadaSchema.safeParse(evento.payload);
+        if (!pedido.success)
+          log.warn("drain: pedido de retomada do chatbot malformado — descartado", {
+            event_id: evento.id,
+            campos: pedido.error.issues.map((i) => i.path.join(".")).slice(0, 5),
+          });
         if (pedido.success)
           desfecho = await retomarChatbotPeloRelogio(
             pool,

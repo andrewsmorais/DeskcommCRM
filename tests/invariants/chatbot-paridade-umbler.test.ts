@@ -46,6 +46,7 @@ vi.mock("@/lib/lgpd/repository", () => ({
 }));
 
 import { atenderPeloChatbot, iniciarChatbotPorAutomacao } from "@/lib/chatbot/executar";
+import { drenarComandosDoChatbot } from "@/lib/agent-engine/edge/crm/drain";
 
 const PORT = Number(process.env.TEST_DB_PORT ?? 54329);
 const pool = new pg.Pool({
@@ -193,6 +194,46 @@ describe("Iniciar manualmente", () => {
     // A conversa segue com o atendente, e mesmo assim a resposta é do chatbot.
     expect(await chega(c, "5")).toBe("atendeu");
     expect(enviadas.at(-1)).toBe("Obrigado! Nota 5.");
+  });
+
+  it("pelo caminho real: o evento que a rota emite, drenado pelo worker, roda o fluxo", async () => {
+    await fluxo(FLUXO, desenho);
+    const c = await conversaNova({ atendente: ATENDENTE });
+    // O mesmo payload de app/api/v1/conversations/[id]/chatbot/route.ts.
+    await pool.query(
+      `insert into event_log (organization_id, event_type, entity_kind, entity_id, payload, metadata)
+       values ($1, 'chatbot.inicio_requested', 'contact', $2, $3::jsonb, '{"source":"inbox"}'::jsonb)`,
+      [
+        ORG,
+        c.contato,
+        JSON.stringify({
+          flow_id: FLUXO,
+          contact_id: c.contato,
+          conversation_id: c.conversa,
+          channel_session_id: SESSION,
+          boundary: {
+            organization_id: ORG,
+            contact_id: c.contato,
+            conversation_id: c.conversa,
+            service_revision: 1, // a rota sempre abre o atendimento (≥ 1)
+            demanda_id: null,
+            demanda_revision: null,
+          },
+          variaveis: {},
+          regra_id: null,
+          manual: true,
+          iniciado_por: ATENDENTE,
+        }),
+      ],
+    );
+    expect(await drenarComandosDoChatbot(pool, log as never)).toBeGreaterThanOrEqual(1);
+    expect(enviadas).toEqual(["De 1 a 5, como foi?"]);
+    const { rows } = await pool.query<{ status: string }>(
+      `select status from event_log where organization_id = $1 and event_type = 'chatbot.inicio_requested'
+        and entity_id = $2`,
+      [ORG, c.contato],
+    );
+    expect(rows.map((r) => r.status)).toEqual(["done"]);
   });
 
   it("sem a marca manual, a automação não começa fluxo em conversa com dono humano", async () => {
