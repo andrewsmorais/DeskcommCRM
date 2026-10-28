@@ -148,9 +148,9 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
       "Aqui você vê quem trabalha na empresa, convida gente nova, muda o papel de cada um e organiza o atendimento: quem recebe conversa, quanto aguenta e em quais horários.",
     comoUsar: [
       "Para convidar, clique em “Convidar membros” (só administrador vê este botão). Escreva os e-mails, um por linha (até 20 por vez), escolha o papel e clique em “Enviar convites”.",
-      "O papel aparece em inglês na tela, e o menu “Role” traz: viewer (somente leitura, só olha e não altera), agent (atendente, quem atende os clientes no dia a dia), manager (gerente, também configura atendimento, etiquetas, horários e outras áreas de gestão) e admin (administrador, também cuida de equipe, plano e cobrança, marca, chaves de acesso e dados da empresa). O padrão do convite é agent.",
+      "O menu “Papel” traz: “Somente leitura” (só olha e não altera), “Atendente” (quem atende os clientes no dia a dia), “Gerente” (também configura atendimento, etiquetas, horários e outras áreas de gestão) e “Administrador” (também cuida de equipe, plano e cobrança, marca, chaves de acesso e dados da empresa). O padrão do convite é “Atendente”.",
       "No convite, o bloco “Interface” deixa escolher quais áreas do menu a pessoa vai ver: perfil “Completa” ou “Simplificada”, ou “Personalizar áreas visíveis”. Isso muda o menu, não as permissões.",
-      "Na aba “Membros”, o administrador troca o papel de alguém no seletor da coluna Role e muda o menu dele no botão da coluna “Interface”. Não dá para mexer no próprio papel; a linha mostra “você”.",
+      "Na aba “Membros”, o administrador troca o papel de alguém no seletor da coluna “Papel” e muda o menu dele no botão da coluna “Interface”. Não dá para mexer no próprio papel; a linha mostra “você”.",
       "Para tirar o acesso de alguém, abra o menu “Ações” da linha e escolha “Revogar acesso”. Para devolver, o mesmo menu mostra “Devolver acesso”.",
       "Convites enviados ficam listados na mesma aba, em “Convites”, com status Pendente, Aceito, Expirado ou Revogado. Ali o administrador usa “Reenviar”, “Copiar link” e “Revogar”.",
       "Na aba “Atendimento”, gerentes e administradores definem o “Modo de roteamento” (Manual, em que o atendente puxa da fila, ou Rodízio, em que o sistema distribui) e, em cada atendente, a “Capacidade”, a chave “Disponível” e o horário (botão do relógio, “Editar horário”).",
@@ -286,7 +286,7 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
     ],
     cuidados: [
       "Só administrador abre esta tela.",
-      "Marca própria é recurso a partir do plano Escala. Em plano menor, ao salvar a tela mostra a recusa “Só quem administra esta empresa pode mudar a marca”, mesmo para o administrador.",
+      "Marca própria é recurso a partir do plano Escala. Em plano menor, ao salvar a tela avisa que a marca própria faz parte de um plano acima.",
       "Se a cor escolhida não tem contraste suficiente, a tela avisa e o sistema continua com a cor que já usa.",
       "O título da aba do navegador continua com o nome do sistema.",
       "A tela de entrada (login) é sempre a do sistema, porque ali ainda não dá para saber de qual empresa a pessoa é.",

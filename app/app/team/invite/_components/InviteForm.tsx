@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ROLES, type Role } from "@/lib/schemas/team";
+import { ROTULO_DO_PAPEL } from "@/lib/auth/types";
 import { descreverMotivoDaFalha } from "./motivo-da-falha";
 
 interface ResultState {
@@ -81,7 +82,7 @@ export function InviteForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="role">Role</Label>
+          <Label htmlFor="role">{t("Papel")}</Label>
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger id="role">
               <SelectValue />
@@ -89,7 +90,7 @@ export function InviteForm() {
             <SelectContent>
               {ROLES.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r}
+                  {t(ROTULO_DO_PAPEL[r])}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -147,7 +148,9 @@ export function InviteForm() {
                   {result.failed.map((f) => (
                     <li key={f.email}>
                       <span className="font-medium">{f.email}</span>{" "}
-                      <span className="text-muted-foreground">— {t(descreverMotivoDaFalha(f.reason))}</span>
+                      <span className="text-muted-foreground">
+                        — {t(descreverMotivoDaFalha(f.reason))}
+                      </span>
                     </li>
                   ))}
                 </ul>

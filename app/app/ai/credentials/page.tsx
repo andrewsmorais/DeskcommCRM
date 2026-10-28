@@ -19,6 +19,7 @@ import { DEFAULT_CLASSIFIER_MODEL } from "@/lib/ai/gateway";
 import { resolverModeloDoPonto } from "@/lib/ai/gateway-binding";
 import { lerAmbiente } from "@/lib/instalacao/ambiente";
 import { logger } from "@/lib/logger";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
 import { PROVEDORES } from "@/lib/ai/pontos/provedores";
 import { tagDeIdioma } from "@/lib/i18n/datas";
 import { CredentialsList } from "./_components/CredentialsList";
@@ -56,7 +57,10 @@ export default async function CredentialsPage() {
       .from("ai_agent_versions")
       .select("id, credential_id, version_number, status")
       .eq("organization_id", activeOrg.orgId)
-      .in("credential_id", credentials.map((c) => c.id));
+      .in(
+        "credential_id",
+        credentials.map((c) => c.id),
+      );
     usageMap = contarUsoQueBloqueia((linked ?? []) as unknown as VersaoVinculada[]);
   }
 
@@ -76,7 +80,10 @@ export default async function CredentialsPage() {
   // que falha não cai no padrão do ambiente (que liga a camada): a tela deixa a
   // tarefa de fora em vez de afirmar que ela roda — falha fechada na afirmação.
   const { data: linhasDasCamadas, error: erroDasCamadas } = jevLigado
-    ? await supabase.from("org_guardrail_layers").select("layer, enabled").eq("organization_id", activeOrg.orgId)
+    ? await supabase
+        .from("org_guardrail_layers")
+        .select("layer, enabled")
+        .eq("organization_id", activeOrg.orgId)
     : { data: null, error: null };
   const camadas = erroDasCamadas ? null : camadasEfetivas(linhasDasCamadas ?? []);
   // O roteador: sem um ativo que o Jev possa perguntar, ele não escolhe agente
@@ -88,9 +95,10 @@ export default async function CredentialsPage() {
         .eq("organization_id", activeOrg.orgId)
         .eq("is_active", true)
     : { data: null, error: null };
-  const temRoteadorQuePergunta = !erroDosRoteadores && algumRoteadorQuePergunta(roteadoresAtivos ?? []);
+  const temRoteadorQuePergunta =
+    !erroDosRoteadores && algumRoteadorQuePergunta(roteadoresAtivos ?? []);
   if (erroDasCamadas || erroDosRoteadores) {
-    logger.warn("credenciais: o \"Usada em\" do Jev saiu sem conferir a camada ou o roteador", {
+    logger.warn('credenciais: o "Usada em" do Jev saiu sem conferir a camada ou o roteador', {
       organization_id: activeOrg.orgId,
       camadas: erroDasCamadas?.message ?? null,
       roteadores: erroDosRoteadores?.message ?? null,
@@ -107,9 +115,14 @@ export default async function CredentialsPage() {
             !tarefaSemRoteador(t, temRoteadorQuePergunta),
         ).map((t) => t.rotulo),
         temIaPrincipal:
-          (await resolverModeloDoPonto("sentiment_classify", activeOrg.orgId, DEFAULT_CLASSIFIER_MODEL, {
-            naFaltaUsarOPadraoDaOrganizacao: true,
-          })) !== null,
+          (await resolverModeloDoPonto(
+            "sentiment_classify",
+            activeOrg.orgId,
+            DEFAULT_CLASSIFIER_MODEL,
+            {
+              naFaltaUsarOPadraoDaOrganizacao: true,
+            },
+          )) !== null,
       }
     : null;
 
@@ -122,12 +135,19 @@ export default async function CredentialsPage() {
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Chaves de acesso à IA", idioma)}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {traduzir("Chaves de acesso à IA", idioma)}
+        </h1>
         <p className="text-sm text-muted-foreground">
           {/* Os provedores saem da lista única: escritos à mão, a frase citava
               três quando já eram cinco. */}
           {traduzir(
-            "A conta de inteligência artificial é sua: você contrata direto com {provedores} e cola a chave aqui. A chave fica guardada criptografada e nunca mais aparece na tela depois de salva — nem para você. O Jev (TypeSafe) não conversa com o cliente: a chave dele serve só para decisões rápidas.",
+            // Com a camada comercial ligada (ChatAI Online), a chave de IA é da
+            // PLATAFORMA (`lib/billing/exigencia.ts`): dizer ao cliente que "a
+            // conta é sua" o mandava contratar algo que o plano já inclui.
+            assinaturaExigida()
+              ? "Seus agentes já usam a inteligência artificial do seu plano: você não precisa contratar nem cadastrar chave nenhuma. Esta tela só serve para quem quiser usar uma conta própria com {provedores}; nesse caso, a chave fica guardada criptografada e nunca mais aparece na tela depois de salva — nem para você."
+              : "A conta de inteligência artificial é sua: você contrata direto com {provedores} e cola a chave aqui. A chave fica guardada criptografada e nunca mais aparece na tela depois de salva — nem para você. O Jev (TypeSafe) não conversa com o cliente: a chave dele serve só para decisões rápidas.",
             idioma,
           ).replace(
             "{provedores}",

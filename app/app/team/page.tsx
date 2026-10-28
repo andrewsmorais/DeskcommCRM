@@ -79,7 +79,10 @@ export default async function TeamPage({
         </TabsContent>
         <TabsContent value="attendants" className="mt-4">
           {isManager ? (
-            <AttendantsClient canManage={isManager} organizationTimezone={fusoUtilizavel(activeOrg?.timezone)} />
+            <AttendantsClient
+              canManage={isManager}
+              organizationTimezone={fusoUtilizavel(activeOrg?.timezone)}
+            />
           ) : (
             <p className="text-sm text-muted-foreground">
               {/*

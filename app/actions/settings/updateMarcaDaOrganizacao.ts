@@ -22,6 +22,7 @@ export type UpdateMarcaDaOrganizacaoResult =
         | "forbidden_tenant"
         | "forbidden_role"
         | "mfa_required"
+        | "recurso_fora_do_plano"
         | "nao_gravou"
         | "db_error";
       details?: unknown;
@@ -115,7 +116,7 @@ export async function updateMarcaDaOrganizacao(
   if (!authUser.is_platform_admin) {
     const acesso = await verificarRecursoDoPlano(activeOrg.orgId, "multimarca");
     if (!acesso.ok)
-      return { ok: false, error: "forbidden_role", details: { message: acesso.message } };
+      return { ok: false, error: "recurso_fora_do_plano", details: { message: acesso.message } };
   }
 
   const hdrs = await headers();

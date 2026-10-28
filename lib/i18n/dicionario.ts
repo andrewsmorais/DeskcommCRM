@@ -2730,6 +2730,9 @@ export const DICIONARIO: Traducoes = {
       es: "Top K = cuántos fragmentos buscar. Similarity threshold = relevancia mínima (cosine).",
     },
   "Chaves de acesso à IA": { es: "Claves de acceso a la IA" },
+  "Seus agentes já usam a inteligência artificial do seu plano: você não precisa contratar nem cadastrar chave nenhuma. Esta tela só serve para quem quiser usar uma conta própria com {provedores}; nesse caso, a chave fica guardada criptografada e nunca mais aparece na tela depois de salva — nem para você.": {
+    es: "Tus agentes ya usan la inteligencia artificial de tu plan: no necesitas contratar ni registrar ninguna clave. Esta pantalla solo sirve para quien quiera usar una cuenta propia con {provedores}; en ese caso, la clave queda guardada cifrada y nunca más aparece en pantalla después de guardarla, ni siquiera para ti.",
+  },
   "A conta de inteligência artificial é sua: você contrata direto com {provedores} e cola a chave aqui. A chave fica guardada criptografada e nunca mais aparece na tela depois de salva — nem para você. O Jev (TypeSafe) não conversa com o cliente: a chave dele serve só para decisões rápidas.": {
     es: "La cuenta de inteligencia artificial es tuya: la contratas directamente con {provedores} y pegas la clave aquí. La clave queda guardada cifrada y nunca más aparece en pantalla después de guardarla, ni siquiera para ti. Jev (TypeSafe) no conversa con el cliente: su clave sirve solo para decisiones rápidas.",
   },
@@ -7509,6 +7512,8 @@ export const DICIONARIO: Traducoes = {
   },
   // ─── Onboarding: invite-team — ROTULO_DO_PAPEL (lib/auth/types.ts) ───
   "Somente leitura": { es: "Solo lectura" },
+  "Atendente": { es: "Agente" },
+  "Papel": { es: "Rol" },
   "Assistente com autonomia de operação": { es: "Asistente con autonomía de operación" },
   "Gerente": { es: "Gerente" },
   "Administrador": { es: "Administrador" },
@@ -10560,6 +10565,9 @@ export const DICIONARIO: Traducoes = {
   },
   "Confirme o código do seu aplicativo de duas etapas e tente de novo.": {
     es: "Revisa el código de tu app de verificación en dos pasos e inténtalo de nuevo.",
+  },
+  "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.": {
+    es: "La marca propia forma parte de un plan superior al tuyo. Revisa Configuración › Plan y facturación.",
   },
   "Só quem administra esta empresa pode mudar a marca.": {
     es: "Solo quien administra esta empresa puede cambiar la marca.",
