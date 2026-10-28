@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Sheet,
   SheetContent,
@@ -58,7 +59,7 @@ function Texto({ texto }: { texto: string }) {
             <button
               type="button"
               className="w-full border-t border-border px-2 py-1 text-xs font-medium text-primary hover:bg-muted"
-              onClick={() => void navigator.clipboard?.writeText(p.trim())}
+              onClick={() => void copyToClipboard(p.trim())}
             >
               {t("Copiar texto")}
             </button>
@@ -258,7 +259,7 @@ export function BotaoDeAjuda() {
                       <img
                         src={x.imagem}
                         alt={t("Print enviado")}
-                        className="mb-2 max-h-40 rounded"
+                        className="mb-2 max-h-40 rounded-md"
                       />
                     ) : null}
                     <Texto texto={x.texto} />
@@ -283,7 +284,7 @@ export function BotaoDeAjuda() {
                 {imagem ? (
                   <div className="mb-2 flex items-center gap-2 text-xs">
                     {/* eslint-disable-next-line @next/next/no-img-element -- prévia local */}
-                    <img src={imagem.url} alt="" className="h-10 rounded" />
+                    <img src={imagem.url} alt="" className="h-10 rounded-md" />
                     <button
                       type="button"
                       onClick={() => setImagem(null)}

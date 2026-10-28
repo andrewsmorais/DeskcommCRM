@@ -119,7 +119,7 @@ export default async function Page() {
                 </span>
                 {l.tela ? <span>{l.tela}</span> : null}
                 {l.escalou ? (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+                  <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
                     {t("pediu uma pessoa")}
                   </span>
                 ) : null}
