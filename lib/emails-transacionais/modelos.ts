@@ -33,6 +33,9 @@ import {
   planoInclui,
 } from "@/lib/billing/catalogo";
 import { NEUTROS_DE_SAIDA, type MarcaDeSaida } from "@/lib/branding/saida";
+import { tagDeIdioma } from "@/lib/i18n/datas";
+// Os textos destes e-mails são em português; a data segue o mesmo idioma.
+import { IDIOMA_PADRAO } from "@/lib/i18n/idiomas";
 
 /** Os planos que têm e-mail. O Escala é combinado à mão e não entra. */
 export type PlanoComEmail = Exclude<PlanoComercial, "escala">;
@@ -111,7 +114,7 @@ export function formatarReais(centavos: number): string {
 }
 
 export function formatarData(data: Date): string {
-  return data.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  return data.toLocaleDateString(tagDeIdioma(IDIOMA_PADRAO), { timeZone: "America/Sao_Paulo" });
 }
 
 /** Um bloco do corpo. O mesmo dado vira HTML e texto puro, sem duas verdades. */

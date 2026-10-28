@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { LIMITE_DE_MENSAGENS_POR_DIA, RETENCAO_DA_AJUDA_DIAS } from "@/lib/ajuda/registro";
 import { loadAuthUser } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
+import { tagDeIdioma } from "@/lib/i18n/datas";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const metadata = { title: "Perguntas da ajuda" };
@@ -66,7 +67,7 @@ export default async function Page() {
     }),
     { entrada: 0, cache: 0, saida: 0 },
   );
-  const n = new Intl.NumberFormat("pt-BR");
+  const n = new Intl.NumberFormat(tagDeIdioma(usuario.idioma));
 
   return (
     <div className="space-y-6">
@@ -112,7 +113,7 @@ export default async function Page() {
                   {nome.get(l.organization_id) || l.organization_id}
                 </span>
                 <span>
-                  {new Date(l.created_at).toLocaleString("pt-BR", {
+                  {new Date(l.created_at).toLocaleString(tagDeIdioma(usuario.idioma), {
                     timeZone: "America/Sao_Paulo",
                   })}
                 </span>

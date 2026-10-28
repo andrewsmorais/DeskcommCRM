@@ -42939,6 +42939,31 @@ grant execute on function public.fn_admin_metricas_lucro(numeric) to service_rol
 revoke all on function public.fn_admin_metricas_lucro() from public, anon, authenticated;
 grant execute on function public.fn_admin_metricas_lucro() to service_role;
 
+-- ---- função do aviso de plano dos e-mails de relacionamento (migration 0493) ----
+-- Antes da varredura de anon de propósito: função criada depois dela nasceria
+-- com EXECUTE para anon (tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts).
+-- O trigger que a usa fica lá embaixo, depois de public.subscriptions existir.
+create or replace function public.fn_emitir_plano_alterado() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.organization_id is null or new.plan_type is null
+     or new.status not in ('trialing','active') then
+    return new;
+  end if;
+  if tg_op = 'UPDATE'
+     and old.status is not distinct from new.status
+     and old.plan_type is not distinct from new.plan_type then
+    return new;
+  end if;
+  perform public.emit_event(
+    'plano.alterado', 'subscription', new.id,
+    jsonb_build_object('plan_type', new.plan_type, 'status', new.status),
+    '{}'::jsonb, new.organization_id
+  );
+  return new;
+end $$;
+revoke execute on function public.fn_emitir_plano_alterado() from public, anon;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria
@@ -44407,26 +44432,7 @@ revoke all on public.transactional_email_log from anon, authenticated;
 comment on table public.transactional_email_log is
   'Livro dos e-mails de relacionamento enviados. Server-side only (sem policy): reserva antes do envio, único por organização e chave.';
 
-create or replace function public.fn_emitir_plano_alterado() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  if new.organization_id is null or new.plan_type is null
-     or new.status not in ('trialing','active') then
-    return new;
-  end if;
-  if tg_op = 'UPDATE'
-     and old.status is not distinct from new.status
-     and old.plan_type is not distinct from new.plan_type then
-    return new;
-  end if;
-  perform public.emit_event(
-    'plano.alterado', 'subscription', new.id,
-    jsonb_build_object('plan_type', new.plan_type, 'status', new.status),
-    '{}'::jsonb, new.organization_id
-  );
-  return new;
-end $$;
-revoke execute on function public.fn_emitir_plano_alterado() from public, anon;
+-- (a função fn_emitir_plano_alterado mora ANTES da varredura de anon; ver lá)
 
 drop trigger if exists trg_subscriptions_plano_alterado on public.subscriptions;
 create trigger trg_subscriptions_plano_alterado
