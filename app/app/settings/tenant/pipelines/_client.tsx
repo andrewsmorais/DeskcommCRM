@@ -168,15 +168,13 @@ export function PipelinesClient({
 }) {
   const t = useT();
   if (pipelines.length === 0) {
-    // ⚠️ NÃO PROMETA UM CAMINHO QUE NÃO EXISTE. Criar funil não é feito por
-    // nenhuma tela, rota ou action deste produto — só por script de instalação;
-    // e como o instalador não provisiona funil, ESTE é o estado de toda
-    // instalação nova. O texto anterior mandava "crie um no quadro", e o quadro
-    // vazio manda "Ir para Configurações": pingue-pongue fechado, com o usuário
-    // procurando um botão que não existe em lugar nenhum.
+    // Criar funil É feito pela tela Funis (`app/app/kanban/_client.tsx`,
+    // botões "Novo funil" e "Criar meu primeiro funil"). O texto antigo dizia
+    // que só o instalador criava, direto no banco — verdade de antes daquela
+    // tela existir, e mandava o cliente procurar quem instalou.
     return (
       <Card className="p-6 text-sm leading-relaxed text-muted-foreground">
-        {t("Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Criar o funil é feito por quem instalou o sistema, direto no banco; depois ele aparece aqui para você escolher a etapa de cada passo.")}
+        {t("Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Crie o primeiro em Funis, no botão "Novo funil"; depois ele aparece aqui para você escolher a etapa de cada passo.")}
       </Card>
     );
   }

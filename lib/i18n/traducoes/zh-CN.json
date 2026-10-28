@@ -2635,7 +2635,6 @@
   "Saindo…": "正在退出…",
   "Sair de todos os dispositivos": "退出所有设备",
   "A verificação em duas etapas da sua conta, os códigos de recuperação e as sessões abertas.": "您账号的两步验证、恢复代码和已打开的会话。",
-  "Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Criar o funil é feito por quem instalou o sistema, direto no banco; depois ele aparece aqui para você escolher a etapa de cada passo.": "您还没有任何销售漏斗。在这种情况下，AI 智能体仍会正常接待，但无法将任何人的卡片移动到任何地方——没有可移动到的阶段。创建销售漏斗由安装系统的人员直接在数据库中完成；之后它会显示在这里，供您为每个步骤选择阶段。",
   "Custom fields: JSON inválido. Esperado um array.": "自定义字段：JSON 无效。应为数组。",
   "atualizado.": "已更新。",
   "Vocabulário e campos": "词汇和字段",
