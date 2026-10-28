@@ -21,7 +21,13 @@ export const organizationNameSchema = z
 
 export const signupSchema = z
   .object({
-    org_name: organizationNameSchema,
+    /**
+     * O cadastro pede o NOME DE QUEM SE CADASTRA, não o da empresa. O nome do
+     * negócio é perguntado logo depois, no onboarding ("Como se chama o seu
+     * negócio?"), onde a pessoa já está dentro do produto — e é o mesmo
+     * caminho de quem entra com Google, que também nasce sem nome de empresa.
+     */
+    full_name: z.string().trim().min(2, "Informe seu nome").max(120),
     email: z.string().email("Email inválido"),
     password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
     password_confirm: z.string(),

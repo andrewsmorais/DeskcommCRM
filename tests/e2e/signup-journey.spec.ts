@@ -29,7 +29,7 @@ test("criar conta: signup → e-mail de confirmação → onboarding → re-logi
   await expect(page).toHaveURL(/\/signup$/);
 
   // 2. Formulário de signup
-  await page.getByLabel("Nome da empresa").fill("Loja E2E Signup");
+  await page.getByLabel("Seu nome").fill("Loja E2E Signup");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Senha", { exact: true }).fill(password);
   await page.getByLabel("Confirmar senha").fill(password);

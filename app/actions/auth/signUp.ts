@@ -207,7 +207,13 @@ export async function signUp(
             invite_token: convite,
             full_name: (parsed.data as SignupComConviteInput).full_name,
           }
-        : { org_name: (parsed.data as SignupInput).org_name },
+        : {
+            // O nome de quem se cadastra. Serve também de nome provisório da
+            // empresa (`ensureTenantForUser` lê `org_name`): o onboarding
+            // pergunta o nome do negócio logo em seguida e o substitui.
+            full_name: (parsed.data as SignupInput).full_name,
+            org_name: (parsed.data as SignupInput).full_name,
+          },
     },
   });
 

@@ -20,9 +20,10 @@ import { signUp } from "@/app/actions/auth/signUp";
 
 /**
  * Convite em curso: a conta está sendo criada para ACEITAR um convite, não para
- * abrir uma empresa. Muda duas coisas na tela — some o campo "Nome da empresa"
- * (a empresa já existe; pedir seria mandar a pessoa batizar a organização de
- * outra gente) e o e-mail fica travado no do convite.
+ * abrir uma empresa. Muda uma coisa na tela: o e-mail fica travado no do
+ * convite. O cadastro pede só o nome de quem se cadastra; o nome do negócio é
+ * perguntado no onboarding, e quem foi convidado nunca precisa dá-lo (a empresa
+ * já existe e é de outra gente).
  */
 export interface ConviteDoSignup {
   token: string;
@@ -41,27 +42,23 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<SignupInput & { full_name: string }>({
-    // O formulário tem UM tipo e DOIS contratos, e agora os dois contratos têm
-    // um campo que o outro não tem: `org_name` só no caminho de quem abre
-    // empresa, `full_name` só no de quem foi convidado. O resolver troca; o
-    // tipo do form é a união larga dos dois, e cada campo só é renderizado —
-    // e só é enviado — no modo a que pertence. O `as unknown as` existe porque
-    // os dois contratos deixaram de se sobrepor o bastante para o TypeScript
-    // aceitar a conversão direta.
+  } = useForm<SignupInput>({
+    // O formulário tem UM tipo e DOIS contratos (cadastro comum e cadastro por
+    // convite), com os mesmos campos. O resolver troca conforme o modo. O
+    // `as unknown as` existe porque os dois schemas são `ZodEffects` de formas
+    // distintas e o TypeScript não aceita a conversão direta.
     resolver: (convite
       ? zodResolver(signupComConviteSchema)
-      : zodResolver(signupSchema)) as unknown as Resolver<SignupInput & { full_name: string }>,
+      : zodResolver(signupSchema)) as unknown as Resolver<SignupInput>,
     defaultValues: {
       full_name: "",
-      org_name: "",
       email: convite?.email ?? "",
       password: "",
       password_confirm: "",
     },
   });
 
-  const onSubmit = (values: SignupInput & { full_name: string }) => {
+  const onSubmit = (values: SignupInput) => {
     setServerError(null);
     startTransition(async () => {
       // No modo convite o e-mail do formulário é readonly, e readonly no
@@ -166,7 +163,6 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
         aparecendo como um pedaço do identificador interno em toda tela que o
         nomeia (medido no diálogo de transferir conversa, em produção).
       */}
-      {convite && (
       <div className="space-y-1.5">
         <Label htmlFor="full_name">{t("Seu nome")}</Label>
         <Input
@@ -181,23 +177,6 @@ export function SignupForm({ convite }: { convite?: ConviteDoSignup }) {
           <p className="text-xs text-destructive">{t(errors.full_name.message ?? "")}</p>
         )}
       </div>
-      )}
-      {!convite && (
-      <div className="space-y-1.5">
-        <Label htmlFor="org_name">{t("Nome da empresa")}</Label>
-        <Input
-          id="org_name"
-          type="text"
-          autoComplete="organization"
-          autoFocus
-          aria-invalid={errors.org_name ? true : undefined}
-          {...register("org_name")}
-        />
-        {errors.org_name && (
-          <p className="text-xs text-destructive">{t(errors.org_name.message ?? "")}</p>
-        )}
-      </div>
-      )}
       <div className="space-y-1.5">
         <Label htmlFor="email">Email</Label>
         <Input

@@ -99,7 +99,7 @@ test("⭐ o cadastro não manda esperar um e-mail que não vai chegar", async ({
   const email = `sem-confirmar-${randomUUID().slice(0, 8)}@qa.local`;
 
   await page.goto("/signup");
-  await page.locator("#org_name").fill(NOME_DA_EMPRESA);
+  await page.locator("#full_name").fill(NOME_DA_EMPRESA);
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(SENHA);
   await page.locator("#password_confirm").fill(SENHA);
