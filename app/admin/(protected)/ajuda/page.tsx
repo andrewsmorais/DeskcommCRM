@@ -29,11 +29,7 @@ type Linha = {
   created_at: string;
 };
 
-export default async function Page() {
-  const usuario = await loadAuthUser();
-  if (!usuario?.is_platform_admin) notFound();
-  const t = (s: string) => traduzir(s, usuario.idioma);
-
+async function lerPerguntas() {
   const admin = createAdminClient();
   const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data } = await admin
@@ -51,6 +47,15 @@ export default async function Page() {
     ? await admin.from("organizations").select("id, display_name").in("id", ids)
     : { data: [] as { id: string; display_name: string | null }[] };
   const nome = new Map((orgs ?? []).map((o) => [o.id as string, (o.display_name as string) ?? ""]));
+  return { linhas, nome };
+}
+
+export default async function Page() {
+  const usuario = await loadAuthUser();
+  if (!usuario?.is_platform_admin) notFound();
+  const t = (s: string) => traduzir(s, usuario.idioma);
+
+  const { linhas, nome } = await lerPerguntas();
 
   const escalaram = linhas.filter((l) => l.escalou).length;
   const tokens = linhas.reduce(
