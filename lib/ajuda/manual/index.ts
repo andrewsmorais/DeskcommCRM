@@ -4,9 +4,11 @@
  */
 import type { ManualDoGrupo } from "@/lib/ajuda/manual/tipos";
 import { MANUAL_CRM } from "@/lib/ajuda/manual/crm";
+import { MANUAL_IA } from "@/lib/ajuda/manual/ia";
 
 export { GUIAS } from "@/lib/ajuda/manual/guias";
 
 export const MANUAL: ManualDoGrupo = {
   ...MANUAL_CRM,
+  ...MANUAL_IA,
 };
