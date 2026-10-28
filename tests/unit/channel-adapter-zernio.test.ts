@@ -22,6 +22,19 @@ vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({}) }));
 
+// O guard de destino resolve o DNS antes do fetch. Sem isto, o caso da URL
+// pública dependia de internet na máquina que roda o teste (falhava offline com
+// `unsafe_url:dns_failed`). Um IP público fixo mantém o guard de verdade
+// exercitado: os casos de IP privado continuam barrando como antes.
+vi.mock("node:dns/promises", async (orig) => {
+  const real = await orig<typeof import("node:dns/promises")>();
+  const lookup = async (host: string, opts?: unknown) =>
+    host === "zernio.com"
+      ? [{ address: "104.18.0.1", family: 4 }]
+      : real.lookup(host, opts as never);
+  return { ...real, lookup, default: { ...real, lookup } };
+});
+
 const credsRef: { current: unknown } = { current: null };
 vi.mock("@/lib/channels/zernio/credentials", () => ({
   resolveZernioCreds: async () => credsRef.current,
@@ -55,7 +68,10 @@ function respondeOk(status = 200) {
 
 const ultimaChamada = () => ({
   url: String(fetchMock.mock.calls.at(-1)?.[0] ?? ""),
-  init: (fetchMock.mock.calls.at(-1)?.[1] ?? {}) as { headers?: Record<string, string>; body?: string },
+  init: (fetchMock.mock.calls.at(-1)?.[1] ?? {}) as {
+    headers?: Record<string, string>;
+    body?: string;
+  },
 });
 const corpo = () => JSON.parse(ultimaChamada().init.body ?? "{}") as Record<string, unknown>;
 
