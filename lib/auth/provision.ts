@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 
 /** Normaliza o nome da empresa para um slug candidato (citext unique no DB). */
 export function slugify(name: string): string {
@@ -133,6 +134,35 @@ export async function ensureTenantForUser(
     throw new Error(`signup provisioning: membership insert failed: ${memberError.message}`);
   }
 
+  // Aviso para o e-mail de boas-vindas (consumido pelo worker). Falha aqui nunca
+  // desfaz a conta: o e-mail é cortesia, a organização já nasceu.
+  // Recuperação de organização não é conta nova: ninguém recebe boas-vindas de novo.
+  if (options.source !== "recovery")
+    try {
+      const { error: emitErr } = await admin.rpc(
+        "emit_event" as never,
+        {
+          p_event_type: "conta.criada",
+          p_entity_kind: "organization",
+          p_entity_id: org.id,
+          p_payload: { user_id: user.id },
+          p_metadata: { source: options.source ?? "signup" },
+          p_organization_id: org.id,
+        } as never,
+      );
+      if (emitErr) {
+        logger.warn("[provisioning] emit conta.criada falhou", {
+          organization_id: org.id,
+          error: (emitErr as { message?: string }).message ?? String(emitErr),
+        });
+      }
+    } catch (err) {
+      logger.warn("[provisioning] emit conta.criada lançou", {
+        organization_id: org.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
   void audit({
     action:
       options.source === "recovery" ? "tenant.created_by_recovery" : "tenant.created_by_signup",
@@ -195,8 +225,7 @@ export function slugDoProvisionamento(integration: string, externalId: string): 
  */
 function marcadorDe(fonte: unknown): MarcadorDeProvisionamento | null {
   const m = (fonte as { provisioning?: unknown } | null)?.provisioning as
-    | Partial<MarcadorDeProvisionamento>
-    | undefined;
+    Partial<MarcadorDeProvisionamento> | undefined;
   return typeof m?.integration === "string" && typeof m?.external_id === "string"
     ? { integration: m.integration, external_id: m.external_id }
     : null;
@@ -262,7 +291,10 @@ export async function provisionExternalTenant(
     }
     if (!data) return null;
     const achado = marcadorDe(data.settings);
-    if (achado?.integration !== marcador.integration || achado.external_id !== marcador.external_id) {
+    if (
+      achado?.integration !== marcador.integration ||
+      achado.external_id !== marcador.external_id
+    ) {
       throw new ProvisionConflictError();
     }
     const ownerId = data.created_by ?? (await findAdminMember(admin, data.id));

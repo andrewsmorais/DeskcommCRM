@@ -28,6 +28,7 @@ import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
 import { avisoDeEtapaHandler } from "@/lib/leads/aviso-de-etapa.handler";
 import { avisoDeCasoAoSuporteHandler } from "@/lib/escalacao/aviso-ao-suporte.handler";
 import { avisoDePropostaNoWhatsAppHandler } from "@/lib/propostas/aviso-no-whatsapp.handler";
+import { emailsTransacionaisHandler } from "@/lib/emails-transacionais/handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
 
 let _registered = false;
@@ -78,6 +79,9 @@ export function ensureHandlersRegistered(): void {
   // Por último: reportar a venda ao anúncio é o consumidor mais externo do
   // fechamento — depende de rede de terceiro e não pode atrasar quem escreve
   // no banco. Falha dele nunca segura os handlers acima.
+  // E-mail de relacionamento: sai por rede de terceiro e só fala com a pessoa
+  // DEPOIS de a conta/o plano já existirem — fica atrás de quem escreve no banco.
+  registerHandler(emailsTransacionaisHandler);
   registerHandler(conversaoDeVendaHandler);
   registerHandler(conversaoDeQualificacaoHandler);
   _registered = true;

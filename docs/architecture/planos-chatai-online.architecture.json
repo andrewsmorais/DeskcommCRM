@@ -25,7 +25,14 @@
       "label": "CRM e continuidade"
     }
   ],
-  "mainPath": ["oferta", "checkout", "assinatura", "billing", "guardas", "tela"],
+  "mainPath": [
+    "oferta",
+    "checkout",
+    "assinatura",
+    "billing",
+    "guardas",
+    "tela"
+  ],
   "nodes": [
     {
       "id": "oferta",
@@ -106,6 +113,14 @@
       "type": "frontend",
       "label": "Inbox e histórico",
       "sublabel": "avisos, campanhas pausadas e processos pendentes; sem apagar dados"
+    },
+    {
+      "id": "emails",
+      "lane": "operacao",
+      "col": 5,
+      "type": "worker",
+      "label": "E-mails de relacionamento",
+      "sublabel": "boas-vindas, plano contratado/melhorado/reduzido, reembolso; uma vez só por livro"
     }
   ],
   "edges": [
@@ -180,6 +195,30 @@
       "from": "tela",
       "to": "checkout",
       "label": "conhecer planos; troca de contrato existente ainda pendente"
+    },
+    {
+      "id": "e13",
+      "from": "assinatura",
+      "to": "emails",
+      "label": "trigger emite plano.alterado no event_log (nunca HTTP)"
+    },
+    {
+      "id": "e14",
+      "from": "webhook",
+      "to": "emails",
+      "label": "estorno confirmado emite reembolso.confirmado"
+    },
+    {
+      "id": "e15",
+      "from": "emails",
+      "to": "assinatura",
+      "label": "relê plano e estado no banco; o evento é só aviso"
+    },
+    {
+      "id": "e16",
+      "from": "emails",
+      "to": "tela",
+      "label": "e-mail leva ao app e à tela de assinatura"
     }
   ],
   "cards": [
