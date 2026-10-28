@@ -25,9 +25,11 @@
  */
 import type { EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
 import type { MarcaDeSaida } from "@/lib/branding/saida";
+import { limitesEfetivos } from "@/lib/billing/catalogo";
 import { decidirEmailDePlano } from "@/lib/emails-transacionais/decisao";
 import {
   montarBoasVindas,
+  montarEscalaAtivo,
   montarPlanoContratado,
   montarPlanoMelhorado,
   montarPlanoReduzido,
@@ -49,6 +51,7 @@ export type TipoDeEmail =
   | "plano_melhorado"
   | "plano_reduzido"
   | "reembolso"
+  | "escala_ativo"
   /** Não é e-mail: registra o plano de uma mudança que não gera texto. */
   | "baseline";
 
@@ -61,6 +64,7 @@ export type AssinaturaLida = {
   contracted_amount_cents: number | null;
   expires_at: string | null;
   current_period_end: string | null;
+  limites_personalizados?: unknown;
 };
 
 export interface DbDosEmails {
@@ -92,6 +96,8 @@ export interface DepsDosEmails {
     tipo: TipoDeEmail;
   }): Promise<ResultadoDoEnvio>;
   marca(organizationId: string): Promise<MarcaDeSaida>;
+  /** Contatos de suporte da instalação; vazio = não aparece no e-mail. */
+  contato(): Promise<{ email: string; whatsapp: string }>;
   urlDoApp: string;
   agora(): Date;
 }
@@ -187,6 +193,29 @@ export async function aplicaEmailTransacional(
       const quem = await deps.db.destinatario(org, null);
       if (!quem) return resultado("skipped", "sem_destinatario");
       const marca = await deps.marca(org);
+
+      if (decisao.tipo === "escala_ativo") {
+        // Sem valor nem próxima cobrança: o preço do Escala é combinado
+        // (decisão do dono, 28/10/2026). Os números são os da proposta.
+        const contato = await deps.contato();
+        return entregar(deps, {
+          org,
+          tipo: "escala_ativo",
+          dedupeKey,
+          planType: "escala",
+          quem,
+          marca,
+          montar: () =>
+            montarEscalaAtivo({
+              marca,
+              nome: primeiroNome(quem.nome),
+              limites: limitesEfetivos("escala", assinatura.limites_personalizados ?? null),
+              urlDoApp: deps.urlDoApp,
+              contato,
+            }),
+        });
+      }
+
       const plano = assinatura.plan_type as "essencial" | "impulso";
       const base = {
         marca,

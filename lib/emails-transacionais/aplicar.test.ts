@@ -71,6 +71,7 @@ function montar(o: {
     },
     enviar,
     marca: async () => marca,
+    contato: async () => ({ email: "suporte@x.com", whatsapp: "5512981667389" }),
     urlDoApp: "https://crm.x.com",
     agora: () => agora,
   };
@@ -123,12 +124,27 @@ describe("aplicaEmailTransacional", () => {
     expect(m.enviar).not.toHaveBeenCalled();
   });
 
-  it("Escala não envia, mas registra o plano como base", async () => {
-    const m = montar({ assinatura: { plan_type: "escala" }, ultimoPlano: "impulso" });
+  it("Escala ativado: números da proposta e contatos, sem valor", async () => {
+    const m = montar({
+      assinatura: { plan_type: "escala", limites_personalizados: { whatsapp: 10 } },
+      ultimoPlano: "impulso",
+    });
+    const r = await aplicaEmailTransacional(m.deps, evento("plano.alterado"));
+    expect(r.status).toBe("ok");
+    expect(m.reservas[0]).toMatchObject({ tipo: "escala_ativo", planType: "escala" });
+    const arg = m.enviar.mock.calls[0]![0] as unknown as { text: string };
+    expect(arg.text).toContain("10 números de WhatsApp");
+    expect(arg.text).toContain("(12) 98166-7389");
+    expect(arg.text).toContain("suporte@x.com");
+    expect(arg.text).not.toContain("R$");
+  });
+
+  it("sair do Escala não envia, mas registra o plano como base", async () => {
+    const m = montar({ assinatura: { plan_type: "impulso" }, ultimoPlano: "escala" });
     const r = await aplicaEmailTransacional(m.deps, evento("plano.alterado"));
     expect(r.status).toBe("skipped");
     expect(m.enviar).not.toHaveBeenCalled();
-    expect(m.reservas[0]).toMatchObject({ tipo: "baseline", planType: "escala" });
+    expect(m.reservas[0]).toMatchObject({ tipo: "baseline", planType: "impulso" });
   });
 
   it("reembolso forjado (assinatura não suspensa) não envia", async () => {

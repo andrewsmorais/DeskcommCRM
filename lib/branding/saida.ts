@@ -216,9 +216,13 @@ export async function marcaDaSaida(organizationId: string | null): Promise<Marca
       },
     };
   } catch (erro) {
-    avisarUmaVez("resolucao|excecao", "marca de saída: resolução falhou; vale o padrão do produto", {
-      detalhe: erro instanceof Error ? erro.message : String(erro),
-    });
+    avisarUmaVez(
+      "resolucao|excecao",
+      "marca de saída: resolução falhou; vale o padrão do produto",
+      {
+        detalhe: erro instanceof Error ? erro.message : String(erro),
+      },
+    );
     return padraoDoProduto();
   }
 }
@@ -243,4 +247,11 @@ export async function marcaDaSaida(organizationId: string | null): Promise<Marca
 export async function emailDeSuporte(): Promise<string> {
   const { valor } = await valorDaInstalacao("SUPPORT_EMAIL");
   return (valor ?? "").trim();
+}
+
+/** Só dígitos (DDI + DDD + número), ou vazio quando não configurado. */
+export async function whatsappDeSuporte(): Promise<string> {
+  const { valor } = await valorDaInstalacao("SUPPORT_WHATSAPP");
+  const digitos = (valor ?? "").replace(/\D/g, "");
+  return digitos.length >= 10 && digitos.length <= 15 ? digitos : "";
 }

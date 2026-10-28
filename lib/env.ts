@@ -28,9 +28,7 @@ const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
  * pra permitir setup parcial (ex: dev sem WAHA quando trabalhando só na UI).
  */
 const required = (name: string) =>
-  isProd
-    ? z.string().min(1, `${name} é obrigatória em produção`)
-    : z.string().default("");
+  isProd ? z.string().min(1, `${name} é obrigatória em produção`) : z.string().default("");
 
 const requiredAlways = (name: string) => z.string().min(1, `${name} é obrigatória`);
 
@@ -375,6 +373,11 @@ const schema = z.object({
    * para quem não suspendeu a conta dele e não tem como resolvê-la.
    */
   SUPPORT_EMAIL: z.string().optional().default(""),
+  /**
+   * WhatsApp de suporte mostrado ao cliente final (e-mail do Escala), só
+   * dígitos com DDI e DDD. Mesma regra do SUPPORT_EMAIL: vazio = não aparece.
+   */
+  SUPPORT_WHATSAPP: z.string().optional().default(""),
 
   // EPIC-11 Impersonate cookie HMAC secret. Optional at boot (route returns
   // 503 at runtime if missing/short); required in prod for the feature to
@@ -518,14 +521,8 @@ const schema = z.object({
   PAGINA_DE_PLANOS_URL: z.string().optional().default("https://chataionline.io/#precos"),
 
   // App URLs
-  NEXT_PUBLIC_APP_URL: z
-    .string()
-    .url()
-    .default("http://localhost:3000"),
-  NEXT_PUBLIC_ADMIN_URL: z
-    .string()
-    .url()
-    .default("http://localhost:3000"),
+  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  NEXT_PUBLIC_ADMIN_URL: z.string().url().default("http://localhost:3000"),
   /**
    * URL pública opcional para os webhooks da Meta (WhatsApp Cloud API / canais oficiais).
    * Quando definida, é usada no lugar de NEXT_PUBLIC_APP_URL para compor a URL de callback

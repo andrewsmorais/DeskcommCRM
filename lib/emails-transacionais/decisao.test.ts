@@ -24,12 +24,21 @@ describe("decidirEmailDePlano", () => {
       motivo: "mesmo_plano",
     });
   });
-  it("Escala, de ou para, não envia mas registra", () => {
-    expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: "impulso" })).toMatchObject({
-      enviar: false,
-      motivo: "escala_sem_email",
-      registrar: "escala",
+  it("entrar no Escala envia escala_ativo; continuar nele não", () => {
+    expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: "impulso" })).toEqual({
+      enviar: true,
+      tipo: "escala_ativo",
     });
+    expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: null })).toEqual({
+      enviar: true,
+      tipo: "escala_ativo",
+    });
+    expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: "escala" })).toMatchObject({
+      enviar: false,
+      motivo: "mesmo_plano",
+    });
+  });
+  it("sair do Escala não envia, mas registra", () => {
     expect(decidirEmailDePlano({ plano: "essencial", ultimoPlano: "escala" })).toMatchObject({
       enviar: false,
       motivo: "escala_sem_email",

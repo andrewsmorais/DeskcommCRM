@@ -24,14 +24,7 @@
 import { CHAVES_DE_CANAL_DA_INSTALACAO } from "@/lib/channels/chaves-da-instalacao";
 
 export type GrupoDaInstalacao =
-  | "email"
-  | "ia"
-  | "whatsapp"
-  | "banco"
-  | "fila"
-  | "seguranca"
-  | "retencao"
-  | "integracao";
+  "email" | "ia" | "whatsapp" | "banco" | "fila" | "seguranca" | "retencao" | "integracao";
 
 export type NaturezaDoValor = "segredo" | "texto" | "numero" | "liga_desliga";
 
@@ -142,6 +135,15 @@ export const CATALOGO_DA_INSTALACAO: readonly ChaveDaInstalacao[] = [
     chave: "SUPPORT_EMAIL",
     rotulo: "E-mail de suporte",
     explicacao: "O endereço que o sistema mostra a quem usa, quando alguém precisa de ajuda.",
+    grupo: "email",
+    natureza: "texto",
+    controle: "edita",
+  },
+  {
+    chave: "SUPPORT_WHATSAPP",
+    rotulo: "WhatsApp de suporte",
+    explicacao:
+      "O número que o sistema mostra a quem usa para falar com você, com DDI e DDD (ex.: 5511999999999). Vazio = nenhum número aparece.",
     grupo: "email",
     natureza: "texto",
     controle: "edita",

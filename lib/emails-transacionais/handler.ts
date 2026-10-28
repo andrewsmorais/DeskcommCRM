@@ -9,7 +9,7 @@
  * `skipped`, e falha de envio é `retry`.
  */
 import type { EventHandler, HandlerResult } from "@/lib/event-log/dispatcher";
-import { marcaDaSaida } from "@/lib/branding/saida";
+import { emailDeSuporte, marcaDaSaida, whatsappDeSuporte } from "@/lib/branding/saida";
 import { sendEmail } from "@/lib/email/roteador";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -43,6 +43,10 @@ export const emailsTransacionaisHandler: EventHandler = {
             return r.ok ? { ok: true } : { ok: false, error: r.error ?? "send_failed" };
           },
           marca: (org) => marcaDaSaida(org),
+          contato: async () => {
+            const [email, whatsapp] = await Promise.all([emailDeSuporte(), whatsappDeSuporte()]);
+            return { email, whatsapp };
+          },
           urlDoApp: env.NEXT_PUBLIC_APP_URL,
           agora: () => new Date(),
         },

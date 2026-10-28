@@ -44390,7 +44390,8 @@ create table if not exists public.transactional_email_log (
   organization_id uuid not null references public.organizations(id) on delete cascade,
   dedupe_key text not null,
   tipo text not null check (tipo in (
-    'boas_vindas','plano_contratado','plano_melhorado','plano_reduzido','reembolso','baseline'
+    'boas_vindas','plano_contratado','plano_melhorado','plano_reduzido','reembolso',
+    'escala_ativo','baseline'
   )),
   plan_type text,
   user_id uuid,

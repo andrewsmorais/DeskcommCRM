@@ -11,9 +11,11 @@
  *
  * Sem e-mail, por ordem:
  *   - plano desconhecido (sem `plan_type`, ou fora do catálogo);
- *   - Escala, de ou para: é ativado à mão, com números combinados, e ainda não
- *     tem texto. O plano entra no histórico mesmo assim (`baseline`), para a
- *     comparação seguinte não partir de um passado errado;
+ *   - SAIR do Escala: ainda não tem texto (decisão do dono, 28/10/2026). O plano
+ *     entra no histórico mesmo assim (`baseline`), para a comparação seguinte
+ *     não partir de um passado errado;
+ *
+ * ENTRAR no Escala (vindo de outro plano ou de nenhum) é `escala_ativo`.
  *   - o mesmo plano de novo: renovação, reativação, o vaivém de estados.
  */
 import { PLANOS_COMERCIAIS, planoComercial, type PlanoComercial } from "@/lib/billing/catalogo";
@@ -21,6 +23,7 @@ import type { PlanoComEmail } from "@/lib/emails-transacionais/modelos";
 
 export type DecisaoDePlano =
   | { enviar: true; tipo: "contratado" }
+  | { enviar: true; tipo: "escala_ativo" }
   | { enviar: true; tipo: "melhorado"; anterior: PlanoComEmail }
   | { enviar: true; tipo: "reduzido"; anterior: PlanoComEmail }
   | {
@@ -44,7 +47,12 @@ export function decidirEmailDePlano(args: {
 
   const ultimo = args.ultimoPlano ? planoComercial(args.ultimoPlano) : null;
 
-  if (!comEmail(plano) || (ultimo !== null && !comEmail(ultimo))) {
+  if (!comEmail(plano)) {
+    return ultimo === plano
+      ? { enviar: false, motivo: "mesmo_plano", registrar: null }
+      : { enviar: true, tipo: "escala_ativo" };
+  }
+  if (ultimo !== null && !comEmail(ultimo)) {
     return { enviar: false, motivo: "escala_sem_email", registrar: plano };
   }
   if (ultimo === null) return { enviar: true, tipo: "contratado" };

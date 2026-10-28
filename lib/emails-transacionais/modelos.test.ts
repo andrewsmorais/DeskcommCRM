@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PLANOS_COMERCIAIS } from "@/lib/billing/catalogo";
+import { PLANOS_COMERCIAIS, RECURSOS_DO_PLANO } from "@/lib/billing/catalogo";
 import type { MarcaDeSaida } from "@/lib/branding/saida";
 import {
+  EXCLUSIVOS_DO_ESCALA,
   montarBoasVindas,
+  montarEscalaAtivo,
   montarPlanoContratado,
   montarPlanoMelhorado,
   montarPlanoReduzido,
@@ -66,6 +68,24 @@ describe("e-mails de relacionamento", () => {
     }
     expect(all[2]!.text.toLowerCase()).toContain("chatbot");
     expect(all[3]!.text.toLowerCase()).toContain("chatbot");
+  });
+
+  it("os exclusivos do Escala são mesmo do Escala no catálogo", () => {
+    for (const e of EXCLUSIVOS_DO_ESCALA) expect(RECURSOS_DO_PLANO[e.recurso].desde).toBe("escala");
+  });
+
+  it("Escala sem contato configurado não mostra linha vazia", () => {
+    const e = montarEscalaAtivo({
+      marca,
+      nome: null,
+      limites: { whatsapp: 6, pipelines: 6, agentes_ia: 3, chatbots: 3, usuarios: 6 },
+      urlDoApp: url,
+      contato: { email: "", whatsapp: "" },
+    });
+    expect(e.text).not.toContain("WhatsApp: ");
+    expect(e.text).not.toContain("E-mail: ");
+    expect(e.text).toContain("3 agentes de IA e 3 chatbots");
+    expect(e.html).not.toMatch(/undefined|null/);
   });
 
   it("escapa o nome da pessoa", () => {

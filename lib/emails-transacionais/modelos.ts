@@ -27,8 +27,8 @@
  */
 import {
   PLANOS_COMERCIAIS,
+  RECURSOS_DO_PLANO,
   type LimiteDoPlano,
-  type RECURSOS_DO_PLANO,
   type PlanoComercial,
   planoInclui,
 } from "@/lib/billing/catalogo";
@@ -421,6 +421,91 @@ export function montarPlanoReduzido(ctx: ContextoDaMudanca): EmailMontado {
       },
       { tipo: "botao", rotulo: "Ver o meu plano", url: `${ctx.urlDoApp}/app/settings/billing` },
       { tipo: "p", texto: "Qualquer dúvida, é só responder este e-mail." },
+      assinatura(marca),
+    ],
+  });
+}
+
+// ── 6. Escala ativado ───────────────────────────────────────────────────────
+
+/**
+ * O que só o Escala tem. Cada linha aponta o recurso do catálogo:
+ * `modelos.test.ts` reprova se algum deixar de ser exclusivo do Escala.
+ */
+export const EXCLUSIVOS_DO_ESCALA: ReadonlyArray<{
+  texto: string;
+  recurso: keyof typeof RECURSOS_DO_PLANO;
+}> = [
+  { texto: "Distribuição de leads por número e por time", recurso: "distribuicao_avancada" },
+  { texto: "Permissões avançadas para a sua equipe", recurso: "permissoes_avancadas" },
+  { texto: "Logs e auditoria de tudo o que acontece no CRM", recurso: "auditoria" },
+  { texto: "Integrações avançadas para os agentes de IA", recurso: "integracoes_avancadas" },
+  { texto: "Marca própria", recurso: "multimarca" },
+];
+
+export type ContextoDoEscala = {
+  marca: MarcaDeSaida;
+  nome: string | null;
+  /** Os números da proposta (`limitesEfetivos("escala", …)`), nunca o pacote base cru. */
+  limites: Record<LimiteDoPlano, number>;
+  urlDoApp: string;
+  /** Contatos da instalação; vazio = a linha não aparece. */
+  contato: { email: string; whatsapp: string };
+};
+
+/** "5512981667389" → "(12) 98166-7389"; outros formatos voltam com "+". */
+function whatsappLegivel(d: string): string {
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : `+${d}`;
+}
+
+export function montarEscalaAtivo(ctx: ContextoDoEscala): EmailMontado {
+  const { marca, limites } = ctx;
+  const plural = (n: number, um: string, varios: string) =>
+    n === 1 ? `1 ${um}` : `${n} ${varios}`;
+  const contatos: string[] = [];
+  if (ctx.contato.whatsapp) {
+    contatos.push(
+      `WhatsApp: ${whatsappLegivel(ctx.contato.whatsapp)} (https://wa.me/${ctx.contato.whatsapp})`,
+    );
+  }
+  if (ctx.contato.email) contatos.push(`E-mail: ${ctx.contato.email}`);
+
+  return renderizar(marca, {
+    assunto: `${ctx.nome ? `${ctx.nome}, o` : "O"} seu Escala está no ar 🚀`,
+    titulo: "Seu plano Escala está ativo",
+    blocos: [
+      { tipo: "p", texto: saudacao(ctx.nome) },
+      {
+        tipo: "p",
+        texto:
+          "Que alegria ter você no Escala ❤️ Conversamos, montamos juntos a proposta, e agora está tudo liberado na sua conta, do jeito que combinamos.",
+      },
+      { tipo: "forte", texto: "O que você tem a partir de hoje" },
+      {
+        tipo: "lista",
+        itens: [
+          plural(limites.whatsapp, "número de WhatsApp", "números de WhatsApp"),
+          `${plural(limites.agentes_ia, "agente de IA", "agentes de IA")} e ${plural(limites.chatbots, "chatbot", "chatbots")}, trabalhando juntos no atendimento`,
+          plural(limites.pipelines, "funil de vendas", "funis de vendas"),
+          plural(limites.usuarios, "usuário na equipe", "usuários na equipe"),
+        ],
+      },
+      { tipo: "forte", texto: "O que só o Escala tem" },
+      { tipo: "lista", itens: EXCLUSIVOS_DO_ESCALA.map((e) => e.texto) },
+      {
+        tipo: "p",
+        texto:
+          "Tudo o que já existia no Impulso continua aqui: campanhas, follow-up automático, agente que organiza o CRM, API, webhooks e relatórios completos.",
+      },
+      {
+        tipo: "p",
+        texto:
+          "Se a operação crescer e precisar de mais números, agentes, chatbots ou pessoas, é só falar com a gente que ajustamos a proposta.",
+      },
+      ...(contatos.length > 0 ? [{ tipo: "lista" as const, itens: contatos }] : []),
+      { tipo: "botao", rotulo: `Abrir o ${marca.nome}`, url: `${ctx.urlDoApp}/app` },
+      { tipo: "p", texto: "Um abraço, e vamos escalar juntos 🚀" },
       assinatura(marca),
     ],
   });
