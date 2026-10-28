@@ -34,7 +34,11 @@ interface RouteCtx {
 
 export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
-  const authz = await requireRole("agent", { requestId, resource: "pipeline_forecast" });
+  const authz = await requireRole("agent", {
+    requestId,
+    resource: "pipeline_forecast",
+    plano: "relatorios_completos",
+  });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { id } = await ctx.params;

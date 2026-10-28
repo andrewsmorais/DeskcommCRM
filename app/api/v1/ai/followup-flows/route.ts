@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { moduloLigado } from "@/lib/instalacao/modulos";
@@ -39,9 +40,8 @@ export async function GET(req?: NextRequest): Promise<Response> {
     .from("followup_flow_pointers")
     .select(LIST_COLUMNS)
     .eq("organization_id", activeOrg.orgId);
-  const { data, error } = await (querRoteiros
-    ? base.eq("surface", "atendimento")
-    : base.neq("surface", "atendimento")
+  const { data, error } = await (
+    querRoteiros ? base.eq("surface", "atendimento") : base.neq("surface", "atendimento")
   ).order("updated_at", { ascending: false });
   if (error) return fail("internal_error", error.message, 500, { requestId });
   return ok(data ?? [], { requestId });
@@ -79,6 +79,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     !(await moduloLigado(createAdminClient(), "fluxos_atendimento"))
   ) {
     return fail("not_found", t("Fluxo não encontrado."), 404, { requestId });
+  }
+  // Follow-up automático é do Impulso em diante (card da página de vendas).
+  if (parsed.data.surface !== "atendimento") {
+    const recusado = await exigirRecursoDoPlano(activeOrg.orgId, "follow_up", { requestId });
+    if (recusado) return recusado;
   }
 
   const supabase = await createClient();

@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { recursoForaDoPlano } from "@/lib/billing/acesso";
+import { RecursoForaDoPlano } from "@/components/app/RecursoForaDoPlano";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
@@ -21,6 +23,11 @@ export default async function Page() {
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
 
+  if (await recursoForaDoPlano(org.orgId, "comandas_e_propostas")) {
+    return (
+      <RecursoForaDoPlano recurso="comandas_e_propostas" orgId={org.orgId} idioma={user.idioma} />
+    );
+  }
   const t = (texto: string) => traduzir(texto, user.idioma);
 
   return (

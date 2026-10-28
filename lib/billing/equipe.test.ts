@@ -17,7 +17,6 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-
 function banco(
   membros: { user_id: string; role: string }[] = [],
   convites: string[] = [],
@@ -56,7 +55,10 @@ function banco(
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  m.ler.mockResolvedValue({ ok: true, billing: { is_active: true, seats: 2 } });
+  m.ler.mockResolvedValue({
+    ok: true,
+    billing: { is_active: true, seats: 1, plan_name: "Essencial", limits: { usuarios: 2 } },
+  });
 });
 describe("vagas de atendentes da assinatura", () => {
   it("reserva vaga para convite válido, deduplica e não conta agente de IA", async () => {
@@ -107,7 +109,10 @@ describe("vagas de atendentes da assinatura", () => {
     ).toBe("aceito");
   });
   it("replay de membro ativo continua permitido após redução de plano", async () => {
-    m.ler.mockResolvedValue({ ok: true, billing: { is_active: false, seats: 1 } });
+    m.ler.mockResolvedValue({
+      ok: true,
+      billing: { is_active: false, seats: 1, limits: { usuarios: 1 } },
+    });
     const op = vi.fn(async () => "replay");
     expect(await comCotaDeEquipe(banco([], [], true), "org", { userId: "atual" }, op)).toBe(
       "replay",
@@ -131,7 +136,10 @@ describe("vagas de atendentes da assinatura", () => {
     ).rejects.toMatchObject({ code: "billing_unavailable", status: 503 });
   });
   it("assinatura inativa não amplia a equipe", async () => {
-    m.ler.mockResolvedValue({ ok: true, billing: { is_active: false, seats: 20 } });
+    m.ler.mockResolvedValue({
+      ok: true,
+      billing: { is_active: false, seats: 1, limits: { usuarios: 20 } },
+    });
     await expect(
       comCotaDeEquipe(banco(), "org", { email: "novo@example.com" }, vi.fn()),
     ).rejects.toMatchObject({ code: "billing_inactive" });

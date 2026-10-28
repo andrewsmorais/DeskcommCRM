@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { listSelectableChannels } from "@/lib/channels/selectable";
 import { grafoSchema } from "@/lib/chatbot/passos";
 import { createClient } from "@/lib/supabase/server";
@@ -24,51 +25,56 @@ export default async function ChatbotEditorPage({ params }: Props) {
   if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) redirect("/403");
 
   const db = await createClient();
-  const [flowRes, canais, pessoasRes, followupsRes, fluxosRes, tiposRes, funisRes, etapasRes] = await Promise.all([
-    db
-      .from("chatbot_flows")
-      .select("id, name, is_active, grafo")
-      .eq("id", id)
-      .eq("organization_id", activeOrg.orgId)
-      .maybeSingle(),
-    listSelectableChannels(db, activeOrg.orgId),
-    db
-      .from("user_organizations")
-      .select("user_id, role")
-      .eq("organization_id", activeOrg.orgId)
-      .is("revoked_at", null),
-    db
-      .from("followup_flow_pointers")
-      .select("id, name, surface")
-      .eq("organization_id", activeOrg.orgId)
-      .eq("status", "active")
-      .neq("surface", "atendimento")
-      .order("name"),
-    db
-      .from("chatbot_flows")
-      .select("id, name, is_active")
-      .eq("organization_id", activeOrg.orgId)
-      .order("name"),
-    db
-      .from("calendar_event_types")
-      .select("id, name, is_active")
-      .eq("organization_id", activeOrg.orgId)
-      .order("name"),
-    db
-      .from("crm_pipelines")
-      .select("id, name")
-      .eq("organization_id", activeOrg.orgId)
-      .eq("is_archived", false)
-      .order("position"),
-    db
-      .from("crm_stages")
-      .select("id, name, pipeline_id")
-      .eq("organization_id", activeOrg.orgId)
-      .eq("is_archived", false)
-      .order("position"),
-  ]);
+  const [flowRes, canais, pessoasRes, followupsRes, fluxosRes, tiposRes, funisRes, etapasRes] =
+    await Promise.all([
+      db
+        .from("chatbot_flows")
+        .select("id, name, is_active, grafo")
+        .eq("id", id)
+        .eq("organization_id", activeOrg.orgId)
+        .maybeSingle(),
+      listSelectableChannels(db, activeOrg.orgId),
+      db
+        .from("user_organizations")
+        .select("user_id, role")
+        .eq("organization_id", activeOrg.orgId)
+        .is("revoked_at", null),
+      db
+        .from("followup_flow_pointers")
+        .select("id, name, surface")
+        .eq("organization_id", activeOrg.orgId)
+        .eq("status", "active")
+        .neq("surface", "atendimento")
+        .order("name"),
+      db
+        .from("chatbot_flows")
+        .select("id, name, is_active")
+        .eq("organization_id", activeOrg.orgId)
+        .order("name"),
+      db
+        .from("calendar_event_types")
+        .select("id, name, is_active")
+        .eq("organization_id", activeOrg.orgId)
+        .order("name"),
+      db
+        .from("crm_pipelines")
+        .select("id, name")
+        .eq("organization_id", activeOrg.orgId)
+        .eq("is_archived", false)
+        .order("position"),
+      db
+        .from("crm_stages")
+        .select("id, name, pipeline_id")
+        .eq("organization_id", activeOrg.orgId)
+        .eq("is_archived", false)
+        .order("position"),
+    ]);
 
   if (!flowRes.data) notFound();
+
+  // A paleta marca os passos do "Chatbot avançado" quando o plano não os inclui
+  // (Essencial). Quem barra de verdade é a rota que grava o desenho.
+  const avancadoLiberado = (await verificarRecursoDoPlano(activeOrg.orgId, "chatbot_avancado")).ok;
 
   // Desenho gravado fora do formato (ou vazio): abre em branco, sem quebrar a tela.
   const grafo = grafoSchema.safeParse(flowRes.data.grafo);
@@ -78,6 +84,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
 
   return (
     <ChatbotCanvas
+      avancadoLiberado={avancadoLiberado}
       flow={{
         id: flowRes.data.id,
         name: flowRes.data.name,
@@ -93,7 +100,10 @@ export default async function ChatbotEditorPage({ params }: Props) {
           id: String(p.user_id),
           nome: nomes.get(String(p.user_id)) ?? `${String(p.user_id).slice(0, 8)} · ${p.role}`,
         })),
-        followups: (followupsRes.data ?? []).map((f) => ({ id: String(f.id), nome: String(f.name) })),
+        followups: (followupsRes.data ?? []).map((f) => ({
+          id: String(f.id),
+          nome: String(f.name),
+        })),
         fluxoAtual: flowRes.data.id,
         fluxos: (fluxosRes.data ?? []).map((f) => ({
           id: String(f.id),

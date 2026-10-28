@@ -25,10 +25,22 @@ import {
 import "@xyflow/react/dist/style.css";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, FlaskConical, Loader2, Pencil, Plus, Redo2, Save, Search, Undo2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  FlaskConical,
+  Loader2,
+  Pencil,
+  Plus,
+  Redo2,
+  Save,
+  Search,
+  Undo2,
+  X,
+} from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
 import { randomId } from "@/lib/random-id";
+import { PASSOS_AVANCADOS } from "@/lib/chatbot/passos-avancados";
 import { useT } from "@/hooks/i18n/useT";
 import {
   GRUPOS_DE_PASSO,
@@ -97,7 +109,12 @@ function semLigacoesOrfas(nodes: Node<NodeData>[], edges: Edge[]): Edge[] {
   });
 }
 
-export function ChatbotCanvas(props: { flow: Flow; opcoes: OpcoesDoPainel }) {
+export function ChatbotCanvas(props: {
+  flow: Flow;
+  opcoes: OpcoesDoPainel;
+  /** O plano inclui o "Chatbot avançado"? (Impulso e Escala) */
+  avancadoLiberado?: boolean;
+}) {
   return (
     <ReactFlowProvider>
       <Editor {...props} />
@@ -105,7 +122,15 @@ export function ChatbotCanvas(props: { flow: Flow; opcoes: OpcoesDoPainel }) {
   );
 }
 
-function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
+function Editor({
+  flow,
+  opcoes,
+  avancadoLiberado = true,
+}: {
+  flow: Flow;
+  opcoes: OpcoesDoPainel;
+  avancadoLiberado?: boolean;
+}) {
   const t = useT();
   const inicial = useMemo(() => {
     const foto = paraReactFlow(flow.grafo);
@@ -183,7 +208,9 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
       if (salvos.length > 0) {
         setNodes((atuais) =>
           atuais.map((n) =>
-            n.type === "webhook" ? { ...n, data: salvos.find((x) => x.id === n.id)?.data ?? n.data } : n,
+            n.type === "webhook"
+              ? { ...n, data: salvos.find((x) => x.id === n.id)?.data ?? n.data }
+              : n,
           ),
         );
       }
@@ -326,7 +353,9 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
     () =>
       testando && passoDoTeste
         ? nodes.map((n) =>
-            n.id === passoDoTeste ? { ...n, className: "rounded-xl ring-4 ring-emerald-500/70" } : n,
+            n.id === passoDoTeste
+              ? { ...n, className: "rounded-xl ring-4 ring-emerald-500/70" }
+              : n,
           )
         : nodes,
     [nodes, testando, passoDoTeste],
@@ -491,28 +520,47 @@ function Editor({ flow, opcoes }: { flow: Flow; opcoes: OpcoesDoPainel }) {
                       {t(grupo.nome)}
                     </h3>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {doGrupo.map((p) => (
-                        <button
-                          key={p.tipo}
-                          type="button"
-                          draggable
-                          onDragStart={(ev) => {
-                            ev.dataTransfer.setData(ARRASTO, p.tipo);
-                            ev.dataTransfer.effectAllowed = "move";
-                          }}
-                          onClick={() => adicionar(p.tipo)}
-                          className="rounded-xl border border-border bg-background p-3 text-left transition-colors hover:border-primary/60 hover:bg-surface-elevated"
-                          data-testid={`menu-passo-${p.tipo}`}
-                        >
-                          <span className="flex items-center gap-2 text-sm font-semibold">
-                            <IconeDoPasso nome={p.icone} className={`h-4 w-4 ${p.cor}`} />
-                            {t(p.nome)}
-                          </span>
-                          <span className="mt-1 block text-xs leading-snug text-muted-foreground">
-                            {t(p.descricao)}
-                          </span>
-                        </button>
-                      ))}
+                      {doGrupo.map((p) => {
+                        // Passo do "Chatbot avançado" fora do plano: aparece,
+                        // mas trancado, dizendo qual plano libera.
+                        const trancado = !avancadoLiberado && PASSOS_AVANCADOS.has(p.tipo);
+                        return (
+                          <button
+                            key={p.tipo}
+                            type="button"
+                            draggable={!trancado}
+                            disabled={trancado}
+                            onDragStart={(ev) => {
+                              if (trancado) return;
+                              ev.dataTransfer.setData(ARRASTO, p.tipo);
+                              ev.dataTransfer.effectAllowed = "move";
+                            }}
+                            onClick={() => {
+                              if (!trancado) adicionar(p.tipo);
+                            }}
+                            className={
+                              trancado
+                                ? "cursor-not-allowed rounded-xl border border-dashed border-border bg-background p-3 text-left opacity-60"
+                                : "rounded-xl border border-border bg-background p-3 text-left transition-colors hover:border-primary/60 hover:bg-surface-elevated"
+                            }
+                            data-testid={`menu-passo-${p.tipo}`}
+                            data-trancado={trancado ? "sim" : undefined}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-semibold">
+                              <IconeDoPasso nome={p.icone} className={`h-4 w-4 ${p.cor}`} />
+                              {t(p.nome)}
+                              {trancado ? (
+                                <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                                  {t("Plano Impulso")}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+                              {t(p.descricao)}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </section>
                 );

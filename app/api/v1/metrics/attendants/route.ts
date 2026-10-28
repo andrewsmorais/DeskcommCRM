@@ -46,7 +46,11 @@ export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
 
   // spec 13 §6.1: piso agent (vê as próprias); RLS gate a comparação manager+.
-  const authz = await requireRole("agent", { requestId, resource: "metrics" });
+  const authz = await requireRole("agent", {
+    requestId,
+    resource: "metrics",
+    plano: "relatorios_completos",
+  });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { org: activeOrg } = authz;

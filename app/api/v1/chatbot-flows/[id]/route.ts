@@ -4,8 +4,10 @@
  * DELETE /api/v1/chatbot-flows/[id]  — remove o fluxo
  *
  * O desenho vai num campo só (`chatbot_flows.grafo`, migration 0489), num
- * UPDATE só: não existe mais fluxo meio salvo. Ligar um fluxo desliga os
- * outros da organização — o motor (lib/chatbot) atende com UM fluxo.
+ * UPDATE só: não existe mais fluxo meio salvo. Ligar um fluxo que responde
+ * mensagens desliga os outros que atendem O MESMO número — cada número tem o
+ * seu chatbot de entrada (lib/chatbot/plano.ts). Ligar respeita o limite de
+ * chatbots do plano, e passo avançado só grava a partir do Impulso.
  */
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
@@ -21,6 +23,7 @@ import { caminhoDoChatbotDaOrg } from "@/lib/chatbot/midia";
 import { respondeMensagens } from "@/lib/chatbot/motor";
 import { problemasDoGrafo } from "@/lib/chatbot/validar";
 import { cifrarSegredosDoGrafo } from "@/lib/chatbot/segredos";
+import { conferirCotaDeChatbots, conferirPassosDoPlano, disputamNumero } from "@/lib/chatbot/plano";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -140,11 +143,19 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     update.status = is_active ? "active" : "draft";
   }
 
-  // Só UM fluxo ligado responde a mensagens ("Iniciar por um canal"). Fluxos
-  // que só começam por automação ficam ligados juntos — cada automação escolhe
-  // o seu. Ligar (ou passar a responder mensagens) desliga os outros que respondem.
+  // Passo avançado (webhook, condições, aguardar, outro fluxo...) só a partir
+  // do Impulso. Barrado ao gravar; o que já estava gravado continua rodando.
+  if (grafoRecebido !== undefined) {
+    const passos = await conferirPassosDoPlano(auth.org.orgId, grafoRecebido);
+    if (!passos.ok) return fail(passos.code, passos.message, passos.status, { requestId });
+  }
+
+  // Um chatbot de entrada POR NÚMERO. Ligar (ou passar a responder mensagens)
+  // desliga só os outros ligados que atendem algum número em comum. Fluxos
+  // que só começam por automação ou à mão não disputam número nenhum.
   const ficaLigado = is_active ?? Boolean(atual.is_active);
   const desenhoFinal = grafoSchema.safeParse(grafo ?? atual.grafo);
+  let concorrentes: string[] = [];
   if (ficaLigado && desenhoFinal.success && respondeMensagens(desenhoFinal.data)) {
     const { data: outros, error: erroAoLer } = await db
       .from("chatbot_flows")
@@ -152,20 +163,33 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       .eq("organization_id", auth.org.orgId)
       .eq("is_active", true)
       .neq("id", id);
-    const concorrentes = (outros ?? [])
+    if (erroAoLer)
+      return fail("internal_error", "Não foi possível ler os outros fluxos.", 500, { requestId });
+    concorrentes = (outros ?? [])
       .filter((f) => {
         const g = grafoSchema.safeParse(f.grafo);
-        return g.success && respondeMensagens(g.data);
+        return g.success && respondeMensagens(g.data) && disputamNumero(desenhoFinal.data, g.data);
       })
       .map((f) => String(f.id));
-    const { error: erroDosOutros } =
-      erroAoLer || concorrentes.length === 0
-        ? { error: erroAoLer }
-        : await db
-            .from("chatbot_flows")
-            .update({ is_active: false, status: "draft", updated_at: new Date().toISOString() })
-            .eq("organization_id", auth.org.orgId)
-            .in("id", concorrentes);
+  }
+
+  // Ligar um chatbot que estava desligado conta no limite do plano. Os que esta
+  // operação vai desligar (mesmo número) liberam a vaga.
+  if (ficaLigado && !atual.is_active) {
+    const cota = await conferirCotaDeChatbots(db, auth.org.orgId, {
+      fluxoId: id,
+      desligando: concorrentes,
+      isento: auth.user.is_platform_admin || Boolean(auth.user.support),
+    });
+    if (!cota.ok) return fail(cota.code, cota.message, cota.status, { requestId });
+  }
+
+  if (concorrentes.length > 0) {
+    const { error: erroDosOutros } = await db
+      .from("chatbot_flows")
+      .update({ is_active: false, status: "draft", updated_at: new Date().toISOString() })
+      .eq("organization_id", auth.org.orgId)
+      .in("id", concorrentes);
     if (erroDosOutros)
       return fail("internal_error", "Não foi possível desligar os outros fluxos.", 500, {
         requestId,

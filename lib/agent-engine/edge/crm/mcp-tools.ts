@@ -1,5 +1,5 @@
-import { currentExecutionBoundary, currentExecutionJob } from '@/lib/atendimento/fronteira-server';
-import { claimOfJob } from '@/lib/agent-engine/queue/claim';
+import { currentExecutionBoundary, currentExecutionJob } from "@/lib/atendimento/fronteira-server";
+import { claimOfJob } from "@/lib/agent-engine/queue/claim";
 /**
  * Tools MCP habilitadas NA TELA entrando no turno do engine (Fase 2B-tools).
  *
@@ -17,20 +17,21 @@ import { claimOfJob } from '@/lib/agent-engine/queue/claim';
  *     durável + cancelamento de follow-ups — duas tools de handoff confundiriam
  *     o modelo e a variante do CRM não silencia o harness.
  */
-import type { Tool } from 'ai';
+import type { Tool } from "ai";
 
-import { pickToolsFromMcp, type RuntimeHandoffSignal } from '@/lib/ai/runtime/tools';
-import { mintEphemeralToken, revokeEphemeralToken } from '@/lib/ai/runtime/mcp_token';
-import { IDS_DO_HARNESS, motivoDoHarness } from '@/lib/mcp/tools/ferramentas-do-harness';
-import type { McpAuthResult } from '@/lib/mcp/auth';
-import type { McpContext } from '@/lib/mcp/types';
-import { modulosLigados } from '@/lib/instalacao/modulos';
-import { capacidadesDaOrganizacao } from '@/lib/organizacao/capacidades';
-import { filtrarToolsComCallbackDesabilitado } from '@/lib/followup/callback-policy';
+import { pickToolsFromMcp, type RuntimeHandoffSignal } from "@/lib/ai/runtime/tools";
+import { ferramentasDoPlano } from "@/lib/billing/ferramentas-do-plano";
+import { mintEphemeralToken, revokeEphemeralToken } from "@/lib/ai/runtime/mcp_token";
+import { IDS_DO_HARNESS, motivoDoHarness } from "@/lib/mcp/tools/ferramentas-do-harness";
+import type { McpAuthResult } from "@/lib/mcp/auth";
+import type { McpContext } from "@/lib/mcp/types";
+import { modulosLigados } from "@/lib/instalacao/modulos";
+import { capacidadesDaOrganizacao } from "@/lib/organizacao/capacidades";
+import { filtrarToolsComCallbackDesabilitado } from "@/lib/followup/callback-policy";
 
-import type { Logger } from '../../obs/logger';
-import type { CrmEdgeConfig } from './mcp-client';
-import type { PublishedAgentConfig } from '../../agent/agent-config';
+import type { Logger } from "../../obs/logger";
+import type { CrmEdgeConfig } from "./mcp-client";
+import type { PublishedAgentConfig } from "../../agent/agent-config";
 
 /**
  * Tools do catálogo que jamais entram num turno do engine (ver doc acima).
@@ -66,7 +67,14 @@ export async function buildMcpTurnTools(
     agentConfig.toolIds,
     agentConfig.followup,
   );
-  const allowed = callbackFiltered.filter((id) => !BLOCKED_TOOL_IDS.has(id));
+  // "Agente que organiza o CRM sozinho" é do Impulso em diante.
+  const doPlano = await ferramentasDoPlano(ids.organizationId, callbackFiltered);
+  if (doPlano.retiradas.length > 0) {
+    log.info('capacidades de "Organizar a operação" fora do plano — retiradas do turno', {
+      retiradas: doPlano.retiradas,
+    });
+  }
+  const allowed = doPlano.toolIds.filter((id) => !BLOCKED_TOOL_IDS.has(id));
   const blocked = agentConfig.toolIds.filter((id) => BLOCKED_TOOL_IDS.has(id));
   if (blocked.length > 0) {
     // A tela não oferece mais estas capacidades (a rota serve `marcavel: false`
@@ -74,7 +82,7 @@ export async function buildMcpTurnTools(
     // antes da correção, ou configuração escrita por fora da tela. O log deixou
     // de ser o ÚNICO sinal — a tela mostra o porquê — mas o turno continua
     // recusando em silêncio para o modelo, de propósito.
-    log.warn('tools MCP bloqueadas no turno do engine (envio/handoff são do harness)', {
+    log.warn("tools MCP bloqueadas no turno do engine (envio/handoff são do harness)", {
       blocked_tool_ids: blocked,
       motivos: blocked.map((id) => motivoDoHarness(id)),
     });
@@ -100,14 +108,14 @@ export async function buildMcpTurnTools(
       ? { meetingBooking: { sourceJobId: originJob.id, claim, boundary } }
       : {}),
     organizationId: ids.organizationId,
-    role: 'ai_operator',
+    role: "ai_operator",
     // `agent_id` explícito porque é ele que vai para colunas com FK (atividade
     // da timeline); `id` continua sendo a identidade de correlação do audit.
     actor: {
-      type: 'ai_agent',
+      type: "ai_agent",
       id: agentConfig.agentId,
       agent_id: agentConfig.agentId,
-      role: 'ai_operator',
+      role: "ai_operator",
       api_token_id: ephemeral.id,
     },
     apiTokenId: ephemeral.id,
@@ -116,12 +124,12 @@ export async function buildMcpTurnTools(
   };
   const auth: McpAuthResult = {
     organizationId: ids.organizationId,
-    role: 'ai_operator',
+    role: "ai_operator",
     actor: ctx.actor,
     apiTokenId: ephemeral.id,
     scopes: options?.readOnly
-      ? ['mcp:read', 'actor:ai_agent']
-      : ['mcp:read', 'mcp:write', 'actor:ai_agent'],
+      ? ["mcp:read", "actor:ai_agent"]
+      : ["mcp:read", "mcp:write", "actor:ai_agent"],
   };
   // O engine não usa o sinal de handoff da ponte (a tool está bloqueada) — dummy.
   const handoffSignal: RuntimeHandoffSignal = { triggered: false };

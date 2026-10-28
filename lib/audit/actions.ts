@@ -1021,6 +1021,8 @@ export const AUDIT_ACTIONS = [
   "chatbot_flow.media_uploaded",
   /** Um atendente acionou um chatbot numa conversa ("Iniciar manualmente"). */
   "chatbot_flow.started_manually",
+  /** Dono da plataforma ativou o Escala de uma organização (proposta fechada fora do checkout). */
+  "billing.escala_ativado",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

@@ -41,7 +41,12 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (supportDenied) return supportDenied;
 
   const requestId = randomUUID();
-  const authz = await requireRole("manager", { requestId, resource: "followup_flows" });
+  // Modelo instalado vira follow-up: do Impulso em diante.
+  const authz = await requireRole("manager", {
+    requestId,
+    resource: "followup_flows",
+    plano: "follow_up",
+  });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user, org: activeOrg } = authz;
@@ -111,12 +116,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // QUALQUER organização, inclusive a que tem canal com janela de 24 h.
   const publicavel = grafo.success ? validateFlowForPublish(grafo.data) : null;
   if (!gatilho.success || !grafo.success || (publicavel && !publicavel.ok)) {
-    return fail(
-      "internal_error",
-      `modelo_invalido: ${modelo.id}`,
-      500,
-      { requestId },
-    );
+    return fail("internal_error", `modelo_invalido: ${modelo.id}`, 500, { requestId });
   }
 
   const nome = parsed.data.name ?? modelo.nome;

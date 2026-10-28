@@ -47,15 +47,38 @@ export default async function BillingPage() {
     admin,
     activeOrg.orgId,
   );
-  const { count: pipelinesCount, error: pipelinesError } = await admin
-    .from("crm_pipelines")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", activeOrg.orgId)
-    .eq("is_archived", false);
+  const [
+    { count: pipelinesCount, error: pipelinesError },
+    { count: agentesCount, error: agentesError },
+    { count: chatbotsCount, error: chatbotsError },
+  ] = await Promise.all([
+    admin
+      .from("crm_pipelines")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false),
+    // As mesmas contas que as cotas aplicam (cota-de-agentes, chatbot/plano).
+    admin
+      .from("ai_agents")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", activeOrg.orgId)
+      .is("archived_at", null),
+    admin
+      .from("chatbot_flows")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_active", true),
+  ]);
 
   const t = (texto: string) => traduzir(texto, idioma);
   const formatDate = (date: string) =>
     format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: localeDeData(idioma) });
+
+  const ciclos: Record<string, string> = {
+    monthly: "Mensal",
+    quarterly: "Trimestral",
+    yearly: "Anual",
+  };
 
   const statusColors: Record<string, string> = {
     active: "bg-green-100 text-green-800",
@@ -111,7 +134,7 @@ export default async function BillingPage() {
               <div>
                 <p className="text-xl font-semibold">{billing.plan_name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {billing.seats} {t("atendente(s)")} • {t("Ciclo")} {billing.billing_cycle}
+                  {t("Ciclo")} {t(ciclos[billing.billing_cycle] ?? billing.billing_cycle)}
                 </p>
               </div>
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeColor}`}>
@@ -158,15 +181,7 @@ export default async function BillingPage() {
             <h2 className="text-lg font-medium">{t("Limites do Plano")}</h2>
             <div className="mt-4 space-y-4">
               <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">{t("Atendentes humanos")}</span>
-                <span className="text-sm text-muted-foreground">
-                  {equipe
-                    ? `${equipe.ocupados} ${t("ativos")} + ${equipe.reservados} ${t("vagas reservadas")} / ${billing.seats} ${t("contratados")}`
-                    : t("Não foi possível confirmar a ocupação")}
-                </span>
-              </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">{t("WhatsApps (Canais)")}</span>
+                <span className="text-sm font-medium">{t("Números de WhatsApp")}</span>
                 <span className="text-sm text-muted-foreground">
                   {whatsappError || whatsappCount === null
                     ? t("Não confirmado")
@@ -174,7 +189,23 @@ export default async function BillingPage() {
                 </span>
               </div>
               <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">{t("Pipelines")}</span>
+                <span className="text-sm font-medium">{t("Agentes de IA")}</span>
+                <span className="text-sm text-muted-foreground">
+                  {agentesError || agentesCount === null
+                    ? t("Não confirmado")
+                    : getLimitLabel(billing.limits?.agentes_ia, agentesCount)}
+                </span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-sm font-medium">{t("Chatbots ligados")}</span>
+                <span className="text-sm text-muted-foreground">
+                  {chatbotsError || chatbotsCount === null
+                    ? t("Não confirmado")
+                    : getLimitLabel(billing.limits?.chatbots, chatbotsCount)}
+                </span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-sm font-medium">{t("Funis")}</span>
                 <span className="text-sm text-muted-foreground">
                   {pipelinesError || pipelinesCount === null
                     ? t("Não confirmado")
@@ -182,15 +213,21 @@ export default async function BillingPage() {
                 </span>
               </div>
               <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">{t("Setores")}</span>
+                <span className="text-sm font-medium">{t("Usuários da equipe")}</span>
                 <span className="text-sm text-muted-foreground">
-                  {getLimitLabel(billing.limits?.sectors)}
+                  {equipe
+                    ? `${equipe.ocupados} ${t("ativos")} + ${equipe.reservados} ${t("vagas reservadas")} / ${getLimitLabel(billing.limits?.usuarios)}`
+                    : t("Não foi possível confirmar a ocupação")}
                 </span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-sm font-medium">{t("Uso de IA")}</span>
+                <span className="text-sm text-muted-foreground">{t("Sem limite")}</span>
               </div>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
               {t(
-                "Agentes de IA não ocupam vagas de atendentes humanos. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem.",
+                "Agentes de IA não ocupam vagas de usuários. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem. Se você mudar para um plano menor, nada do que já existe é apagado: só não dá para criar mais até voltar ao limite.",
               )}
             </p>
             <h3 className="mt-6 text-base font-medium">{t("Recursos do plano")}</h3>

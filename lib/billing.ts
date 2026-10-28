@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { PLANOS_COMERCIAIS, planoComercial } from "@/lib/billing/catalogo";
+import { limitesEfetivos, planoComercial, type LimiteDoPlano } from "@/lib/billing/catalogo";
 
 export interface OrganizationBilling {
   subscription_id?: string;
@@ -8,12 +8,7 @@ export interface OrganizationBilling {
   organization_id: string;
   plan_name: string;
   plan_slug: string;
-  limits: {
-    whatsapp?: number;
-    pipelines?: number;
-    sectors?: number;
-    agentes_ia?: number;
-  };
+  limits: Partial<Record<LimiteDoPlano | "sectors", number>>;
   status: string;
   current_period_end: string | null;
   asaas_subscription_id: string | null;
@@ -44,7 +39,7 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
     const { data: assinatura, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_end, asaas_subscription_id, seats, billing_cycle",
+        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_end, asaas_subscription_id, seats, billing_cycle, limites_personalizados",
       )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false, nullsFirst: false })
@@ -111,9 +106,8 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
         plan_slug: plano.slug,
         limits: {
           ...plano.limits,
-          whatsapp: PLANOS_COMERCIAIS[slug].whatsapp,
-          pipelines: PLANOS_COMERCIAIS[slug].pipelines,
-          agentes_ia: PLANOS_COMERCIAIS[slug].agentes_ia,
+          // A promessa da página mora no catálogo, não no JSON da tabela `plans`.
+          ...limitesEfetivos(slug, assinatura.limites_personalizados),
         },
         status: assinatura.status,
         current_period_end: assinatura.current_period_end,
@@ -130,7 +124,7 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
 
 export function canUse(
   billing: OrganizationBilling | null,
-  recurso: "whatsapp" | "pipelines" | "sectors" | "agentes_ia",
+  recurso: LimiteDoPlano | "sectors",
   quantidadeAtual: number,
 ): { ok: boolean; limite: number } {
   if (

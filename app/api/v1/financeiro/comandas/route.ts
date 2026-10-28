@@ -75,7 +75,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   const supportDenied = await requireSupportWrite();
   if (supportDenied) return supportDenied;
 
-  const authz = await requireRole("agent", { requestId, resource: "financeiro" });
+  const authz = await requireRole("agent", {
+    requestId,
+    resource: "financeiro",
+    plano: "comandas_e_propostas",
+  });
   if (!authz.ok) return authz.response;
 
   const lido = abrirComandaSchema.safeParse(await req.json().catch(() => ({})));

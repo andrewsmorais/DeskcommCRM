@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { recursoForaDoPlano } from "@/lib/billing/acesso";
+import { RecursoForaDoPlano } from "@/components/app/RecursoForaDoPlano";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -21,7 +23,10 @@ export default async function FollowupFlowsPage() {
   const t = (texto: string) => traduzir(texto, user.idioma);
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
-  // Fluxos (edição) segue exigindo manager+; a Fila (leitura) é de qualquer
+
+  if (await recursoForaDoPlano(activeOrg.orgId, "follow_up")) {
+    return <RecursoForaDoPlano recurso="follow_up" orgId={activeOrg.orgId} idioma={user.idioma} />;
+  } // Fluxos (edição) segue exigindo manager+; a Fila (leitura) é de qualquer
   // member — o gate por tela fica dentro das abas (canWrite), não na rota.
 
   const supabase = await createClient();
@@ -42,7 +47,9 @@ export default async function FollowupFlowsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Follow-ups</h1>
           <p className="text-sm text-text-muted">
-            {t("Fluxos automáticos de reengajamento — silêncio, etapa, webhook ou resposta do contato, sem intervenção em cada mensagem.")}
+            {t(
+              "Fluxos automáticos de reengajamento — silêncio, etapa, webhook ou resposta do contato, sem intervenção em cada mensagem.",
+            )}
           </p>
         </div>
       </header>

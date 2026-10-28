@@ -209,7 +209,9 @@ export async function atenderPeloChatbot(
     [e.organizationId, e.conversationId],
   );
   const conversa = estado[0];
-  const manual = Boolean(sessaoEsperando && dadosDeTexto(sessaoEsperando.collected_data)[CHAVE_MANUAL]);
+  const manual = Boolean(
+    sessaoEsperando && dadosDeTexto(sessaoEsperando.collected_data)[CHAVE_MANUAL],
+  );
   if (!conversa || (conversa.assignee_kind === "user" && !manual) || conversa.is_blocked === true) {
     if (sessaoEsperando)
       await encerrarSessao(pool, e.organizationId, sessaoEsperando.id, "completed");
@@ -244,7 +246,10 @@ export async function atenderPeloChatbot(
     };
     // Parado no relógio e o passo diz "continuar esperando": a mensagem fica
     // para a equipe ver na conversa, e nem o chatbot nem a IA respondem agora.
-    if (sessaoAnterior.status === "waiting_timer" && !seguirAoResponder(grafo, sessaoAnterior.no_atual)) {
+    if (
+      sessaoAnterior.status === "waiting_timer" &&
+      !seguirAoResponder(grafo, sessaoAnterior.no_atual)
+    ) {
       log.info("chatbot: mensagem durante a espera — o fluxo segue esperando o relógio", {
         flow_id: fluxoId,
         session_id: sessaoId,
@@ -252,8 +257,11 @@ export async function atenderPeloChatbot(
       return "atendeu";
     }
   } else {
-    // Vários fluxos podem estar ligados, mas só um responde a mensagens (tem
-    // "Iniciar por um canal"); os de "Iniciar por automação" esperam a regra.
+    // Cada número tem o seu chatbot de entrada (lib/chatbot/plano.ts): o
+    // escolhido é o fluxo ligado cujo "Iniciar por um canal" aceita ESTE
+    // número (e a palavra-chave, se houver). Antes era o primeiro fluxo da
+    // organização, e a mensagem do segundo número ficava sem chatbot.
+    // Os de "Iniciar por automação" ou "manualmente" esperam quem os chama.
     const { rows: fluxos } = await pool.query<{ id: string; grafo: unknown }>(
       `select id, grafo from chatbot_flows
         where organization_id = $1 and is_active
@@ -261,11 +269,16 @@ export async function atenderPeloChatbot(
         limit 50`,
       [e.organizationId],
     );
-    let escolhido: { id: string; grafo: Grafo } | null = null;
+    let escolhido: { id: string; grafo: Grafo; inicio: string } | null = null;
     for (const f of fluxos) {
       const g = grafoSchema.safeParse(f.grafo);
-      if (g.success && respondeMensagens(g.data)) {
-        escolhido = { id: f.id, grafo: g.data };
+      if (!g.success || !respondeMensagens(g.data)) continue;
+      const inicioDoFluxo = pontoDePartida(g.data, {
+        channelSessionId: e.channelSessionId,
+        mensagem: texto,
+      });
+      if (inicioDoFluxo) {
+        escolhido = { id: f.id, grafo: g.data, inicio: inicioDoFluxo };
         break;
       }
     }
@@ -347,14 +360,18 @@ async function conduzir(
     const pendente: Pendente | undefined = resultado.pendente;
     if (!pendente) return;
     if (pendentes >= PENDENTES_POR_TURNO) {
-      log.warn("chatbot: teto de passos externos por mensagem — fluxo encerrado", { flow_id: fluxoId });
+      log.warn("chatbot: teto de passos externos por mensagem — fluxo encerrado", {
+        flow_id: fluxoId,
+      });
       await encerrarSessao(pool, e.organizationId, gravada.id, "completed");
       return;
     }
     switch (pendente.tipo) {
       case "webhook": {
         if (++webhooks > WEBHOOKS_POR_TURNO) {
-          log.warn("chatbot: teto de WebHooks por mensagem — fluxo encerrado", { flow_id: fluxoId });
+          log.warn("chatbot: teto de WebHooks por mensagem — fluxo encerrado", {
+            flow_id: fluxoId,
+          });
           await encerrarSessao(pool, e.organizationId, gravada.id, "completed");
           return;
         }
@@ -445,7 +462,10 @@ async function fluxoParaAcionar(
   return inicio ? { id: rows[0].id, grafo: g.data, inicio } : null;
 }
 
-async function lerContatoDoTurno(pool: pg.Pool, e: EntradaDoChatbot): Promise<ContatoDoTurno | null> {
+async function lerContatoDoTurno(
+  pool: pg.Pool,
+  e: EntradaDoChatbot,
+): Promise<ContatoDoTurno | null> {
   const { rows } = await pool.query<{
     tags: string[] | null;
     nome: string | null;
@@ -632,10 +652,16 @@ async function fazerWebhook(
   // Segredo gravado que não abre: não chama sem ele (sairia sem assinatura ou
   // sem autorização) — segue por "Falhou".
   if ((c.segredo_enc && !segredos.segredo) || (c.autorizacao_enc && !segredos.autorizacao)) {
-    log.warn("chatbot: segredo do WebHook não pôde ser decifrado — chamada não feita", { flow_id: fluxoId });
+    log.warn("chatbot: segredo do WebHook não pôde ser decifrado — chamada não feita", {
+      flow_id: fluxoId,
+    });
     return { ok: false, status: null, corpo: null };
   }
-  const { rows } = await pool.query<{ nome: string | null; telefone: string | null; email: string | null }>(
+  const { rows } = await pool.query<{
+    nome: string | null;
+    telefone: string | null;
+    email: string | null;
+  }>(
     `select coalesce(name, display_name) as nome, phone_number as telefone, email
        from contacts where organization_id = $1 and id = $2`,
     [e.organizationId, e.contactId],
@@ -785,7 +811,11 @@ export async function iniciarChatbotPorAutomacao(
   );
   const fluxo = fluxos[0];
   const g = grafoSchema.safeParse(fluxo?.grafo);
-  const inicio = g.success ? (pedido.manual ? inicioManual(g.data) : inicioPorAutomacao(g.data)) : null;
+  const inicio = g.success
+    ? pedido.manual
+      ? inicioManual(g.data)
+      : inicioPorAutomacao(g.data)
+    : null;
   if (!fluxo?.is_active || !g.success || !inicio) {
     log.info("chatbot: automação pediu fluxo desligado ou sem 'Iniciar por automação'", {
       flow_id: pedido.flow_id,
@@ -814,7 +844,11 @@ export async function iniciarChatbotPorAutomacao(
   );
   const conversa = estado[0];
   // O atendente que começou o fluxo está com a conversa — e quis o chatbot nela.
-  if (!conversa || (conversa.assignee_kind === "user" && !pedido.manual) || conversa.is_blocked === true)
+  if (
+    !conversa ||
+    (conversa.assignee_kind === "user" && !pedido.manual) ||
+    conversa.is_blocked === true
+  )
     return "descartado";
 
   const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
@@ -848,7 +882,9 @@ export async function iniciarChatbotPorAutomacao(
     inboundMessageId: null,
     boundary: pedido.boundary,
     proativo: true,
-    referencia: pedido.manual ? `manual:${pedido.iniciado_por ?? "?"}` : `regra:${pedido.regra_id ?? "?"}`,
+    referencia: pedido.manual
+      ? `manual:${pedido.iniciado_por ?? "?"}`
+      : `regra:${pedido.regra_id ?? "?"}`,
   };
   const ctx: ContextoDoTurno = {
     mensagem: null,
@@ -864,10 +900,15 @@ export async function iniciarChatbotPorAutomacao(
   // `null` = rodada nova: a gravação reinicia `started_at` mesmo que o fluxo
   // já tenha rodado nesta conversa (a avaliação de cada rodada fica separada).
   await conduzir(pool, admin, e, fluxo.id, g.data, null, resultado, ctx, log);
-  log.info(pedido.manual ? "chatbot: fluxo iniciado por atendente" : "chatbot: fluxo iniciado por automação", {
-    flow_id: fluxo.id,
-    regra_id: pedido.regra_id,
-  });
+  log.info(
+    pedido.manual
+      ? "chatbot: fluxo iniciado por atendente"
+      : "chatbot: fluxo iniciado por automação",
+    {
+      flow_id: fluxo.id,
+      regra_id: pedido.regra_id,
+    },
+  );
   return "iniciou";
 }
 
@@ -1302,7 +1343,9 @@ async function executarEfeitos(
             [e.organizationId, e.contactId],
           );
           const titulo =
-            efeito.titulo || (c[0] ? (nomeDoContato(c[0]) ?? c[0].phone_number) : null) || "Contato do chatbot";
+            efeito.titulo ||
+            (c[0] ? (nomeDoContato(c[0]) ?? c[0].phone_number) : null) ||
+            "Contato do chatbot";
           const r = await levarContatoAoFunil(
             admin,
             {
@@ -1320,7 +1363,10 @@ async function executarEfeitos(
             },
           );
           if (!r.ok) {
-            log.warn("chatbot: negócio não foi para o funil", { flow_id: fluxoId, motivo: r.error });
+            log.warn("chatbot: negócio não foi para o funil", {
+              flow_id: fluxoId,
+              motivo: r.error,
+            });
             await notaInterna(`O chatbot não conseguiu pôr o contato no funil (${r.error}).`);
           }
           break;
@@ -1476,7 +1522,9 @@ async function executarEfeitos(
               `select custom_fields from contacts where organization_id = $1 and id = $2`,
               [e.organizationId, e.contactId],
             );
-            patch = { custom_fields: { ...(rows[0]?.custom_fields ?? {}), [efeito.chave]: efeito.valor } };
+            patch = {
+              custom_fields: { ...(rows[0]?.custom_fields ?? {}), [efeito.chave]: efeito.valor },
+            };
           }
           const valido = contactPatchSchema.safeParse(patch);
           if (!valido.success) {
@@ -1550,7 +1598,9 @@ async function executarEfeitos(
             bypassedRls: true,
             metadata: { origem: "chatbot", flow_id: fluxoId, due_at: pedido.due_at },
           });
-          await notaInterna("O contato pediu a exclusão dos dados. O pedido (LGPD) espera a aprovação de um admin.");
+          await notaInterna(
+            "O contato pediu a exclusão dos dados. O pedido (LGPD) espera a aprovação de um admin.",
+          );
           await insertInboxItem(
             pool,
             e.organizationId,

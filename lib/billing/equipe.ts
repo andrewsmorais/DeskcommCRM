@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getOrganizationBilling } from "@/lib/billing";
+import { getOrganizationBilling, type OrganizationBilling } from "@/lib/billing";
 import { assinaturaExigida } from "@/lib/billing/exigencia";
 import { comReservaDeCota } from "./reserva";
 
@@ -12,6 +12,18 @@ export class ErroDaCotaDeEquipe extends Error {
     super(message);
     this.name = "ErroDaCotaDeEquipe";
   }
+}
+
+/**
+ * Quantas pessoas da equipe o plano permite (`PLANOS_COMERCIAIS[plano].usuarios`,
+ * ou a proposta do Escala). Desde 27/10/2026 o preço é por plano, então
+ * `subscriptions.seats` deixou de ser a cota. Limite ausente ou inválido vale 0:
+ * dado ruim nunca vira equipe ilimitada.
+ */
+export function vagasDaEquipe(billing: OrganizationBilling): number {
+  const v = billing.limits?.usuarios;
+  if (v === -1) return -1;
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : 0;
 }
 
 export async function consultarCotaDaEquipe(db: SupabaseClient, orgId: string) {
@@ -99,14 +111,15 @@ export async function comCotaDeEquipe<T>(
       email && (cota.reservas.has(email) || cota.emailsAtivos.has(email)),
     );
     // Reserva própria não conta duas vezes. Redução de plano não apaga pessoas.
-    if (!jaReservado && cota.ocupados + cota.reservados >= cota.billing.seats) {
+    const vagas = vagasDaEquipe(cota.billing);
+    if (!jaReservado && vagas !== -1 && cota.ocupados + cota.reservados >= vagas) {
       throw new ErroDaCotaDeEquipe(
         "billing_limit",
         403,
-        `Você contratou ${cota.billing.seats} atendentes e as vagas estão ocupadas ou reservadas. Revogue um convite ou confira Plano e cobrança.`,
+        `O plano ${cota.billing.plan_name} permite ${vagas} usuários e as vagas estão ocupadas ou reservadas. Revogue um convite ou mude de plano em Plano e cobrança.`,
       );
     }
-    if (cota.ocupados >= cota.billing.seats && alvo.userId) {
+    if (vagas !== -1 && cota.ocupados >= vagas && alvo.userId) {
       throw new ErroDaCotaDeEquipe(
         "billing_limit",
         403,

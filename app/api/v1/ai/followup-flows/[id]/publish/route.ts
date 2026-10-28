@@ -12,6 +12,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * se draft_graph ausente ou reprovado na validação estrutural/semântica.
  */
 import { randomUUID } from "node:crypto";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
 import type { NextRequest } from "next/server";
 
@@ -69,6 +70,11 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // recusa (`trg_enrollment_superficie_coerente`, 0394); a recusa é AQUI, com
   // uma pessoa na tela para corrigir.
   const surface = (pointer.surface ?? "followup") as FollowupFlowSurface;
+  // Follow-up automático é do Impulso em diante (card da página de vendas).
+  if (surface !== "atendimento") {
+    const recusado = await exigirRecursoDoPlano(activeOrg.orgId, "follow_up", { requestId });
+    if (recusado) return recusado;
+  }
   if (surface === "atendimento") {
     if (!(await moduloLigado(admin, "fluxos_atendimento"))) {
       return fail("not_found", t("Fluxo não encontrado."), 404, { requestId });

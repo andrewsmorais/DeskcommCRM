@@ -63,3 +63,13 @@ export async function exigirRecursoDoPlano(
   const acesso = await verificarRecursoDoPlano(orgId, recurso);
   return acesso.ok ? null : fail(acesso.code, acesso.message, acesso.status, opts);
 }
+
+/**
+ * Para TELAS: o plano atual simplesmente não inclui o recurso? Só
+ * `billing_feature` tranca a tela — assinatura inativa ou leitura indisponível
+ * já têm aviso próprio (BillingBanner) e não devem esconder dados.
+ */
+export async function recursoForaDoPlano(orgId: string, recurso: RecursoDoPlano): Promise<boolean> {
+  const acesso = await verificarRecursoDoPlano(orgId, recurso);
+  return !acesso.ok && acesso.code === "billing_feature";
+}
