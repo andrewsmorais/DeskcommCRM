@@ -24,6 +24,7 @@ import {
   Lock,
   PuzzlePiece,
   Stack,
+  Question,
 } from "@/lib/ui/icons";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,8 @@ const NAV_ITEMS: NavItem[] = [
   // cima é de OPERAÇÃO (alertas, fila); estes dois são de NEGÓCIO.
   { href: "/admin/metricas", label: "Métricas", icon: ChartLineUp },
   { href: "/admin/asaas", label: "Asaas", icon: CreditCard },
+  // O que os clientes perguntam ao chat do botão Ajuda — o laço de volta dele.
+  { href: "/admin/ajuda", label: "Perguntas da ajuda", icon: Question },
   { href: "/admin/inbox", label: "Inbox", icon: ChatsCircle },
   { href: "/admin/tenants", label: "Tenants", icon: Buildings },
   { href: "/admin/audit", label: "Audit", icon: ClipboardText },
@@ -145,7 +148,7 @@ export function AdminSidebar({ userEmail, variant = "desktop" }: AdminSidebarPro
           <SimboloDoProduto nome={marca.name} decorativo className="h-8 w-8" />
         )}
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-wider text-muted-foreground">
+          <span className="text-xs tracking-wider text-muted-foreground uppercase">
             {marca.name}
           </span>
           <span className="text-sm font-semibold tracking-tight">{t("Admin Plataforma")}</span>
@@ -153,8 +156,7 @@ export function AdminSidebar({ userEmail, variant = "desktop" }: AdminSidebarPro
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto p-2" aria-label={t("Navegação plataforma")}>
         {NAV_ITEMS.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(item.href + "/");
+          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
           return (
             <Link

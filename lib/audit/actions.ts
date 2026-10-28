@@ -1023,6 +1023,8 @@ export const AUDIT_ACTIONS = [
   "chatbot_flow.started_manually",
   /** Dono da plataforma ativou o Escala de uma organização (proposta fechada fora do checkout). */
   "billing.escala_ativado",
+  // Pergunta respondida pelo assistente do botão Ajuda (app/api/v1/ajuda).
+  "ajuda.pergunta",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

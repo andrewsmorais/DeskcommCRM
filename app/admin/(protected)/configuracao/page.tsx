@@ -39,6 +39,12 @@ const ORDEM: readonly {
     },
   },
   {
+    grupo: "ajuda",
+    titulo: "Ajuda e suporte",
+    resumo:
+      "O que aparece no botão Ajuda do CRM: o WhatsApp e o e-mail da sua equipe e a chave do chat com o assistente.",
+  },
+  {
     grupo: "seguranca",
     titulo: "Segurança e privacidade",
     resumo: "Contatos obrigatórios e as chaves que protegem o que está guardado.",
@@ -50,7 +56,11 @@ const ORDEM: readonly {
   },
   { grupo: "banco", titulo: "Banco de dados", resumo: "Onde ficam todos os seus dados." },
   { grupo: "fila", titulo: "Fila de tarefas", resumo: "Controla o ritmo dos envios." },
-  { grupo: "ia", titulo: "Inteligência artificial", resumo: "Como o atendimento automático opera." },
+  {
+    grupo: "ia",
+    titulo: "Inteligência artificial",
+    resumo: "Como o atendimento automático opera.",
+  },
 ];
 
 export interface LinhaDaTela {
@@ -75,7 +85,9 @@ export default async function Page() {
   // servidor manda e-mail" é um assunto só, e estava dividido em duas telas.
   // O filtro é o catálogo, não uma lista escrita aqui — assim não há como as
   // duas telas mostrarem a mesma chave.
-  const daTela = CATALOGO_DA_INSTALACAO.filter((d) => (d.telaDona ?? "credenciais") === "credenciais");
+  const daTela = CATALOGO_DA_INSTALACAO.filter(
+    (d) => (d.telaDona ?? "credenciais") === "credenciais",
+  );
 
   const linhas: LinhaDaTela[] = await Promise.all(
     daTela.map(async (definicao) => ({

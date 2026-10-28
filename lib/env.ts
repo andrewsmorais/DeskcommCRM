@@ -378,6 +378,12 @@ const schema = z.object({
    * dígitos com DDI e DDD. Mesma regra do SUPPORT_EMAIL: vazio = não aparece.
    */
   SUPPORT_WHATSAPP: z.string().optional().default(""),
+  /**
+   * Chave da Anthropic do assistente de ajuda (o chat do botão Ajuda). Separada
+   * da chave dos agentes para o custo do suporte aparecer à parte. Vazia = o
+   * painel de ajuda mostra só os contatos.
+   */
+  AJUDA_ANTHROPIC_API_KEY: z.string().optional().default(""),
 
   // EPIC-11 Impersonate cookie HMAC secret. Optional at boot (route returns
   // 503 at runtime if missing/short); required in prod for the feature to
