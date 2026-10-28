@@ -83,7 +83,7 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
       "Qualquer pessoa da equipe vê a tela, mas só gerente ou administrador cadastra e altera.",
       "O saldo que aparece nos relatórios é sempre a soma dos lançamentos. O valor inicial da conta é só o ponto de partida.",
       "Na comissão, vence a regra mais específica: pessoa e serviço juntos ganham de só pessoa, que ganha de só serviço. Não vence o maior percentual. Sem nenhuma regra, a comissão é zero.",
-      "Lançamento recorrente nasce como conta a pagar, nunca como paga: o sistema sabe que vence, mas não sabe se você pagou. O dia do mês vai de 1 a 28; em mês mais curto, cai no último dia.",
+      "Lançamento recorrente nasce como conta a pagar, nunca como paga: o sistema sabe que vence, mas não sabe se você pagou. O dia do mês vai de 1 a 31; em mês mais curto, cai no último dia.",
       "Esta tela só cadastra. O lançamento do dia a dia (comandas) é feito em outra tela do CRM.",
     ],
   },
@@ -281,8 +281,8 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
       "Em “Nome da sua empresa”, escreva o nome que deve aparecer no menu lateral. Em branco, vale o padrão.",
       "Em “Cor da sua marca”, escreva um código de cor (por exemplo, #7a5cd6) ou use “Escolher a cor visualmente”. Em branco, volta à cor que o sistema já usa.",
       "Confira a prévia dos botões nos modos claro e escuro e o bloco “De onde vem cada coisa”, que diz se nome, cor e logo vêm de você, do padrão do sistema ou de quem instalou.",
-      "Suba o logo no campo de logo, na mesma tela.",
       "Clique em “Salvar”. Aparece “Marca salva.”",
+      "Para o logo, use o campo “Logo” (PNG ou JPG; SVG não é aceito) e, se quiser, “Logo para o tema escuro (opcional)”. Há também o “Ícone da aba”, uma imagem quadrada para o navegador e o aplicativo instalado. Logo e ícone são enviados na hora, sem precisar do “Salvar”.",
     ],
     cuidados: [
       "Só administrador abre esta tela.",
