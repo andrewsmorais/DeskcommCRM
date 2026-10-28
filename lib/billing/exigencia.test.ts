@@ -92,10 +92,10 @@ describe("telas abertas sem assinatura", () => {
 });
 
 describe("cota de agentes de IA por plano", () => {
-  it("Essencial 1, Impulso 3, Escala sem limite", () => {
+  it("Essencial 1, Impulso 2, Escala a partir de 3 (cards de 27/10/2026)", () => {
     expect(PLANOS_COMERCIAIS.essencial.agentes_ia).toBe(1);
-    expect(PLANOS_COMERCIAIS.impulso.agentes_ia).toBe(3);
-    expect(PLANOS_COMERCIAIS.escala.agentes_ia).toBe(-1);
+    expect(PLANOS_COMERCIAIS.impulso.agentes_ia).toBe(2);
+    expect(PLANOS_COMERCIAIS.escala.agentes_ia).toBe(3);
   });
 
   it("Essencial com 1 agente não cria o segundo", () => {

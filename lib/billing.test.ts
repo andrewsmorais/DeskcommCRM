@@ -60,7 +60,8 @@ describe("plano persistido da organização", () => {
         organization_id: ORG,
         plan_name: "Impulso",
         plan_slug: "impulso",
-        limits: { ...plano.limits, agentes_ia: 3 },
+        // A promessa do card (catálogo) vence o JSON de `plans`: Impulso 4/4/2/2/4.
+        limits: { whatsapp: 4, pipelines: 4, agentes_ia: 2, chatbots: 2, usuarios: 4 },
         status: "active",
         current_period_end: assinatura.current_period_end,
         asaas_subscription_id: assinatura.asaas_subscription_id,
