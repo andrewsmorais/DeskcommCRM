@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/hooks/i18n/useT";
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 
 type Limites = {
   whatsapp: number;
@@ -35,13 +36,7 @@ type Leitura = {
   pacote_base_escala: Limites;
 };
 
-const CAMPOS: { chave: keyof Limites; rotulo: string }[] = [
-  { chave: "whatsapp", rotulo: "Números de WhatsApp" },
-  { chave: "agentes_ia", rotulo: "Agentes de IA" },
-  { chave: "chatbots", rotulo: "Chatbots ligados" },
-  { chave: "pipelines", rotulo: "Funis" },
-  { chave: "usuarios", rotulo: "Usuários" },
-];
+const CHAVES: (keyof Limites)[] = ["whatsapp", "agentes_ia", "chatbots", "pipelines", "usuarios"];
 
 function daquiUmMes(): string {
   const d = new Date();
@@ -51,6 +46,15 @@ function daquiUmMes(): string {
 
 export function PlanoDoTenant({ organizationId }: { organizationId: string }) {
   const t = useT();
+  const tagDeIdioma = useTagDeIdioma();
+  // Rótulos literais em t(): a cerca de i18n recusa t() sobre variável.
+  const rotulos: Record<keyof Limites, string> = {
+    whatsapp: t("Números de WhatsApp"),
+    agentes_ia: t("Agentes de IA"),
+    chatbots: t("Chatbots ligados"),
+    pipelines: t("Funis"),
+    usuarios: t("Usuários"),
+  };
   const [leitura, setLeitura] = React.useState<Leitura | null>(null);
   const [erro, setErro] = React.useState(false);
   const [limites, setLimites] = React.useState<Limites | null>(null);
@@ -140,7 +144,7 @@ export function PlanoDoTenant({ organizationId }: { organizationId: string }) {
         <h2 className="text-base font-semibold">{t("Plano")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {a?.plano
-            ? `${a.plano} · ${a.status ?? "—"}${a.ate ? ` · ${t("até")} ${new Date(a.ate).toLocaleDateString("pt-BR")}` : ""}${a.no_asaas ? ` · ${t("cobrado pelo Asaas")}` : ""}`
+            ? `${a.plano} · ${a.status ?? "—"}${a.ate ? ` · ${t("até")} ${new Date(a.ate).toLocaleDateString(tagDeIdioma)}` : ""}${a.no_asaas ? ` · ${t("cobrado pelo Asaas")}` : ""}`
             : t("Sem assinatura.")}
           {!leitura.ativo && a?.plano ? ` · ${t("inativo")}` : ""}
         </p>
@@ -149,10 +153,10 @@ export function PlanoDoTenant({ organizationId }: { organizationId: string }) {
       <div className="space-y-3 border-t pt-4">
         <h3 className="text-sm font-semibold">{t("Ativar o Escala (proposta fechada)")}</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {CAMPOS.map(({ chave, rotulo }) => (
+          {CHAVES.map((chave) => (
             <div key={chave} className="space-y-1">
               <Label htmlFor={`escala-${chave}`} className="text-xs">
-                {t(rotulo)}
+                {rotulos[chave]}
               </Label>
               <Input
                 id={`escala-${chave}`}
