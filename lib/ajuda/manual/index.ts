@@ -8,6 +8,7 @@ import { MANUAL_IA } from "@/lib/ajuda/manual/ia";
 import { MANUAL_ATENDIMENTO } from "@/lib/ajuda/manual/atendimento";
 import { MANUAL_CANAIS } from "@/lib/ajuda/manual/canais";
 import { MANUAL_ANALISE } from "@/lib/ajuda/manual/analise";
+import { MANUAL_ORGANIZACAO } from "@/lib/ajuda/manual/organizacao";
 
 export { GUIAS } from "@/lib/ajuda/manual/guias";
 
@@ -17,4 +18,5 @@ export const MANUAL: ManualDoGrupo = {
   ...MANUAL_ATENDIMENTO,
   ...MANUAL_CANAIS,
   ...MANUAL_ANALISE,
+  ...MANUAL_ORGANIZACAO,
 };

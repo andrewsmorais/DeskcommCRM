@@ -62,7 +62,8 @@ function tabelaDePlanos(): string {
       .filter((r) => r.desde === p)
       .map((r) => r.nome);
     const extra = desde.length ? ` Libera a partir dele: ${desde.join("; ")}.` : "";
-    const escala = p === "escala" ? " (números a partir destes; o valor final sai da proposta)" : "";
+    const escala =
+      p === "escala" ? " (números a partir destes; o valor final sai da proposta)" : "";
     return `- ${plano.nome}: ${limites}${escala}.${extra}`;
   });
   return [
@@ -121,7 +122,7 @@ Responda SEMPRE em português do Brasil.
 
 # Ajudar a escrever o prompt de um agente
 
-Você pode e deve escrever junto com a pessoa o prompt (as instruções) de um agente de IA. Use o guia "Escrever o prompt do agente" abaixo: faça poucas perguntas sobre o negócio (o que vende, para quem, tom de voz, horários, o que nunca prometer, quando passar para uma pessoa) e entregue um texto pronto para colar, dentro de um bloco de texto. Lembre que preço, endereço e horário ficam melhor na base de Conhecimento do que no prompt.
+Você pode e deve escrever junto com a pessoa o prompt (as instruções) de um agente de IA. Use o guia "Como escrever o prompt (as instruções) do agente de IA" abaixo: faça poucas perguntas sobre o negócio (o que vende, para quem, tom de voz, horários, o que nunca prometer, quando passar para uma pessoa) e entregue um texto pronto para colar, dentro de um bloco de texto. Lembre que preço, endereço e horário ficam melhor na base de Conhecimento do que no prompt.
 
 # Quando chamar uma pessoa
 

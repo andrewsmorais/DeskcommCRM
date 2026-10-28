@@ -20,7 +20,7 @@ export const MANUAL_CRM: ManualDoGrupo = {
       'Para parar novas abordagens, use "Pausar abordagens"; para continuar, "Retomar fila".',
     ],
     cuidados: [
-      "Esta tela só aparece quando o módulo de disparo em massa está ligado na instalação. No ChatAI Online ele normalmente fica desligado: mandar mensagem para quem nunca falou com a empresa pode fazer o cliente perder o número de WhatsApp conectado por QR code. Se o menu não mostra Prospecção, é por isso.",
+      "Esta tela só aparece quando o módulo de disparo em massa está ligado na instalação. Ele normalmente fica desligado: mandar mensagem para quem nunca falou com a empresa pode fazer o cliente perder o número de WhatsApp conectado por QR code. Se o menu não mostra Prospecção, é por isso.",
       "Só quem tem papel de administrador abre a tela; os outros são levados para o Inbox.",
       "A busca usa o saldo da conta Apify do próprio cliente. A quantidade encontrada pode ser menor que o limite pedido.",
       'O botão "Iniciar abordagens com IA" fica desligado se não houver agente publicado ou se nenhum número estiver conectado (funcionando).',
@@ -45,7 +45,7 @@ export const MANUAL_CRM: ManualDoGrupo = {
     ],
     cuidados: [
       "Criar, renomear, reordenar, arquivar e excluir funis exige papel de gerente ou superior. Quem tem papel menor vê a lista e abre o quadro, mas não vê esses botões. Importar planilha está disponível a partir do papel de atendente.",
-      "O plano limita a quantidade de funis (Essencial: 2, Impulso: 4, Escala: 6). Passando do limite, a criação é recusada com a mensagem pedindo upgrade.",
+      'O plano limita a quantidade de funis (os números de cada plano estão na seção Planos; os da conta dele, em "Sobre este cliente"). Passando do limite, a criação é recusada com a mensagem pedindo upgrade.',
       "O funil padrão não pode ser arquivado. A tela mostra a explicação quando algo impede (por exemplo, formulário ou automação apontando para o funil).",
       '"Excluir de vez" não tem volta e só funciona em funil que nunca recebeu negócio. Se já recebeu, a exclusão é recusada e o funil continua arquivado. Na dúvida, arquive.',
       'O botão "Funil de clientes" só aparece quando a regra "Clientes pela agenda" está ligada em Configurações › Tipos de agendamento.',
@@ -69,7 +69,7 @@ export const MANUAL_CRM: ManualDoGrupo = {
       'Em "Configuração" ficam os textos salvos, a lista de exclusão (números que nenhuma campanha alcança) e os padrões de ritmo.',
     ],
     cuidados: [
-      "Esta tela só aparece quando o módulo de disparo em massa está ligado na instalação. No ChatAI Online ele normalmente fica desligado, porque disparo em massa pelo WhatsApp conectado por QR code pode fazer o cliente perder o número. Se o menu não mostra Campanhas, é por isso.",
+      "Esta tela só aparece quando o módulo de disparo em massa está ligado na instalação. Ele normalmente fica desligado, porque disparo em massa pelo WhatsApp conectado por QR code pode fazer o cliente perder o número. Se o menu não mostra Campanhas, é por isso.",
       "Campanhas em massa fazem parte dos planos a partir do Impulso.",
       "Cancelar é definitivo: quem ainda não recebeu não recebe mais e a campanha não volta a rodar.",
       "A campanha pode ficar mais devagar que o ritmo do número, nunca mais rápida. O envio pode levar horas.",
@@ -265,7 +265,7 @@ export const MANUAL_CRM: ManualDoGrupo = {
       'A tela é para gerentes ou superiores; o bloco "Vocabulário e campos" só aparece para administradores.',
       'O vocabulário muda só alguns textos do quadro (como a contagem na barra de seleção); botões como "Marcar como ganho" continuam com o mesmo nome.',
       "Para criar um funil novo, use a tela Funis, não esta.",
-      "O plano limita a quantidade de funis (Essencial: 2, Impulso: 4, Escala: 6).",
+      'O plano limita a quantidade de funis (os números de cada plano estão na seção Planos; os da conta dele, em "Sobre este cliente").',
     ],
   },
 };

@@ -5,7 +5,7 @@ import type { ManualDoGrupo } from "@/lib/ajuda/manual/tipos";
  *
  * Cada texto abaixo foi conferido contra a tela: os nomes entre aspas são os
  * que aparecem para o cliente. Limites de plano vêm de `lib/billing/catalogo.ts`
- * (agentes e chatbots: Essencial 1, Impulso 2, Escala 3 ou mais).
+ * (agentes e chatbots: números na tabela de Planos do prompt, vinda do catálogo).
  */
 export const MANUAL_IA: ManualDoGrupo = {
   "/app/ai/agents": {
@@ -28,7 +28,7 @@ export const MANUAL_IA: ManualDoGrupo = {
     ],
     cuidados: [
       "Agente de IA é diferente de chatbot. O agente conversa de forma livre, entende o que o cliente escreve e responde com as próprias palavras, e por isso tem custo de IA (aparece em IA › Uso e orçamento). O chatbot (menu Chatbots) segue um fluxo de passos que você desenha, sem IA e sem custo de IA.",
-      "O limite de agentes depende do plano: Essencial permite 1, Impulso 2 e Escala 3 ou mais. Agentes arquivados não contam. Ao atingir o limite, criar ou duplicar mostra o aviso para mudar de plano (Configurações › Plano e cobrança) ou arquivar um agente.",
+      'O limite de agentes depende do plano (os números de cada plano estão na seção Planos; os da conta dele, em "Sobre este cliente"). Agentes arquivados não contam. Ao atingir o limite, criar ou duplicar mostra o aviso para mudar de plano (Configurações › Plano e cobrança) ou arquivar um agente.',
       "Quem é gerente consegue abrir e ver os agentes (o botão aparece como “Visualizar”), mas criar, editar, publicar, pausar e arquivar é só para administrador.",
       "Neste sistema a empresa de IA, o modelo e a chave de acesso são da plataforma, então os campos “A inteligência que ele usa” e “Freios de segurança” não aparecem para o cliente. Se a tela avisar que “A inteligência artificial ainda não está pronta nesta conta”, o caminho é falar com o suporte.",
       "O pacote “Organizar a operação” (agente que organiza o CRM sozinho) é do plano Impulso em diante. No Essencial, o agente só usa as capacidades desse pacote que também servem para vender e atender.",
@@ -311,7 +311,7 @@ export const MANUAL_IA: ManualDoGrupo = {
     ],
     cuidados: [
       "Chatbot é diferente de agente de IA. O chatbot só segue o caminho que você desenhou, sem entender texto livre, e por isso não gasta IA. O agente de IA conversa livremente e tem custo de IA.",
-      "O limite de chatbots ligados depende do plano: Essencial 1, Impulso 2 e Escala 3 ou mais. Dá para ter mais fluxos criados do que ligados.",
+      'O limite de chatbots ligados depende do plano (os números de cada plano estão na seção Planos; os da conta dele, em "Sobre este cliente"). Dá para ter mais fluxos criados do que ligados.',
       "Passos básicos (mensagem, mídia, menu, perguntar, horário, transferir, etiqueta, agendar, mover no funil, avaliação e finalizar) estão em todos os planos. O chatbot avançado é do plano Impulso em diante: webhook, condições da conversa, aguardar, distribuir fluxo, bloquear e excluir contato, acionar outro fluxo, iniciar follow-up e iniciar por automação. Na lista de passos eles aparecem com o selo “Plano Impulso”, e o fluxo que os usa não grava no Essencial.",
       "Cada número só tem um chatbot de entrada ligado. Se você liga um que atende o mesmo número (ou “Qualquer número da empresa”) de outro já ligado, o outro é desligado.",
       "Depois de terminar, o fluxo só recomeça na mesma conversa 6 horas depois.",

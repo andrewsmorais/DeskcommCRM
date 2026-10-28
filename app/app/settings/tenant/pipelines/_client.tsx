@@ -174,7 +174,7 @@ export function PipelinesClient({
     // tela existir, e mandava o cliente procurar quem instalou.
     return (
       <Card className="p-6 text-sm leading-relaxed text-muted-foreground">
-        {t("Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Crie o primeiro em Funis, no botão "Novo funil"; depois ele aparece aqui para você escolher a etapa de cada passo.")}
+        {t("Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Crie o primeiro em Funis, no botão \"Novo funil\"; depois ele aparece aqui para você escolher a etapa de cada passo.")}
       </Card>
     );
   }

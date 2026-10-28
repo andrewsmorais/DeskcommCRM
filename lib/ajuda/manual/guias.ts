@@ -122,7 +122,7 @@ Mensagens curtas, uma pergunta por vez, sem termos técnicos. [Emoji: não / com
 **Boas práticas:**
 - Um assunto por material (um para preços, um para horários e endereço, um de perguntas frequentes).
 - Escreva como falaria com o cliente, frases completas, com valores e condições claros.
-- Depois de adicionar, o material fica "preparando"; em instantes o agente já sabe. Se a tela avisar que falta chave para preparar, fale com a equipe do ChatAI Online.
+- Depois de adicionar, o material fica "preparando"; em instantes o agente já sabe. Se a tela avisar que falta chave para preparar, fale com a equipe.
 - Mudou um preço? Adicione o material novo e arquive o antigo (**arquivados**), para não ficar informação velha.
 - Cada agente usa os materiais que forem escolhidos na versão publicada dele; confira em **Agentes** se o material está selecionado.
 - Teste: pergunte no teste do agente algo que está no material e veja se responde certo.`,
@@ -151,7 +151,7 @@ Mensagens curtas, uma pergunta por vez, sem termos técnicos. [Emoji: não / com
   },
   {
     id: "planos",
-    titulo: "Planos do ChatAI Online: como funcionam",
+    titulo: "Planos: como funcionam",
     conteudo: `Os planos são **Essencial**, **Impulso** e **Escala**. O preço é por plano (não por atendente) e cada plano define quantos números de WhatsApp, agentes de IA, chatbots, funis e usuários a conta pode ter, e quais recursos estão liberados. Os números exatos de cada plano aparecem na tabela de planos que acompanha estas instruções: use sempre aquela tabela, nunca de memória. A regra geral é: um número para cada agente ou chatbot, e um funil para cada número.
 
 **Como contratar (Essencial e Impulso):**
@@ -160,7 +160,7 @@ Mensagens curtas, uma pergunta por vez, sem termos técnicos. [Emoji: não / com
 - Há teste grátis de 7 dias. Quando o teste vence sem pagamento, o uso do sistema é bloqueado até a assinatura ser paga; o pedido de pagamento pendente aparece na tela de plano (Billing).
 - Há reembolso integral nos primeiros 7 dias.
 
-**Escala:** é sob proposta. O cliente conversa com a equipe do ChatAI Online, que combina o pacote e ativa o plano manualmente. O Escala parte do pacote base e pode ter números maiores por proposta.
+**Escala:** é sob proposta. O cliente conversa com a equipe, que combina o pacote e ativa o plano manualmente. O Escala parte do pacote base e pode ter números maiores por proposta.
 
 **Recursos por plano (resumo do catálogo):**
 - Desde o Essencial: agendamentos.
@@ -173,13 +173,13 @@ Mensagens curtas, uma pergunta por vez, sem termos técnicos. [Emoji: não / com
   {
     id: "o-que-o-sistema-nao-faz",
     titulo: "O que o sistema não faz (limites que evitam frustração)",
-    conteudo: `**WhatsApp por QR code.** A conexão normal do número é por QR code, lendo com o celular. Esse tipo de conexão não é a API oficial da Meta, e por isso o WhatsApp pode bloquear um número que seja usado de forma abusiva (mandar mensagem para quem não pediu, em volume). O sistema tem proteções de envio (ritmo, janela de horário, aquecimento), mas elas não eliminam o risco. Se o cliente perguntar pela API oficial: existe uma aba "API Oficial (Meta)" em Conexões, mas ela depende de cadastro feito pela administração da plataforma; não é algo que o cliente liga sozinho. Encaminhe para a equipe do ChatAI Online.
+    conteudo: `**WhatsApp por QR code.** A conexão normal do número é por QR code, lendo com o celular. Esse tipo de conexão não é a API oficial da Meta, e por isso o WhatsApp pode bloquear um número que seja usado de forma abusiva (mandar mensagem para quem não pediu, em volume). O sistema tem proteções de envio (ritmo, janela de horário, aquecimento), mas elas não eliminam o risco. Se o cliente perguntar pela API oficial: existe uma aba "API Oficial (Meta)" em Conexões, mas ela depende de cadastro feito pela administração da plataforma; não é algo que o cliente liga sozinho. Encaminhe para a equipe.
 
 **Disparo em massa e campanhas estão desligados por padrão.** É uma decisão de proteção do número: o produto é de atendimento, ou seja, responder quem chamou. Com o módulo desligado, as telas Campanhas e Prospecção não aparecem. O follow-up continua, porque fala só com quem já conversou com a empresa. Se o cliente quer fazer campanha, diga que é um módulo que a administração da plataforma precisa ligar e que isso aumenta o risco de bloqueio do número.
 
 **Este assistente de ajuda** explica como usar o sistema, ajuda a escrever textos (como o prompt do agente) e orienta o passo a passo. Ele **não acessa os dados da conta** do cliente (conversas, contatos, configurações) e **não faz alterações por ele**: quem clica, cola e salva é o próprio cliente. Se algo parece errado na conta, peça para a pessoa descrever o que vê na tela.
 
-**Chave de IA.** No ChatAI Online a chave de IA é da plataforma: o cliente não precisa contratar nem colar uma chave própria. O uso de IA entra no consumo da conta (**Uso e orçamento**).
+**Chave de IA.** A chave de IA é da plataforma: o cliente não precisa contratar nem colar uma chave própria. O uso de IA entra no consumo da conta (**Uso e orçamento**).
 
 **O agente de IA:**
 - Só atende depois de **publicado** e com um **Número conectado**.

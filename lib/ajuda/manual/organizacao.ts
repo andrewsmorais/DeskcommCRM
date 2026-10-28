@@ -158,7 +158,7 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
     ],
     cuidados: [
       "Só administrador convida, muda papel e revoga. Gerente vê os convites pendentes e mexe na aba “Atendimento”.",
-      "O plano limita quantas pessoas a equipe pode ter. Convite pendente ocupa uma vaga até ser aceito, revogado ou expirar. Pelo catálogo: Essencial 2, Impulso 4 e Escala 6 usuários (o Escala pode ter mais, por proposta). Agentes de IA não ocupam vaga. Se as vagas acabarem, o convite é recusado com a mensagem de que é preciso revogar um convite ou mudar de plano em Plano e cobrança.",
+      'O plano limita quantas pessoas a equipe pode ter. Convite pendente ocupa uma vaga até ser aceito, revogado ou expirar. Os números de cada plano estão na seção Planos; os da conta dele, em "Sobre este cliente". Agentes de IA não ocupam vaga. Se as vagas acabarem, o convite é recusado com a mensagem de que é preciso revogar um convite ou mudar de plano em Plano e cobrança.',
       "Se o e-mail do convite não saiu, a coluna mostra “Não saiu”. Use “Copiar link” e mande o link à pessoa por outro meio.",
       "Convidar quem já faz parte da empresa falha com “Já é membro desta organização.”",
       "Trocar o menu de um membro que já existe (botão da coluna “Interface”) é o recurso “Permissões avançadas”, do plano Escala.",
@@ -310,10 +310,10 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
     cuidados: [
       "Só administrador abre esta tela. O assistente não altera plano nem cobrança; quem faz é o administrador, aqui e na página de planos.",
       "Esta tela não troca o plano por dentro do sistema: a troca e o pagamento acontecem na página de planos do site.",
-      "Os planos são Essencial, Impulso e Escala. O Escala é sob proposta: o cliente conversa com a equipe do ChatAI Online, que combina o pacote e ativa o plano manualmente. Ele não passa pelo pagamento do site.",
+      "Os planos são Essencial, Impulso e Escala. O Escala é sob proposta: o cliente conversa com a equipe, que combina o pacote e ativa o plano manualmente. Ele não passa pelo pagamento do site.",
       "Existe teste grátis de 7 dias, e nele a etiqueta mostra “Em Período de Teste”. Se o teste vence sem pagamento, a etiqueta passa a “Período encerrado”, o uso do sistema é bloqueado e continuam abertas só as telas Plano e cobrança, Organização, Perfil e Segurança. O pedido de pagamento pendente aparece aqui, no botão “Pagar a fatura em aberto”. Os dados ficam preservados.",
       "Se você mudar para um plano menor, nada do que já existe é apagado: só não dá para criar mais até voltar ao limite.",
-      "Usuários da equipe por plano: Essencial 2, Impulso 4 e Escala 6 (o Escala pode ter mais, por proposta). Convites válidos reservam vaga até serem aceitos, revogados ou expirarem. Agentes de IA não ocupam vaga.",
+      'O plano limita os usuários da equipe (os números de cada plano estão na seção Planos; os da conta dele, em "Sobre este cliente"). Convites válidos reservam vaga até serem aceitos, revogados ou expirarem. Agentes de IA não ocupam vaga.',
       "Cancelada a assinatura, a tela mostra “Assinatura cancelada” e, se houver, até quando o acesso vale.",
       "Pedidos de reembolso e dúvidas de cobrança vão para o suporte, porque a tela não faz reembolso.",
     ],
