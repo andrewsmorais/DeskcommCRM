@@ -83,6 +83,12 @@ export interface HandlerCtx {
   serviceBoundary?: ServiceBoundary | null;
   /** Origem de evento derivado; não é campo de input público. */
   serviceOrigin?: ServiceOrigin;
+  /**
+   * Texto ORIGINAL de uma mensagem que saiu como nota de voz do agente — vira
+   * `messages.media_derived_text`. Campo INTERNO: só `sendTurnMessage` o
+   * preenche; nenhuma rota pública o lê do corpo da requisição.
+   */
+  aiVoiceDerivedText?: string;
   /** Chave HTTP validada na borda para replay de uma criação. */
   idempotencyKey?: string;
   /** Identidade estável do job interno; não usar claim, que muda em cada reclaim. */
