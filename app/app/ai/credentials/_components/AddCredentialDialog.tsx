@@ -27,18 +27,19 @@ import {
 } from "@/components/ui/select";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
-import { credentialsListQueryKey, type CredentialRow } from "@/hooks/ai/useCredentials";
+import { credentialsListQueryKey, type CredentialRow, type ServiceProvider } from "@/hooks/ai/useCredentials";
 import {
   IDS_COM_CHAVE,
   PROVEDORES_COM_CHAVE,
   type ProvedorComChave,
 } from "@/lib/ai/pontos/provedores";
+import { IDS_DE_SERVICO, PROVEDORES_DE_SERVICO } from "@/lib/ai/pontos/provedores-de-servico";
 import { descreverErroDeValidacao } from "@/lib/ai/credenciais/erro-de-validacao";
 import { useT } from "@/hooks/i18n/useT";
 
 const formSchema = z.object({
   // Derivado das listas (`lib/ai/pontos/provedores.ts`), como a rota.
-  provider: z.enum(IDS_COM_CHAVE),
+  provider: z.enum([...IDS_COM_CHAVE, ...IDS_DE_SERVICO]),
   // Opcional: o leigo cola só a chave. Em branco, o nome vira o do provedor
   // (ver `onSubmit`) — o banco exige um, e a pessoa não precisa inventá-lo.
   label: z.string().trim().max(80),
@@ -63,7 +64,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** O cartão do Jev abre o diálogo já nele; a tela de Credenciais, na Anthropic. */
-  providerInicial?: ProvedorComChave;
+  providerInicial?: ProvedorComChave | ServiceProvider;
   /** Chamado depois de gravar, para quem abriu o diálogo fora de Credenciais reler o que mostra. */
   aoSalvar?: () => void;
 }
@@ -77,7 +78,7 @@ export function AddCredentialDialog({
   const t = useT();
   const router = useRouter();
   const qc = useQueryClient();
-  const [provider, setProvider] = useState<ProvedorComChave>(providerInicial);
+  const [provider, setProvider] = useState<ProvedorComChave | ServiceProvider>(providerInicial);
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
   /** O endereço da API compatível com a OpenAI — só o provedor personalizado tem. */
@@ -90,7 +91,12 @@ export function AddCredentialDialog({
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
-  const provedor = PROVEDORES_COM_CHAVE.find((p) => p.id === provider) ?? PROVEDORES_COM_CHAVE[0];
+  const provedor =
+    PROVEDORES_COM_CHAVE.find((p) => p.id === provider) ??
+    PROVEDORES_DE_SERVICO.find((p) => p.id === provider) ??
+    PROVEDORES_COM_CHAVE[0];
+  // "modelos" não descreve o catálogo de um serviço de voz: ali a chave devolve as vozes da conta.
+  const ehServicoDeVoz = (id: string) => PROVEDORES_DE_SERVICO.some((p) => p.id === id);
 
   const reset = () => {
     setProvider(providerInicial);
@@ -177,7 +183,7 @@ export function AddCredentialDialog({
         const justCreated = fresh?.find((c) => c.id === res.data.id);
         if (justCreated?.models_available != null) {
           toast.success(
-            `${t("Validada")} — ${justCreated.models_available.length} ${t("modelos disponíveis.")}`,
+            `${t("Validada")} — ${justCreated.models_available.length} ${ehServicoDeVoz(justCreated.provider) ? t("vozes disponíveis.") : t("modelos disponíveis.")}`,
           );
         } else if (justCreated?.validation_error) {
           const erro = descreverErroDeValidacao(justCreated.validation_error, justCreated.provider);
@@ -219,12 +225,18 @@ export function AddCredentialDialog({
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cred-provider">{t("Provedor")}</Label>
-            <Select value={provider} onValueChange={(v) => setProvider(v as ProvedorComChave)}>
+            <Select value={provider} onValueChange={(v) => setProvider(v as ProvedorComChave | ServiceProvider)}>
               <SelectTrigger id="cred-provider">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {PROVEDORES_COM_CHAVE.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.rotulo}
+                  </SelectItem>
+                ))}
+                {/* Serviço de voz: a chave não conversa, só fala e ouve. */}
+                {PROVEDORES_DE_SERVICO.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.rotulo}
                   </SelectItem>

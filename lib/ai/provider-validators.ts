@@ -10,6 +10,7 @@
  */
 import { baseDaApiDoJev } from "@/lib/ai/decisao/cliente";
 import type { ProvedorComChave } from "@/lib/ai/pontos/provedores";
+import type { PROVEDORES_DE_SERVICO } from "@/lib/ai/pontos/provedores-de-servico";
 import { motivoDaRecusaDeDestino } from "@/lib/automation/destinos-internos-autorizados";
 import { env } from "@/lib/env";
 
@@ -24,6 +25,13 @@ export interface ValidationFail {
 }
 
 export type ValidationResult = ValidationOk | ValidationFail;
+
+/**
+ * Os provedores de SERVIÇO (voz, hoje) cuja chave este arquivo sabe validar.
+ * Derivado de `lib/ai/pontos/provedores-de-servico.ts` — lista separada da de
+ * chat porque voz não conversa: não entra no seletor de modelo do agente.
+ */
+export type ServiceProvider = (typeof PROVEDORES_DE_SERVICO)[number]["id"];
 
 const TIMEOUT_MS = 5000;
 /** Só do provedor personalizado — ver `validateCustomKey`. */
@@ -372,8 +380,34 @@ export async function validateCustomKey(
  * 0127 — quando era repetida à mão aqui, a 0127 abriu o banco para a OpenRouter
  * e as cópias continuaram recusando.
  */
+/**
+ * ElevenLabs — `/v1/voices` exige a chave e devolve as vozes da conta, que é o
+ * que a tela de voz lista para o operador escolher. `models` carrega o
+ * `voice_id`, que é o valor que a síntese precisa.
+ */
+export async function validateElevenLabsKey(apiKey: string): Promise<ValidationResult> {
+  try {
+    const res = await timedFetch("https://api.elevenlabs.io/v1/voices", {
+      method: "GET",
+      headers: { "xi-api-key": apiKey },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, error: "auth_failed_401" };
+    }
+    if (!res.ok) {
+      return { ok: false, error: `provider_status_${res.status}` };
+    }
+    const json = (await res.json()) as { voices?: { voice_id?: string }[] };
+    const models = (json.voices ?? []).map((v) => v.voice_id ?? "").filter(Boolean);
+    return { ok: true, models };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.name : "network_error" };
+  }
+}
+
 export function validateProviderKey(
-  provider: ProvedorComChave,
+  // A credencial dos dois mundos (chat e serviço de voz) mora na mesma tabela.
+  provider: ProvedorComChave | ServiceProvider,
   apiKey: string,
   baseUrl?: string,
 ): Promise<ValidationResult> {
@@ -388,6 +422,8 @@ export function validateProviderKey(
       return validateOpenRouterKey(apiKey);
     case "deepseek":
       return validateDeepSeekKey(apiKey);
+    case "elevenlabs":
+      return validateElevenLabsKey(apiKey);
     case "requesty":
       return validateRequestyKey(apiKey);
     case "custom":
