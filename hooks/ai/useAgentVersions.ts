@@ -38,6 +38,9 @@ export interface AgentVersionRow {
     callback_enabled?: boolean;
     send_window?: { start: string; end: string; weekdays: number[] } | null;
   };
+  /** A resposta pode sair como nota de voz (ElevenLabs). */
+  voz_enabled: boolean;
+  voz_quando: "nunca" | "espelhar" | "sempre" | "quando_pede";
   status: "draft" | "published" | "superseded" | "archived";
   published_at: string | null;
   superseded_at: string | null;
