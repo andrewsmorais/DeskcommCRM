@@ -39,6 +39,8 @@ function fakeConfig(agentId: string): PublishedAgentConfig {
   operatorModel: null,
   operatorToolIds: [], pipelineIds: [],
   agentCreatedBy: null,
+  vozEnabled: false,
+  vozQuando: 'espelhar',
   };
 }
 
