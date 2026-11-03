@@ -93,6 +93,18 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
     "Quando adicionada essa ação no seu chatbot, ele abre um aviso na Central de avisos, com som e notificação para a equipe, levando à conversa.\n\nAs respostas do contato entram só na nota da conversa, não no aviso.",
   enviar_pagamento:
     "Quando adicionada essa ação no seu chatbot, ele envia ao contato o link de pagamento numa mensagem arrumada: o que está sendo cobrado, o valor e o link. Se você colocar o Pix copia e cola, ele vai numa mensagem separada, para o contato copiar inteiro.\n\nUse o link do Mercado Pago, Asaas, PagSeguro, da sua loja ou de qualquer plataforma. O link aceita {{variavel}}: por exemplo, o {{link_checkout}} que chega numa automação de venda, ou um link guardado pelo WebHook.\n\nO chatbot não gera a cobrança nem confere se foi pago. Fica uma nota interna na conversa dizendo que o link foi enviado.\n\nSe o link e o Pix ficarem vazios (uma variável sem valor), nada é enviado e o fluxo segue por “Sem link”.",
+  etapa_do_funil:
+    "Quando adicionada essa condição no seu chatbot, ele olha os negócios abertos do contato e segue por “Está” se ele tiver negócio no funil escolhido, numa das etapas marcadas (ou em qualquer etapa, se nenhuma estiver marcada). Senão, segue por “Não está”.\n\nUse para tratar diferente quem já está em negociação, quem já pagou ou quem ainda não entrou no funil.",
+  reagendar_horario:
+    "Quando adicionada essa ação no seu chatbot, ele acha o próximo compromisso do contato na Agenda e oferece os horários livres do mesmo tipo de atendimento e da mesma agenda. O contato escolhe e o compromisso muda de horário: a Agenda confere de novo se o horário está livre, avisa a agenda conectada e registra a mudança.\n\nSe o horário escolhido for ocupado no meio do caminho, o chatbot oferece os livres de novo. Sem compromisso futuro, segue por “Sem agendamento”; sem horário livre, por “Sem horário livre”.",
+  cancelar_agendamento:
+    "Quando adicionada essa ação no seu chatbot, ele cancela o próximo compromisso do contato na Agenda, do mesmo jeito que o botão da tela: o horário volta a ficar livre e a agenda conectada é avisada. O horário cancelado fica em {{agendamento}}, para você confirmar numa mensagem.\n\nSem compromisso futuro, segue por “Sem agendamento”. Para pedir confirmação antes de cancelar, coloque um “Pedir para escolher” na frente.",
+  enviar_localizacao:
+    "Quando adicionada essa ação no seu chatbot, ele envia o nome do lugar, o endereço e o link do mapa, que abre direto no celular do contato. Com latitude e longitude, o mapa cai no ponto exato.\n\nO pino de localização do WhatsApp não é usado: a mensagem com o link funciona em qualquer número.",
+  enviar_contato:
+    "Quando adicionada essa ação no seu chatbot, ele envia um cartão de contato (nome e telefone), o mesmo que a Inbox manda. O contato salva com um toque, por exemplo o número do financeiro ou de um vendedor.",
+  enviar_produto:
+    "Quando adicionada essa ação no seu chatbot, ele envia um produto do Catálogo: a primeira foto com o nome, o preço e a descrição. Tudo é lido na hora do envio, então preço mudado no Catálogo já sai certo.\n\nProduto desativado ou apagado não é enviado, e fica uma nota interna para a equipe.",
   privar_liberar:
     "Quando adicionada essa ação no seu chatbot, ela torna a conversa privada ou a libera de novo. Privada, a conversa só aparece para o atendente responsável, para os gerentes e administradores; os outros atendentes não a veem, nem as mensagens e notas dela, mesmo que a empresa deixe todos verem tudo.\n\nUse depois de transferir para um atendente específico: sem responsável, só os gestores enxergam a conversa até alguém assumi-la.\n\nLiberar devolve a conversa à visibilidade da empresa. A mudança fica registrada na auditoria e numa nota da conversa.",
   fluxo_de_espera:
@@ -128,6 +140,8 @@ export const DESCRICOES_DE_VARIAVEL = {
   valor: "Valor da venda ou do negócio.",
   evento_da_venda: "O que aconteceu na plataforma de vendas (aprovada, abandonada…).",
   pix_copia_e_cola: "O Pix copia e cola da compra que ainda não foi paga (quando a plataforma manda).",
+  agendamento: "Quando era o compromisso cancelado.",
+  agendamento_anterior: "Quando era o compromisso antes de mudar.",
   digitado: "O que o contato digitou.",
   resposta_do_formulario: "Resposta da pergunta:",
   horario: "O horário marcado, como o contato leu.",
@@ -165,6 +179,14 @@ export function variaveisDoPasso(tipo: TipoDePasso, dados: unknown): VariavelExp
         descricao: "resposta_do_formulario" as const,
         ...(q.pergunta ? { detalhe: q.pergunta } : {}),
       }));
+    case "cancelar_agendamento":
+      return [{ nome: "agendamento", descricao: "agendamento" }];
+    case "reagendar_horario":
+      return [
+        { nome: "horario", descricao: "horario" },
+        { nome: "agendamento_anterior", descricao: "agendamento_anterior" },
+        { nome: "agendamento_status", descricao: "agendamento_status" },
+      ];
     case "agendar_horario":
       return [
         { nome: "horario", descricao: "horario" },

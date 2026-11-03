@@ -5957,6 +5957,146 @@ export const DICIONARIO: Traducoes = {
     },
   "Se a resposta não estiver no formato": { es: "Si la respuesta no está en el formato" },
   "Usar a mensagem anterior": { es: "Usar el mensaje anterior" },
+  "Atendimento inicial": { es: "Atención inicial" },
+  "Cumprimenta, pergunta o nome, guarda no cadastro e mostra as opções.": {
+    es: "Saluda, pregunta el nombre, lo guarda en el registro y muestra las opciones.",
+  },
+  "Qualificação comercial": { es: "Calificación comercial" },
+  "Pergunta o interesse, o prazo e o e-mail, põe no funil e passa para um vendedor em rodízio.": {
+    es: "Pregunta el interés, el plazo y el correo, lo pone en el embudo y lo pasa a un vendedor en rotación.",
+  },
+  "Apresentação de produtos": { es: "Presentación de productos" },
+  "O cliente escolhe o que quer ver e recebe o produto do Catálogo com foto e preço atuais.": {
+    es: "El cliente elige qué quiere ver y recibe el producto del Catálogo con foto y precio actuales.",
+  },
+  "Envio de catálogo": { es: "Envío de catálogo" },
+  "Manda o catálogo em PDF e o link do site, e oferece ajuda para escolher.": {
+    es: "Envía el catálogo en PDF y el enlace del sitio, y ofrece ayuda para elegir.",
+  },
+  "Envio de pagamento": { es: "Envío de pago" },
+  "Confere o e-mail do cliente e manda o link de pagamento e o Pix.": {
+    es: "Verifica el correo del cliente y envía el enlace de pago y el Pix.",
+  },
+  "Recuperar cliente sem resposta": { es: "Recuperar cliente sin respuesta" },
+  "Para uma automação de silêncio: puxa assunto e, sem resposta em 1 dia, encerra com educação.": {
+    es: "Para una automatización de silencio: retoma la conversación y, sin respuesta en 1 día, cierra con amabilidad.",
+  },
+  "Follow-up comercial": { es: "Seguimiento comercial" },
+  "O atendente dispara na conversa: agradece, avisa do retorno e põe o contato num follow-up.": {
+    es: "El agente lo dispara en la conversación: agradece, avisa del regreso y pone al contacto en un seguimiento.",
+  },
+  "Confirmação de agendamento": { es: "Confirmación de cita" },
+  "Para um lembrete da Agenda: pergunta se o cliente confirma, quer remarcar ou cancelar.": {
+    es: "Para un recordatorio de la Agenda: pregunta si el cliente confirma, quiere reprogramar o cancelar.",
+  },
+  Reagendamento: { es: "Reprogramación" },
+  'Quem escreve "remarcar" vê os horários livres e muda o próprio compromisso.': {
+    es: 'Quien escribe "remarcar" ve los horarios libres y cambia su propia cita.',
+  },
+  "Transferência para vendedor": { es: "Transferencia a vendedor" },
+  "Volta o cliente para o vendedor que já o atendeu; quem é novo entra no rodízio.": {
+    es: "Devuelve el cliente al vendedor que ya lo atendió; quien es nuevo entra en la rotación.",
+  },
+  "Pós-venda": { es: "Posventa" },
+  "Quando a venda é aprovada: boas-vindas e, 3 dias depois, pede uma nota.": {
+    es: "Cuando se aprueba la venta: bienvenida y, 3 días después, pide una calificación.",
+  },
+  "Recuperar oportunidade parada": { es: "Recuperar oportunidad estancada" },
+  "Para uma automação de etapa parada: pergunta se ainda há interesse e anota o motivo de quem desistiu.":
+    {
+      es: "Para una automatización de etapa estancada: pregunta si aún hay interés y anota el motivo de quien desistió.",
+    },
+  "Siga um caminho se o contato tem negócio aberto num funil (ou numa etapa dele).": {
+    es: "Sigue un camino si el contacto tiene un negocio abierto en un embudo (o en una etapa de él).",
+  },
+  "Reagendar horário": { es: "Reprogramar horario" },
+  "Mude o próximo compromisso do contato para outro horário livre.": {
+    es: "Cambia la próxima cita del contacto a otro horario libre.",
+  },
+  "Cancele o próximo compromisso do contato na Agenda.": {
+    es: "Cancela la próxima cita del contacto en la Agenda.",
+  },
+  "Enviar produto": { es: "Enviar producto" },
+  "Envie um produto do Catálogo com foto, preço e descrição atualizados.": {
+    es: "Envía un producto del Catálogo con foto, precio y descripción actualizados.",
+  },
+  "Enviar localização": { es: "Enviar ubicación" },
+  "Envie o endereço com o link do mapa.": { es: "Envía la dirección con el enlace del mapa." },
+  "Envie um cartão de contato que o cliente salva com um toque.": {
+    es: "Envía una tarjeta de contacto que el cliente guarda con un toque.",
+  },
+  Remarcou: { es: "Reprogramó" },
+  "Sem agendamento": { es: "Sin cita" },
+  "Não cancelou": { es: "No canceló" },
+  Está: { es: "Está" },
+  "Não está": { es: "No está" },
+  'O chatbot acha o próximo compromisso do contato e oferece horários livres do mesmo tipo de atendimento e da mesma agenda. Sem compromisso futuro, segue por "Sem agendamento".':
+    {
+      es: 'El chatbot encuentra la próxima cita del contacto y ofrece horarios libres del mismo tipo de atención y de la misma agenda. Sin cita futura, sigue por "Sin cita".',
+    },
+  "Motivo que fica no compromisso": { es: "Motivo que queda en la cita" },
+  'Cancela o próximo compromisso do contato na Agenda, como o botão da tela. O horário cancelado fica em {{agendamento}}. Sem compromisso futuro, segue por "Sem agendamento". Para pedir confirmação antes, ponha um "Pedir para escolher" na frente.':
+    {
+      es: 'Cancela la próxima cita del contacto en la Agenda, como el botón de la pantalla. El horario cancelado queda en {{agendamento}}. Sin cita futura, sigue por "Sin cita". Para pedir confirmación antes, pon un "Pedir que elija" delante.',
+    },
+  "Etapas (opcional)": { es: "Etapas (opcional)" },
+  'Segue por "Está" quando o contato tem negócio aberto neste funil numa das etapas marcadas. Sem etapa marcada: em qualquer etapa do funil.':
+    {
+      es: 'Sigue por "Está" cuando el contacto tiene un negocio abierto en este embudo en una de las etapas marcadas. Sin etapa marcada: en cualquier etapa del embudo.',
+    },
+  "Nome do lugar (opcional)": { es: "Nombre del lugar (opcional)" },
+  "Latitude (opcional)": { es: "Latitud (opcional)" },
+  "Longitude (opcional)": { es: "Longitud (opcional)" },
+  "Mensagem antes (opcional)": { es: "Mensaje antes (opcional)" },
+  "Sai como mensagem com o endereço e o link do mapa, que abre no celular. Com latitude e longitude, o mapa cai no ponto exato.":
+    {
+      es: "Sale como mensaje con la dirección y el enlace del mapa, que se abre en el celular. Con latitud y longitud, el mapa cae en el punto exacto.",
+    },
+  "Telefone com DDD": { es: "Teléfono con código de área" },
+  "O cliente recebe um cartão de contato e salva com um toque.": {
+    es: "El cliente recibe una tarjeta de contacto y la guarda con un toque.",
+  },
+  "Produto do Catálogo": { es: "Producto del Catálogo" },
+  "Escolha um produto": { es: "Elige un producto" },
+  "Nenhum produto ainda. Cadastre em Catálogo.": {
+    es: "Aún no hay productos. Regístralos en Catálogo.",
+  },
+  "Na hora do envio, o chatbot lê o produto no Catálogo: sai a primeira foto com nome, preço e descrição atuais. Produto desativado não sai e fica uma nota para a equipe.":
+    {
+      es: "Al enviar, el chatbot lee el producto en el Catálogo: sale la primera foto con nombre, precio y descripción actuales. Un producto desactivado no sale y queda una nota para el equipo.",
+    },
+  "1 etapa": { es: "1 etapa" },
+  etapas: { es: "etapas" },
+  "Próximo compromisso do contato": { es: "Próxima cita del contacto" },
+  "No teste, nada é cancelado na Agenda.": { es: "En la prueba, no se cancela nada en la Agenda." },
+  "Cartão de contato": { es: "Tarjeta de contacto" },
+  produto: { es: "producto" },
+  "Quando era o compromisso cancelado.": { es: "Cuándo era la cita cancelada." },
+  "Quando era o compromisso antes de mudar.": { es: "Cuándo era la cita antes del cambio." },
+  "Quando adicionada essa condição no seu chatbot, ele olha os negócios abertos do contato e segue por “Está” se ele tiver negócio no funil escolhido, numa das etapas marcadas (ou em qualquer etapa, se nenhuma estiver marcada). Senão, segue por “Não está”.\n\nUse para tratar diferente quem já está em negociação, quem já pagou ou quem ainda não entrou no funil.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, mira los negocios abiertos del contacto y sigue por “Está” si tiene un negocio en el embudo elegido, en una de las etapas marcadas (o en cualquier etapa, si no hay ninguna marcada). Si no, sigue por “No está”.\n\nÚsala para tratar distinto a quien ya está en negociación, a quien ya pagó o a quien aún no entró en el embudo.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele acha o próximo compromisso do contato na Agenda e oferece os horários livres do mesmo tipo de atendimento e da mesma agenda. O contato escolhe e o compromisso muda de horário: a Agenda confere de novo se o horário está livre, avisa a agenda conectada e registra a mudança.\n\nSe o horário escolhido for ocupado no meio do caminho, o chatbot oferece os livres de novo. Sem compromisso futuro, segue por “Sem agendamento”; sem horário livre, por “Sem horário livre”.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, encuentra la próxima cita del contacto en la Agenda y ofrece los horarios libres del mismo tipo de atención y de la misma agenda. El contacto elige y la cita cambia de horario: la Agenda vuelve a verificar que el horario esté libre, avisa a la agenda conectada y registra el cambio.\n\nSi el horario elegido se ocupa en el camino, el chatbot vuelve a ofrecer los libres. Sin cita futura, sigue por “Sin cita”; sin horario libre, por “Sin horario libre”.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele cancela o próximo compromisso do contato na Agenda, do mesmo jeito que o botão da tela: o horário volta a ficar livre e a agenda conectada é avisada. O horário cancelado fica em {{agendamento}}, para você confirmar numa mensagem.\n\nSem compromisso futuro, segue por “Sem agendamento”. Para pedir confirmação antes de cancelar, coloque um “Pedir para escolher” na frente.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, cancela la próxima cita del contacto en la Agenda, igual que el botón de la pantalla: el horario vuelve a quedar libre y se avisa a la agenda conectada. El horario cancelado queda en {{agendamento}}, para que lo confirmes en un mensaje.\n\nSin cita futura, sigue por “Sin cita”. Para pedir confirmación antes de cancelar, pon un “Pedir que elija” delante.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia o nome do lugar, o endereço e o link do mapa, que abre direto no celular do contato. Com latitude e longitude, o mapa cai no ponto exato.\n\nO pino de localização do WhatsApp não é usado: a mensagem com o link funciona em qualquer número.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, envía el nombre del lugar, la dirección y el enlace del mapa, que se abre directo en el celular del contacto. Con latitud y longitud, el mapa cae en el punto exacto.\n\nNo se usa el pin de ubicación de WhatsApp: el mensaje con el enlace funciona en cualquier número.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia um cartão de contato (nome e telefone), o mesmo que a Inbox manda. O contato salva com um toque, por exemplo o número do financeiro ou de um vendedor.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, envía una tarjeta de contacto (nombre y teléfono), la misma que manda la Bandeja de entrada. El contacto la guarda con un toque, por ejemplo el número de finanzas o de un vendedor.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia um produto do Catálogo: a primeira foto com o nome, o preço e a descrição. Tudo é lido na hora do envio, então preço mudado no Catálogo já sai certo.\n\nProduto desativado ou apagado não é enviado, e fica uma nota interna para a equipe.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, envía un producto del Catálogo: la primera foto con el nombre, el precio y la descripción. Todo se lee al momento del envío, así que un precio cambiado en el Catálogo ya sale bien.\n\nUn producto desactivado o borrado no se envía, y queda una nota interna para el equipo.",
+    },
   "Recuperar Pix ou carrinho": { es: "Recuperar Pix o carrito" },
   'Quando a plataforma de venda avisa Pix gerado ou carrinho abandonado, lembra o cliente com o link e o Pix, e pergunta se precisa de ajuda. Ligue numa automação "Iniciar chatbot".':
     {

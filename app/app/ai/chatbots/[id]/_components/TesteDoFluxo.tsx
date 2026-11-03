@@ -315,6 +315,14 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
       return `📅 ${t("No teste, os horários são de exemplo. No WhatsApp eles vêm da Agenda.")}`;
     case "marcou_de_exemplo":
       return `📅 ${t("No teste, nada é marcado na Agenda.")}`;
+    case "cancelou_de_exemplo":
+      return `📅 ${t("No teste, nada é cancelado na Agenda.")}`;
+    case "contato_enviado":
+      return `👤 ${t("Cartão de contato")}: ${e.nome} (${e.telefone})`;
+    case "produto_enviado": {
+      const nome = opcoes.produtos.find((x) => x.id === e.produto_id)?.nome ?? t("produto");
+      return `🛍 ${t("Produto do Catálogo")}: ${nome}`;
+    }
     case "abriria_fluxo": {
       const nome = opcoes.fluxos.find((f) => f.id === e.flow_id)?.nome ?? t("outro fluxo");
       return `↪ ${t("Aqui o fluxo")} "${nome}" ${t("começaria. Teste-o no editor dele.")}`;

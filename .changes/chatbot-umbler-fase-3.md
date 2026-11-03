@@ -14,6 +14,8 @@ O editor de chatbot ganha o que a Umbler documenta e o nosso ainda não tinha, s
 - **Etiqueta de origem** no Iniciar por um canal: frase da primeira mensagem vira etiqueta do contato.
 - **Hotmart** no aviso de venda (webhook de compras 2.0.0, autenticado pelo `X-HOTMART-HOTTOK`), ao lado de Kiwify e Cakto: compra aprovada, Pix ou boleto gerado, cancelada, reembolso, chargeback e o evento novo **pagamento expirado**. O Pix copia e cola da compra pendente chega como `{{pix_copia_e_cola}}`.
 - **Modelo pronto "Recuperar Pix ou carrinho"** nas ideias de bot: espera 15 minutos, manda o link e o Pix, pergunta se conseguiu e separa quem pagou, quem teve problema e quem desistiu. Liga numa automação "Iniciar chatbot".
+- **Seis cards novos**: Enviar produto (lido no Catálogo na hora, com foto e preço atuais), Enviar localização (endereço com link do mapa), Enviar contato (cartão), condição Etapa do funil, Reagendar horário e Cancelar agendamento (os dois pelo mesmo caminho da Agenda da tela).
+- **Modelos prontos**: agora são 19, entre eles qualificação comercial, apresentação de produtos, confirmação de agendamento, reagendamento, pós-venda e recuperação de oportunidade parada.
 - **Biblioteca de mídia** no Enviar mídia: reusar um arquivo que outro chatbot da empresa já manda, e ouvir o áudio antes de salvar.
 
 Fluxos salvos antes continuam iguais.

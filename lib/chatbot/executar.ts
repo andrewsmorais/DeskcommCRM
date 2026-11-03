@@ -36,12 +36,17 @@ import { escolherAtendente, notaSemAtendente } from "./atendente-do-passo";
 import { enrollFollowupFlow } from "@/lib/followup/enroll";
 import { horariosLivresDaOrg } from "@/lib/agenda/consulta";
 import { rotuloLocal } from "@/lib/tempo/agora";
-import { marcarAgendamentoHandler } from "@/app/api/v1/agenda/agendamentos/_handler";
+import {
+  alterarAgendamentoHandler,
+  cancelarAgendamentoHandler,
+  marcarAgendamentoHandler,
+} from "@/app/api/v1/agenda/agendamentos/_handler";
 import { levarContatoAoFunil } from "@/lib/leads/levar-ao-funil";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { ApiError } from "@/lib/api/types";
 import {
   continuarAposAcao,
+  continuarAposCancelar,
   continuarAposMarcar,
   continuarAposWebhook,
   continuarComHorarios,
@@ -57,6 +62,7 @@ import {
   respostasVisiveis,
   retomarFluxo,
   seguirAoResponder,
+  CHAVE_DO_AGENDAMENTO,
   type ContextoDoTurno,
   type Efeito,
   type FatosDaConversa,
@@ -68,6 +74,13 @@ import {
   type SessaoDoChatbot,
 } from "./motor";
 import { midiaDoChatbotDaOrg } from "./midia";
+import { formatCents } from "@/lib/money";
+import {
+  copiarFotoNoStorage,
+  LIMITE_DA_LEGENDA,
+  prepararFotosDoProduto,
+  type FotoParaEnvio,
+} from "@/lib/agent-engine/agent/fotos-do-produto";
 import { escolherOfertas } from "./ofertas";
 import { quemPodeAssumirAgora } from "@/lib/escalacao/disponibilidade";
 import { createLgpdRequest } from "@/lib/lgpd/repository";
@@ -452,8 +465,13 @@ async function conduzir(
         break;
       }
       case "horarios": {
-        const ofertas = await buscarHorarios(admin, e, grafo, pendente.no, log);
-        resultado = continuarComHorarios(grafo, resultado.sessao, ofertas, ctx);
+        const h = await buscarHorarios(admin, e, grafo, pendente.no, log);
+        resultado = continuarComHorarios(grafo, resultado.sessao, h.ofertas, ctx, h.extra);
+        break;
+      }
+      case "cancelar": {
+        const r = await cancelarProximoAgendamento(admin, e, fluxoId, grafo, pendente.no, log);
+        resultado = continuarAposCancelar(grafo, resultado.sessao, r.desfecho, r.quando, ctx);
         break;
       }
       case "marcar": {
@@ -779,6 +797,7 @@ const PASSOS_QUE_LEEM_A_CONVERSA = new Set([
   "bot_paralelo",
   "status_da_conversa",
   "setor_da_conversa",
+  "etapa_do_funil",
 ]);
 
 /**
@@ -830,6 +849,16 @@ async function lerFatosDaConversa(
     const equipe = grafo.nodes.some((n) => n.type === "presenca_do_atendente")
       ? (await quemPodeAssumirAgora(pool, e.organizationId, new Date())).disponiveis > 0
       : false;
+    const negocios = grafo.nodes.some((n) => n.type === "etapa_do_funil")
+      ? (
+          await pool.query<{ funil: string; etapa: string }>(
+            `select pipeline_id::text as funil, stage_id::text as etapa
+               from crm_leads
+              where organization_id = $1 and contact_id = $2 and status = 'open'`,
+            [e.organizationId, e.contactId],
+          )
+        ).rows
+      : [];
     return {
       canal: c.channel_session_id,
       atendente: c.assigned_to_user_id,
@@ -839,6 +868,7 @@ async function lerFatosDaConversa(
       equipe_disponivel: equipe,
       outro_bot: c.ia_ativa || c.outro_chatbot,
       setor: c.setor_id,
+      negocios,
     };
   } catch {
     // Sem os fatos, as condições seguem por "não" — o fluxo não para por isso.
@@ -853,31 +883,153 @@ async function buscarHorarios(
   grafo: Grafo,
   noId: string,
   log: Log,
-): Promise<OfertaDeHorario[]> {
+): Promise<{
+  ofertas: OfertaDeHorario[];
+  extra?: { semAgendamento?: boolean; dados?: Record<string, string> };
+}> {
   const no = grafo.nodes.find((n) => n.id === noId);
-  if (!no) return [];
-  const c = lerConfig("agendar_horario", no.data);
-  if (!c.event_type_id) return [];
+  if (!no) return { ofertas: [] };
+  const c = lerConfig(no.type as "agendar_horario", no.data);
+  // "Reagendar horário": o tipo e o responsável vêm do compromisso do contato.
+  let tipo = c.event_type_id;
+  let dono = c.owner_user_id;
+  let extra: { semAgendamento?: boolean; dados?: Record<string, string> } | undefined;
+  if (no.type === "reagendar_horario") {
+    const atual = await proximoAgendamentoDoContato(admin, e);
+    if (!atual) return { ofertas: [], extra: { semAgendamento: true } };
+    tipo = atual.event_type_id;
+    dono = atual.owner_user_id;
+    extra = {
+      dados: {
+        [CHAVE_DO_AGENDAMENTO]: atual.id,
+        agendamento_anterior: rotuloLocal(new Date(atual.starts_at), atual.time_zone),
+      },
+    };
+  }
+  if (!tipo) return { ofertas: [], ...(extra ? { extra } : {}) };
   const agora = new Date();
   try {
     const consulta = await horariosLivresDaOrg(admin, e.organizationId, {
-      eventTypeId: c.event_type_id,
-      ownerUserId: c.owner_user_id,
+      eventTypeId: tipo,
+      ownerUserId: dono,
       de: agora,
       ate: new Date(agora.getTime() + c.dias_a_frente * 86_400_000),
       agora,
     });
     if (!consulta.ok) {
       log.info("chatbot: agenda recusou a consulta de horários", { motivo: consulta.codigo });
-      return [];
+      return { ofertas: [], ...(extra ? { extra } : {}) };
     }
-    return escolherOfertas(consulta.slots, consulta.fusoDaRegra, c.quantidade).map((s) => ({
-      inicio: s.inicio.toISOString(),
-      quando: rotuloLocal(s.inicio, consulta.fusoDaRegra),
-    }));
+    return {
+      ofertas: escolherOfertas(consulta.slots, consulta.fusoDaRegra, c.quantidade).map((s) => ({
+        inicio: s.inicio.toISOString(),
+        quando: rotuloLocal(s.inicio, consulta.fusoDaRegra),
+      })),
+      ...(extra ? { extra } : {}),
+    };
   } catch (err) {
     log.warn("chatbot: consulta de horários falhou", { erro: String(err).slice(0, 160) });
-    return [];
+    return { ofertas: [], ...(extra ? { extra } : {}) };
+  }
+}
+
+/**
+ * O produto do "Enviar produto" lido AGORA no Catálogo (nome, preço e
+ * descrição atuais) e a primeira foto copiada para a conversa — o mesmo
+ * caminho das fotos que o agente de IA manda. null = desativado ou apagado.
+ */
+async function produtoParaEnviar(
+  pool: pg.Pool,
+  e: EntradaDoChatbot,
+  produtoId: string,
+  log: Log,
+): Promise<{ texto: string; foto: FotoParaEnvio | null } | null> {
+  const { rows } = await pool.query<{
+    codigo: string;
+    nome: string;
+    descricao: string | null;
+    preco_cents: string;
+    moeda: string;
+  }>(
+    `select codigo, nome, descricao, preco_cents::text as preco_cents, moeda
+       from catalog_products
+      where organization_id = $1 and id = $2 and ativo`,
+    [e.organizationId, produtoId],
+  );
+  const p = rows[0];
+  if (!p) return null;
+  const preco = formatCents(Number(p.preco_cents), p.moeda);
+  const texto = [`*${p.nome}*`, preco, p.descricao?.trim() ?? ""].filter(Boolean).join("\n");
+  const fotos = await prepararFotosDoProduto(pool, copiarFotoNoStorage(log), {
+    tenantId: e.organizationId,
+    conversationId: e.conversationId,
+    codigo: p.codigo,
+  });
+  return { texto, foto: fotos.ok ? (fotos.fotos[0] ?? null) : null };
+}
+
+type CompromissoDoContato = {
+  id: string;
+  event_type_id: string | null;
+  owner_user_id: string | null;
+  starts_at: string;
+  time_zone: string;
+};
+
+/**
+ * O próximo compromisso do contato (pendente ou confirmado, ainda por vir) —
+ * o alvo do "Reagendar horário" e do "Cancelar agendamento". Filtra a
+ * organização: o admin ignora a RLS.
+ */
+async function proximoAgendamentoDoContato(
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+): Promise<CompromissoDoContato | null> {
+  const { data } = await admin
+    .from("calendar_appointments")
+    .select("id, event_type_id, owner_user_id, starts_at, time_zone")
+    .eq("organization_id", e.organizationId)
+    .eq("contact_id", e.contactId)
+    .in("status", ["pending", "confirmed"])
+    .gt("starts_at", new Date().toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as CompromissoDoContato | null) ?? null;
+}
+
+/** "Cancelar agendamento" pelo MESMO handler da tela (audita, avisa a agenda conectada). */
+async function cancelarProximoAgendamento(
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  grafo: Grafo,
+  noId: string,
+  log: Log,
+): Promise<{ desfecho: "cancelado" | "sem_agendamento" | "falha"; quando: string | null }> {
+  const no = grafo.nodes.find((n) => n.id === noId);
+  const c = lerConfig("cancelar_agendamento", no?.data);
+  try {
+    const atual = await proximoAgendamentoDoContato(admin, e);
+    if (!atual) return { desfecho: "sem_agendamento", quando: null };
+    const quando = rotuloLocal(new Date(atual.starts_at), atual.time_zone);
+    await cancelarAgendamentoHandler(
+      admin,
+      {
+        organization_id: e.organizationId,
+        actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
+        requestId: `chatbot:${fluxoId}:cancelar:${atual.id}`,
+      },
+      { id: atual.id, reason: c.motivo || "Cancelado pelo contato no WhatsApp" },
+    );
+    log.info("chatbot: compromisso cancelado", { flow_id: fluxoId });
+    return { desfecho: "cancelado", quando };
+  } catch (err) {
+    log.warn("chatbot: cancelamento falhou", {
+      flow_id: fluxoId,
+      codigo: err instanceof ApiError ? err.code : String(err).slice(0, 120),
+    });
+    return { desfecho: "falha", quando: null };
   }
 }
 
@@ -897,6 +1049,29 @@ async function marcarHorario(
   log: Log,
 ): Promise<ResultadoDaMarcacao> {
   const no = grafo.nodes.find((n) => n.id === pendente.no);
+  if (no?.type === "reagendar_horario") {
+    if (!pendente.agendamento_id) return { ok: false, ocupado: false };
+    try {
+      const r = await alterarAgendamentoHandler(
+        admin,
+        {
+          organization_id: e.organizationId,
+          actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
+          requestId: `chatbot:${fluxoId}:${sessaoId}`,
+        },
+        { id: pendente.agendamento_id, starts_at: pendente.inicio },
+      );
+      log.info("chatbot: horário remarcado", { flow_id: fluxoId });
+      return { ok: true, aguardaConfirmacao: r.status === "pending" };
+    } catch (err) {
+      if (err instanceof ApiError) {
+        log.info("chatbot: a agenda recusou a remarcação", { flow_id: fluxoId, codigo: err.code });
+        return { ok: false, ocupado: err.code === "agenda_horario_indisponivel" };
+      }
+      log.warn("chatbot: remarcação falhou", { flow_id: fluxoId, erro: String(err).slice(0, 160) });
+      return { ok: false, ocupado: false };
+    }
+  }
   const c = no ? lerConfig("agendar_horario", no.data) : null;
   if (!c?.event_type_id) return { ok: false, ocupado: false };
   try {
@@ -1605,6 +1780,34 @@ async function executarEfeitos(
             ...(efeito.mime ? { media_mime: efeito.mime } : {}),
             ...(efeito.legenda && efeito.midia !== "audio" ? { body: efeito.legenda } : {}),
           });
+          break;
+        }
+        case "contato":
+          // O mesmo cartão de contato da Inbox: o handler monta o vCard.
+          await enviar({
+            type: "contact",
+            metadata: { shared_contact: { name: efeito.nome, phone_number: efeito.telefone } },
+          });
+          break;
+        case "produto": {
+          const p = await produtoParaEnviar(pool, e, efeito.produto_id, log);
+          if (!p) {
+            await notaInterna(
+              "O chatbot ia mandar um produto do Catálogo, mas ele está desativado ou foi apagado.",
+            );
+            break;
+          }
+          const legenda = [efeito.mensagem, p.texto].filter(Boolean).join("\n\n");
+          if (p.foto) {
+            await enviar({
+              type: "image",
+              media_storage_path: p.foto.storagePath,
+              media_mime: p.foto.mime,
+              body: legenda.slice(0, LIMITE_DA_LEGENDA),
+            });
+          } else {
+            await enviar({ type: "text", body: legenda });
+          }
           break;
         }
         case "negocio": {

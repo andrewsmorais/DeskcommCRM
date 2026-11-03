@@ -30,4 +30,6 @@ export const PASSOS_AVANCADOS: ReadonlySet<string> = new Set([
   "fluxo_de_espera",
   "privar_liberar",
   "setor_da_conversa",
+  // Condição do funil, como as outras condições do avançado.
+  "etapa_do_funil",
 ]);

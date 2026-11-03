@@ -52,6 +52,8 @@ export type OpcoesDoPainel = {
   modelos: { id: string; nome: string; idioma: string; texto: string }[];
   /** Arquivos que os "Enviar mídia" dos fluxos da empresa já usam (biblioteca). */
   midias: MidiaDaBiblioteca[];
+  /** Produtos do Catálogo ("Enviar produto"). */
+  produtos: { id: string; nome: string; ativo: boolean }[];
 };
 
 type Props = {
@@ -551,6 +553,124 @@ function Campos({
           <p className="text-xs text-muted-foreground">
             {t(
               'O chatbot envia o link, mas não confere se foi pago. Se o link ficar vazio (uma variável sem valor), o fluxo segue por "Sem link".',
+            )}
+          </p>
+        </>
+      );
+    }
+    case "enviar_localizacao": {
+      const c = lerConfig("enviar_localizacao", dados);
+      const numero = (v: string) => {
+        const n = Number(v.replace(",", "."));
+        return v.trim() && Number.isFinite(n) ? n : null;
+      };
+      return (
+        <>
+          <Texto
+            id="local-nome"
+            rotulo={t("Nome do lugar (opcional)")}
+            valor={c.nome}
+            onCommit={(v) => aplicar({ nome: v })}
+          />
+          <Texto
+            id="local-endereco"
+            rotulo={t("Endereço")}
+            valor={c.endereco}
+            linhas={2}
+            onCommit={(v) => aplicar({ endereco: v })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Texto
+              id="local-lat"
+              rotulo={t("Latitude (opcional)")}
+              valor={c.latitude === null ? "" : String(c.latitude)}
+              placeholder="-23.5505"
+              onCommit={(v) => aplicar({ latitude: numero(v) })}
+            />
+            <Texto
+              id="local-lng"
+              rotulo={t("Longitude (opcional)")}
+              valor={c.longitude === null ? "" : String(c.longitude)}
+              placeholder="-46.6333"
+              onCommit={(v) => aplicar({ longitude: numero(v) })}
+            />
+          </div>
+          <Texto
+            id="local-mensagem"
+            rotulo={t("Mensagem antes (opcional)")}
+            valor={c.mensagem}
+            linhas={2}
+            onCommit={(v) => aplicar({ mensagem: v })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Sai como mensagem com o endereço e o link do mapa, que abre no celular. Com latitude e longitude, o mapa cai no ponto exato.",
+            )}
+          </p>
+        </>
+      );
+    }
+    case "enviar_contato": {
+      const c = lerConfig("enviar_contato", dados);
+      return (
+        <>
+          <Texto
+            id="contato-nome"
+            rotulo={t("Nome")}
+            valor={c.nome}
+            onCommit={(v) => aplicar({ nome: v })}
+          />
+          <Texto
+            id="contato-telefone"
+            rotulo={t("Telefone com DDD")}
+            valor={c.telefone}
+            placeholder="(11) 98765-4321"
+            onCommit={(v) => aplicar({ telefone: v })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("O cliente recebe um cartão de contato e salva com um toque.")}
+          </p>
+        </>
+      );
+    }
+    case "enviar_produto": {
+      const c = lerConfig("enviar_produto", dados);
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="produto">{t("Produto do Catálogo")}</Label>
+            <select
+              id="produto"
+              className={SELECT}
+              value={c.produto_id ?? ""}
+              onChange={(e) => {
+                const p = opcoes.produtos.find((x) => x.id === e.target.value);
+                aplicar({ produto_id: p?.id ?? null, nome_do_produto: p?.nome ?? "" });
+              }}
+            >
+              <option value="">{t("Escolha um produto")}</option>
+              {opcoes.produtos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.ativo ? p.nome : `${p.nome} (${t("desativado")})`}
+                </option>
+              ))}
+            </select>
+            {opcoes.produtos.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t("Nenhum produto ainda. Cadastre em Catálogo.")}
+              </p>
+            ) : null}
+          </div>
+          <Texto
+            id="produto-mensagem"
+            rotulo={t("Mensagem antes (opcional)")}
+            valor={c.mensagem}
+            linhas={2}
+            onCommit={(v) => aplicar({ mensagem: v })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Na hora do envio, o chatbot lê o produto no Catálogo: sai a primeira foto com nome, preço e descrição atuais. Produto desativado não sai e fica uma nota para a equipe.",
             )}
           </p>
         </>
@@ -1074,6 +1194,79 @@ function Campos({
       );
     case "agendar_horario":
       return <AgendarHorario dados={dados} opcoes={opcoes} aplicar={aplicar} />;
+    case "reagendar_horario":
+      return <AgendarHorario dados={dados} opcoes={opcoes} aplicar={aplicar} reagendar />;
+    case "cancelar_agendamento": {
+      const c = lerConfig("cancelar_agendamento", dados);
+      return (
+        <>
+          <Texto
+            id="cancelar-motivo"
+            rotulo={t("Motivo que fica no compromisso")}
+            valor={c.motivo}
+            onCommit={(v) => aplicar({ motivo: v })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'Cancela o próximo compromisso do contato na Agenda, como o botão da tela. O horário cancelado fica em {{agendamento}}. Sem compromisso futuro, segue por "Sem agendamento". Para pedir confirmação antes, ponha um "Pedir para escolher" na frente.',
+            )}
+          </p>
+        </>
+      );
+    }
+    case "etapa_do_funil": {
+      const c = lerConfig("etapa_do_funil", dados);
+      const funil = opcoes.funis.find((f) => f.id === c.pipeline_id);
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="etapa-funil">{t("Funil")}</Label>
+            <select
+              id="etapa-funil"
+              className={SELECT}
+              value={c.pipeline_id ?? ""}
+              onChange={(e) => {
+                const f = opcoes.funis.find((x) => x.id === e.target.value);
+                aplicar({ pipeline_id: f?.id ?? null, nome_do_funil: f?.nome ?? "", etapas: [] });
+              }}
+            >
+              <option value="">{t("Escolha um funil")}</option>
+              {opcoes.funis.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          {funil ? (
+            <div className="space-y-1.5">
+              <Label>{t("Etapas (opcional)")}</Label>
+              {funil.etapas.map((et) => (
+                <label key={et.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={c.etapas.includes(et.id)}
+                    onChange={(e) =>
+                      aplicar({
+                        etapas: e.target.checked
+                          ? [...c.etapas, et.id]
+                          : c.etapas.filter((x) => x !== et.id),
+                      })
+                    }
+                  />
+                  {et.nome}
+                </label>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'Segue por "Está" quando o contato tem negócio aberto neste funil numa das etapas marcadas. Sem etapa marcada: em qualquer etapa do funil.',
+                )}
+              </p>
+            </div>
+          ) : null}
+        </>
+      );
+    }
     case "negocio_funil":
       return <NegocioNoFunil dados={dados} opcoes={opcoes} aplicar={aplicar} />;
     case "acionar_fluxo": {
@@ -2164,17 +2357,27 @@ function AgendarHorario({
   dados,
   opcoes,
   aplicar,
+  reagendar = false,
 }: {
   dados: NodeData;
   opcoes: OpcoesDoPainel;
   aplicar: (p: Record<string, unknown>) => void;
+  /** "Reagendar horário": tipo e agenda vêm do compromisso do contato. */
+  reagendar?: boolean;
 }) {
   const t = useT();
-  const c = lerConfig("agendar_horario", dados);
+  const c = lerConfig(reagendar ? "reagendar_horario" : "agendar_horario", dados);
   const tipo = opcoes.tiposDeAtendimento.find((x) => x.id === c.event_type_id);
   return (
     <>
-      <div className="space-y-1.5">
+      {reagendar ? (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'O chatbot acha o próximo compromisso do contato e oferece horários livres do mesmo tipo de atendimento e da mesma agenda. Sem compromisso futuro, segue por "Sem agendamento".',
+          )}
+        </p>
+      ) : null}
+      <div className={reagendar ? "hidden" : "space-y-1.5"}>
         <Label htmlFor="agenda-tipo">{t("Tipo de atendimento")}</Label>
         <select
           id="agenda-tipo"
@@ -2199,7 +2402,7 @@ function AgendarHorario({
           </p>
         ) : null}
       </div>
-      <div className="space-y-1.5">
+      <div className={reagendar ? "hidden" : "space-y-1.5"}>
         <Label htmlFor="agenda-dono">{t("Agenda de quem")}</Label>
         <select
           id="agenda-dono"

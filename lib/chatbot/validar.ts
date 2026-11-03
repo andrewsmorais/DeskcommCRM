@@ -150,6 +150,26 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (p) problemas.push(`no passo "${nome}", ${p}.`);
         break;
       }
+      case "enviar_localizacao": {
+        const c = lerConfig("enviar_localizacao", no.data);
+        if (!c.endereco && (c.latitude === null || c.longitude === null))
+          problemas.push(`escreva o endereço do passo "${nome}".`);
+        break;
+      }
+      case "enviar_contato": {
+        const c = lerConfig("enviar_contato", no.data);
+        if (!c.nome || c.telefone.replace(/\D/g, "").length < 10)
+          problemas.push(`escreva o nome e o telefone com DDD do passo "${nome}".`);
+        break;
+      }
+      case "enviar_produto":
+        if (!lerConfig("enviar_produto", no.data).produto_id)
+          problemas.push(`escolha o produto do passo "${nome}".`);
+        break;
+      case "etapa_do_funil":
+        if (!lerConfig("etapa_do_funil", no.data).pipeline_id)
+          problemas.push(`escolha o funil do passo "${nome}".`);
+        break;
       case "enviar_pagamento": {
         const c = lerConfig("enviar_pagamento", no.data);
         if (!c.link && !c.pix)

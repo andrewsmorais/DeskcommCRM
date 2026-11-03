@@ -17,6 +17,11 @@ import {
   ClipboardList,
   Clock,
   CreditCard,
+  Contact,
+  MapPin,
+  ShoppingBag,
+  CalendarX,
+  CalendarClock,
   FileText,
   Flag,
   GitBranch,
@@ -57,6 +62,11 @@ import {
 
 const ICONES: Record<string, LucideIcon> = {
   CreditCard,
+  Contact,
+  MapPin,
+  ShoppingBag,
+  CalendarX,
+  CalendarClock,
   Lock,
   ClipboardList,
   FileText,

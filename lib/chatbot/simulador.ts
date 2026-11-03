@@ -15,6 +15,7 @@
  */
 import {
   continuarAposAcao,
+  continuarAposCancelar,
   continuarAposMarcar,
   continuarAposWebhook,
   continuarComHorarios,
@@ -60,6 +61,9 @@ export type EventoDoTeste =
   | { tipo: "privacidade"; privada: boolean }
   | { tipo: "horarios_de_exemplo" }
   | { tipo: "marcou_de_exemplo" }
+  | { tipo: "cancelou_de_exemplo" }
+  | { tipo: "contato_enviado"; nome: string; telefone: string }
+  | { tipo: "produto_enviado"; produto_id: string }
   | { tipo: "abriria_fluxo"; flow_id: string }
   | { tipo: "voltou_ao_inicio" }
   /** A mensagem não começaria o fluxo (falta a palavra-chave). */
@@ -289,6 +293,10 @@ function aplicar(
         estado = comEvento(estado, { tipo: "marcou_de_exemplo" });
         r = continuarAposMarcar(grafo, r.sessao, { ok: true, aguardaConfirmacao: false }, c);
         break;
+      case "cancelar":
+        estado = comEvento(estado, { tipo: "cancelou_de_exemplo" });
+        r = continuarAposCancelar(grafo, r.sessao, "cancelado", "(horário de exemplo)", c);
+        break;
       case "ia":
         r = continuarAposAcao(grafo, r.sessao, true, c);
         estado = comEvento(comEfeitos(estado, r.efeitos), { tipo: "transferiu_ia" });
@@ -350,6 +358,15 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
       }
       case "nota":
         bolhas.push({ de: "evento", evento: { tipo: "nota", texto: e.texto } });
+        break;
+      case "contato":
+        bolhas.push({
+          de: "evento",
+          evento: { tipo: "contato_enviado", nome: e.nome, telefone: e.telefone },
+        });
+        break;
+      case "produto":
+        bolhas.push({ de: "evento", evento: { tipo: "produto_enviado", produto_id: e.produto_id } });
         break;
       case "campo_contato":
         if (e.campo === "personalizado") contato.personalizados[e.chave] = e.valor;

@@ -11,7 +11,7 @@ Status usados: **F** funcional · **P** parcial · **T** só na tela · **N** n�
 **E** implementado com erro · **NA** não se aplica ao canal/arquitetura · **B** bloqueado por
 dependência externa.
 
-O chatbot do produto tem **48 passos** hoje. Um card do prompt pode ser atendido por um passo
+O chatbot do produto tem **54 passos** hoje. Um card do prompt pode ser atendido por um passo
 mais geral (ex.: "Perguntar e-mail" = "Pedir para digitar" com formato e-mail) — o prompt pede
 para não duplicar implementação, e foi isso que se seguiu.
 
@@ -39,8 +39,8 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 04 | Enviar vídeo | F | F | Enviar mídia (vídeo) | executor | até 16 MB |
 | 05 | Enviar arquivo/PDF | F | F | Enviar mídia (documento) | executor | — |
 | 06 | Enviar link | P | P | Enviar mensagem com o link | — | não há card próprio que valide o protocolo da URL |
-| 07 | Enviar localização | N | N | — | — | o envio de localização existe na Inbox, não no chatbot |
-| 08 | Enviar contato | N | N | — | — | o cartão de contato existe na Inbox, não no chatbot |
+| 07 | Enviar localização | N | F | Enviar localização (novo) | cards-fase-4.test | sai como mensagem com endereço e link do mapa; o pino nativo não (o envio do CRM não fala esse formato) |
+| 08 | Enviar contato | N | F | Enviar contato (novo) — o cartão da Inbox | cards-fase-4 (unit + invariante) | — |
 | 09 | Botões de resposta | N | F (API oficial) / NA (QR Code) | Pedir para escolher | escolhas-interativas.test | até 3 opções ≤20 letras; QR Code não exibe botão (o WhatsApp não mostra) |
 | 10 | Menu de opções | F | F | Pedir para escolher (lista na API oficial) | motor.test | até 10 opções ≤24 letras viram lista |
 | 11 | Carrossel de produtos | N | B | — | — | QR Code não tem; na API oficial exige catálogo da Meta |
@@ -48,7 +48,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 13 | Link de pagamento | N | P | Enviar link de pagamento (novo) | enviar-pagamento.test | manda o link do vendedor; **gerar** o link depende de ligar o provedor de pagamento da empresa (B) |
 | 14 | Enviar Pix | N | P | Enviar link de pagamento (Pix copia e cola) | enviar-pagamento.test | QR Code do Pix: subir a imagem num Enviar mídia |
 | 15 | Enviar boleto | N | P | Enviar link de pagamento (link do boleto) | — | sem geração de boleto (B) |
-| 16 | Catálogo de produtos | N | N | — | — | catálogo existe (`catalog_products`, usado pelo agente de IA); falta o card |
+| 16 | Catálogo de produtos | N | F | Enviar produto (novo): lido no Catálogo na hora, com a primeira foto | cards-fase-4 (unit + invariante) | um produto por card; desativado não sai e vira nota |
 | 17 | Oferta/promoção | P | P | Enviar mensagem / mídia | — | sem validade nem regra comercial |
 | 18 | Cupom de desconto | N | B | — | — | o CRM não tem módulo de cupom |
 | 19 | Status do pagamento | N | P | aviso da plataforma de venda (Kiwify, Cakto, Hotmart nova) → automação → chatbot | plataformas-de-venda.test | a plataforma avisa; consulta ativa ao provedor não existe |
@@ -65,7 +65,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 30 | Verificar palavra-chave | F | F | Mensagem contém | motor.test | normaliza acento e maiúscula |
 | 31 | Verificar variável | F | F | Valor | passos-umbler-fase-2.test | números e datas comparam como tal |
 | 32 | Verificar tag | F | F | Etiquetas | condicoes.test | — |
-| 33 | Etapa do funil | N | N | — | — | falta condição pela etapa do negócio |
+| 33 | Etapa do funil | N | F | Etapa do funil (novo) | cards-fase-4 (unit + invariante) | só negócio aberto conta |
 | 34 | Dividir caminhos | F | F | Multi-condicional / Distribuir fluxo | motor.test | — |
 | 35 | Redirecionar fluxo | F | F | Acionar outro fluxo | invariante | leva as respostas; sem "voltar"; teto contra laço |
 | 36 | Aguardar tempo | F | F | Aguardar intervalo / Aguardar até | espera-e-avaliacao.test | relógio persistente |
@@ -79,8 +79,8 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 44 | Enviar opções de horário | F | F | Agendar horário (lista clicável na API oficial, nova) | motor.test | — |
 | 45 | Criar agendamento | F | F | Agendar horário | invariante | horário tomado no meio segue por "Sem horário livre" |
 | 46 | Confirmar agendamento | F | F | Agendar horário → `{{horario}}` numa mensagem | motor.test | — |
-| 47 | Reagendar | N | N | — | — | a Agenda tem a rota; falta o card |
-| 48 | Cancelar agendamento | N | N | — | — | a Agenda tem a rota; falta o card |
+| 47 | Reagendar | N | F | Reagendar horário (novo) — mesmo caminho do Agendar, muda o compromisso pelo handler da Agenda | cards-fase-4.test | o alvo é o próximo compromisso do contato |
+| 48 | Cancelar agendamento | N | F | Cancelar agendamento (novo) — handler da Agenda | cards-fase-4.test | o alvo é o próximo compromisso do contato |
 | 49 | Criar lead | F | F | Negócio no funil (cria se não houver aberto) | invariante | — |
 | 50 | Atualizar dados | F | F | Campo do contato | regras.test | nome, e-mail, aniversário, campo personalizado |
 | 51 | Adicionar/remover tag | F | F | Editar etiquetas + etiqueta de origem (nova) | etiqueta-de-origem.test | — |
@@ -112,8 +112,8 @@ para não duplicar implementação, e foi isso que se seguiu.
 
 - **A1 — Prazo de resposta nas perguntas** (cards 37/38): feito. Falta estender ao Enviar formulário e ao Agendar horário.
 - **V1 — Versões publicadas imutáveis:** pede tabela de versões (migration nova, não destrutiva) e decisão de produto (publicar ≠ salvar). Próxima ação: desenhar e aprovar.
-- **Cards 07, 08, 16, 33, 47, 48:** reaproveitam o que já existe (envio de localização e contato da Inbox, catálogo, funil, rotas da Agenda); falta só o card.
+- **Cards 07, 08, 16, 33, 47, 48:** feitos, reaproveitando o que já existia (cartão de contato da Inbox, Catálogo, funil, handlers da Agenda).
 - **B (bloqueados):** 11, 18, 19 e a geração de link/boleto (13, 15) — dependem de conta de pagamento da empresa ligada ao CRM ou de recurso que o canal não oferece.
 - **Copiar/colar e salvar automático no editor.**
-- **Modelos prontos:** 7 hoje (menu, fora do horário, coletar dados, satisfação, agendamento, triagem com IA, recuperar Pix ou carrinho); o prompt pede 18.
+- **Modelos prontos:** 19 (os 18 do prompt, com "captura de leads" atendida por "Coletar dados" e "transferência para IA" pela "Triagem com o agente de IA").
 - **Pré-existente, fora do chatbot:** `pnpm lint:channels` reprova `lib/exportacao/exclusao.ts` e `lib/instalacao/disparo-em-massa.ts`, e o `eslint` reprova `app/api/v1/webhooks/waha/[token]/route.ts` (um `any`) — os três vieram do commit de 21/10 do fork, não desta entrega.

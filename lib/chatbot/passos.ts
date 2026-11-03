@@ -154,6 +154,33 @@ export const perguntaDoFormularioSchema = z.object({
 });
 export type PerguntaDoFormulario = z.infer<typeof perguntaDoFormularioSchema>;
 
+/** Agendar e Reagendar usam a mesma configuração (e o mesmo caminho no motor). */
+const CONFIG_DA_AGENDA = z.object({
+    event_type_id: z.string().uuid().nullable().default(null),
+    /** null = o responsável padrão do tipo de atendimento. */
+    owner_user_id: z.string().uuid().nullable().default(null),
+    pergunta: z.string().trim().max(1000).default("Escolha um horário:"),
+    quantidade: z.number().int().min(2).max(10).default(5),
+    dias_a_frente: z.number().int().min(1).max(30).default(7),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não entendi. Responda com o número de um dos horários."),
+    tentativas: z.number().int().min(1).max(5).default(2),
+    confirmacao: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Pronto! Seu horário ficou marcado para {{horario}}. Até lá!"),
+    /** Atendimento que a equipe aprova antes: o horário fica reservado, não confirmado. */
+    confirmacao_pendente: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Separei {{horario}} para você. A equipe confirma em breve."),
+  });
+
 export const configDoPasso = {
   /**
    * Começa quando uma AUTOMAÇÃO manda (ação "Iniciar chatbot"): compra aprovada
@@ -461,30 +488,62 @@ export const configDoPasso = {
    * marca o que o contato escolher — a mesma consulta e a mesma marcação que o
    * agente de IA usa (`lib/agenda/consulta.ts` + `marcarAgendamentoHandler`).
    */
-  agendar_horario: z.object({
-    event_type_id: z.string().uuid().nullable().default(null),
-    /** null = o responsável padrão do tipo de atendimento. */
-    owner_user_id: z.string().uuid().nullable().default(null),
-    pergunta: z.string().trim().max(1000).default("Escolha um horário:"),
-    quantidade: z.number().int().min(2).max(10).default(5),
-    dias_a_frente: z.number().int().min(1).max(30).default(7),
-    mensagem_invalida: z
-      .string()
-      .trim()
-      .max(500)
-      .default("Não entendi. Responda com o número de um dos horários."),
-    tentativas: z.number().int().min(1).max(5).default(2),
+  agendar_horario: CONFIG_DA_AGENDA,
+  /**
+   * "Reagendar": acha o próximo compromisso do contato na Agenda, oferece os
+   * horários livres do MESMO tipo de atendimento e muda o compromisso para o
+   * horário escolhido (`alterarAgendamentoHandler`, que confere de novo se está
+   * livre). Sem compromisso futuro, segue por "Sem agendamento".
+   */
+  reagendar_horario: CONFIG_DA_AGENDA.extend({
+    pergunta: z.string().trim().max(1000).default("Para qual horário você quer mudar?"),
     confirmacao: z
       .string()
       .trim()
       .max(1000)
-      .default("Pronto! Seu horário ficou marcado para {{horario}}. Até lá!"),
-    /** Atendimento que a equipe aprova antes: o horário fica reservado, não confirmado. */
-    confirmacao_pendente: z
-      .string()
-      .trim()
-      .max(1000)
-      .default("Separei {{horario}} para você. A equipe confirma em breve."),
+      .default("Pronto! Seu horário mudou para {{horario}}."),
+  }),
+  /**
+   * Cancela o próximo compromisso do contato na Agenda (`cancelarAgendamentoHandler`,
+   * o mesmo da tela). Guarda o horário cancelado em {{agendamento}}.
+   */
+  cancelar_agendamento: z.object({
+    motivo: z.string().trim().max(200).default("Cancelado pelo contato no WhatsApp"),
+  }),
+  /** O contato tem negócio aberto num funil (e numa das etapas marcadas)? */
+  etapa_do_funil: z.object({
+    pipeline_id: z.string().uuid().nullable().default(null),
+    /** Vazio = qualquer etapa do funil. */
+    etapas: z.array(z.string().uuid()).max(30).default([]),
+    /** Só para o resumo no quadro. */
+    nome_do_funil: z.string().max(120).default(""),
+  }),
+  /**
+   * Localização como mensagem: nome, endereço e o link do mapa. O pino nativo
+   * do WhatsApp não sai — o envio do CRM não fala esse formato —, e o link do
+   * mapa abre no celular do mesmo jeito, em qualquer canal.
+   */
+  enviar_localizacao: z.object({
+    nome: z.string().trim().max(120).default(""),
+    endereco: z.string().trim().max(300).default(""),
+    latitude: z.number().min(-90).max(90).nullable().default(null),
+    longitude: z.number().min(-180).max(180).nullable().default(null),
+    mensagem: z.string().trim().max(500).default(""),
+  }),
+  /** Cartão de contato (o mesmo da Inbox): o cliente salva com um toque. */
+  enviar_contato: z.object({
+    nome: z.string().trim().max(120).default(""),
+    telefone: z.string().trim().max(30).default(""),
+  }),
+  /**
+   * Um produto do Catálogo, lido na hora do envio (nome, preço e descrição
+   * atuais) com a primeira foto. Produto desativado ou apagado não sai, e a
+   * equipe lê uma nota.
+   */
+  enviar_produto: z.object({
+    produto_id: z.string().uuid().nullable().default(null),
+    nome_do_produto: z.string().max(200).default(""),
+    mensagem: z.string().trim().max(500).default(""),
   }),
   /**
    * Põe o contato no funil: se ele já tem negócio aberto naquele funil, o
@@ -767,6 +826,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "etapa_do_funil",
+    grupo: "condicao",
+    nome: "Etapa do funil",
+    descricao: "Siga um caminho se o contato tem negócio aberto num funil (ou numa etapa dele).",
+    icone: "Kanban",
+    cor: "text-violet-400",
+    temEntrada: true,
+  },
+  {
     tipo: "bot_paralelo",
     grupo: "condicao",
     nome: "Bot paralelo em execução",
@@ -808,6 +876,33 @@ export const PASSOS: readonly MetaDoPasso[] = [
     nome: "Enviar mídia",
     descricao: "Envie uma foto, vídeo, áudio ou PDF para o contato.",
     icone: "Paperclip",
+    cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_produto",
+    grupo: "acao",
+    nome: "Enviar produto",
+    descricao: "Envie um produto do Catálogo com foto, preço e descrição atualizados.",
+    icone: "ShoppingBag",
+    cor: "text-emerald-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_localizacao",
+    grupo: "acao",
+    nome: "Enviar localização",
+    descricao: "Envie o endereço com o link do mapa.",
+    icone: "MapPin",
+    cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_contato",
+    grupo: "acao",
+    nome: "Enviar contato",
+    descricao: "Envie um cartão de contato que o cliente salva com um toque.",
+    icone: "Contact",
     cor: "text-green-500",
     temEntrada: true,
   },
@@ -863,6 +958,24 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Ofereça os horários livres da Agenda e marque o que o contato escolher.",
     icone: "CalendarCheck",
     cor: "text-emerald-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "reagendar_horario",
+    grupo: "acao",
+    nome: "Reagendar horário",
+    descricao: "Mude o próximo compromisso do contato para outro horário livre.",
+    icone: "CalendarClock",
+    cor: "text-blue-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "cancelar_agendamento",
+    grupo: "acao",
+    nome: "Cancelar agendamento",
+    descricao: "Cancele o próximo compromisso do contato na Agenda.",
+    icone: "CalendarX",
+    cor: "text-red-500",
     temEntrada: true,
   },
   {
@@ -1222,6 +1335,24 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Marcou" },
         { id: "sem_horario", rotulo: "Sem horário livre" },
         { id: "invalida", rotulo: "Não escolheu" },
+      ];
+    case "reagendar_horario":
+      return [
+        { id: "proximo", rotulo: "Remarcou" },
+        { id: "sem_agendamento", rotulo: "Sem agendamento" },
+        { id: "sem_horario", rotulo: "Sem horário livre" },
+        { id: "invalida", rotulo: "Não escolheu" },
+      ];
+    case "cancelar_agendamento":
+      return [
+        { id: "proximo", rotulo: "Cancelado" },
+        { id: "sem_agendamento", rotulo: "Sem agendamento" },
+        { id: "falha", rotulo: "Não cancelou" },
+      ];
+    case "etapa_do_funil":
+      return [
+        { id: "sim", rotulo: "Está" },
+        { id: "nao", rotulo: "Não está" },
       ];
     case "transferir_equipe":
     case "transferir_atendente":

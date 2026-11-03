@@ -97,6 +97,10 @@ export type Efeito =
     }
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
+  /** Cartão de contato ("Enviar contato"). */
+  | { tipo: "contato"; nome: string; telefone: string }
+  /** Produto do Catálogo, lido na hora do envio ("Enviar produto"). */
+  | { tipo: "produto"; produto_id: string; mensagem: string }
   | { tipo: "campo_contato"; campo: CampoDoContato; chave: string; valor: string }
   | { tipo: "avaliacao"; nota: number; escala: "1_5" | "0_10" }
   | { tipo: "followup"; pointer_id: string }
@@ -134,6 +138,8 @@ export type FatosDaConversa = {
   outro_bot: boolean;
   /** Setor da conversa (conversations.setor_id), ou null. */
   setor: string | null;
+  /** Negócios ABERTOS do contato: funil e etapa ("Etapa do funil"). */
+  negocios: { funil: string; etapa: string }[];
 };
 
 export function fatosVazios(): FatosDaConversa {
@@ -146,6 +152,7 @@ export function fatosVazios(): FatosDaConversa {
     equipe_disponivel: false,
     outro_bot: false,
     setor: null,
+    negocios: [],
   };
 }
 
@@ -171,7 +178,15 @@ export type Pendente =
   /** Buscar os horários livres e devolver em `continuarComHorarios`. */
   | { tipo: "horarios"; no: string }
   /** Marcar o horário escolhido e devolver em `continuarAposMarcar`. */
-  | { tipo: "marcar"; no: string; inicio: string }
+  | {
+      tipo: "marcar";
+      no: string;
+      inicio: string;
+      /** "Reagendar horário": o compromisso que muda de horário (em vez de nascer um novo). */
+      agendamento_id?: string;
+    }
+  /** Cancelar o próximo compromisso do contato e devolver em `continuarAposCancelar`. */
+  | { tipo: "cancelar"; no: string }
   /** Devolver a conversa ao agente de IA e dizer se deu certo em `continuarAposAcao`. */
   | { tipo: "ia"; no: string }
   /** Mandar o modelo aprovado e dizer se saiu em `continuarAposAcao`. */
@@ -271,7 +286,39 @@ function textoDasOpcoes(pergunta: string, opcoes: string[]): string {
   return pergunta ? `${pergunta}\n\n${lista}` : lista;
 }
 
-const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha", "sem_horario", "sem_resposta"]);
+const SAIDAS_DE_ERRO = new Set([
+  "invalido",
+  "invalida",
+  "falha",
+  "sem_horario",
+  "sem_resposta",
+  "sem_agendamento",
+]);
+
+/** O compromisso que o "Reagendar horário" vai mudar (guardado ao buscar os horários). */
+export const CHAVE_DO_AGENDAMENTO = "_agendamento_id";
+
+/** Os dois passos que oferecem horários da Agenda (mesmo caminho no motor). */
+const PASSOS_DE_HORARIO = new Set(["agendar_horario", "reagendar_horario"]);
+
+/** A localização como texto: nome, endereço e o link do mapa. */
+export function textoDaLocalizacao(
+  c: ConfigDe<"enviar_localizacao">,
+  dados: Record<string, string>,
+): string {
+  const consulta =
+    c.latitude !== null && c.longitude !== null
+      ? `${c.latitude},${c.longitude}`
+      : encodeURIComponent(preencher(c.endereco, dados).trim());
+  if (!consulta) return "";
+  const partes = [
+    preencher(c.mensagem, dados).trim(),
+    c.nome ? `📍 *${preencher(c.nome, dados).trim()}*` : "",
+    preencher(c.endereco, dados).trim(),
+    `https://www.google.com/maps/search/?api=1&query=${consulta}`,
+  ].filter(Boolean);
+  return partes.join("\n");
+}
 
 /**
  * As mensagens do "Enviar link de pagamento": o texto com o link e, à parte,
@@ -525,6 +572,16 @@ function andar(
       case "bot_paralelo":
         saida = fatos.outro_bot ? "sim" : "nao";
         break;
+      case "etapa_do_funil": {
+        const c = lerConfig("etapa_do_funil", no.data);
+        saida = fatos.negocios.some(
+          (n) =>
+            n.funil === c.pipeline_id && (c.etapas.length === 0 || c.etapas.includes(n.etapa)),
+        )
+          ? "sim"
+          : "nao";
+        break;
+      }
       case "setor_da_conversa":
         saida =
           fatos.setor && lerConfig("setor_da_conversa", no.data).setores.includes(fatos.setor)
@@ -564,6 +621,35 @@ function andar(
         efeitos.push({ tipo: "nota", texto: p.nota });
         break;
       }
+      case "enviar_localizacao": {
+        const texto = textoDaLocalizacao(lerConfig("enviar_localizacao", no.data), sessao.dados);
+        if (texto) efeitos.push({ tipo: "enviar", texto });
+        break;
+      }
+      case "enviar_contato": {
+        const c = lerConfig("enviar_contato", no.data);
+        if (c.nome && c.telefone)
+          efeitos.push({
+            tipo: "contato",
+            nome: preencher(c.nome, sessao.dados).trim(),
+            telefone: c.telefone,
+          });
+        break;
+      }
+      case "enviar_produto": {
+        const c = lerConfig("enviar_produto", no.data);
+        if (c.produto_id)
+          efeitos.push({
+            tipo: "produto",
+            produto_id: c.produto_id,
+            mensagem: preencher(c.mensagem, sessao.dados).trim(),
+          });
+        break;
+      }
+      case "cancelar_agendamento":
+        sessao.no_atual = no.id;
+        sessao.status = "running";
+        return { sessao, efeitos, passos, pendente: { tipo: "cancelar", no: no.id } };
       case "pedir_escolher": {
         const c = lerConfig("pedir_escolher", no.data);
         if (!resposta) {
@@ -744,8 +830,9 @@ function andar(
         const r = fim("completed");
         return c.flow_id ? { ...r, pendente: { tipo: "fluxo", no: no.id, flow_id: c.flow_id } } : r;
       }
-      case "agendar_horario": {
-        const c = lerConfig("agendar_horario", no.data);
+      case "agendar_horario":
+      case "reagendar_horario": {
+        const c = lerConfig(no.type as "agendar_horario", no.data);
         if (!resposta) {
           // Chegou no passo: o executor busca os horários livres.
           sessao.no_atual = no.id;
@@ -769,7 +856,19 @@ function andar(
           sessao.dados.horario_inicio = escolhida.inicio;
           sessao.no_atual = no.id;
           sessao.status = "running";
-          return { sessao, efeitos, passos, pendente: { tipo: "marcar", no: no.id, inicio: escolhida.inicio } };
+          return {
+            sessao,
+            efeitos,
+            passos,
+            pendente: {
+              tipo: "marcar",
+              no: no.id,
+              inicio: escolhida.inicio,
+              ...(no.type === "reagendar_horario" && sessao.dados[CHAVE_DO_AGENDAMENTO]
+                ? { agendamento_id: sessao.dados[CHAVE_DO_AGENDAMENTO] }
+                : {}),
+            },
+          };
         }
         sessao.tentativas += 1;
         if (sessao.tentativas < c.tentativas) {
@@ -1111,16 +1210,23 @@ export function continuarComHorarios(
   sessao: SessaoDoChatbot,
   ofertas: OfertaDeHorario[],
   ctx: ContextoDoTurno,
+  /**
+   * "Reagendar horário": o compromisso achado (id e quando era) vai para as
+   * respostas; `semAgendamento` = o contato não tem compromisso futuro.
+   */
+  extra: { semAgendamento?: boolean; dados?: Record<string, string> } = {},
 ): ResultadoDoTurno {
-  const parada = grafo.nodes.find((n) => n.id === sessao.no_atual && n.type === "agendar_horario");
+  const parada = grafo.nodes.find(
+    (n) => n.id === sessao.no_atual && PASSOS_DE_HORARIO.has(n.type),
+  );
   if (!parada) {
     return { sessao: { ...sessao, status: "completed", no_atual: null, retomar_em: null }, efeitos: [], passos: 0 };
   }
-  const c = lerConfig("agendar_horario", parada.data);
-  const dados = { ...sessao.dados };
-  if (ofertas.length === 0) {
+  const c = lerConfig(parada.type as "agendar_horario", parada.data);
+  const dados = { ...sessao.dados, ...(extra.dados ?? {}) };
+  if (extra.semAgendamento || ofertas.length === 0) {
     delete dados[CHAVE_DOS_HORARIOS];
-    const seguinte = proximo(grafo, parada.id, "sem_horario");
+    const seguinte = proximo(grafo, parada.id, extra.semAgendamento ? "sem_agendamento" : "sem_horario");
     if (!seguinte)
       return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos: [], passos: 0 };
     return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
@@ -1153,11 +1259,13 @@ export function continuarAposMarcar(
   r: ResultadoDaMarcacao,
   ctx: ContextoDoTurno,
 ): ResultadoDoTurno {
-  const parada = grafo.nodes.find((n) => n.id === sessao.no_atual && n.type === "agendar_horario");
+  const parada = grafo.nodes.find(
+    (n) => n.id === sessao.no_atual && PASSOS_DE_HORARIO.has(n.type),
+  );
   if (!parada) {
     return { sessao: { ...sessao, status: "completed", no_atual: null, retomar_em: null }, efeitos: [], passos: 0 };
   }
-  const c = lerConfig("agendar_horario", parada.data);
+  const c = lerConfig(parada.type as "agendar_horario", parada.data);
   const dados = { ...sessao.dados };
   delete dados[CHAVE_DOS_HORARIOS];
   if (!r.ok && r.ocupado) {
@@ -1215,6 +1323,33 @@ export function continuarAposAcao(
   const seguinte = proximo(grafo, parada.id, deuCerto ? "proximo" : "falha");
   if (!seguinte) return encerrado("completed");
   return andar(grafo, { ...sessao, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
+}
+
+/**
+ * Depois do "Cancelar agendamento": segue por "Cancelado", "Sem agendamento"
+ * ou "Não cancelou", com o horário cancelado em {{agendamento}}. Saída de
+ * erro sem ligação encerra o fluxo.
+ */
+export function continuarAposCancelar(
+  grafo: Grafo,
+  sessao: SessaoDoChatbot,
+  desfecho: "cancelado" | "sem_agendamento" | "falha",
+  agendamento: string | null,
+  ctx: ContextoDoTurno,
+): ResultadoDoTurno {
+  const parada = grafo.nodes.find(
+    (n) => n.id === sessao.no_atual && n.type === "cancelar_agendamento",
+  );
+  const dados = { ...sessao.dados, ...(agendamento ? { agendamento } : {}) };
+  const saida = desfecho === "cancelado" ? "proximo" : desfecho;
+  const seguinte = parada ? proximo(grafo, parada.id, saida) : null;
+  if (!seguinte)
+    return {
+      sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null },
+      efeitos: [],
+      passos: 0,
+    };
+  return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
 }
 
 /**

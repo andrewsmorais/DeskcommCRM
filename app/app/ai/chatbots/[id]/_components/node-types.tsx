@@ -55,6 +55,28 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const n = lerConfig("canal_da_conversa", dados).canais.length;
       return n === 0 ? "" : n === 1 ? t("1 número") : `${n} ${t("números")}`;
     }
+    case "etapa_do_funil": {
+      const c = lerConfig("etapa_do_funil", dados);
+      if (!c.pipeline_id) return "";
+      const n = c.etapas.length;
+      return `${c.nome_do_funil}${n === 0 ? "" : n === 1 ? ` · ${t("1 etapa")}` : ` · ${n} ${t("etapas")}`}`;
+    }
+    case "reagendar_horario":
+      return t("Próximo compromisso do contato");
+    case "cancelar_agendamento":
+      return t("Próximo compromisso do contato");
+    case "enviar_localizacao": {
+      const c = lerConfig("enviar_localizacao", dados);
+      return [c.nome && `📍 ${c.nome}`, c.endereco].filter(Boolean).join("\n");
+    }
+    case "enviar_contato": {
+      const c = lerConfig("enviar_contato", dados);
+      return c.nome ? `👤 ${c.nome} ${c.telefone}` : "";
+    }
+    case "enviar_produto": {
+      const c = lerConfig("enviar_produto", dados);
+      return c.produto_id ? `🛍 ${c.nome_do_produto}` : "";
+    }
     case "setor_da_conversa": {
       const n = lerConfig("setor_da_conversa", dados).setores.length;
       return n === 0 ? "" : n === 1 ? t("1 setor") : `${n} ${t("setores")}`;
