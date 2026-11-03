@@ -10,6 +10,8 @@ import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { audit } from "@/lib/audit";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import type { OrigemDaInscricao } from "@/lib/billing/followup-pelo-chatbot";
 import {
   createSupabaseFollowupGateDb,
   resolveAgentForAutomaticTrigger,
@@ -27,6 +29,11 @@ export type EnrollFollowupInput = {
   agentId?: string;
   actorUserId: string | null;
   requestId: string;
+  /**
+   * Quem pede. Sem o "Follow-up automático" no plano, só `chatbot` inscreve —
+   * ver `lib/billing/followup-pelo-chatbot.ts`. Ausente conta como `tela`.
+   */
+  origem?: OrigemDaInscricao;
 };
 
 export type EnrollFollowupOk = { ok: true; enrollment: Record<string, unknown> };
@@ -62,6 +69,24 @@ export async function enrollFollowupFlow(
       message: "Roteiro de atendimento começa na conversa, não por inscrição.",
       status: 422,
     };
+  }
+
+  // Sem o Follow-up automático no plano, só o chatbot inscreve (decisão do dono,
+  // 03/11/2026). Agente de IA, automação e tela ficam como sempre foram no
+  // Essencial — antes ele nem tinha follow-up publicado para inscrever; agora
+  // tem os do chatbot, e esta recusa é o que os mantém só do chatbot. Só
+  // `billing_feature` recusa: plano ilegível não é motivo novo de falhar.
+  if (input.origem !== "chatbot") {
+    const acesso = await verificarRecursoDoPlano(organizationId, "follow_up");
+    if (!acesso.ok && acesso.code === "billing_feature") {
+      return {
+        ok: false,
+        code: "billing_feature",
+        message:
+          "No seu plano, o follow-up começa só pelo chatbot. Pôr em follow-up pelo agente de IA, por automação ou pela tela é do plano Impulso.",
+        status: 403,
+      };
+    }
   }
 
   if (pointer.status !== "active" || !pointer.active_version_id) {

@@ -22,6 +22,8 @@ vi.mock("@/lib/billing/grafo", () => ({
   verificarGrafoDoPlano: vi.fn(async () => acesso.resposta),
 }));
 
+import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
+
 import { ADIAMENTO_SEM_PLANO_MS, runFollowupTick, type AdminClient } from "./engine";
 import type { FlowGraph } from "./graph-schema";
 import type { EnrollmentRow } from "./node-handlers";
@@ -39,7 +41,7 @@ const GRAFO = {
   edges: [],
 } as unknown as FlowGraph;
 
-function loja() {
+function loja(gatilho?: string) {
   let agora = INICIO;
   const enrollment: EnrollmentRow = {
     id: "enr-1",
@@ -74,6 +76,7 @@ function loja() {
     async loadFlowGraph() {
       return GRAFO;
     },
+    ...(gatilho ? { gatilhoDoFluxo: async () => gatilho } : {}),
     async loadLeadFacts() {
       return { lead_stage: null, tags: [] };
     },
@@ -149,5 +152,21 @@ describe("plano indisponível não mata o follow-up", () => {
     acesso.resposta = { ok: true };
     await l.tick();
     expect(l.enrollment.status).toBe("completed");
+  });
+});
+
+describe("o motor leva o início do fluxo para a régua do plano", () => {
+  // É por ele que o "follow-up só pelo chatbot" (início manual) roda no
+  // Essencial sem abrir o resto — `lib/billing/followup-pelo-chatbot.ts`.
+  it("com gatilhoDoFluxo, a régua recebe o gatilho", async () => {
+    const l = loja("manual");
+    await l.tick();
+    expect(verificarGrafoDoPlano).toHaveBeenCalledWith("org-1", GRAFO, { gatilho: "manual" });
+  });
+
+  it("sem ele (dublê antigo), a régua recebe gatilho nulo e fica a de sempre", async () => {
+    const l = loja();
+    await l.tick();
+    expect(verificarGrafoDoPlano).toHaveBeenCalledWith("org-1", GRAFO, { gatilho: null });
   });
 });

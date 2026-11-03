@@ -145,7 +145,7 @@ Mensagens curtas, uma pergunta por vez, sem termos técnicos. [Emoji: não / com
 - Com um agente só, não precisa de roteador.
 
 **Resumo para decidir:**
-- Um agente, um número: não precisa de roteador. Para retomar quem esfriou, use follow-up (a partir do Impulso).
+- Um agente, um número: não precisa de roteador. Para retomar quem esfriou, use follow-up (pelo agente de IA, a partir do Impulso; pelo chatbot, em todos os planos).
 - Dois agentes no mesmo número: use roteador.
 - Mensagens repetidas e sem IA: use chatbot (veja o guia agente ou chatbot).`,
   },

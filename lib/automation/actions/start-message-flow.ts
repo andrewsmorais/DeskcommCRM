@@ -42,6 +42,7 @@ export async function executeStartMessageFlow(
     contactId,
     actorUserId: null,
     requestId: `rule:${ctx.ruleId}`,
+    origem: "automacao",
   });
 
   if (!result.ok) {

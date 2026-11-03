@@ -54,7 +54,7 @@ export const MANUAL_IA: ManualDoGrupo = {
       "Na aba “Fila” você vê quem está esperando: contato, fluxo, em que passo está, o “Próximo disparo” e o status. Dá para buscar pelo contato, filtrar por status e por fluxo, e cancelar um follow-up ou um retorno prometido pela IA com o botão “Cancelar”.",
     ],
     cuidados: [
-      "Follow-up automático é do plano Impulso em diante. No Essencial, a tela avisa que o recurso não está no plano.",
+      "Follow-up automático é do plano Impulso em diante. No Essencial, o follow-up funciona só pelo chatbot: a tela de Follow-ups abre com um aviso, o fluxo começa à mão e usa mensagem de texto ou modelo, espera de tempo fixo e tarefa, e quem põe o contato nele é o card “Iniciar follow-up” do chatbot. O agente de IA, as automações e os gatilhos automáticos continuam do Impulso.",
       "A tela é para gerentes e administradores.",
       "Cancelar um follow-up na fila não tem como desfazer: a pessoa não recebe mais as mensagens daquele fluxo. Cancelar um retorno prometido avisa o agente de que você desmarcou.",
       "“Excluir” um fluxo apaga também as inscrições e as versões dele, sem volta. No menu de cada fluxo existem ainda “Renomear” e “Duplicar”.",

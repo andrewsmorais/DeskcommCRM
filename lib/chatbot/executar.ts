@@ -1977,6 +1977,7 @@ async function executarEfeitos(
             contactId: e.contactId,
             actorUserId: null,
             requestId,
+            origem: "chatbot",
             ...(boundary ? { resolveServiceBoundary: async () => boundary } : {}),
           });
           const { rows: fluxo } = await pool.query<{ name: string }>(

@@ -129,6 +129,12 @@ export interface AdminClient {
   retornoQueSeguraOFluxo?(enrollment: EnrollmentRow): Promise<string | null>;
   claimDueEnrollments(limit: number, leaseSeconds: number): Promise<EnrollmentRow[]>;
   loadFlowGraph(orgId: string, versionId: string): Promise<FlowGraph | null>;
+  /**
+   * O `trigger_config.kind` do fluxo da inscrição. Com ele, o "follow-up só
+   * pelo chatbot" (`lib/billing/followup-pelo-chatbot.ts`) roda em qualquer
+   * plano. Ausente (dublês de teste antigos) = a régua de sempre.
+   */
+  gatilhoDoFluxo?(enrollment: EnrollmentRow): Promise<string | null>;
   loadLeadFacts(orgId: string, contactId: string): Promise<{
     lead_stage: string | null;
     tags: string[];
@@ -673,7 +679,8 @@ async function processEnrollment(
 
   const graph = await db.loadFlowGraph(enrollment.organization_id, enrollment.version_id);
   if (!graph) throw new Error("flow_version_not_found");
-  const acesso = await verificarGrafoDoPlano(enrollment.organization_id, graph);
+  const gatilho = db.gatilhoDoFluxo ? await db.gatilhoDoFluxo(enrollment) : null;
+  const acesso = await verificarGrafoDoPlano(enrollment.organization_id, graph, { gatilho });
   if (!acesso.ok) {
     // LEITURA DO PLANO INDISPONÍVEL não é falha DESTE follow-up. Lançar aqui
     // caía em `applyHandlerFailure`: gastava uma tentativa e, passado
@@ -918,6 +925,17 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       if (error) throw new Error(error.message);
       for(const row of data??[]) revisions.set(row.id,Number(row.revision));
       return (data ?? []) as EnrollmentRow[];
+    },
+    async gatilhoDoFluxo(enrollment) {
+      const { data, error } = await admin
+        .from("followup_flow_pointers")
+        .select("trigger_config")
+        .eq("organization_id", enrollment.organization_id)
+        .eq("id", enrollment.pointer_id)
+        .maybeSingle();
+      if (error) throw new Error(`pointer_query_failed: ${error.message}`);
+      const kind = (data as { trigger_config?: { kind?: unknown } } | null)?.trigger_config?.kind;
+      return typeof kind === "string" ? kind : "manual";
     },
     async loadFlowGraph(orgId, versionId) {
       const { data, error } = await admin

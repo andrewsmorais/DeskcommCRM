@@ -5,13 +5,24 @@
  * tests/unit/leads-bulk-assign.test.ts): TDD rota a rota — draft CRUD → publish
  * inválido 422 (por node) → publish válido → rollback → disable.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // A trava de plano (`lib/billing/grafo.ts`) lê a assinatura no banco REAL,
 // por fora das dependências injetadas — num teste unitário isso é um tempo
 // esgotado de rede, não uma resposta. A regra dela é medida em
 // `lib/billing/grafo.test.ts` e `lib/billing/acesso.test.ts`; aqui ela libera.
 vi.mock("@/lib/billing/grafo", () => ({ verificarGrafoDoPlano: vi.fn(async () => ({ ok: true })) }));
+// O plano do "Follow-up automático": incluído por padrão; o Essencial (só pelo
+// chatbot) é simulado no bloco próprio do publish.
+const planoDoFollowup = vi.hoisted(() => ({ inclui: true }));
+vi.mock("@/lib/billing/acesso", async (original) => ({
+  ...(await original<typeof import("@/lib/billing/acesso")>()),
+  verificarRecursoDoPlano: vi.fn(async () =>
+    planoDoFollowup.inclui
+      ? { ok: true }
+      : { ok: false, code: "billing_feature", status: 403, message: "Follow-up automático é do Impulso." },
+  ),
+}));
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 
@@ -514,6 +525,54 @@ describe("PATCH /api/v1/ai/followup-flows/:id", () => {
 // ---------------------------------------------------------------------------
 // Publish
 // ---------------------------------------------------------------------------
+
+describe("POST /api/v1/ai/followup-flows/:id/publish — plano só pelo chatbot", () => {
+  const ID = "33333333-3333-4333-8333-333333333333";
+  const action = (mode: "text" | "ai_message"): FlowNode =>
+    mode === "text"
+      ? { id: "a1", type: "action", label: "Lembrete", position: pos, config: { mode, body: "Oi! Ainda tem interesse?" } }
+      : { id: "a1", type: "action", label: "Lembrete", position: pos, config: { mode, prompt_hint: "retome" } };
+  const grafoCom = (no: FlowNode): FlowGraph => ({
+    nodes: [trigger("t1"), no, end("e1")],
+    edges: [edge("x1", "t1", "a1"), edge("x2", "a1", "e1")],
+  });
+  const publicar = async (graph: FlowGraph, kind = "manual") => {
+    const db = makeDb(
+      [{ id: ID, organization_id: ORG_ID, status: "draft", draft_graph: graph, trigger_config: { kind } }],
+      [],
+    );
+    session("manager", db);
+    const { POST } = await import("@/app/api/v1/ai/followup-flows/[id]/publish/route");
+    return POST(req("POST"), ctx(ID));
+  };
+
+  beforeEach(() => {
+    planoDoFollowup.inclui = false;
+  });
+  afterEach(() => {
+    planoDoFollowup.inclui = true;
+  });
+
+  it("início manual com mensagem de texto publica", async () => {
+    const res = await publicar(grafoCom(action("text")));
+    expect(res.status).toBe(200);
+  });
+
+  it("gatilho automático é recusado dizendo que o início precisa ser manual", async () => {
+    const res = await publicar(grafoCom(action("text")), "silence");
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("billing_feature");
+    expect(body.error.message).toMatch(/início precisa ser manual/);
+  });
+
+  it("mensagem escrita pela IA é recusada pelo nome do passo", async () => {
+    const res = await publicar(grafoCom(action("ai_message")));
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toMatch(/“Lembrete”: mensagem escrita pela IA/);
+  });
+});
 
 describe("POST /api/v1/ai/followup-flows/:id/publish", () => {
   it("draft_graph null → 422 validation_failed com details.errors", async () => {

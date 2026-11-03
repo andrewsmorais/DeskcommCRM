@@ -6181,6 +6181,13 @@ export const DICIONARIO: Traducoes = {
       es: 'El chatbot envía el enlace, pero no verifica si se pagó. Si el enlace queda vacío (una variable sin valor), el flujo sigue por "Sin enlace".',
     },
   "Sem link": { es: "Sin enlace" },
+  "No seu plano, o follow-up funciona pelo chatbot.": {
+    es: "En tu plan, el follow-up funciona por el chatbot.",
+  },
+  "Monte aqui com início manual, mensagem de texto ou modelo, espera de tempo fixo e tarefa, publique e escolha no card “Iniciar follow-up” do chatbot. Mensagem escrita pela IA, condições, gatilhos automáticos e o agente de IA pondo contatos em follow-up são do plano Impulso.":
+    {
+      es: "Ármalo aquí con inicio manual, mensaje de texto o plantilla, espera de tiempo fijo y tarea, publícalo y elígelo en la tarjeta “Iniciar follow-up” del chatbot. El mensaje escrito por la IA, las condiciones, los disparadores automáticos y el agente de IA poniendo contactos en follow-up son del plan Impulso.",
+    },
   "Põe o contato neste follow-up.": { es: "Pone al contacto en este follow-up." },
   "Publique em IA › Follow-ups para usar aqui.": {
     es: "Publícalo en IA › Follow-ups para usarlo aquí.",

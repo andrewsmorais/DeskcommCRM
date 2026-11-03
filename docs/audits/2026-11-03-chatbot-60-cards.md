@@ -149,6 +149,8 @@ Capturas do editor montado com o código desta branch (Playwright, 1440×960), s
 - `evidence/chatbot-umbler-fase-3/k2-followup-rascunho.png` — follow-up em rascunho escolhido: aviso de que o contato não entra e a conversa ganha nota.
 - `evidence/chatbot-umbler-fase-3/l1-menu-followups.png` — plano básico: a seção Follow-ups no fim do menu, com o card liberado e um atalho por follow-up (WebHook segue com o selo do Impulso).
 - `evidence/chatbot-umbler-fase-3/l2-atalho-criou-card.png` — o atalho criou o Iniciar follow-up já com o follow-up escolhido.
+- `evidence/chatbot-umbler-fase-3/m1-followups-essencial.png` — tela de Follow-ups no plano básico: abre com o aviso do follow-up pelo chatbot e sem os modelos prontos.
+- `evidence/chatbot-umbler-fase-3/m1-followups-impulso.png` — a mesma tela no Impulso, como antes.
 
 ## Pendências (o que falta, por quê, próxima ação)
 
@@ -156,6 +158,7 @@ Capturas do editor montado com o código desta branch (Playwright, 1440×960), s
 - **A1 — Prazo de resposta** (cards 37/38): feito nas perguntas, no Enviar formulário (por pergunta) e no Agendar/Reagendar horário (a partir da lista), com invariante no banco para o formulário (`chatbot-prazo-da-resposta`).
 - **V1 — Versões publicadas imutáveis:** pede tabela de versões (migration nova, não destrutiva) e decisão de produto (publicar ≠ salvar). Próxima ação: desenhar e aprovar.
 - **Cards 07, 08, 16, 33, 47, 48:** feitos, reaproveitando o que já existia (cartão de contato da Inbox, Catálogo, funil, handlers da Agenda).
+- **Follow-up no plano básico (decisão do dono, 03/11):** só pelo chatbot. A regra mora em `lib/billing/followup-pelo-chatbot.ts` e vale nas três portas: publicar (início manual; texto ou modelo, espera fixa, tarefa e fim), inscrever (`enrollFollowupFlow` com `origem`: no básico só `chatbot`; agente de IA, automação e tela recusados) e rodar (o motor passa o gatilho à régua do plano). O retorno próprio do agente (`crm_schedule_followup`) ficou como estava, por decisão do dono.
 - **B (bloqueados):** 11 (carrossel: o QR Code não tem, e a API oficial exige catálogo da Meta) e 18 (cupom: o CRM não tem módulo de cupom). O pagamento (13, 14, 15, 19) deixou de ser pendência: é o checkout e o aviso da plataforma de quem vende, por decisão do dono.
 - **Modelos prontos:** 19 (os 18 do prompt, com "captura de leads" atendida por "Coletar dados" e "transferência para IA" pela "Triagem com o agente de IA").
 - **Pré-existente, fora do chatbot (resolvido em 03/11):** o commit de 21/10 do fork deixava `pnpm lint:channels` e `pnpm lint` vermelhos. A exclusão de conta (`lib/exportacao/exclusao.ts`) passou a desligar os números por `lib/channels/desligar-canal.ts`, sem nomear o provedor; `lib/rate-limit-helper.ts` e a rota de webhook do QR Code ganharam tipos no lugar de `any`; e os validadores `.cjs` do guia security-audit ficaram sob uma regra de CommonJS no `eslint.config.mjs`. Para conferir: `pnpm lint:channels && pnpm lint`.

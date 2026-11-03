@@ -86,6 +86,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     agentId: parsed.data.agent_id,
     actorUserId: user.id,
     requestId,
+    origem: "tela",
   });
 
   if (!result.ok) {

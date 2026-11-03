@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
-import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { moduloLigado } from "@/lib/instalacao/modulos";
@@ -81,9 +81,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     return fail("not_found", t("Fluxo não encontrado."), 404, { requestId });
   }
   // Follow-up automático é do Impulso em diante (card da página de vendas).
+  // Sem ele, criar o rascunho vale: o follow-up roda só pelo chatbot, e quem
+  // confere o que cabe nisso é o publicar (`followup-pelo-chatbot.ts`).
   if (parsed.data.surface !== "atendimento") {
-    const recusado = await exigirRecursoDoPlano(activeOrg.orgId, "follow_up", { requestId });
-    if (recusado) return recusado;
+    const acesso = await verificarRecursoDoPlano(activeOrg.orgId, "follow_up");
+    if (!acesso.ok && acesso.code !== "billing_feature")
+      return fail(acesso.code, acesso.message, acesso.status, { requestId });
   }
 
   const supabase = await createClient();

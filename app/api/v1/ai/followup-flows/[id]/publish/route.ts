@@ -12,7 +12,11 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * se draft_graph ausente ou reprovado na validação estrutural/semântica.
  */
 import { randomUUID } from "node:crypto";
-import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import {
+  mensagemDoFollowupPeloChatbot,
+  problemasDoFollowupPeloChatbot,
+} from "@/lib/billing/followup-pelo-chatbot";
 import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
 import type { NextRequest } from "next/server";
 
@@ -71,9 +75,14 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // uma pessoa na tela para corrigir.
   const surface = (pointer.surface ?? "followup") as FollowupFlowSurface;
   // Follow-up automático é do Impulso em diante (card da página de vendas).
+  // Fora dele, o follow-up existe só pelo chatbot (decisão do dono, 03/11/2026):
+  // a recusa espera o grafo, abaixo, para dizer o que tirar.
+  let soPeloChatbot = false;
   if (surface !== "atendimento") {
-    const recusado = await exigirRecursoDoPlano(activeOrg.orgId, "follow_up", { requestId });
-    if (recusado) return recusado;
+    const acesso = await verificarRecursoDoPlano(activeOrg.orgId, "follow_up");
+    if (!acesso.ok && acesso.code !== "billing_feature")
+      return fail(acesso.code, acesso.message, acesso.status, { requestId });
+    soPeloChatbot = !acesso.ok;
   }
   if (surface === "atendimento") {
     if (!(await moduloLigado(admin, "fluxos_atendimento"))) {
@@ -192,7 +201,15 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       requestId,
     });
   const graph = parsedGraph.data;
-  const acesso = await verificarGrafoDoPlano(activeOrg.orgId, graph);
+  if (soPeloChatbot) {
+    const problemas = problemasDoFollowupPeloChatbot(graph, triggerKind);
+    if (problemas.length)
+      // Montada com os nomes dos passos: frase dinâmica não passa pelo dicionário.
+      return fail("billing_feature", mensagemDoFollowupPeloChatbot(problemas), 403, { requestId });
+  }
+  const acesso = await verificarGrafoDoPlano(activeOrg.orgId, graph, {
+    gatilho: surface === "atendimento" ? null : triggerKind,
+  });
   if (!acesso.ok) return fail(acesso.code, acesso.message, acesso.status, { requestId });
   // A regra de etapa guarda o `stage_id`, e só o banco diz se a etapa existe e
   // está ativa — sem esta leitura, uma regra que nunca decide publicaria calada.
