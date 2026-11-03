@@ -21,6 +21,8 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Um par pronto para virar predicado: coluna e valor. */
 export type FiltroDeContagem = readonly [coluna: string, valor: string | boolean];
 
@@ -51,6 +53,11 @@ export function filtrosAuxiliaresDaContagem(
   const filtros: FiltroDeContagem[] = [];
   const canal = sp.get("channel_session_id");
   if (canal) filtros.push(["channel_session_id", canal]);
+  // O setor (migration 0496), como na lista. Só uuid: um valor torto viraria
+  // 22P02 no PostgREST e a rota inteira responderia 500 — a lista recusa o
+  // mesmo valor no schema (`setor_id: z.string().uuid()`).
+  const setor = sp.get("setor_id");
+  if (setor && UUID.test(setor)) filtros.push(["setor_id", setor]);
   // O MARCADOR não entra nesta lista, e não é esquecimento: ele não é
   // IGUALDADE numa coluna, é um `or=` sobre DUAS caixas — `conversations.tags`
   // e o campo calculado do contato. `conversations` não tem coluna `tag` (`tag`

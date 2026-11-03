@@ -325,6 +325,8 @@ export const listConversationsQuerySchema = z.object({
   exclude_finished: z.boolean().optional(),
   assigned_to: z.union([z.string().uuid(), z.literal("me"), z.literal("unassigned")]).optional(),
   channel_session_id: z.string().uuid().optional(),
+  /** Só as do setor (migration 0496). Igualdade em `conversations.setor_id`. */
+  setor_id: z.string().uuid().optional(),
   tag: conversationTagSchema.optional(),
   /**
    * A aba "Grupos" do inbox (Task 10). `"true"`/`"false"` como STRING — vem de

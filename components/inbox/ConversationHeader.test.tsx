@@ -19,9 +19,16 @@ const startCall = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ user: { id: "u1", support: null } }),
+  // O cadeado da conversa privada (migration 0495) pergunta por "inbox.privacy.any".
+  usePermission: () => false,
 }));
 vi.mock("@/hooks/inbox/useClaimConversation", () => ({
   useClaimConversation: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+// Setores (migration 0496): sem setor nenhum a tela é a de antes.
+vi.mock("@/hooks/inbox/useSetores", () => ({
+  useSetores: () => ({ data: [] }),
+  useMudarSetorDaConversa: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@/hooks/inbox/useReleaseConversation", () => ({
   useReleaseConversation: () => ({ mutate: vi.fn(), isPending: false }),

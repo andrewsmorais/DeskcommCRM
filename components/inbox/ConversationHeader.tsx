@@ -34,6 +34,7 @@ import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { IniciarChatbotButton } from "@/components/inbox/IniciarChatbotButton";
 import { PrivacidadeButton } from "@/components/inbox/PrivacidadeButton";
+import { useSetores } from "@/hooks/inbox/useSetores";
 import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
@@ -96,6 +97,11 @@ export function ConversationHeader({
   const arquivar = useArchiveConversation();
   const retomar = useResumeAiAttendance();
   const pausar = usePauseAiAttendance();
+  // O nome do setor (migration 0496) só é buscado quando a conversa tem um.
+  const { data: setores } = useSetores(Boolean(conversation.setor_id));
+  const setorDaConversa = conversation.setor_id
+    ? (setores?.find((s) => s.id === conversation.setor_id) ?? null)
+    : null;
   // "Existe automático nesta org?" — sem isto o selo afirmava que o robô estava
   // atendendo em instalação que nunca configurou agente nenhum.
   const automaticoDaOrg = useAutomaticoAtivo();
@@ -212,6 +218,18 @@ export function ConversationHeader({
             // `ninguem`, `aguardando` e `encerrada` sem dono caem aqui: o disco
             // TRACEJADO do OwnerBadge, que é como o funil já desenha "ninguém".
             <OwnerBadge ownerKind={null} ownerName={null} />
+          )}
+          {/* O setor ao lado de quem manda: é a outra metade de "quem atende" —
+              só membros do setor recebem esta conversa. */}
+          {setorDaConversa && (
+            <Badge
+              variant="outline"
+              className="h-4 max-w-[10rem] truncate px-1.5 text-[10px]"
+              title={setorDaConversa.nome}
+              data-testid="selo-setor"
+            >
+              {t("Setor")}: {setorDaConversa.nome}
+            </Badge>
           )}
         </div>
         {phone && (
@@ -421,6 +439,7 @@ export function ConversationHeader({
         conversationId={conversation.id}
         open={reassignOpen}
         onOpenChange={setReassignOpen}
+        setorAtual={conversation.setor_id ?? null}
         numero={
           onAbrirConversa && c?.id
             ? {

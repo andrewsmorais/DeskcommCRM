@@ -42,6 +42,8 @@ export interface Conversation {
   is_group: boolean;
   /** Conversa privada (migration 0495): só o responsável e os gestores veem. */
   is_private?: boolean;
+  /** Setor de atendimento (migration 0496), ou null. */
+  setor_id?: string | null;
   group_chat_id: string | null;
   tags: string[];
   metadata: Record<string, unknown>;

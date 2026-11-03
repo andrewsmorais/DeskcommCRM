@@ -19,6 +19,7 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useContactTagVocabulary } from "@/hooks/contacts/useContactTagVocabulary";
 import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags";
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
+import { useSetores } from "@/hooks/inbox/useSetores";
 import type { Role, VisibilityMode } from "@/lib/auth/types";
 
 export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "archived" | "ai";
@@ -56,6 +57,8 @@ export interface InboxFiltersValue {
   search: string;
   onlyUnread: boolean;
   channel_session_id?: string;
+  /** Só as conversas do setor (migration 0496). */
+  setor_id?: string;
   tag?: string;
   /** A aba "Grupos" (Task 10): manda `is_group=true` na listagem. */
   onlyGroups?: boolean;
@@ -159,7 +162,15 @@ export function InboxFilters({ value, onChange }: Props) {
     unread: value.onlyUnread,
     tag: value.tag,
     channel_session_id: value.channel_session_id,
+    setor_id: value.setor_id,
   });
+  // O seletor de setor só aparece quando a empresa tem setores (ou quando o
+  // filtro ligado aponta para um setor que acabou de ser excluído — senão a
+  // lista ficaria filtrada sem nada na tela dizendo por quê).
+  const { data: setores } = useSetores(!!orgId);
+  const setorForaDaLista =
+    value.setor_id != null && setores != null && !setores.some((s) => s.id === value.setor_id);
+  const mostrarSeletorDeSetor = (setores?.length ?? 0) > 0 || setorForaDaLista;
 
   const tabs = activeOrg
     ? visibleInboxTabs(activeOrg.role, activeOrg.visibility_mode)
@@ -337,8 +348,36 @@ export function InboxFilters({ value, onChange }: Props) {
           </button>
         </div>
 
-        {(showChannelSwitch || mostrarSeletorDeTag) && (
+        {(showChannelSwitch || mostrarSeletorDeTag || mostrarSeletorDeSetor) && (
           <div className="flex gap-2">
+            {mostrarSeletorDeSetor && (
+              <Select
+                value={value.setor_id ?? "all"}
+                onValueChange={(v) => onChange({ ...value, setor_id: v === "all" ? undefined : v })}
+              >
+                <SelectTrigger
+                  className={cn(
+                    "h-8 min-w-0 flex-1 rounded-full border-transparent bg-surface-elevated px-3 text-xs shadow-none",
+                    value.setor_id != null && "border-accent bg-accent-soft text-accent",
+                  )}
+                  aria-label={t("Filtrar por setor")}
+                  data-testid="filtro-setor"
+                >
+                  <SelectValue placeholder={t("Todos os setores")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("Todos os setores")}</SelectItem>
+                  {setorForaDaLista && value.setor_id != null && (
+                    <SelectItem value={value.setor_id}>{t("Setor removido")}</SelectItem>
+                  )}
+                  {setores?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {showChannelSwitch && (
               <Select
                 value={value.channel_session_id ?? "all"}

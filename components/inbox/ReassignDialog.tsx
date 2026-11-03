@@ -25,9 +25,13 @@ import { channelLabel, useChannelSessions } from "@/hooks/channels/useChannelSes
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useContinuarPorOutroNumero } from "@/hooks/inbox/useContinuarPorOutroNumero";
 import { useTransferConversation } from "@/hooks/inbox/useTransferConversation";
+import { useMudarSetorDaConversa, useSetores } from "@/hooks/inbox/useSetores";
 import { outrosNumerosDoContato } from "@/lib/inbox/outros-numeros";
 
-export type AbaDeTransferencia = "atendente" | "numero";
+export type AbaDeTransferencia = "atendente" | "setor" | "numero";
+
+/** Valor do seletor que tira a conversa do setor (o Select não aceita "" como item). */
+const SEM_SETOR = "__sem_setor__";
 
 interface Props {
   conversationId: string;
@@ -35,6 +39,8 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   /** Aba em que o diálogo abre. A faixa de número fora do ar abre em "numero". */
   abaInicial?: AbaDeTransferencia;
+  /** Setor atual da conversa (migration 0496); habilita "Tirar do setor". */
+  setorAtual?: string | null;
   /**
    * O que a aba Número precisa. Sem `numero`, a aba não aparece — é o caso de
    * quem chama o diálogo fora do Inbox. Com `numero`, ela aparece sempre que há
@@ -70,6 +76,7 @@ export function ReassignDialog({
   open,
   onOpenChange,
   abaInicial = "atendente",
+  setorAtual = null,
   numero,
 }: Props) {
   const t = useT();
@@ -82,20 +89,35 @@ export function ReassignDialog({
   const [reason, setReason] = useState("");
   const [aba, setAba] = useState<AbaDeTransferencia>(abaInicial);
   const [paraSessao, setParaSessao] = useState<string>("");
+  const { data: setores } = useSetores(open);
+  const mudarSetor = useMudarSetorDaConversa();
+  const [paraSetor, setParaSetor] = useState<string>("");
 
   const options = (members.data ?? []).filter((m) => m.user_id !== user.id);
   const numeros = numero ? outrosNumerosDoContato(sessoes, numero.channelSessionId) : [];
   const temAbaNumero = numero != null && numeros.length > 0;
-  const abaAtual = temAbaNumero ? aba : "atendente";
+  const temAbaSetor = (setores?.length ?? 0) > 0;
+  const abaAtual =
+    (aba === "numero" && !temAbaNumero) || (aba === "setor" && !temAbaSetor) ? "atendente" : aba;
+  const abas = 1 + (temAbaSetor ? 1 : 0) + (temAbaNumero ? 1 : 0);
 
   function close(v: boolean) {
     if (!v) {
       setToUserId("");
       setReason("");
       setParaSessao("");
+      setParaSetor("");
       setAba(abaInicial);
     }
     onOpenChange(v);
+  }
+
+  function enviarAoSetor() {
+    if (!paraSetor) return;
+    mudarSetor.mutate(
+      { conversation_id: conversationId, setor_id: paraSetor === SEM_SETOR ? null : paraSetor },
+      { onSuccess: () => close(false) },
+    );
   }
 
   function continuarPeloNumero() {
@@ -123,18 +145,54 @@ export function ReassignDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {temAbaNumero && (
+        {abas > 1 && (
           <Tabs value={abaAtual} onValueChange={(v) => setAba(v as AbaDeTransferencia)}>
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className={abas === 3 ? "grid w-full grid-cols-3" : "grid w-full grid-cols-2"}>
               <TabsTrigger value="atendente">{t("Atendente")}</TabsTrigger>
-              <TabsTrigger value="numero" data-testid="aba-transferir-numero">
-                {t("Número")}
-              </TabsTrigger>
+              {temAbaSetor && (
+                <TabsTrigger value="setor" data-testid="aba-transferir-setor">
+                  {t("Setor")}
+                </TabsTrigger>
+              )}
+              {temAbaNumero && (
+                <TabsTrigger value="numero" data-testid="aba-transferir-numero">
+                  {t("Número")}
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
         )}
 
-        {abaAtual === "numero" && numero ? (
+        {abaAtual === "setor" ? (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="reassign-setor">{t("Enviar para o setor")}</Label>
+              <Select value={paraSetor} onValueChange={setParaSetor}>
+                <SelectTrigger id="reassign-setor" className="w-full" data-testid="select-setor">
+                  <SelectValue placeholder={t("Escolha o setor")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(setores ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id} disabled={s.id === setorAtual}>
+                      {s.nome}
+                      {s.id === setorAtual && (
+                        <span className="ml-1 text-muted-foreground">· {t("atual")}</span>
+                      )}
+                    </SelectItem>
+                  ))}
+                  {setorAtual && <SelectItem value={SEM_SETOR}>{t("Tirar do setor")}</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {paraSetor === SEM_SETOR
+                ? t("A conversa perde a marca do setor. Quem está com ela continua com ela.")
+                : t(
+                    "A conversa vai para a fila do setor e só quem é do setor a recebe. Se o responsável atual não for do setor, ela volta para a fila.",
+                  )}
+            </p>
+          </div>
+        ) : abaAtual === "numero" && numero ? (
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="reassign-numero">{t("Continuar pelo número")}</Label>
@@ -212,7 +270,15 @@ export function ReassignDialog({
           <Button variant="ghost" onClick={() => close(false)}>
             {t("Cancelar")}
           </Button>
-          {abaAtual === "numero" ? (
+          {abaAtual === "setor" ? (
+            <Button
+              disabled={!paraSetor || mudarSetor.isPending}
+              onClick={enviarAoSetor}
+              data-testid="btn-enviar-ao-setor"
+            >
+              {mudarSetor.isPending ? t("Transferindo…") : t("Transferir")}
+            </Button>
+          ) : abaAtual === "numero" ? (
             <Button
               disabled={!paraSessao || !numero?.contactPhone || continuar.isPending}
               onClick={continuarPeloNumero}

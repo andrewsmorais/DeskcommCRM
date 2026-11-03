@@ -5831,6 +5831,22 @@ export const DICIONARIO: Traducoes = {
   "Divida a equipe em setores, como Vendas e Suporte, e mande cada conversa ao setor certo.": {
     es: "Divide el equipo en sectores, como Ventas y Soporte, y envía cada conversación al sector correcto.",
   },
+  "Filtrar por setor": { es: "Filtrar por sector" },
+  "Todos os setores": { es: "Todos los sectores" },
+  "Setor removido": { es: "Sector eliminado" },
+  "Enviar para o setor": { es: "Enviar al sector" },
+  "Escolha o setor": { es: "Elige el sector" },
+  atual: { es: "actual" },
+  "Tirar do setor": { es: "Quitar del sector" },
+  "A conversa perde a marca do setor. Quem está com ela continua com ela.": {
+    es: "La conversación pierde la marca del sector. Quien la tiene sigue con ella.",
+  },
+  "A conversa vai para a fila do setor e só quem é do setor a recebe. Se o responsável atual não for do setor, ela volta para a fila.":
+    {
+      es: "La conversación pasa a la fila del sector y solo quien es del sector la recibe. Si el responsable actual no es del sector, vuelve a la fila.",
+    },
+  "Conversa enviada ao setor.": { es: "Conversación enviada al sector." },
+  "Conversa tirada do setor.": { es: "Conversación quitada del sector." },
   // Chatbot: barra do editor, ideias de bot e ajuda de cada passo (03/11/2026).
   "Quando adicionada essa condição no seu chatbot, ele verifica em que setor a conversa está agora e segue por “Um dos setores”, se for um dos marcados, ou por “Outro ou nenhum”.\n\nO setor muda quando um passo “Transferir para a equipe” manda a conversa a um setor, ou quando um atendente troca o setor pela Inbox. Os setores são criados em Configurações › Setores.":
     {

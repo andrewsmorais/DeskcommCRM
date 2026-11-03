@@ -54,6 +54,15 @@ describe("quais filtros a contagem aplica", () => {
     ]);
   });
 
+  it("o setor vira igualdade, como na lista; valor que não é uuid não vira 500", () => {
+    const SETOR = "aaaaaaaa-0000-4000-8000-00000000000a";
+    expect(filtrosAuxiliaresDaContagem(sp(`setor_id=${SETOR}`))).toContainEqual([
+      "setor_id",
+      SETOR,
+    ]);
+    expect(filtrosAuxiliaresDaContagem(sp("setor_id=vendas"))).toEqual([]);
+  });
+
   it("o marcador NÃO vira igualdade numa coluna que não existe (#1223)", () => {
     // `conversations` não tem coluna `tag` — `tag` é o nome do parâmetro da URL.
     // O marcador mora em `conversations.tags` (text[], migration 0033) e no campo
