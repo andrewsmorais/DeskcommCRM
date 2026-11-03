@@ -31,6 +31,14 @@ vi.mock("@/lib/automation/janela-do-canal", () => ({
 vi.mock("@/lib/automation/throttle", () => ({ espacarEnvio: vi.fn(async () => undefined) }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn(() => ({})) }));
+// A inscrição de verdade é provada nos testes do follow-up; aqui o que se mede
+// é o que o chatbot faz com cada desfecho dela (a nota para a equipe).
+let desfechoDaInscricao: { ok: true } | { ok: false; code: string; message: string; status: number } = {
+  ok: true,
+};
+vi.mock("@/lib/followup/enroll", () => ({
+  enrollFollowupFlow: vi.fn(async () => desfechoDaInscricao),
+}));
 
 import { atenderPeloChatbot } from "@/lib/chatbot/executar";
 
@@ -250,5 +258,43 @@ describe("Enviar produto e Enviar contato (executor)", () => {
         metadata: { shared_contact: { name: "Financeiro", phone_number: "11987654321" } },
       },
     ]);
+  });
+});
+
+describe("Iniciar follow-up (executor)", () => {
+  const FOLLOWUP = "f5f5f5f5-7777-4000-8000-000000000001";
+  beforeAll(async () => {
+    await pool.query(
+      `insert into followup_flow_pointers (id, organization_id, name, status)
+       values ($1, $2, 'Recuperar orçamento', 'draft') on conflict do nothing`,
+      [FOLLOWUP, ORG],
+    );
+  });
+  const grafo = () =>
+    fluxo([no("i", "inicio_canal"), no("f", "iniciar_followup", { pointer_id: FOLLOWUP })], [liga("i", "f")]);
+
+  it.each([
+    [{ ok: true } as const, /pôs o contato no follow-up "Recuperar orçamento"/],
+    [
+      { ok: false, code: "flow_not_active", message: "Fluxo não está ativo.", status: 422 } as const,
+      /"Recuperar orçamento", mas ele não está publicado/,
+    ],
+    [
+      { ok: false, code: "conflict", message: "já tem", status: 409 } as const,
+      /já está em outro follow-up ativo/,
+    ],
+    [
+      { ok: false, code: "internal_error", message: "relation x does not exist", status: 500 } as const,
+      /não conseguiu pôr o contato no follow-up "Recuperar orçamento"\.$/,
+    ],
+  ])("desfecho %#: a equipe lê uma nota", async (desfecho, esperado) => {
+    desfechoDaInscricao = desfecho;
+    await grafo();
+    const c = await conversaNova();
+    await chega(c, "oi");
+    const lidas = await notas(c.conversa);
+    expect(lidas.some((n) => esperado.test(n))).toBe(true);
+    // Erro de banco não vai para a nota.
+    expect(lidas.join(" ")).not.toMatch(/relation x/);
   });
 });

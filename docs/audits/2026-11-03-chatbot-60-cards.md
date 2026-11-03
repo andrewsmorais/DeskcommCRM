@@ -45,13 +45,13 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 10 | Menu de opções | F | F | Pedir para escolher (lista na API oficial) | motor.test | até 10 opções ≤24 letras viram lista |
 | 11 | Carrossel de produtos | N | B | — | — | QR Code não tem; na API oficial exige catálogo da Meta |
 | 12 | Mensagem personalizada | F | F | variáveis `{{x}}` em qualquer texto | motor.test | variável vazia vira vazio; não há valor padrão |
-| 13 | Link de pagamento | N | P | Enviar link de pagamento (novo) | enviar-pagamento.test | manda o link do vendedor; **gerar** o link depende de ligar o provedor de pagamento da empresa (B) |
-| 14 | Enviar Pix | N | P | Enviar link de pagamento (Pix copia e cola) | enviar-pagamento.test | QR Code do Pix: subir a imagem num Enviar mídia |
-| 15 | Enviar boleto | N | P | Enviar link de pagamento (link do boleto) | — | sem geração de boleto (B) |
+| 13 | Link de pagamento | N | F | Enviar link de pagamento (novo): o checkout da plataforma de quem vende (Kiwify, Cakto, Hotmart…), fixo ou `{{link_checkout}}` | enviar-pagamento.test | decisão do dono (03/11): o pagamento é o checkout da plataforma; o CRM não gera cobrança própria |
+| 14 | Enviar Pix | N | F | Enviar link de pagamento (Pix copia e cola, numa mensagem só dele; `{{pix_copia_e_cola}}` da Hotmart) | enviar-pagamento.test | QR Code do Pix: subir a imagem num Enviar mídia |
+| 15 | Enviar boleto | N | F | Enviar link de pagamento (link do boleto; o boleto gerado na Hotmart chega como `{{link_checkout}}`) | plataformas-de-venda.test | o boleto é da plataforma, como o checkout |
 | 16 | Catálogo de produtos | N | F | Enviar produto (novo): lido no Catálogo na hora, com a primeira foto | cards-fase-4 (unit + invariante) | um produto por card; desativado não sai e vira nota |
 | 17 | Oferta/promoção | P | F | Enviar oferta (novo): texto + validade; vencida, nada sai e segue por "Oferta vencida" | feriados-horas-links-oferta.test | validade por dia, no fuso da empresa; sem regra comercial (preço, estoque, cupom — ver 18) |
 | 18 | Cupom de desconto | N | B | — | — | o CRM não tem módulo de cupom |
-| 19 | Status do pagamento | N | P | aviso da plataforma de venda (Kiwify, Cakto, Hotmart nova) → automação → chatbot | plataformas-de-venda.test | a plataforma avisa; consulta ativa ao provedor não existe |
+| 19 | Status do pagamento | N | F | aviso da plataforma de venda (Kiwify, Cakto, Hotmart) → automação → chatbot: aprovada, Pix/boleto gerado, expirado, cancelada, reembolso | plataformas-de-venda.test | a plataforma avisa (não há consulta ativa, e não precisa: o aviso chega sozinho) |
 | 20 | Confirmar compra | P | F | aviso da plataforma (compra aprovada) move o negócio e pode iniciar chatbot | plataformas-de-venda.test | Kiwify, Cakto e Hotmart; outras pelo mapeador genérico |
 | 21 | Perguntar nome | F | F | Pedir para digitar + Campo do contato, ou Enviar formulário (gravar no nome) | regras.test | — |
 | 22 | Perguntar telefone | P | F | Pedir para digitar (formato telefone, novo) | pedir-digitar-formato.test | 8 a 15 dígitos |
@@ -72,7 +72,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 37 | Aguardar resposta | P | F | Pedir para escolher / digitar com "Se o contato não responder" (novo) | prazo-da-resposta (unit + invariante) | até 7 dias; relógio persistente |
 | 38 | Cliente parou de responder | N | F | saída "Não respondeu a tempo" das perguntas (novo) | chatbot-prazo-da-resposta (invariante) | silêncio de dias continua na automação "N dias sem mensagem" |
 | 39 | Follow-up automático | F | F | Iniciar follow-up (módulo existente) | invariantes do follow-up | janela, opt-out e modelo aprovado ficam no módulo |
-| 40 | Reativar conversa | P | P | Enviar template + follow-up | — | fora da janela só modelo aprovado (API oficial) |
+| 40 | Reativar conversa | P | F | Iniciar follow-up (todos os follow-ups da empresa; rascunho e desligado aparecem apagados) + Enviar template | chatbot-cards-fase-4 (invariante: nota para cada desfecho) | na API oficial, fora da janela de 24 h, só modelo aprovado (regra da Meta); por QR Code, mensagem comum |
 | 41 | Agendar envio | P | F | Aguardar até numa data (fixa ou de uma resposta, com dias antes/depois) + Enviar mensagem | aguardar-data-e-guardar-valor.test | até um ano à frente; data passada, vazia ou fora do formato segue por "Sem data válida" |
 | 42 | Horário comercial | P | F | Horários + Dias da semana; feriados no Horários | motor.test, feriados-horas-links-oferta.test | nacionais calculados (Páscoa móvel); Carnaval e Corpus Christi opcionais; estaduais e municipais a empresa escreve |
 | 43 | Consultar horários | F | F | Agendar horário (Agenda do CRM) | invariante da agenda | — |
@@ -145,6 +145,8 @@ Capturas do editor montado com o código desta branch (Playwright, 1440×960), s
 - `evidence/chatbot-umbler-fase-3/j4-agenda-prazo.png` — Agendar horário com prazo de 1 hora e a saída "Não respondeu a tempo".
 - `evidence/chatbot-umbler-fase-3/j5-teste-esperando-vespera.png` — simulador em 03/11: o contato responde 10/11/2026 e o fluxo espera até 09/11/2026 às 09:00.
 - `evidence/chatbot-umbler-fase-3/j6-teste-lembrete.png` — simulador depois de "Pular espera": o lembrete sai com a data e o nome guardado pelo Guardar em variável.
+- `evidence/chatbot-umbler-fase-3/k1-followup-lista.png` — Iniciar follow-up com o publicado escolhido; o card mostra o nome.
+- `evidence/chatbot-umbler-fase-3/k2-followup-rascunho.png` — follow-up em rascunho escolhido: aviso de que o contato não entra e a conversa ganha nota.
 
 ## Pendências (o que falta, por quê, próxima ação)
 
@@ -152,6 +154,6 @@ Capturas do editor montado com o código desta branch (Playwright, 1440×960), s
 - **A1 — Prazo de resposta** (cards 37/38): feito nas perguntas, no Enviar formulário (por pergunta) e no Agendar/Reagendar horário (a partir da lista), com invariante no banco para o formulário (`chatbot-prazo-da-resposta`).
 - **V1 — Versões publicadas imutáveis:** pede tabela de versões (migration nova, não destrutiva) e decisão de produto (publicar ≠ salvar). Próxima ação: desenhar e aprovar.
 - **Cards 07, 08, 16, 33, 47, 48:** feitos, reaproveitando o que já existia (cartão de contato da Inbox, Catálogo, funil, handlers da Agenda).
-- **B (bloqueados):** 11, 18, 19 e a geração de link/boleto (13, 15) — dependem de conta de pagamento da empresa ligada ao CRM ou de recurso que o canal não oferece.
+- **B (bloqueados):** 11 (carrossel: o QR Code não tem, e a API oficial exige catálogo da Meta) e 18 (cupom: o CRM não tem módulo de cupom). O pagamento (13, 14, 15, 19) deixou de ser pendência: é o checkout e o aviso da plataforma de quem vende, por decisão do dono.
 - **Modelos prontos:** 19 (os 18 do prompt, com "captura de leads" atendida por "Coletar dados" e "transferência para IA" pela "Triagem com o agente de IA").
 - **Pré-existente, fora do chatbot (resolvido em 03/11):** o commit de 21/10 do fork deixava `pnpm lint:channels` e `pnpm lint` vermelhos. A exclusão de conta (`lib/exportacao/exclusao.ts`) passou a desligar os números por `lib/channels/desligar-canal.ts`, sem nomear o provedor; `lib/rate-limit-helper.ts` e a rota de webhook do QR Code ganharam tipos no lugar de `any`; e os validadores `.cjs` do guia security-audit ficaram sob uma regra de CommonJS no `eslint.config.mjs`. Para conferir: `pnpm lint:channels && pnpm lint`.

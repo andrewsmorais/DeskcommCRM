@@ -6181,6 +6181,22 @@ export const DICIONARIO: Traducoes = {
       es: 'El chatbot envía el enlace, pero no verifica si se pagó. Si el enlace queda vacío (una variable sin valor), el flujo sigue por "Sin enlace".',
     },
   "Sem link": { es: "Sin enlace" },
+  "rascunho, publique para usar": { es: "borrador, publícalo para usarlo" },
+  "Este follow-up não está publicado: o contato não entra nele, e a conversa ganha uma nota dizendo isso. Publique em IA › Follow-ups.":
+    {
+      es: "Este follow-up no está publicado: el contacto no entra en él, y la conversación recibe una nota que lo dice. Publícalo en IA › Follow-ups.",
+    },
+  "Nenhum follow-up criado ainda. Crie e publique um em IA › Follow-ups.": {
+    es: "Todavía no hay follow-ups. Crea y publica uno en IA › Follow-ups.",
+  },
+  "Nenhum follow-up publicado ainda: só o publicado pode ser escolhido. Publique um em IA › Follow-ups.":
+    {
+      es: "Todavía no hay follow-ups publicados: solo el publicado se puede elegir. Publica uno en IA › Follow-ups.",
+    },
+  "Roteiros de atendimento não aparecem aqui: quem os conduz é o agente de IA. Para usar um, passe a conversa ao agente com “Transferir p/ agentes de IA” — o roteiro começa pelo gatilho dele.":
+    {
+      es: "Los guiones de atención no aparecen aquí: quien los conduce es el agente de IA. Para usar uno, pasa la conversación al agente con “Transferir a agentes de IA”; el guion empieza por su disparador.",
+    },
   "Quando adicionada essa ação no seu chatbot, ele guarda um valor com o nome que você escolher, para usar depois como {{nome}}: numa mensagem, no “Valor”, no WebHook ou em outro passo.\n\nO valor pode ter outras variáveis — por exemplo, {{nome}} {{sobrenome}} — ou ser um texto fixo, como “instagram” para marcar de onde o contato veio. Se a variável já existir, o valor novo toma o lugar do antigo.\n\nO valor vale até o fim da conversa com o chatbot e vai junto para o fluxo chamado em “Acionar outro fluxo”. Para guardar no cadastro do contato, use “Campo do contato”.":
     {
       es: "Cuando agregues esta acción a tu chatbot, guarda un valor con el nombre que elijas, para usarlo después como {{nome}}: en un mensaje, en “Valor”, en el WebHook o en otro paso.\n\nEl valor puede tener otras variables —por ejemplo, {{nome}} {{sobrenome}}— o ser un texto fijo, como “instagram” para marcar de dónde vino el contacto. Si la variable ya existe, el valor nuevo reemplaza al anterior.\n\nEl valor vale hasta el fin de la conversación con el chatbot y va junto al flujo llamado en “Activar otro flujo”. Para guardarlo en el registro del contacto, usa “Campo del contacto”.",

@@ -21,6 +21,7 @@ O editor de chatbot ganha o que a Umbler documenta e o nosso ainda não tinha, s
 - **Hora** como formato no Pedir para digitar e no Enviar formulário: aceita 14, 14h, 14h30 ou "às 14:30" e guarda em hh:mm.
 - **Links conferidos** no Enviar mensagem e no link de pagamento: endereço que não abre página (javascript:, data:) ou incompleto impede de ligar o fluxo; link com http:// mostra um aviso para trocar por https://.
 - **Aguardar até numa data**: um dia que você escolhe ou a data que o contato respondeu (ou o horário marcado pelo Agendar horário), no próprio dia ou alguns dias antes ou depois — "1 dia antes, às 9h" é o lembrete da véspera. Data passada, vazia ou fora do formato segue por "Sem data válida".
+- **Iniciar follow-up** lista todos os follow-ups da empresa: os publicados para escolher, e os em rascunho ou desligados apagados, com o motivo. Se o follow-up escolhido não puder receber o contato (não publicado, ou o contato já está em outro), a conversa ganha uma nota dizendo isso.
 - **Guardar em variável**, card novo: guarda um texto fixo ou montado com outras {{variaveis}} para usar depois na mensagem, no Valor ou no WebHook.
 - **Enviar oferta**, card novo: a promoção vai com a linha "Válida até" (ou com {{validade}} onde você escrever); depois da data, nada é enviado e o fluxo segue por "Oferta vencida".
 - **Biblioteca de mídia** no Enviar mídia: reusar um arquivo que outro chatbot da empresa já manda, e ouvir o áudio antes de salvar.

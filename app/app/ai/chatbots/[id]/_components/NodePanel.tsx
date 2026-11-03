@@ -41,7 +41,17 @@ export type OpcoesDoPainel = {
   canais: { id: string; nome: string }[];
   atendentes: { id: string; nome: string }[];
   /** Follow-ups publicados (os roteiros de atendimento ficam de fora). */
-  followups: { id: string; nome: string }[];
+  /**
+   * Todos os follow-ups da empresa. Só o publicado roda; rascunho e desligado
+   * aparecem apagados. Roteiro de atendimento não entra pelo chatbot: quem o
+   * conduz é o agente de IA, no turno dele.
+   */
+  followups: {
+    id: string;
+    nome: string;
+    situacao: "publicado" | "rascunho" | "desligado";
+    roteiro: boolean;
+  }[];
   /** O fluxo aberto no editor (para subir arquivo e para "Acionar outro fluxo"). */
   fluxoAtual: string;
   fluxos: { id: string; nome: string; ligado: boolean }[];
@@ -1182,6 +1192,10 @@ function Campos({
       return <WebhookDoChatbot dados={dados} aplicar={aplicar} />;
     case "iniciar_followup": {
       const c = lerConfig("iniciar_followup", dados);
+      const lista = opcoes.followups.filter((f) => !f.roteiro);
+      const roteiros = opcoes.followups.filter((f) => f.roteiro).length;
+      const escolhido = lista.find((f) => f.id === c.pointer_id);
+      const publicados = lista.filter((f) => f.situacao === "publicado").length;
       return (
         <>
           <div className="space-y-1.5">
@@ -1190,23 +1204,53 @@ function Campos({
               id="followup"
               className={SELECT}
               value={c.pointer_id ?? ""}
-              onChange={(e) => aplicar({ pointer_id: e.target.value || null })}
+              onChange={(e) =>
+                aplicar({
+                  pointer_id: e.target.value || null,
+                  nome_do_followup: lista.find((f) => f.id === e.target.value)?.nome ?? "",
+                })
+              }
             >
               <option value="">{t("Escolha um follow-up")}</option>
-              {opcoes.followups.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nome}
+              {lista.map((f) => (
+                <option
+                  key={f.id}
+                  value={f.id}
+                  // O que já está escolhido continua selecionável, para a tela
+                  // não esconder a escolha que o fluxo tem.
+                  disabled={f.situacao !== "publicado" && f.id !== c.pointer_id}
+                >
+                  {f.situacao === "publicado" ? f.nome : `${f.nome} — ${t(SITUACAO_DO_FOLLOWUP[f.situacao])}`}
                 </option>
               ))}
             </select>
           </div>
+          {escolhido && escolhido.situacao !== "publicado" ? (
+            <p
+              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-300"
+              data-testid="followup-nao-publicado"
+            >
+              {t(
+                "Este follow-up não está publicado: o contato não entra nele, e a conversa ganha uma nota dizendo isso. Publique em IA › Follow-ups.",
+              )}
+            </p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
-            {opcoes.followups.length === 0
-              ? t("Nenhum follow-up publicado ainda. Crie e publique um em IA › Follow-ups.")
-              : t(
-                  "O contato entra no follow-up como se o agente de IA o tivesse armado. Se ele já estiver em outro follow-up ativo, fica no que está — e a conversa ganha uma nota dizendo isso.",
-                )}
+            {lista.length === 0
+              ? t("Nenhum follow-up criado ainda. Crie e publique um em IA › Follow-ups.")
+              : publicados === 0
+                ? t("Nenhum follow-up publicado ainda: só o publicado pode ser escolhido. Publique um em IA › Follow-ups.")
+                : t(
+                    "O contato entra no follow-up como se o agente de IA o tivesse armado. Se ele já estiver em outro follow-up ativo, fica no que está — e a conversa ganha uma nota dizendo isso.",
+                  )}
           </p>
+          {roteiros > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Roteiros de atendimento não aparecem aqui: quem os conduz é o agente de IA. Para usar um, passe a conversa ao agente com “Transferir p/ agentes de IA” — o roteiro começa pelo gatilho dele.",
+              )}
+            </p>
+          ) : null}
         </>
       );
     }
@@ -1617,6 +1661,11 @@ function PedirEscolher({
     </>
   );
 }
+
+const SITUACAO_DO_FOLLOWUP = {
+  rascunho: "rascunho, publique para usar",
+  desligado: "desligado",
+} as const;
 
 const AVISO_DO_LINK: Record<ProblemaDoLink, string> = {
   protocolo_perigoso:

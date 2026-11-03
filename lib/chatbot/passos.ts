@@ -417,6 +417,8 @@ export const configDoPasso = {
    */
   iniciar_followup: z.object({
     pointer_id: z.string().uuid().nullable().default(null),
+    /** Só para o card mostrar qual é; quem decide é o `pointer_id`. */
+    nome_do_followup: z.string().trim().max(200).default(""),
   }),
   /**
    * Teste A/B: cada contato segue por UMA das saídas, sorteada pelo peso

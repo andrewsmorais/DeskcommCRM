@@ -217,7 +217,7 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       return `${t("Até")} ${c.hora}${todos ? "" : ` (${c.dias.slice().sort().map((d) => nomes[d]).join(", ")})`}`;
     }
     case "iniciar_followup":
-      return "";
+      return lerConfig("iniciar_followup", dados).nome_do_followup;
     case "webhook": {
       const c = lerConfig("webhook", dados);
       return c.url ? `${c.metodo} ${c.url}` : "";

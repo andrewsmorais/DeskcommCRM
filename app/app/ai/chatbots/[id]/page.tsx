@@ -53,11 +53,11 @@ export default async function ChatbotEditorPage({ params }: Props) {
       .eq("organization_id", activeOrg.orgId)
       .is("revoked_at", null),
     db
+      // TODOS, não só os publicados: o painel mostra rascunho e desligado
+      // apagados, com o motivo, em vez de o follow-up "sumir" da lista.
       .from("followup_flow_pointers")
-      .select("id, name, surface")
+      .select("id, name, surface, status")
       .eq("organization_id", activeOrg.orgId)
-      .eq("status", "active")
-      .neq("surface", "atendimento")
       .order("name"),
     db
       .from("chatbot_flows")
@@ -131,6 +131,8 @@ export default async function ChatbotEditorPage({ params }: Props) {
         followups: (followupsRes.data ?? []).map((f) => ({
           id: String(f.id),
           nome: String(f.name),
+          situacao: f.status === "active" ? "publicado" : f.status === "disabled" ? "desligado" : "rascunho",
+          roteiro: f.surface === "atendimento",
         })),
         fluxoAtual: flowRes.data.id,
         fluxos: (fluxosRes.data ?? []).map((f) => ({

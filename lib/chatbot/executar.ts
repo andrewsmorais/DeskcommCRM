@@ -1988,9 +1988,20 @@ async function executarEfeitos(
             await notaInterna(`O chatbot pôs o contato no follow-up "${nomeDoFollowup}".`);
           } else {
             log.warn("chatbot: follow-up não iniciado", { flow_id: fluxoId, codigo: r.code });
+            // Toda recusa vira nota: sem ela, a equipe não sabe que o contato
+            // ficou de fora (e o painel do passo promete esta nota).
             if (r.code === "conflict")
               await notaInterna(
                 `O chatbot tentou o follow-up "${nomeDoFollowup}", mas o contato já está em outro follow-up ativo.`,
+              );
+            else if (r.code === "flow_not_active")
+              await notaInterna(
+                `O chatbot tentou o follow-up "${nomeDoFollowup}", mas ele não está publicado. Publique em IA › Follow-ups.`,
+              );
+            else
+              await notaInterna(
+                // Erro de banco fica no log; a nota diz só que falhou.
+                `O chatbot não conseguiu pôr o contato no follow-up "${nomeDoFollowup}"${r.code === "internal_error" ? "" : ` (${r.message})`}.`,
               );
           }
           break;
