@@ -898,6 +898,19 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
   {
+    // Setores de atendimento (migration 0496): grupos de atendentes. A conversa
+    // posta num setor só é distribuída a membros dele. Mesmo papel e mesma
+    // vizinhança da Distribuição de atendimento, que é a regra que o setor afina.
+    href: "/app/settings/setores",
+    label: "Setores",
+    description:
+      "Divida a equipe em setores, como Vendas e Suporte, e mande cada conversa ao setor certo.",
+    icon: "Users",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "manager",
+  },
+  {
     // A porta que faltava para o vocabulário de etiquetas (issue #852). Até
     // aqui a etiqueta só ENTRAva no vocabulário — cada agente escrevia a que
     // quisesse em `add_tag` — e não havia por onde corrigir, juntar as duas

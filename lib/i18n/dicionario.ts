@@ -5800,6 +5800,37 @@ export const DICIONARIO: Traducoes = {
   },
   "Já existe um setor com esse nome.": { es: "Ya existe un sector con ese nombre." },
   "Setor não encontrado.": { es: "Sector no encontrado." },
+  "Setor salvo.": { es: "Sector guardado." },
+  "Setor excluído.": { es: "Sector eliminado." },
+  "Não consegui excluir.": { es: "No pude eliminar." },
+  "Editar setor": { es: "Editar sector" },
+  "Novo setor": { es: "Nuevo sector" },
+  "Ex.: Vendas": { es: "Ej.: Ventas" },
+  "Quem atende neste setor": { es: "Quién atiende en este sector" },
+  "Ninguém na equipe ainda. Convide pessoas em Equipe.": {
+    es: "Todavía no hay nadie en el equipo. Invita personas en Equipo.",
+  },
+  "Setor sem ninguém não recebe conversa: ela fica na fila até alguém do setor ser incluído.": {
+    es: "Un sector sin nadie no recibe conversaciones: quedan en la fila hasta que se incluya a alguien en el sector.",
+  },
+  "Nenhum setor ainda. Sem setores, toda conversa vai para a equipe toda, como sempre.": {
+    es: "Todavía no hay sectores. Sin sectores, toda conversación va a todo el equipo, como siempre.",
+  },
+  "Ninguém neste setor ainda.": { es: "Todavía no hay nadie en este sector." },
+  "Excluir o setor? As conversas dele continuam na Inbox, só sem a marca do setor.": {
+    es: "¿Eliminar el sector? Sus conversaciones siguen en la Bandeja de entrada, solo sin la marca del sector.",
+  },
+  "Excluir setor": { es: "Eliminar sector" },
+  "Divida a equipe em setores, como Vendas e Suporte. A conversa posta num setor, pela Inbox ou pelo chatbot, só é entregue a quem é do setor.":
+    {
+      es: "Divide el equipo en sectores, como Ventas y Soporte. La conversación puesta en un sector, desde la Bandeja de entrada o el chatbot, solo se entrega a quien es del sector.",
+    },
+  "Não foi possível carregar os setores agora. Recarregue a página.": {
+    es: "No fue posible cargar los sectores ahora. Recarga la página.",
+  },
+  "Divida a equipe em setores, como Vendas e Suporte, e mande cada conversa ao setor certo.": {
+    es: "Divide el equipo en sectores, como Ventas y Soporte, y envía cada conversación al sector correcto.",
+  },
   // Chatbot: barra do editor, ideias de bot e ajuda de cada passo (03/11/2026).
   "Quando adicionada essa condição no seu chatbot, ele verifica em que setor a conversa está agora e segue por “Um dos setores”, se for um dos marcados, ou por “Outro ou nenhum”.\n\nO setor muda quando um passo “Transferir para a equipe” manda a conversa a um setor, ou quando um atendente troca o setor pela Inbox. Os setores são criados em Configurações › Setores.":
     {
