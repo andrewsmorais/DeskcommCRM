@@ -274,6 +274,16 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
       return `⛔ ${t("Contato bloqueado: ninguém mais escreve para ele")}`;
     case "pedido_exclusao":
       return `🗑 ${t("Pedido de exclusão dos dados (LGPD) aberto para um admin aprovar")}`;
+    case "transferiu_ia":
+      return `— ${t("Conversa entregue ao agente de IA do número")} —`;
+    case "modelo_de_exemplo": {
+      const nome = opcoes.modelos.find((m) => m.id === e.template_id)?.nome ?? t("o modelo");
+      return `📄 ${t("Aqui sairia o modelo")} "${nome}". ${t("No teste, nada é enviado; no WhatsApp só sai por número oficial da Meta.")}`;
+    }
+    case "fluxo_de_espera":
+      return e.ligar
+        ? `⏳ ${t("Mensagens de espera ligadas de novo")}`
+        : `⏳ ${t("Mensagens de espera desligadas")}`;
     case "horarios_de_exemplo":
       return `📅 ${t("No teste, os horários são de exemplo. No WhatsApp eles vêm da Agenda.")}`;
     case "marcou_de_exemplo":

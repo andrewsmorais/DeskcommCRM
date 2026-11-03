@@ -14,7 +14,9 @@ import {
   CalendarDays,
   Check,
   CircleDot,
+  ClipboardList,
   Clock,
+  FileText,
   Flag,
   GitBranch,
   Hand,
@@ -43,6 +45,7 @@ import {
   UserPen,
   UserX,
   Users,
+  Variable,
   Webhook,
   Workflow,
   Wrench,
@@ -51,6 +54,9 @@ import {
 } from "lucide-react";
 
 const ICONES: Record<string, LucideIcon> = {
+  ClipboardList,
+  FileText,
+  Variable,
   Activity,
   AlarmClock,
   Ban,

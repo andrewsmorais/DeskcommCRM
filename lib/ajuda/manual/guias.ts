@@ -47,15 +47,15 @@ Cada passo pode ser pulado e retomado depois.
 
 **Passos que existem no editor** (clique em "Adicionar passo"):
 - Início: Iniciar por um canal (escolhe o número de WhatsApp e se começa em toda conversa nova ou só com palavra-chave), Iniciar manualmente.
-- Condição: Horários, Dias da semana, Mensagem contém, Etiquetas, Primeira conversa?, entre outros.
-- Ação: Enviar mensagem, Enviar mídia, Pedir para escolher (opções numeradas), Pedir para digitar (guarda a resposta), Agendar horário, Negócio no funil, Transferir para a equipe, Transferir p/ atendente, Editar etiquetas, Campo do contato, Criar uma nota, Pedir para avaliar, Notificar atendente.
+- Condição: Horários, Dias da semana, Mensagem contém, Etiquetas, Primeira conversa?, Valor, entre outros.
+- Ação: Enviar mensagem, Enviar mídia, Enviar template (modelo aprovado, só em número oficial da Meta), Pedir para escolher (opções numeradas), Pedir para digitar (guarda a resposta), Enviar formulário (várias perguntas em sequência), Agendar horário, Negócio no funil, Transferir para a equipe, Transferir p/ atendente, Transferir p/ agentes de IA, Editar etiquetas, Campo do contato, Criar uma nota, Pedir para avaliar, Notificar atendente, Fluxo de espera.
 - Finalização: Finalizar conversa. Utilitários: Bloco de notas.
 
 **Como montar:** em **Chatbots**, crie um novo (nome e descrição), monte os passos, clique em **Salvar**, teste no botão **Testar** e ligue a chave **Ligado**. Só assim ele responde no WhatsApp.
 
 **Nos planos:** passos avançados (WebHook, Definir condição, Aguardar intervalo, Acionar outro fluxo, Iniciar follow-up e outros) aparecem marcados com o plano Impulso no editor.
 
-**Dica de uso:** um número com o agente de IA (vendas, conversa livre) e outro com o chatbot (suporte e perguntas repetidas). Assim o que é repetitivo não gasta IA e o agente cuida do que precisa de conversa. Um chatbot também pode passar a conversa para uma pessoa da equipe.`,
+**Dica de uso:** um número com o agente de IA (vendas, conversa livre) e outro com o chatbot (suporte e perguntas repetidas). Assim o que é repetitivo não gasta IA e o agente cuida do que precisa de conversa. Um chatbot também pode passar a conversa para uma pessoa da equipe ou para o agente de IA do número.`,
   },
   {
     id: "escrever-prompt-do-agente",

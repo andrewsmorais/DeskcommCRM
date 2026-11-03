@@ -18,7 +18,10 @@ import {
   ehTipoDePasso,
   lerConfig,
   metaDoPasso,
+  perguntaDoFormularioSchema,
   regraSchema,
+  type ConfigDe,
+  type PerguntaDoFormulario,
   type Regra,
 } from "@/lib/chatbot/passos";
 
@@ -36,6 +39,8 @@ export type OpcoesDoPainel = {
   /** Tipos de atendimento da Agenda. */
   tiposDeAtendimento: { id: string; nome: string; ativo: boolean }[];
   funis: { id: string; nome: string; etapas: { id: string; nome: string }[] }[];
+  /** Modelos aprovados pela Meta que um fluxo consegue mandar sozinho (sem variáveis). */
+  modelos: { id: string; nome: string; idioma: string; texto: string }[];
 };
 
 type Props = {
@@ -857,6 +862,67 @@ function Campos({
           <p className="text-xs text-muted-foreground">
             {t(
               'Este fluxo termina aqui e o escolhido começa do início, com as respostas já guardadas ({{nome}}…). Para um submenu, crie o outro fluxo com "Iniciar por automação": ele pode ficar ligado junto com este. Escolha este mesmo fluxo para voltar ao menu.',
+            )}
+          </p>
+        </>
+      );
+    }
+    case "valor":
+      return <ValorDoPasso dados={dados} aplicar={aplicar} />;
+    case "transferir_ia": {
+      const c = lerConfig("transferir_ia", dados);
+      return (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "A conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar. O chatbot sai da conversa.",
+            )}
+          </p>
+          <Texto
+            id="ia-msg"
+            rotulo={t("Mensagem antes de transferir (opcional)")}
+            valor={c.mensagem}
+            linhas={3}
+            onCommit={(v) => aplicar({ mensagem: v })}
+            ajuda={t(
+              'Só é enviada se houver agente de IA no ar neste número. Se não houver, o fluxo segue por "Sem agente de IA" — ligue ali um "Transferir para a equipe".',
+            )}
+          />
+        </>
+      );
+    }
+    case "enviar_template":
+      return <EnviarTemplate dados={dados} opcoes={opcoes} aplicar={aplicar} />;
+    case "enviar_formulario":
+      return <EnviarFormulario dados={dados} aplicar={aplicar} />;
+    case "fluxo_de_espera": {
+      const c = lerConfig("fluxo_de_espera", dados);
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label>{t("O que fazer")}</Label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="espera-acao"
+                checked={c.acao === "desligar"}
+                onChange={() => aplicar({ acao: "desligar" })}
+              />
+              {t("Desligar as mensagens de espera")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="espera-acao"
+                checked={c.acao === "ligar"}
+                onChange={() => aplicar({ acao: "ligar" })}
+              />
+              {t("Ligar de novo as mensagens de espera")}
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'As mensagens de espera são as que "Transferir para a equipe" e "Transferir p/ atendente" mandam enquanto ninguém responde. Desligar para as que estão programadas nesta conversa; ligar volta a programá-las, se ainda faltarem vezes e ninguém da equipe tiver respondido. Quando um atendente aciona um fluxo, ou uma automação começa um, elas já param sozinhas: nesses fluxos, use "Ligar" para mantê-las.',
             )}
           </p>
         </>
@@ -2062,5 +2128,319 @@ function DistribuirFluxo({
         )}
       </p>
     </div>
+  );
+}
+
+function ValorDoPasso({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("valor", dados);
+  const semValor = c.operador === "preenchido" || c.operador === "vazio";
+  const campoOutro = c.fonte === "campo_contato" && !CAMPOS_FIXOS.includes(c.chave);
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="valor-fonte">{t("Comparar")}</Label>
+        <select
+          id="valor-fonte"
+          className={SELECT}
+          value={c.fonte}
+          onChange={(e) => {
+            const fonte = e.target.value as ConfigDe<"valor">["fonte"];
+            aplicar({ fonte, chave: fonte === "campo_contato" ? "nome" : fonte === "variavel" ? c.chave : "" });
+          }}
+        >
+          <option value="variavel">{t("Resposta guardada")}</option>
+          <option value="campo_contato">{t("Campo do contato")}</option>
+          <option value="mensagem">{t("Última mensagem do contato")}</option>
+        </select>
+      </div>
+      {c.fonte === "variavel" ? (
+        <Texto
+          id="valor-var"
+          rotulo={t("Nome da resposta")}
+          valor={c.chave}
+          placeholder="total"
+          onCommit={(v) => aplicar({ chave: comoChave(v) })}
+          ajuda={t(
+            'O nome em que a resposta foi guardada: "Pedir para digitar", "Enviar formulário", WebHook ou automação.',
+          )}
+        />
+      ) : null}
+      {c.fonte === "campo_contato" ? (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="valor-campo">{t("Campo")}</Label>
+            <select
+              id="valor-campo"
+              className={SELECT}
+              value={campoOutro ? "__outro" : c.chave}
+              onChange={(e) => aplicar({ chave: e.target.value === "__outro" ? "" : e.target.value })}
+            >
+              <option value="nome">{t("Nome")}</option>
+              <option value="email">{t("E-mail")}</option>
+              <option value="aniversario">{t("Aniversário")}</option>
+              <option value="__outro">{t("Campo personalizado")}</option>
+            </select>
+          </div>
+          {campoOutro ? (
+            <Texto
+              id="valor-chave"
+              rotulo={t("Nome do campo personalizado")}
+              valor={c.chave}
+              placeholder="cidade"
+              onCommit={(v) => aplicar({ chave: comoChave(v) })}
+            />
+          ) : null}
+        </>
+      ) : null}
+      <div className="space-y-1.5">
+        <Label htmlFor="valor-op">{t("Condição")}</Label>
+        <select
+          id="valor-op"
+          className={SELECT}
+          value={c.operador}
+          onChange={(e) => aplicar({ operador: e.target.value })}
+        >
+          <option value="igual">{t("É igual a")}</option>
+          <option value="diferente">{t("É diferente de")}</option>
+          <option value="contem">{t("Contém")}</option>
+          <option value="nao_contem">{t("Não contém")}</option>
+          <option value="comeca_com">{t("Começa com")}</option>
+          <option value="termina_com">{t("Termina com")}</option>
+          <option value="maior">{t("É maior que (número ou data)")}</option>
+          <option value="maior_ou_igual">{t("É maior ou igual a (número ou data)")}</option>
+          <option value="menor">{t("É menor que (número ou data)")}</option>
+          <option value="menor_ou_igual">{t("É menor ou igual a (número ou data)")}</option>
+          <option value="preenchido">{t("Está preenchido")}</option>
+          <option value="vazio">{t("Está vazio")}</option>
+        </select>
+      </div>
+      {semValor ? null : (
+        <Texto
+          id="valor-alvo"
+          rotulo={t("Valor")}
+          valor={c.valor}
+          placeholder="100"
+          onCommit={(v) => aplicar({ valor: v })}
+          ajuda={t(
+            "Pode usar {{nome}} para comparar com outra resposta. Maiúsculas e acentos não importam; datas em dd/mm/aaaa.",
+          )}
+        />
+      )}
+      <p className="text-xs text-muted-foreground">
+        {t('Se valer, segue por "Verdadeiro"; senão, por "Falso".')}
+      </p>
+    </div>
+  );
+}
+
+function EnviarTemplate({
+  dados,
+  opcoes,
+  aplicar,
+}: {
+  dados: NodeData;
+  opcoes: OpcoesDoPainel;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("enviar_template", dados);
+  const escolhido = opcoes.modelos.find((m) => m.id === c.template_id);
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="template">{t("Modelo aprovado")}</Label>
+        <select
+          id="template"
+          className={SELECT}
+          value={c.template_id ?? ""}
+          onChange={(e) => {
+            const m = opcoes.modelos.find((x) => x.id === e.target.value);
+            aplicar({ template_id: m?.id ?? null, nome_do_modelo: m ? `${m.nome} (${m.idioma})` : "" });
+          }}
+        >
+          <option value="">{t("Escolha um modelo")}</option>
+          {opcoes.modelos.map((m) => (
+            <option key={m.id} value={m.id}>
+              {`${m.nome} (${m.idioma})`}
+            </option>
+          ))}
+        </select>
+      </div>
+      {escolhido ? (
+        <p className="whitespace-pre-wrap rounded-md border border-border bg-muted/40 p-2 text-xs">
+          {escolhido.texto}
+        </p>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        {opcoes.modelos.length === 0
+          ? t(
+              "Nenhum modelo aprovado ainda. Modelos só existem em número oficial da Meta (API do WhatsApp) e são aprovados pela Meta. Modelos com variáveis ficam de fora: o fluxo não tem de onde tirar os valores.",
+            )
+          : t(
+              'O modelo é a única mensagem que o WhatsApp aceita depois de 24 horas sem o contato escrever. Em número conectado por QR Code não há modelo: o fluxo segue por "Não enviado" e a conversa ganha uma nota com o motivo.',
+            )}
+      </p>
+    </>
+  );
+}
+
+const NOMES_DO_TIPO_DE_RESPOSTA: Record<PerguntaDoFormulario["tipo"], string> = {
+  texto: "Texto livre",
+  email: "E-mail",
+  numero: "Número",
+  data: "Data (dd/mm/aaaa)",
+  telefone: "Telefone",
+};
+
+function EnviarFormulario({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("enviar_formulario", dados);
+  const mudarPergunta = (i: number, parcial: Partial<PerguntaDoFormulario>) =>
+    aplicar({
+      perguntas: c.perguntas.map((q, j) => (j === i ? { ...q, ...parcial } : q)),
+    });
+  return (
+    <>
+      <Texto
+        id="form-intro"
+        rotulo={t("Mensagem de abertura (opcional)")}
+        valor={c.introducao}
+        linhas={2}
+        placeholder={t("Ex.: Para seguir, preciso de alguns dados.")}
+        onCommit={(v) => aplicar({ introducao: v })}
+      />
+      {c.perguntas.map((q, i) => (
+        <div key={i} className="space-y-2 rounded-md border border-border p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">
+              {t("Pergunta")} {i + 1}
+            </span>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+              disabled={c.perguntas.length === 1}
+              aria-label={t("Remover pergunta")}
+              onClick={() => aplicar({ perguntas: c.perguntas.filter((_, j) => j !== i) })}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <Texto
+            key={`p-${i}-${c.perguntas.length}`}
+            id={`form-p-${i}`}
+            rotulo={t("Pergunta")}
+            valor={q.pergunta}
+            linhas={2}
+            onCommit={(v) => mudarPergunta(i, { pergunta: v })}
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor={`form-tipo-${i}`}>{t("Tipo de resposta")}</Label>
+            <select
+              id={`form-tipo-${i}`}
+              className={SELECT}
+              value={q.tipo}
+              onChange={(e) => mudarPergunta(i, { tipo: e.target.value as PerguntaDoFormulario["tipo"] })}
+            >
+              {(Object.keys(NOMES_DO_TIPO_DE_RESPOSTA) as PerguntaDoFormulario["tipo"][]).map((k) => (
+                <option key={k} value={k}>
+                  {t(NOMES_DO_TIPO_DE_RESPOSTA[k])}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Texto
+            key={`v-${i}-${c.perguntas.length}`}
+            id={`form-var-${i}`}
+            rotulo={t("Guardar a resposta em")}
+            valor={q.variavel}
+            onCommit={(v) => mudarPergunta(i, { variavel: comoChave(v) || `resposta_${i + 1}` })}
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor={`form-gravar-${i}`}>{t("Gravar também no contato")}</Label>
+            <select
+              id={`form-gravar-${i}`}
+              className={SELECT}
+              value={q.gravar_em}
+              onChange={(e) =>
+                mudarPergunta(i, { gravar_em: e.target.value as PerguntaDoFormulario["gravar_em"] })
+              }
+            >
+              <option value="">{t("Não gravar")}</option>
+              <option value="nome">{t("Nome")}</option>
+              <option value="email">{t("E-mail")}</option>
+              <option value="aniversario">{t("Aniversário")}</option>
+            </select>
+          </div>
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={c.perguntas.length >= 10}
+        onClick={() =>
+          aplicar({
+            perguntas: [
+              ...c.perguntas,
+              perguntaDoFormularioSchema.parse({
+                pergunta: "",
+                variavel: `resposta_${c.perguntas.length + 1}`,
+              }),
+            ],
+          })
+        }
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        {t("Adicionar pergunta")}
+      </Button>
+      <Texto
+        id="form-invalida"
+        rotulo={t("Se a resposta não servir")}
+        valor={c.mensagem_invalida}
+        linhas={2}
+        onCommit={(v) => aplicar({ mensagem_invalida: v })}
+      />
+      <div className="space-y-1.5">
+        <Label htmlFor="form-tentativas">{t("Tentativas por pergunta")}</Label>
+        <select
+          id="form-tentativas"
+          className={SELECT}
+          value={c.tentativas}
+          onChange={(e) => aplicar({ tentativas: Number(e.target.value) })}
+        >
+          {[1, 2, 3, 4, 5].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+      <Texto
+        id="form-fim"
+        rotulo={t("Mensagem ao terminar (opcional)")}
+        valor={c.conclusao}
+        linhas={2}
+        placeholder={t("Ex.: Obrigado, {{nome}}! Já anotei tudo.")}
+        onCommit={(v) => aplicar({ conclusao: v })}
+      />
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'As perguntas saem uma de cada vez, e cada resposta é conferida pelo tipo. Use as respostas depois como {{nome_que_você_escolheu}}. Se o contato errar todas as tentativas de uma pergunta, segue por "Não respondeu certo".',
+        )}
+      </p>
+    </>
   );
 }

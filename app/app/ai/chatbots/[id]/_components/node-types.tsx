@@ -10,7 +10,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 
 import { useT } from "@/hooks/i18n/useT";
 import { lerConfig, metaDoPasso, saidasDoPasso, ehTipoDePasso } from "@/lib/chatbot/passos";
-import { descreverRegra } from "@/lib/chatbot/regras";
+import { descreverRegra, descreverValor } from "@/lib/chatbot/regras";
 import { IconeDoPasso } from "./icones";
 
 export type NodeData = Record<string, unknown>;
@@ -161,6 +161,22 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const c = lerConfig("acionar_fluxo", dados);
       return c.flow_id ? `→ ${c.nome_do_fluxo}` : "";
     }
+    case "valor":
+      return descreverValor(lerConfig("valor", dados));
+    case "transferir_ia":
+      return lerConfig("transferir_ia", dados).mensagem;
+    case "enviar_template": {
+      const c = lerConfig("enviar_template", dados);
+      return c.template_id ? `📄 ${c.nome_do_modelo}` : "";
+    }
+    case "enviar_formulario": {
+      const n = lerConfig("enviar_formulario", dados).perguntas.length;
+      return n === 1 ? t("1 pergunta") : `${n} ${t("perguntas")}`;
+    }
+    case "fluxo_de_espera":
+      return lerConfig("fluxo_de_espera", dados).acao === "ligar"
+        ? t("Liga as mensagens de espera")
+        : t("Desliga as mensagens de espera");
   }
 }
 

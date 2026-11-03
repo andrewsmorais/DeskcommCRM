@@ -6,6 +6,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { listSelectableChannels } from "@/lib/channels/selectable";
 import { grafoSchema } from "@/lib/chatbot/passos";
+import { modelosQueOFluxoEnvia, type LinhaDeModeloDoCanal } from "@/lib/followup/modelos-aprovados";
 import { createClient } from "@/lib/supabase/server";
 import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 import { ChatbotCanvas } from "./_components/ChatbotCanvas";
@@ -25,50 +26,66 @@ export default async function ChatbotEditorPage({ params }: Props) {
   if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) redirect("/403");
 
   const db = await createClient();
-  const [flowRes, canais, pessoasRes, followupsRes, fluxosRes, tiposRes, funisRes, etapasRes] =
-    await Promise.all([
-      db
-        .from("chatbot_flows")
-        .select("id, name, is_active, grafo")
-        .eq("id", id)
-        .eq("organization_id", activeOrg.orgId)
-        .maybeSingle(),
-      listSelectableChannels(db, activeOrg.orgId),
-      db
-        .from("user_organizations")
-        .select("user_id, role")
-        .eq("organization_id", activeOrg.orgId)
-        .is("revoked_at", null),
-      db
-        .from("followup_flow_pointers")
-        .select("id, name, surface")
-        .eq("organization_id", activeOrg.orgId)
-        .eq("status", "active")
-        .neq("surface", "atendimento")
-        .order("name"),
-      db
-        .from("chatbot_flows")
-        .select("id, name, is_active")
-        .eq("organization_id", activeOrg.orgId)
-        .order("name"),
-      db
-        .from("calendar_event_types")
-        .select("id, name, is_active")
-        .eq("organization_id", activeOrg.orgId)
-        .order("name"),
-      db
-        .from("crm_pipelines")
-        .select("id, name")
-        .eq("organization_id", activeOrg.orgId)
-        .eq("is_archived", false)
-        .order("position"),
-      db
-        .from("crm_stages")
-        .select("id, name, pipeline_id")
-        .eq("organization_id", activeOrg.orgId)
-        .eq("is_archived", false)
-        .order("position"),
-    ]);
+  const [
+    flowRes,
+    canais,
+    pessoasRes,
+    followupsRes,
+    fluxosRes,
+    tiposRes,
+    funisRes,
+    etapasRes,
+    modelosRes,
+  ] = await Promise.all([
+    db
+      .from("chatbot_flows")
+      .select("id, name, is_active, grafo")
+      .eq("id", id)
+      .eq("organization_id", activeOrg.orgId)
+      .maybeSingle(),
+    listSelectableChannels(db, activeOrg.orgId),
+    db
+      .from("user_organizations")
+      .select("user_id, role")
+      .eq("organization_id", activeOrg.orgId)
+      .is("revoked_at", null),
+    db
+      .from("followup_flow_pointers")
+      .select("id, name, surface")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("status", "active")
+      .neq("surface", "atendimento")
+      .order("name"),
+    db
+      .from("chatbot_flows")
+      .select("id, name, is_active")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db
+      .from("calendar_event_types")
+      .select("id, name, is_active")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db
+      .from("crm_pipelines")
+      .select("id, name")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position"),
+    db
+      .from("crm_stages")
+      .select("id, name, pipeline_id")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position"),
+    // "Enviar template": a MESMA lista do seletor do follow-up (aprovados e
+    // sem variável — o fluxo não tem de onde tirar valor).
+    db
+      .from("meta_templates")
+      .select("id, name, language, status, parameter_format, components")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+  ]);
 
   if (!flowRes.data) notFound();
 
@@ -122,6 +139,9 @@ export default async function ChatbotEditorPage({ params }: Props) {
             .filter((e) => e.pipeline_id === f.id)
             .map((e) => ({ id: String(e.id), nome: String(e.name) })),
         })),
+        modelos: modelosQueOFluxoEnvia((modelosRes.data ?? []) as LinhaDeModeloDoCanal[]).map(
+          (m) => ({ id: m.id, nome: m.name, idioma: m.language, texto: m.texto }),
+        ),
       }}
     />
   );

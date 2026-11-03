@@ -3,9 +3,11 @@
  * "+", nó no quadro, painel de configuração) e o motor (lib/chatbot/motor.ts)
  * leem. Passo que não está aqui não existe: nem aparece no menu, nem roda.
  *
- * O chatbot não usa IA em ponto nenhum, nem para entregar a conversa a um
- * agente de IA (decisão do dono do produto, 22/10/2026): é fluxo puro, sem
- * custo de token.
+ * O chatbot não usa IA em ponto nenhum: é fluxo puro, sem custo de token. Até
+ * 03/11/2026 ele também não ENTREGAVA a conversa a um agente de IA (decisão do
+ * dono do produto, 22/10/2026); nessa data o dono pediu o "Transferir p/
+ * agentes de IA" da Umbler. O passo só devolve a conversa ao atendimento
+ * automático — quem gasta token dali em diante é o agente, com o orçamento dele.
  *
  * Inspirado no editor da Umbler Talk (grupos Início, Condição, Ação,
  * Finalização, Utilitários). Fase 1: os passos abaixo. Os demais da Umbler
@@ -84,6 +86,38 @@ export type TipoDeMidia = (typeof TIPOS_DE_MIDIA)[number];
 
 /** O que fazer se o contato mandar mensagem enquanto o fluxo espera o relógio. */
 const SE_RESPONDER = z.enum(["seguir", "esperar"]).default("seguir");
+
+/** Como o passo "Valor" compara. Texto ignora maiúsculas e acentos; maior/menor é número ou data. */
+export const OPERADORES_DE_VALOR = [
+  "igual",
+  "diferente",
+  "contem",
+  "nao_contem",
+  "comeca_com",
+  "termina_com",
+  "maior",
+  "maior_ou_igual",
+  "menor",
+  "menor_ou_igual",
+  "preenchido",
+  "vazio",
+] as const;
+export type OperadorDeValor = (typeof OPERADORES_DE_VALOR)[number];
+
+/** O que cada pergunta do "Enviar formulário" aceita como resposta. */
+export const TIPOS_DE_RESPOSTA = ["texto", "email", "numero", "data", "telefone"] as const;
+export type TipoDeResposta = (typeof TIPOS_DE_RESPOSTA)[number];
+
+/** Onde a resposta de uma pergunta do formulário pode ser gravada no contato ("" = em lugar nenhum). */
+export const CAMPOS_DO_FORMULARIO = ["", "nome", "email", "aniversario"] as const;
+
+export const perguntaDoFormularioSchema = z.object({
+  pergunta: z.string().trim().max(1000).default(""),
+  variavel: CHAVE.default("resposta"),
+  tipo: z.enum(TIPOS_DE_RESPOSTA).default("texto"),
+  gravar_em: z.enum(CAMPOS_DO_FORMULARIO).default(""),
+});
+export type PerguntaDoFormulario = z.infer<typeof perguntaDoFormularioSchema>;
 
 export const configDoPasso = {
   /**
@@ -393,6 +427,77 @@ export const configDoPasso = {
     /** Só para o resumo no quadro; quem decide é o id. */
     nome_do_fluxo: z.string().max(120).default(""),
   }),
+  /**
+   * "Valor" da Umbler: compara uma resposta guardada, um campo do contato ou a
+   * última mensagem com um valor que pode ter {{variavel}} — ex.:
+   * {{total}} maior que 100, ou {{email_digitado}} igual a {{email_do_cadastro}}.
+   */
+  valor: z.object({
+    fonte: z.enum(["variavel", "campo_contato", "mensagem"]).default("variavel"),
+    /** Nome da variável, ou o campo do contato (nome/email/aniversario/<chave personalizada>). */
+    chave: z.string().trim().max(40).default(""),
+    operador: z.enum(OPERADORES_DE_VALOR).default("igual"),
+    /** Aceita {{variavel}}. */
+    valor: z.string().trim().max(200).default(""),
+  }),
+  /**
+   * Devolve a conversa ao atendimento automático: o agente de IA do número (ou o
+   * roteador) responde dali em diante — pelo MESMO caminho do botão "Devolver
+   * ao agente" da Inbox (`devolverAtendimentoAoAgente`). Sem agente no ar no
+   * número, segue pela saída "Sem agente de IA". A mensagem, se houver, só sai
+   * depois de a entrega dar certo.
+   */
+  transferir_ia: z.object({
+    mensagem: z.string().trim().max(1000).default(""),
+  }),
+  /**
+   * Modelo aprovado pela Meta (`meta_templates`), sem variáveis — o mesmo que o
+   * follow-up manda. Só existe em número oficial (API da Meta); em número por
+   * QR Code o passo segue por "Não enviado".
+   */
+  enviar_template: z.object({
+    template_id: z.string().uuid().nullable().default(null),
+    /** Só para o resumo no quadro; quem decide é o id. */
+    nome_do_modelo: z.string().max(600).default(""),
+  }),
+  /**
+   * Um formulário pela conversa: as perguntas saem uma de cada vez, cada
+   * resposta é conferida pelo tipo (e-mail, número, data…) e guardada em
+   * {{variavel}} — e, se pedido, no cadastro do contato. O formulário nativo do
+   * WhatsApp (WhatsApp Flows) só existe na API oficial e precisa ser publicado
+   * na Meta; este funciona em qualquer número.
+   */
+  enviar_formulario: z.object({
+    introducao: z.string().trim().max(1000).default(""),
+    perguntas: z
+      .array(perguntaDoFormularioSchema)
+      .min(1)
+      .max(10)
+      .default([
+        perguntaDoFormularioSchema.parse({ pergunta: "Qual é o seu nome?", variavel: "nome" }),
+        perguntaDoFormularioSchema.parse({
+          pergunta: "Qual é o seu e-mail?",
+          variavel: "email",
+          tipo: "email",
+        }),
+      ]),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não consegui entender essa resposta. Pode mandar de novo?"),
+    tentativas: z.number().int().min(1).max(5).default(3),
+    conclusao: z.string().trim().max(1000).default(""),
+  }),
+  /**
+   * "Fluxo de espera" da Umbler: liga ou desliga as mensagens de espera desta
+   * conversa (as que "Transferir para a equipe" e "Transferir p/ atendente"
+   * mandam enquanto ninguém da equipe responde). Desligar para as que estão
+   * armadas; ligar rearma as da última transferência, se ainda faltarem vezes.
+   */
+  fluxo_de_espera: z.object({
+    acao: z.enum(["desligar", "ligar"]).default("desligar"),
+  }),
 } as const;
 
 export type TipoDePasso = keyof typeof configDoPasso;
@@ -566,6 +671,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "valor",
+    grupo: "condicao",
+    nome: "Valor",
+    descricao: "Compara um valor de variável ou campo com uma expressão.",
+    icone: "Variable",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
     tipo: "enviar_mensagem",
     grupo: "acao",
     nome: "Enviar mensagem",
@@ -584,6 +698,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "enviar_template",
+    grupo: "acao",
+    nome: "Enviar template",
+    descricao: "Envie um modelo aprovado pelo WhatsApp (só em número oficial da Meta).",
+    icone: "FileText",
+    cor: "text-blue-500",
+    temEntrada: true,
+  },
+  {
     tipo: "pedir_escolher",
     grupo: "acao",
     nome: "Pedir para escolher",
@@ -599,6 +722,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Peça para o contato digitar um texto livre.",
     icone: "TextCursorInput",
     cor: "text-slate-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_formulario",
+    grupo: "acao",
+    nome: "Enviar formulário",
+    descricao: "Faça várias perguntas em sequência e guarde as respostas no fluxo.",
+    icone: "ClipboardList",
+    cor: "text-blue-500",
     temEntrada: true,
   },
   {
@@ -643,6 +775,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     nome: "Transferir p/ atendente",
     descricao: "Transfira a conversa para um atendente específico.",
     icone: "Headset",
+    cor: "text-red-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "transferir_ia",
+    grupo: "acao",
+    nome: "Transferir p/ agentes de IA",
+    descricao: "Devolva a conversa ao agente de IA que atende este número.",
+    icone: "Sparkles",
     cor: "text-red-400",
     temEntrada: true,
   },
@@ -707,6 +848,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Abra um aviso na Central de avisos, com link para a conversa.",
     icone: "BellRing",
     cor: "text-orange-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "fluxo_de_espera",
+    grupo: "acao",
+    nome: "Fluxo de espera",
+    descricao: "Ligue ou desligue as mensagens de espera desta conversa.",
+    icone: "Hourglass",
+    cor: "text-blue-500",
     temEntrada: true,
   },
   {
@@ -892,6 +1042,23 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         { id: "sim", rotulo: "Esperando resposta" },
         { id: "nao", rotulo: "Já respondido" },
+      ];
+    case "valor":
+      return [
+        { id: "sim", rotulo: "Verdadeiro" },
+        { id: "nao", rotulo: "Falso" },
+      ];
+    case "transferir_ia":
+      return [{ id: "falha", rotulo: "Sem agente de IA" }];
+    case "enviar_template":
+      return [
+        { id: "proximo", rotulo: "Enviado" },
+        { id: "falha", rotulo: "Não enviado" },
+      ];
+    case "enviar_formulario":
+      return [
+        { id: "proximo", rotulo: "Respondeu tudo" },
+        { id: "invalida", rotulo: "Não respondeu certo" },
       ];
     case "agendar_horario":
       return [

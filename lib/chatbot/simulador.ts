@@ -9,9 +9,12 @@
  *   - Agendar horário: horários DE EXEMPLO, e nada é marcado na Agenda;
  *   - Acionar outro fluxo: só "voltar ao início" deste fluxo roda; outro fluxo
  *     é anunciado e o teste para ali;
- *   - relógio ("Aguardar", mensagem de espera): botão para pular.
+ *   - relógio ("Aguardar", mensagem de espera): botão para pular;
+ *   - "Transferir p/ agentes de IA" e "Enviar template": contam como feitos
+ *     (no WhatsApp dependem do agente no ar e do número oficial).
  */
 import {
+  continuarAposAcao,
   continuarAposMarcar,
   continuarAposWebhook,
   continuarComHorarios,
@@ -51,6 +54,9 @@ export type EventoDoTeste =
   | { tipo: "finalizou" }
   | { tipo: "bloqueou" }
   | { tipo: "pedido_exclusao" }
+  | { tipo: "transferiu_ia" }
+  | { tipo: "modelo_de_exemplo"; template_id: string }
+  | { tipo: "fluxo_de_espera"; ligar: boolean }
   | { tipo: "horarios_de_exemplo" }
   | { tipo: "marcou_de_exemplo" }
   | { tipo: "abriria_fluxo"; flow_id: string }
@@ -277,6 +283,15 @@ function aplicar(
         estado = comEvento(estado, { tipo: "marcou_de_exemplo" });
         r = continuarAposMarcar(grafo, r.sessao, { ok: true, aguardaConfirmacao: false }, c);
         break;
+      case "ia":
+        r = continuarAposAcao(grafo, r.sessao, true, c);
+        estado = comEvento(comEfeitos(estado, r.efeitos), { tipo: "transferiu_ia" });
+        r = { ...r, efeitos: [] };
+        break;
+      case "template":
+        estado = comEvento(estado, { tipo: "modelo_de_exemplo", template_id: p.template_id });
+        r = continuarAposAcao(grafo, r.sessao, true, c);
+        break;
       case "fluxo": {
         const inicio = p.flow_id === o.fluxoAtual ? inicioParaAcionar(grafo) : null;
         if (!inicio) {
@@ -358,6 +373,9 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         break;
       case "pedido_exclusao":
         bolhas.push({ de: "evento", evento: { tipo: "pedido_exclusao" } });
+        break;
+      case "fluxo_de_espera":
+        bolhas.push({ de: "evento", evento: { tipo: "fluxo_de_espera", ligar: e.ligar } });
         break;
     }
   }

@@ -6,7 +6,13 @@
  * Toda comparação de texto ignora maiúsculas, acentos e espaços repetidos — é
  * o que quem monta o fluxo espera de "a etiqueta é VIP" ou "a resposta é sim".
  */
-import type { CampoDoContato, Regra } from "./passos";
+import type {
+  CampoDoContato,
+  ConfigDe,
+  PerguntaDoFormulario,
+  Regra,
+  TipoDeResposta,
+} from "./passos";
 
 /** O que o motor sabe do contato neste turno (lido pelo executor antes de rodar). */
 export type ContatoDoTurno = {
@@ -189,6 +195,190 @@ export function valorDoCampo(campo: CampoDoContato, bruto: string, hoje = new Da
       return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     }
   }
+}
+
+// ─── "Valor" ────────────────────────────────────────────────────────────────
+
+type ConfigDoValor = ConfigDe<"valor">;
+
+/** "25/12/2026" ou "2026-12-25" → milissegundos UTC da data; outra coisa → null. */
+export function comoData(texto: string): number | null {
+  const v = texto.trim();
+  const br = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let d: number, m: number, a: number;
+  if (br) [d, m, a] = [Number(br[1]), Number(br[2]), Number(br[3])];
+  else if (iso) [a, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else return null;
+  const t = Date.UTC(a, m - 1, d);
+  const data = new Date(t);
+  return data.getUTCFullYear() === a && data.getUTCMonth() === m - 1 && data.getUTCDate() === d
+    ? t
+    : null;
+}
+
+/** Os dois lados como número, ou os dois como data. Misturado ou texto → null. */
+function compararOrdem(a: string, b: string): number | null {
+  const na = comoNumero(a);
+  const nb = comoNumero(b);
+  if (na !== null && nb !== null) return na - nb;
+  const da = comoData(a);
+  const db = comoData(b);
+  if (da !== null && db !== null) return da - db;
+  return null;
+}
+
+/**
+ * A comparação do passo "Valor". `alvo` é o valor do passo JÁ preenchido
+ * ({{variavel}} trocada pelo motor). Texto compara sem maiúsculas e acentos;
+ * maior/menor só vale entre dois números ou duas datas — "abc" > 5 é falso, e
+ * não um palpite.
+ */
+export function valorVale(
+  c: ConfigDoValor,
+  ctx: {
+    mensagem: string | null;
+    dados: Record<string, string>;
+    contato: ContatoDoTurno;
+    alvo: string;
+  },
+): boolean {
+  const bruto =
+    c.fonte === "mensagem"
+      ? (ctx.mensagem ?? "")
+      : c.fonte === "variavel"
+        ? (ctx.dados[c.chave] ?? "")
+        : valorAtualDoCampo(ctx.contato, c.chave);
+  const texto = normalizar(bruto);
+  const alvo = normalizar(ctx.alvo);
+  switch (c.operador) {
+    case "preenchido":
+      return texto !== "";
+    case "vazio":
+      return texto === "";
+    case "igual": {
+      const ordem = compararOrdem(bruto, ctx.alvo);
+      return ordem !== null ? ordem === 0 : texto === alvo;
+    }
+    case "diferente": {
+      const ordem = compararOrdem(bruto, ctx.alvo);
+      return ordem !== null ? ordem !== 0 : texto !== alvo;
+    }
+    case "contem":
+      return alvo !== "" && texto.includes(alvo);
+    case "nao_contem":
+      return alvo === "" || !texto.includes(alvo);
+    case "comeca_com":
+      return alvo !== "" && texto.startsWith(alvo);
+    case "termina_com":
+      return alvo !== "" && texto.endsWith(alvo);
+    case "maior":
+    case "maior_ou_igual":
+    case "menor":
+    case "menor_ou_igual": {
+      const ordem = compararOrdem(bruto, ctx.alvo);
+      if (ordem === null) return false;
+      if (c.operador === "maior") return ordem > 0;
+      if (c.operador === "maior_ou_igual") return ordem >= 0;
+      if (c.operador === "menor") return ordem < 0;
+      return ordem <= 0;
+    }
+  }
+}
+
+const SIMBOLO_DO_OPERADOR: Record<ConfigDoValor["operador"], string> = {
+  igual: "=",
+  diferente: "≠",
+  contem: "contém",
+  nao_contem: "não contém",
+  comeca_com: "começa com",
+  termina_com: "termina com",
+  maior: ">",
+  maior_ou_igual: "≥",
+  menor: "<",
+  menor_ou_igual: "≤",
+  preenchido: "preenchido",
+  vazio: "vazio",
+};
+
+/** Resumo curto do passo "Valor", para o nó no quadro. */
+export function descreverValor(c: ConfigDoValor): string {
+  const lado =
+    c.fonte === "mensagem"
+      ? "Mensagem"
+      : c.fonte === "variavel"
+        ? `{{${c.chave || "…"}}}`
+        : (NOME_DO_CAMPO[c.chave] ?? (c.chave || "Campo"));
+  const op = SIMBOLO_DO_OPERADOR[c.operador];
+  const s =
+    c.operador === "preenchido" || c.operador === "vazio"
+      ? `${lado} ${op}`
+      : `${lado} ${op} ${c.valor || "…"}`;
+  return s.length > 40 ? `${s.slice(0, 39)}…` : s;
+}
+
+/** O que falta para o passo "Valor" funcionar (null = completo). */
+export function problemaDoValor(c: ConfigDoValor): string | null {
+  if (c.fonte !== "mensagem" && !c.chave)
+    return c.fonte === "variavel" ? "escolha a resposta guardada" : "escolha o campo do contato";
+  if (c.operador !== "preenchido" && c.operador !== "vazio" && !c.valor)
+    return "escreva o valor para comparar";
+  return null;
+}
+
+// ─── "Enviar formulário" ────────────────────────────────────────────────────
+
+/**
+ * A resposta a uma pergunta do formulário, conferida pelo tipo. Devolve o que
+ * fica em {{variavel}} e, quando a pergunta grava no contato, o valor no
+ * formato do cadastro; null = resposta que não serve (o motor pede de novo).
+ *   - texto: 1 a 1000 caracteres;
+ *   - email: formato de e-mail, em minúsculas;
+ *   - numero: "10", "4,5" (fica como o contato escreveu, sem espaços);
+ *   - data: dd/mm/aaaa ou aaaa-mm-dd que existe (fica dd/mm/aaaa);
+ *   - telefone: 8 a 15 dígitos (fica só com os dígitos).
+ * Gravar no contato soma a regra do campo (`valorDoCampo`): aniversário no
+ * futuro não serve para o cadastro, então não serve como resposta.
+ */
+export function respostaDoFormulario(
+  p: Pick<PerguntaDoFormulario, "tipo" | "gravar_em">,
+  bruto: string,
+  hoje = new Date(),
+): { valor: string; gravado: string | null } | null {
+  const v = bruto.replace(/\s+/g, " ").trim();
+  if (!v) return null;
+  let valor: string | null;
+  switch (p.tipo as TipoDeResposta) {
+    case "texto":
+      valor = v.slice(0, 1000);
+      break;
+    case "email": {
+      const e = v.toLowerCase();
+      valor = EMAIL.test(e) && e.length <= 254 ? e : null;
+      break;
+    }
+    case "numero":
+      valor = comoNumero(v) !== null ? v.replace(/\s/g, "") : null;
+      break;
+    case "data": {
+      const t = comoData(v);
+      if (t === null) valor = null;
+      else {
+        const d = new Date(t);
+        valor = `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+      }
+      break;
+    }
+    case "telefone": {
+      const digitos = v.replace(/\D/g, "");
+      valor = digitos.length >= 8 && digitos.length <= 15 ? digitos : null;
+      break;
+    }
+  }
+  if (valor === null) return null;
+  if (!p.gravar_em) return { valor, gravado: null };
+  const gravado = valorDoCampo(p.gravar_em, valor, hoje);
+  return gravado === null ? null : { valor, gravado };
 }
 
 /**

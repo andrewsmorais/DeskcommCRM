@@ -5733,6 +5733,101 @@ export const DICIONARIO: Traducoes = {
     es: "Pide una nota para la atención (1 a 5 o 0 a 10).",
   },
   "Pedir feedback escrito": { es: "Pedir comentario escrito" },
+  // Chatbot: blocos da Umbler que entraram em 03/11/2026.
+  "A conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar. O chatbot sai da conversa.":
+    {
+      es: "La conversación vuelve a la atención automática: el agente de IA de este número (o el enrutador) responde desde ahí, incluido el mensaje que el contacto acaba de enviar. El chatbot sale de la conversación.",
+    },
+  'Só é enviada se houver agente de IA no ar neste número. Se não houver, o fluxo segue por "Sem agente de IA" — ligue ali um "Transferir para a equipe".':
+    {
+      es: 'Solo se envía si hay un agente de IA activo en este número. Si no lo hay, el flujo sigue por "Sin agente de IA": conecta ahí un "Transferir al equipo".',
+    },
+  "Desligar as mensagens de espera": { es: "Desactivar los mensajes de espera" },
+  "Ligar de novo as mensagens de espera": { es: "Volver a activar los mensajes de espera" },
+  'As mensagens de espera são as que "Transferir para a equipe" e "Transferir p/ atendente" mandam enquanto ninguém responde. Desligar para as que estão programadas nesta conversa; ligar volta a programá-las, se ainda faltarem vezes e ninguém da equipe tiver respondido. Quando um atendente aciona um fluxo, ou uma automação começa um, elas já param sozinhas: nesses fluxos, use \"Ligar\" para mantê-las.':
+    {
+      es: 'Los mensajes de espera son los que "Transferir al equipo" y "Transferir a un agente" envían mientras nadie responde. Desactivar detiene los programados en esta conversación; activar vuelve a programarlos, si aún quedan veces y nadie del equipo respondió. Cuando un agente activa un flujo, o una automatización inicia uno, se detienen solos: en esos flujos, usa \"Activar\" para mantenerlos.',
+    },
+  'O nome em que a resposta foi guardada: "Pedir para digitar", "Enviar formulário", WebHook ou automação.':
+    {
+      es: 'El nombre con el que se guardó la respuesta: "Pedir que escriba", "Enviar formulario", WebHook o automatización.',
+    },
+  "Começa com": { es: "Empieza con" },
+  "Termina com": { es: "Termina con" },
+  "É maior que (número ou data)": { es: "Es mayor que (número o fecha)" },
+  "É maior ou igual a (número ou data)": { es: "Es mayor o igual a (número o fecha)" },
+  "É menor que (número ou data)": { es: "Es menor que (número o fecha)" },
+  "É menor ou igual a (número ou data)": { es: "Es menor o igual a (número o fecha)" },
+  "Pode usar {{nome}} para comparar com outra resposta. Maiúsculas e acentos não importam; datas em dd/mm/aaaa.":
+    {
+      es: "Puedes usar {{nome}} para comparar con otra respuesta. Mayúsculas y acentos no importan; fechas en dd/mm/aaaa.",
+    },
+  'Se valer, segue por "Verdadeiro"; senão, por "Falso".': {
+    es: 'Si se cumple, sigue por "Verdadero"; si no, por "Falso".',
+  },
+  "Nenhum modelo aprovado ainda. Modelos só existem em número oficial da Meta (API do WhatsApp) e são aprovados pela Meta. Modelos com variáveis ficam de fora: o fluxo não tem de onde tirar os valores.":
+    {
+      es: "Aún no hay plantillas aprobadas. Las plantillas solo existen en números oficiales de Meta (API de WhatsApp) y Meta las aprueba. Las plantillas con variables quedan fuera: el flujo no tiene de dónde sacar los valores.",
+    },
+  'O modelo é a única mensagem que o WhatsApp aceita depois de 24 horas sem o contato escrever. Em número conectado por QR Code não há modelo: o fluxo segue por "Não enviado" e a conversa ganha uma nota com o motivo.':
+    {
+      es: 'La plantilla es el único mensaje que WhatsApp acepta después de 24 horas sin que el contacto escriba. En un número conectado por código QR no hay plantillas: el flujo sigue por "No enviado" y la conversación recibe una nota con el motivo.',
+    },
+  "Mensagem de abertura (opcional)": { es: "Mensaje de apertura (opcional)" },
+  "Ex.: Para seguir, preciso de alguns dados.": { es: "Ej.: Para seguir, necesito algunos datos." },
+  "Remover pergunta": { es: "Quitar pregunta" },
+  "Tipo de resposta": { es: "Tipo de respuesta" },
+  "Gravar também no contato": { es: "Guardar también en el contacto" },
+  "Adicionar pergunta": { es: "Agregar pregunta" },
+  "Se a resposta não servir": { es: "Si la respuesta no sirve" },
+  "Tentativas por pergunta": { es: "Intentos por pregunta" },
+  "Mensagem ao terminar (opcional)": { es: "Mensaje al terminar (opcional)" },
+  "Ex.: Obrigado, {{nome}}! Já anotei tudo.": { es: "Ej.: ¡Gracias, {{nome}}! Ya anoté todo." },
+  'As perguntas saem uma de cada vez, e cada resposta é conferida pelo tipo. Use as respostas depois como {{nome_que_você_escolheu}}. Se o contato errar todas as tentativas de uma pergunta, segue por "Não respondeu certo".':
+    {
+      es: 'Las preguntas salen de a una, y cada respuesta se revisa según el tipo. Usa las respuestas después como {{nombre_que_elegiste}}. Si el contacto falla todos los intentos de una pregunta, sigue por "No respondió bien".',
+    },
+  "Conversa entregue ao agente de IA do número": {
+    es: "Conversación entregada al agente de IA del número",
+  },
+  "o modelo": { es: "la plantilla" },
+  "Aqui sairia o modelo": { es: "Aquí saldría la plantilla" },
+  "No teste, nada é enviado; no WhatsApp só sai por número oficial da Meta.": {
+    es: "En la prueba no se envía nada; en WhatsApp solo sale por un número oficial de Meta.",
+  },
+  "Mensagens de espera ligadas de novo": { es: "Mensajes de espera activados de nuevo" },
+  "Mensagens de espera desligadas": { es: "Mensajes de espera desactivados" },
+  "1 pergunta": { es: "1 pregunta" },
+  perguntas: { es: "preguntas" },
+  "Liga as mensagens de espera": { es: "Activa los mensajes de espera" },
+  "Desliga as mensagens de espera": { es: "Desactiva los mensajes de espera" },
+  "Compara um valor de variável ou campo com uma expressão.": {
+    es: "Compara un valor de variable o campo con una expresión.",
+  },
+  Verdadeiro: { es: "Verdadero" },
+  Falso: { es: "Falso" },
+  "Enviar template": { es: "Enviar plantilla" },
+  "Envie um modelo aprovado pelo WhatsApp (só em número oficial da Meta).": {
+    es: "Envía una plantilla aprobada por WhatsApp (solo en número oficial de Meta).",
+  },
+  Enviado: { es: "Enviado" },
+  "Enviar formulário": { es: "Enviar formulario" },
+  "Faça várias perguntas em sequência e guarde as respostas no fluxo.": {
+    es: "Haz varias preguntas en secuencia y guarda las respuestas en el flujo.",
+  },
+  "Respondeu tudo": { es: "Respondió todo" },
+  Comparar: { es: "Comparar" },
+  "Transferir p/ agentes de IA": { es: "Transferir a agentes de IA" },
+  "Devolva a conversa ao agente de IA que atende este número.": {
+    es: "Devuelve la conversación al agente de IA que atiende este número.",
+  },
+  "Sem agente de IA": { es: "Sin agente de IA" },
+  "Fluxo de espera": { es: "Flujo de espera" },
+  "Ligue ou desligue as mensagens de espera desta conversa.": {
+    es: "Activa o desactiva los mensajes de espera de esta conversación.",
+  },
+  "Texto livre": { es: "Texto libre" },
+  "Data (dd/mm/aaaa)": { es: "Fecha (dd/mm/aaaa)" },
   "Peça um comentário sobre o atendimento. Fica junto da nota.": {
     es: "Pide un comentario sobre la atención. Queda junto a la nota.",
   },

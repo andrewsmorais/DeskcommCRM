@@ -7,7 +7,9 @@
  *   - `{ adiarAte }` → fora da janela de envio do número; o evento volta quando ela abrir;
  *   - `nao_atende` → nenhum fluxo para esta conversa; segue o caminho da IA.
  *
- * Sem IA em ponto nenhum. Envia pelo mesmo caminho das automações
+ * Sem IA em ponto nenhum — "Transferir p/ agentes de IA" só devolve a conversa
+ * ao atendimento automático, e quem responde dali em diante é o agente, pelo
+ * caminho de sempre. Envia pelo mesmo caminho das automações
  * (`sendMessageHandler` + espaçamento entre mensagens + janela do número), com
  * as mesmas guardas do contato. Falha ao ler o fluxo devolve `nao_atende`
  * (fail-open): um erro do chatbot não pode calar a conversa.
@@ -37,6 +39,7 @@ import { levarContatoAoFunil } from "@/lib/leads/levar-ao-funil";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { ApiError } from "@/lib/api/types";
 import {
+  continuarAposAcao,
   continuarAposMarcar,
   continuarAposWebhook,
   continuarComHorarios,
@@ -47,6 +50,7 @@ import {
   inicioPorAutomacao,
   pontoDePartida,
   proximaMensagemDeEspera,
+  relogioDaEspera,
   respondeMensagens,
   respostasVisiveis,
   retomarFluxo,
@@ -68,6 +72,9 @@ import { createLgpdRequest } from "@/lib/lgpd/repository";
 import { lerConfig } from "./passos";
 import { decifrarSegredosDoPasso } from "./segredos";
 import { chamarWebhookDoChatbot } from "./webhook";
+import { capacidadeDoNumero, temQuemAtenda } from "@/lib/ai/agents/capacidade-do-numero";
+import { devolverAtendimentoAoAgente } from "@/lib/escalacao/retomada";
+import { resolverModeloAprovadoNaConexao } from "@/lib/channels/meta/modelo-aprovado-da-conexao";
 
 /** Teto de WebHooks numa mensagem só: um desenho em círculo não vira metralhadora. */
 export const WEBHOOKS_POR_TURNO = 3;
@@ -327,8 +334,10 @@ export async function atenderPeloChatbot(
       ? retomarFluxo(grafo, sessaoAnterior, ctx)
       : continuarFluxo(grafo, sessaoAnterior, ctx);
 
-  await conduzir(pool, admin, e, fluxoId, grafo, sessaoId, resultado, ctx, log);
-  return "atendeu";
+  const conduzido = await conduzir(pool, admin, e, fluxoId, grafo, sessaoId, resultado, ctx, log);
+  // "Transferir p/ agentes de IA" neste turno: a mensagem que chegou é do
+  // agente agora — o drain segue o caminho da IA e ele a responde já.
+  return conduzido.entregouAoAgente ? "nao_atende" : "atendeu";
 }
 
 /**
@@ -346,7 +355,7 @@ async function conduzir(
   inicial: ResultadoDoTurno,
   ctxInicial: ContextoDoTurno,
   log: Log,
-): Promise<void> {
+): Promise<{ entregouAoAgente: boolean }> {
   let fluxoId = fluxoInicial;
   let grafo = grafoInicial;
   let ctx = ctxInicial;
@@ -354,17 +363,18 @@ async function conduzir(
   let id = sessaoId;
   let webhooks = 0;
   let saltos = 0;
+  let entregouAoAgente = false;
   for (let pendentes = 0; ; pendentes++) {
     const gravada = await concluirTurno(pool, admin, e, fluxoId, id, resultado, log);
     id = gravada.id;
     const pendente: Pendente | undefined = resultado.pendente;
-    if (!pendente) return;
+    if (!pendente) return { entregouAoAgente };
     if (pendentes >= PENDENTES_POR_TURNO) {
       log.warn("chatbot: teto de passos externos por mensagem — fluxo encerrado", {
         flow_id: fluxoId,
       });
       await encerrarSessao(pool, e.organizationId, gravada.id, "completed");
-      return;
+      return { entregouAoAgente };
     }
     switch (pendente.tipo) {
       case "webhook": {
@@ -373,7 +383,7 @@ async function conduzir(
             flow_id: fluxoId,
           });
           await encerrarSessao(pool, e.organizationId, gravada.id, "completed");
-          return;
+          return { entregouAoAgente };
         }
         const resposta = await fazerWebhook(pool, admin, e, fluxoId, grafo, resultado, ctx, log);
         resultado = continuarAposWebhook(grafo, resultado.sessao, resposta, ctx);
@@ -384,7 +394,7 @@ async function conduzir(
           log.warn("chatbot: teto de 'Acionar outro fluxo' por mensagem — fluxo encerrado", {
             flow_id: fluxoId,
           });
-          return;
+          return { entregouAoAgente };
         }
         const alvo = await fluxoParaAcionar(pool, e.organizationId, pendente.flow_id);
         if (!alvo) {
@@ -412,7 +422,7 @@ async function conduzir(
             },
             log,
           );
-          return;
+          return { entregouAoAgente };
         }
         // O fluxo anterior pode ter mudado etiqueta ou campo: o novo enxerga.
         ctx = {
@@ -442,8 +452,199 @@ async function conduzir(
         resultado = continuarAposMarcar(grafo, resultado.sessao, r, ctx);
         break;
       }
+      case "ia": {
+        const entregou = await entregarAoAgente(pool, admin, e, fluxoId, log);
+        if (entregou) entregouAoAgente = true;
+        resultado = continuarAposAcao(grafo, resultado.sessao, entregou, ctx);
+        break;
+      }
+      case "template": {
+        const saiu = await enviarModeloAprovado(
+          pool,
+          admin,
+          e,
+          fluxoId,
+          gravada.id,
+          pendente.template_id,
+          log,
+        );
+        resultado = continuarAposAcao(grafo, resultado.sessao, saiu, ctx);
+        break;
+      }
     }
   }
+}
+
+/**
+ * "Transferir p/ agentes de IA": devolve a conversa ao atendimento automático
+ * pela MESMA função do botão "Devolver ao agente" da Inbox e do prazo de
+ * devolução (`devolverAtendimentoAoAgente`: solta as travas, grava checkpoint,
+ * emite `ai.handoff_resolved`). Antes, confere se há agente no ar no número —
+ * a mesma régua do portão do drain (`capacidadeDoNumero`): entregar a um número
+ * sem agente deixaria o contato falando sozinho. false = siga por "Sem agente de IA".
+ */
+async function entregarAoAgente(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  log: Log,
+): Promise<boolean> {
+  if (!e.channelSessionId) return false;
+  const capacidade = await capacidadeDoNumero(pool, e.organizationId, e.channelSessionId);
+  if (!temQuemAtenda(capacidade)) {
+    log.info("chatbot: 'Transferir p/ agentes de IA' sem agente no ar no número", {
+      flow_id: fluxoId,
+    });
+    return false;
+  }
+  const r = await devolverAtendimentoAoAgente(
+    {
+      supabase: admin,
+      organizationId: e.organizationId,
+      actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
+      requestId: `chatbot:${fluxoId}:${e.inboundMessageId ?? e.referencia ?? "ia"}`,
+    },
+    { conversationId: e.conversationId },
+  );
+  if (!r.ok) {
+    log.warn("chatbot: entrega ao agente de IA falhou", { flow_id: fluxoId, erro: r.erro });
+    return false;
+  }
+  log.info("chatbot: conversa entregue ao agente de IA", { flow_id: fluxoId });
+  return true;
+}
+
+/**
+ * "Enviar template": o modelo aprovado, resolvido pela MESMA regra do passo de
+ * follow-up (`resolverModeloAprovadoNaConexao`), sai pelo handler de mensagens
+ * como `type: "template"`. Recusa (número por QR Code, modelo pausado, modelo com
+ * variável) vira nota na conversa com o motivo, e o fluxo segue por "Não enviado".
+ */
+async function enviarModeloAprovado(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  sessaoId: string,
+  templateId: string,
+  log: Log,
+): Promise<boolean> {
+  const requestId = `chatbot:${fluxoId}:${e.inboundMessageId ?? e.referencia ?? sessaoId}`;
+  const avisar = (texto: string) => notaDoChatbot(pool, e, fluxoId, requestId, texto);
+  if (!e.channelSessionId) {
+    await avisar("O chatbot não enviou o modelo: a conversa não tem número de WhatsApp.");
+    return false;
+  }
+  const modelo = await resolverModeloAprovadoNaConexao(
+    pool,
+    e.organizationId,
+    e.channelSessionId,
+    templateId,
+  );
+  if (modelo === null || modelo.tipo === "recusado") {
+    const motivo = modelo === null ? "o modelo escolhido não existe mais." : modelo.motivo;
+    log.info("chatbot: modelo não enviado", { flow_id: fluxoId, motivo });
+    await avisar(`O chatbot não enviou o modelo do passo "Enviar template": ${motivo}`);
+    return false;
+  }
+  const { enviar } = await prepararEnvio(pool, admin, e, fluxoId, requestId, log);
+  const saiu = await enviar({
+    type: "template",
+    template_name: modelo.modelo.name,
+    template_language: modelo.modelo.language,
+    template_values: modelo.modelo.values,
+    body: modelo.body,
+  }).catch((err: unknown) => {
+    log.warn("chatbot: envio do modelo falhou", {
+      flow_id: fluxoId,
+      erro: String(err).slice(0, 160),
+    });
+    return false;
+  });
+  if (!saiu) await avisar("O chatbot tentou enviar o modelo, mas a plataforma recusou o envio.");
+  return saiu;
+}
+
+/** Nota interna do chatbot na conversa (a equipe vê, o contato não), auditada. */
+async function notaDoChatbot(
+  pool: pg.Pool,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  requestId: string,
+  texto: string,
+): Promise<void> {
+  const { rows } = await pool.query<{ id: string }>(
+    `insert into conversation_notes (organization_id, conversation_id, body, created_by_name)
+     values ($1, $2, $3, 'Chatbot')
+     returning id`,
+    [e.organizationId, e.conversationId, texto.slice(0, 2000)],
+  );
+  void audit({
+    action: "conversation.note_added",
+    actorUserId: null,
+    organizationId: e.organizationId,
+    resourceType: "conversation_note",
+    resourceId: rows[0]?.id ?? null,
+    requestId,
+    bypassedRls: true,
+    metadata: { conversation_id: e.conversationId, source: "chatbot", flow_id: fluxoId },
+  });
+}
+
+/**
+ * O envio do chatbot: resolve a fronteira do atendimento (da automação ou da
+ * mensagem que chegou) e devolve a função que manda pelo `sendMessageHandler`,
+ * com o espaçamento entre mensagens do número. A função devolve se a mensagem
+ * saiu (false = sem número/atendimento, ou marcada como falha).
+ */
+async function prepararEnvio(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  fluxoId: string,
+  requestId: string,
+  log: Log,
+): Promise<{
+  enviar: (corpo: Record<string, unknown>) => Promise<boolean>;
+  boundary: ServiceBoundary | null;
+}> {
+  let boundary = e.boundary ?? null;
+  if (!boundary && e.inboundMessageId) {
+    const { rows: b } = await pool.query(
+      `select organization_id, contact_id, conversation_id, service_revision::float8 as service_revision,
+              demanda_id, demanda_revision::float8 as demanda_revision
+         from messages where organization_id = $1 and id = $2 and direction = 'inbound'`,
+      [e.organizationId, e.inboundMessageId],
+    );
+    boundary = parseServiceBoundary(b[0] ?? null);
+  }
+  const enviar = async (corpo: Record<string, unknown>): Promise<boolean> => {
+    if (!e.channelSessionId || !boundary) {
+      log.warn("chatbot: sem número ou atendimento para enviar — mensagem não saiu");
+      return false;
+    }
+    await espacarEnvio(e.channelSessionId);
+    const enviada = (await sendMessageHandler(
+      admin,
+      {
+        organization_id: e.organizationId,
+        serviceBoundary: boundary,
+        ...(e.proativo
+          ? { proactiveContext: { organizationId: e.organizationId, contactId: e.contactId } }
+          : {}),
+        actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
+        requestId,
+      },
+      { conversation_id: e.conversationId, ...corpo } as Parameters<typeof sendMessageHandler>[2],
+    )) as { status?: string } | null;
+    if (enviada?.status === "failed") {
+      log.warn("chatbot: envio marcado como falho", { flow_id: fluxoId });
+      return false;
+    }
+    return true;
+  };
+  return { enviar, boundary };
 }
 
 /** O fluxo que "Acionar outro fluxo" começa — ligado, desta organização, com passo de início. */
@@ -1229,24 +1430,7 @@ async function executarEfeitos(
 ): Promise<void> {
   if (efeitos.length === 0) return;
   const requestId = `chatbot:${fluxoId}:${e.inboundMessageId ?? e.referencia ?? sessao.id}`;
-  const notaInterna = async (texto: string) => {
-    const { rows } = await pool.query<{ id: string }>(
-      `insert into conversation_notes (organization_id, conversation_id, body, created_by_name)
-       values ($1, $2, $3, 'Chatbot')
-       returning id`,
-      [e.organizationId, e.conversationId, texto.slice(0, 2000)],
-    );
-    void audit({
-      action: "conversation.note_added",
-      actorUserId: null,
-      organizationId: e.organizationId,
-      resourceType: "conversation_note",
-      resourceId: rows[0]?.id ?? null,
-      requestId,
-      bypassedRls: true,
-      metadata: { conversation_id: e.conversationId, source: "chatbot", flow_id: fluxoId },
-    });
-  };
+  const notaInterna = (texto: string) => notaDoChatbot(pool, e, fluxoId, requestId, texto);
   const gravarAvaliacao = (campos: { nota?: number; escala?: string; comentou?: boolean }) =>
     pool.query(
       `insert into chatbot_avaliacoes
@@ -1268,38 +1452,10 @@ async function executarEfeitos(
         campos.comentou ?? null,
       ],
     );
-  let boundary = e.boundary ?? null;
-  if (!boundary && e.inboundMessageId) {
-    const { rows: b } = await pool.query(
-      `select organization_id, contact_id, conversation_id, service_revision::float8 as service_revision,
-              demanda_id, demanda_revision::float8 as demanda_revision
-         from messages where organization_id = $1 and id = $2 and direction = 'inbound'`,
-      [e.organizationId, e.inboundMessageId],
-    );
-    boundary = parseServiceBoundary(b[0] ?? null);
-  }
-
+  const envio = await prepararEnvio(pool, admin, e, fluxoId, requestId, log);
+  const boundary = envio.boundary;
   const enviar = async (corpo: Record<string, unknown>) => {
-    if (!e.channelSessionId || !boundary) {
-      log.warn("chatbot: sem número ou atendimento para enviar — mensagem não saiu");
-      return;
-    }
-    await espacarEnvio(e.channelSessionId);
-    const enviada = (await sendMessageHandler(
-      admin,
-      {
-        organization_id: e.organizationId,
-        serviceBoundary: boundary,
-        ...(e.proativo
-          ? { proactiveContext: { organizationId: e.organizationId, contactId: e.contactId } }
-          : {}),
-        actor: { type: "webhook_source", id: `chatbot:${fluxoId}` },
-        requestId,
-      },
-      { conversation_id: e.conversationId, ...corpo } as Parameters<typeof sendMessageHandler>[2],
-    )) as { status?: string } | null;
-    if (enviada?.status === "failed")
-      log.warn("chatbot: envio marcado como falho", { flow_id: fluxoId });
+    await envio.enviar(corpo);
   };
 
   for (const efeito of efeitos) {
@@ -1613,6 +1769,56 @@ async function executarEfeitos(
             },
             "kind_e_ref",
           );
+          break;
+        }
+        case "fluxo_de_espera": {
+          if (!efeito.ligar) {
+            // Desarma as mensagens de espera das transferências desta conversa:
+            // sem `retomada_token`, o evento já agendado chega e é descartado.
+            const { rowCount } = await pool.query(
+              `update chatbot_sessions
+                  set retomar_em = null, retomada_token = null, updated_at = now()
+                where organization_id = $1 and conversation_id = $2
+                  and status = 'transferred' and retomar_em is not null`,
+              [e.organizationId, e.conversationId],
+            );
+            if (rowCount)
+              await notaInterna("O chatbot desligou as mensagens de espera desta conversa.");
+            break;
+          }
+          // Liga de novo: a última transferência desta conversa com espera
+          // configurada e vezes sobrando volta a ter relógio.
+          const { rows } = await pool.query<{
+            id: string;
+            flow_id: string;
+            no_atual: string | null;
+            tentativas: number | null;
+            grafo: unknown;
+          }>(
+            `select s.id, s.flow_id, s.no_atual, s.tentativas, f.grafo
+               from chatbot_sessions s
+               join chatbot_flows f on f.id = s.flow_id and f.organization_id = s.organization_id
+              where s.organization_id = $1 and s.conversation_id = $2
+                and s.status = 'transferred' and s.retomar_em is null and s.no_atual is not null
+              order by s.updated_at desc
+              limit 1`,
+            [e.organizationId, e.conversationId],
+          );
+          const alvo = rows[0];
+          const g = alvo ? grafoSchema.safeParse(alvo.grafo) : null;
+          const quando =
+            alvo && g?.success
+              ? relogioDaEspera(g.data, alvo.no_atual, alvo.tentativas ?? 0, new Date())
+              : null;
+          if (!alvo || !quando) break;
+          const token = randomUUID();
+          await pool.query(
+            `update chatbot_sessions set retomar_em = $3, retomada_token = $4, updated_at = now()
+              where organization_id = $1 and id = $2`,
+            [e.organizationId, alvo.id, quando, token],
+          );
+          await agendarRetomada(pool, e, alvo.flow_id, alvo.id, token, quando);
+          await notaInterna("O chatbot ligou de novo as mensagens de espera desta conversa.");
           break;
         }
         case "finalizar": {

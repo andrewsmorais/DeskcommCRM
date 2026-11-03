@@ -5,7 +5,7 @@
  * Mensagens escritas para quem monta o fluxo, não para quem programa.
  */
 import { ehTipoDePasso, lerConfig, metaDoPasso, type Grafo } from "./passos";
-import { problemaDaRegra } from "./regras";
+import { problemaDaRegra, problemaDoValor } from "./regras";
 
 export function problemasDoGrafo(grafo: Grafo): string[] {
   const problemas: string[] = [];
@@ -140,6 +140,27 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
           if (p) problemas.push(`no passo "${nome}", regra ${i + 1}: ${p}.`);
         });
         break;
+      case "valor": {
+        const p = problemaDoValor(lerConfig("valor", no.data));
+        if (p) problemas.push(`no passo "${nome}", ${p}.`);
+        break;
+      }
+      case "enviar_template":
+        if (!lerConfig("enviar_template", no.data).template_id)
+          problemas.push(`escolha o modelo do passo "${nome}".`);
+        break;
+      case "enviar_formulario": {
+        const c = lerConfig("enviar_formulario", no.data);
+        c.perguntas.forEach((q, i) => {
+          if (!q.pergunta) problemas.push(`no passo "${nome}", escreva a pergunta ${i + 1}.`);
+        });
+        const variaveis = c.perguntas.map((q) => q.variavel);
+        if (new Set(variaveis).size !== variaveis.length)
+          problemas.push(
+            `no passo "${nome}", cada pergunta precisa guardar a resposta num nome diferente.`,
+          );
+        break;
+      }
     }
   }
 

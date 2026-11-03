@@ -18,6 +18,11 @@
  *     contato escolheu (`continuarAposMarcar`);
  *   - "Acionar outro fluxo" encerra este fluxo com `pendente`: o executor lê o
  *     outro desenho e o começa com as mesmas respostas;
+ *   - "Transferir p/ agentes de IA" e "Enviar template" param com `pendente`:
+ *     o executor tenta (entregar ao agente / mandar o modelo) e devolve se deu
+ *     certo em `continuarAposAcao`;
+ *   - "Enviar formulário" faz uma pergunta por mensagem (sessão
+ *     `waiting_input`), com a posição guardada em `CHAVE_DO_FORMULARIO`;
  *   - transferir e finalizar encerram a participação do chatbot — a não ser a
  *     mensagem de espera da transferência, que o relógio manda enquanto
  *     ninguém da equipe responde (`proximaMensagemDeEspera`);
@@ -37,7 +42,9 @@ import {
   normalizar,
   notaDaResposta,
   regraVale,
+  respostaDoFormulario,
   valorDoCampo,
+  valorVale,
   type ContatoDoTurno,
 } from "./regras";
 import { fimDoIntervalo, proximoHorario } from "./relogio";
@@ -80,6 +87,8 @@ export type Efeito =
   | { tipo: "bloquear" }
   /** Abre o pedido de exclusão dos dados (LGPD), que um admin aprova. */
   | { tipo: "pedido_exclusao" }
+  /** Liga ou desliga as mensagens de espera das transferências desta conversa. */
+  | { tipo: "fluxo_de_espera"; ligar: boolean }
   | { tipo: "finalizar" };
 
 /**
@@ -137,7 +146,11 @@ export type Pendente =
   /** Buscar os horários livres e devolver em `continuarComHorarios`. */
   | { tipo: "horarios"; no: string }
   /** Marcar o horário escolhido e devolver em `continuarAposMarcar`. */
-  | { tipo: "marcar"; no: string; inicio: string };
+  | { tipo: "marcar"; no: string; inicio: string }
+  /** Devolver a conversa ao agente de IA e dizer se deu certo em `continuarAposAcao`. */
+  | { tipo: "ia"; no: string }
+  /** Mandar o modelo aprovado e dizer se saiu em `continuarAposAcao`. */
+  | { tipo: "template"; no: string; template_id: string };
 
 export type ResultadoDoTurno = {
   sessao: SessaoDoChatbot;
@@ -158,6 +171,9 @@ export type ResultadoDaMarcacao =
 
 /** Chave interna (não é variável de quem monta o fluxo): os horários oferecidos. */
 export const CHAVE_DOS_HORARIOS = "_horarios";
+
+/** Chave interna: qual pergunta do "Enviar formulário" está esperando resposta (0, 1, 2…). */
+export const CHAVE_DO_FORMULARIO = "_formulario";
 
 /** O que o executor devolve depois de chamar o WebHook. */
 export type RespostaDoWebhook = { ok: boolean; status: number | null; corpo: unknown };
@@ -616,6 +632,107 @@ function andar(
         saida = "invalida";
         break;
       }
+      case "valor": {
+        const c = lerConfig("valor", no.data);
+        saida = valorVale(c, {
+          mensagem: ctx.mensagem,
+          dados: sessao.dados,
+          contato,
+          alvo: preencher(c.valor, sessao.dados),
+        })
+          ? "sim"
+          : "nao";
+        break;
+      }
+      case "transferir_ia":
+        // A mensagem só sai depois que a entrega der certo (`continuarAposAcao`):
+        // "vou te passar para o assistente" num número sem agente seria mentira.
+        sessao.no_atual = no.id;
+        sessao.status = "running";
+        sessao.tentativas = 0;
+        return { sessao, efeitos, passos, pendente: { tipo: "ia", no: no.id } };
+      case "enviar_template": {
+        const c = lerConfig("enviar_template", no.data);
+        if (!c.template_id) {
+          saida = "falha";
+          break;
+        }
+        sessao.no_atual = no.id;
+        sessao.status = "running";
+        sessao.tentativas = 0;
+        return {
+          sessao,
+          efeitos,
+          passos,
+          pendente: { tipo: "template", no: no.id, template_id: c.template_id },
+        };
+      }
+      case "enviar_formulario": {
+        const c = lerConfig("enviar_formulario", no.data);
+        const pergunta = (i: number) => preencher(c.perguntas[i]?.pergunta ?? "", sessao.dados).trim();
+        if (!resposta) {
+          const abertura = [preencher(c.introducao, sessao.dados).trim(), pergunta(0)]
+            .filter(Boolean)
+            .join("\n\n");
+          if (abertura) efeitos.push({ tipo: "enviar", texto: abertura });
+          sessao.dados[CHAVE_DO_FORMULARIO] = "0";
+          sessao.no_atual = no.id;
+          sessao.status = "waiting_input";
+          sessao.tentativas = 0;
+          return { sessao, efeitos, passos };
+        }
+        resposta = false;
+        const i = Number(sessao.dados[CHAVE_DO_FORMULARIO] ?? "0");
+        const atualDoForm = Number.isInteger(i) ? c.perguntas[i] : undefined;
+        // O desenho mudou enquanto o contato respondia (pergunta apagada):
+        // segue em frente em vez de perguntar o que não existe mais.
+        if (!atualDoForm) {
+          delete sessao.dados[CHAVE_DO_FORMULARIO];
+          sessao.tentativas = 0;
+          break;
+        }
+        const r = ctx.mensagem === null ? null : respostaDoFormulario(atualDoForm, ctx.mensagem, ctx.agora);
+        if (r === null) {
+          sessao.tentativas += 1;
+          if (sessao.tentativas < c.tentativas) {
+            efeitos.push({
+              tipo: "enviar",
+              texto: [c.mensagem_invalida, pergunta(i)].filter(Boolean).join("\n\n"),
+            });
+            sessao.no_atual = no.id;
+            sessao.status = "waiting_input";
+            return { sessao, efeitos, passos };
+          }
+          sessao.tentativas = 0;
+          delete sessao.dados[CHAVE_DO_FORMULARIO];
+          saida = "invalida";
+          break;
+        }
+        sessao.tentativas = 0;
+        sessao.dados[atualDoForm.variavel] = r.valor;
+        if (atualDoForm.gravar_em && r.gravado !== null) {
+          efeitos.push({ tipo: "campo_contato", campo: atualDoForm.gravar_em, chave: "", valor: r.gravado });
+          contato[atualDoForm.gravar_em] = r.gravado;
+        }
+        if (i + 1 < c.perguntas.length) {
+          sessao.dados[CHAVE_DO_FORMULARIO] = String(i + 1);
+          const proxima = pergunta(i + 1);
+          if (proxima) efeitos.push({ tipo: "enviar", texto: proxima });
+          sessao.no_atual = no.id;
+          sessao.status = "waiting_input";
+          return { sessao, efeitos, passos };
+        }
+        delete sessao.dados[CHAVE_DO_FORMULARIO];
+        const fecho = preencher(c.conclusao, sessao.dados).trim();
+        if (fecho) efeitos.push({ tipo: "enviar", texto: fecho });
+        break;
+      }
+      case "fluxo_de_espera":
+        efeitos.push({
+          tipo: "fluxo_de_espera",
+          ligar: lerConfig("fluxo_de_espera", no.data).acao === "ligar",
+        });
+        break;
       case "finalizar_conversa": {
         const c = lerConfig("finalizar_conversa", no.data);
         if (c.mensagem)
@@ -897,6 +1014,55 @@ export function continuarAposMarcar(
     return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos, passos: 0 };
   const depois = andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
   return { ...depois, efeitos: [...efeitos, ...depois.efeitos] };
+}
+
+/**
+ * O executor tentou a ação de fora do passo em que a sessão parou:
+ *   - "Transferir p/ agentes de IA": entregou → manda a mensagem do passo e o
+ *     chatbot sai (`transferred`); não havia agente → segue por "Sem agente de IA";
+ *   - "Enviar template": saiu → "Enviado"; recusado → "Não enviado".
+ * Saída de falha sem ligação encerra o fluxo (a mesma regra do WebHook): seguir
+ * pelo caminho do sucesso faria o fluxo agir como se a mensagem tivesse saído.
+ */
+export function continuarAposAcao(
+  grafo: Grafo,
+  sessao: SessaoDoChatbot,
+  deuCerto: boolean,
+  ctx: ContextoDoTurno,
+): ResultadoDoTurno {
+  const parada = grafo.nodes.find((n) => n.id === sessao.no_atual);
+  const encerrado = (status: StatusDaSessao, efeitos: Efeito[] = []): ResultadoDoTurno => ({
+    sessao: { ...sessao, status, no_atual: null, tentativas: 0, retomar_em: null },
+    efeitos,
+    passos: 0,
+  });
+  if (!parada || (parada.type !== "transferir_ia" && parada.type !== "enviar_template"))
+    return encerrado("completed");
+  if (parada.type === "transferir_ia" && deuCerto) {
+    const texto = preencher(lerConfig("transferir_ia", parada.data).mensagem, sessao.dados).trim();
+    return encerrado("transferred", texto ? [{ tipo: "enviar", texto }] : []);
+  }
+  const seguinte = proximo(grafo, parada.id, deuCerto ? "proximo" : "falha");
+  if (!seguinte) return encerrado("completed");
+  return andar(grafo, { ...sessao, status: "running", tentativas: 0 }, seguinte, ctx, false);
+}
+
+/**
+ * Quando rearmar a mensagem de espera de uma transferência ("Fluxo de espera" →
+ * ligar): o próximo horário, ou null se o passo não pede espera ou as vezes já
+ * acabaram. `tentativas` = quantas mensagens de espera já saíram.
+ */
+export function relogioDaEspera(
+  grafo: Grafo,
+  noId: string | null,
+  tentativas: number,
+  agora: Date,
+): string | null {
+  const no = grafo.nodes.find((n) => n.id === noId);
+  if (!no || (no.type !== "transferir_equipe" && no.type !== "transferir_atendente")) return null;
+  const c = lerConfig(no.type, no.data);
+  if (c.espera_minutos <= 0 || !c.espera_mensagem || tentativas >= c.espera_vezes) return null;
+  return new Date(agora.getTime() + c.espera_minutos * 60_000).toISOString();
 }
 
 /** O passo de início que outro fluxo usa para começar este ("Acionar outro fluxo"). */
