@@ -108,6 +108,38 @@ para não duplicar implementação, e foi isso que se seguiu.
 | Caminhos de erro/timeout | F | saídas nomeadas por passo |
 | Biblioteca em 8 categorias | P | hoje 4 grupos (Início, Condições, Ações, Finalização) + integrações |
 
+## Evidência pela tela
+
+Capturas do editor montado com o código desta branch (Playwright, 1440×960), sem banco: a API é simulada na página. O simulador usa o mesmo motor do WhatsApp; o relógio do navegador foi fixado nas datas indicadas.
+
+- `evidence/chatbot-umbler-fase-3/f1-recuperar-pix.png` — modelo pronto "Recuperar Pix ou carrinho" montado no quadro.
+- `evidence/chatbot-umbler-fase-3/f2-link-de-pagamento.png` — painel do Enviar link de pagamento (link, valor, Pix).
+- `evidence/chatbot-umbler-fase-3/f3-escolher-com-prazo.png` — Pedir para escolher com prazo de resposta, no quadro.
+- `evidence/chatbot-umbler-fase-3/f3b-escolher-prazo.png` — Pedir para escolher com prazo de resposta, no painel.
+- `evidence/chatbot-umbler-fase-3/f4-digitar-formato.png` — Pedir para digitar com o formato da resposta.
+- `evidence/chatbot-umbler-fase-3/f4b-digitar-prazo.png` — Pedir para digitar com prazo de resposta.
+- `evidence/chatbot-umbler-fase-3/f5-transferir-rodizio.png` — Transferir p/ atendente no modo rodízio.
+- `evidence/chatbot-umbler-fase-3/f6-ideias.png` — painel de modelos prontos.
+- `evidence/chatbot-umbler-fase-3/g1-confirmacao.png` — modelo "Confirmar agendamento" organizado no quadro.
+- `evidence/chatbot-umbler-fase-3/g2-reagendar.png` — painel do Reagendar horário.
+- `evidence/chatbot-umbler-fase-3/g3-cancelar.png` — painel do Cancelar agendamento.
+- `evidence/chatbot-umbler-fase-3/g4-etapa-do-funil.png` — condição Etapa do funil com funil e etapa escolhidos.
+- `evidence/chatbot-umbler-fase-3/g5-produto.png` — painel do Enviar produto, com a lista do Catálogo.
+- `evidence/chatbot-umbler-fase-3/g6-localizacao.png` — painel do Enviar localização.
+- `evidence/chatbot-umbler-fase-3/g7-contato.png` — painel do Enviar contato.
+- `evidence/chatbot-umbler-fase-3/g8-ideias.png` — os 19 modelos prontos, começo da lista.
+- `evidence/chatbot-umbler-fase-3/g9-ideias-fim.png` — os 19 modelos prontos, fim da lista.
+- `evidence/chatbot-umbler-fase-3/h1-colado.png` — passo colado com Ctrl+V (o quadro foi de 11 para 12 passos).
+- `evidence/chatbot-umbler-fase-3/h2-salvo-auto.png` — "Salvo automaticamente" com o fluxo desligado.
+- `evidence/chatbot-umbler-fase-3/h3-ligado-nao-salva.png` — fluxo ligado: nada é salvo sozinho.
+- `evidence/chatbot-umbler-fase-3/i1-horarios-feriados.png` — Horários com feriados nacionais, Carnaval/Corpus Christi e os dias da empresa.
+- `evidence/chatbot-umbler-fase-3/i2-oferta.png` — painel do Enviar oferta com a data de validade.
+- `evidence/chatbot-umbler-fase-3/i3-links.png` — avisos de link no Enviar mensagem: javascript: e link incompleto bloqueiam, http:// avisa.
+- `evidence/chatbot-umbler-fase-3/i4-digitar-hora.png` — Pedir para digitar no formato Hora (hh:mm).
+- `evidence/chatbot-umbler-fase-3/i5-teste-oferta.png` — simulador em 03/11: oferta com "Válida até 30/11/2026", e "às 15h" guardado como 15:00.
+- `evidence/chatbot-umbler-fase-3/i6-teste-vencida.png` — simulador em 01/12: a oferta venceu e o fluxo seguiu por "Oferta vencida".
+- `evidence/chatbot-umbler-fase-3/i7-teste-feriado.png` — simulador em 25/12: o Horários seguiu por "Fora do horário".
+
 ## Pendências (o que falta, por quê, próxima ação)
 
 - **Feito em 03/11 (segunda rodada):** feriados no Horários (42), formato hora (26), conferência de links (06) e Enviar oferta com validade (17).
