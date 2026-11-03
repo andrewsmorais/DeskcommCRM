@@ -32,6 +32,8 @@ import {
 
 import { MENSAGEM_FORA_DO_FORMATO } from "@/lib/chatbot/motor";
 import type { MidiaDaBiblioteca } from "@/lib/chatbot/biblioteca-de-midias";
+import { lerDatasDeFeriado } from "@/lib/chatbot/feriados";
+import { linksDoTexto, type ProblemaDoLink } from "@/lib/chatbot/links";
 import { IconeDoPasso } from "./icones";
 import type { NodeData } from "./node-types";
 
@@ -496,14 +498,59 @@ function Campos({
     case "enviar_mensagem": {
       const c = lerConfig("enviar_mensagem", dados);
       return (
-        <Texto
-          id="msg-texto"
-          rotulo={t("Mensagem")}
-          valor={c.texto}
-          linhas={6}
-          onCommit={(v) => aplicar({ texto: v })}
-          ajuda={ajudaVariavel}
-        />
+        <>
+          <Texto
+            id="msg-texto"
+            rotulo={t("Mensagem")}
+            valor={c.texto}
+            linhas={6}
+            onCommit={(v) => aplicar({ texto: v })}
+            ajuda={ajudaVariavel}
+          />
+          <AvisosDeLink texto={c.texto} />
+        </>
+      );
+    }
+    case "enviar_oferta": {
+      const c = lerConfig("enviar_oferta", dados);
+      return (
+        <>
+          <Texto
+            id="oferta-texto"
+            rotulo={t("Mensagem da oferta")}
+            valor={c.texto}
+            linhas={5}
+            placeholder={t("Ex.: 20% de desconto no plano anual: {{link}}")}
+            onCommit={(v) => aplicar({ texto: v })}
+            ajuda={t(
+              "Escreva {{validade}} onde quiser mostrar a data. Sem isso, o chatbot acrescenta a linha “Válida até” no fim.",
+            )}
+          />
+          <AvisosDeLink texto={c.texto} />
+          <div className="space-y-1.5">
+            <Label htmlFor="oferta-validade">{t("Válida até (inclusive)")}</Label>
+            <Input
+              id="oferta-validade"
+              type="date"
+              value={c.valida_ate}
+              onChange={(e) => aplicar({ valida_ate: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Depois desse dia, no fuso da empresa, o contato não recebe a oferta e o fluxo segue por “Oferta vencida”. Sem data, ela não vence.",
+              )}
+            </p>
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={c.mostrar_validade}
+              onChange={(e) => aplicar({ mostrar_validade: e.target.checked })}
+            />
+            <span>{t("Mostrar a data de validade na mensagem")}</span>
+          </label>
+        </>
       );
     }
     case "enviar_pagamento": {
@@ -1528,6 +1575,37 @@ function PedirEscolher({
   );
 }
 
+const AVISO_DO_LINK: Record<ProblemaDoLink, string> = {
+  protocolo_perigoso:
+    "Este endereço não abre uma página e é usado em golpes. O fluxo não liga com ele.",
+  malformado: "Este link está incompleto. Confira o endereço — o fluxo não liga com ele.",
+  sem_https:
+    "Este link começa com http://. Prefira https:// — muitos celulares avisam que a página não é segura.",
+};
+
+function AvisosDeLink({ texto }: { texto: string }) {
+  const t = useT();
+  const problemas = linksDoTexto(texto).filter((l) => l.problema);
+  if (!problemas.length) return null;
+  return (
+    <ul className="space-y-1" data-testid="avisos-de-link">
+      {problemas.map((l, i) => (
+        <li
+          key={i}
+          className={`rounded-md border px-2 py-1.5 text-xs ${
+            l.problema === "sem_https"
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              : "border-destructive/40 bg-destructive/10 text-destructive"
+          }`}
+        >
+          <span className="block break-all font-mono">{l.link}</span>
+          {t(AVISO_DO_LINK[l.problema as ProblemaDoLink])}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Horarios({
   dados,
   aplicar,
@@ -1588,6 +1666,46 @@ function Horarios({
       <p className="text-xs text-muted-foreground">
         {t("Usa o fuso horário da empresa. Uma faixa como 22:00 até 06:00 passa da meia-noite.")}
       </p>
+      <div className="space-y-2 pt-2">
+        <Label>{t("Feriados")}</Label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={c.feriados_nacionais}
+            onChange={(e) => aplicar({ feriados_nacionais: e.target.checked })}
+          />
+          <span>
+            {t("Feriados nacionais contam como fora do horário")}
+            <span className="block text-xs text-muted-foreground">
+              {t(
+                "Ano-Novo, Sexta-feira Santa, Tiradentes, Dia do Trabalho, Independência, Nossa Senhora Aparecida, Finados, Proclamação da República, Consciência Negra e Natal.",
+              )}
+            </span>
+          </span>
+        </label>
+        {c.feriados_nacionais ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={c.pontos_facultativos}
+              onChange={(e) => aplicar({ pontos_facultativos: e.target.checked })}
+            />
+            <span>{t("Também Carnaval (segunda e terça) e Corpus Christi")}</span>
+          </label>
+        ) : null}
+        <Texto
+          id="horarios-feriados"
+          rotulo={t("Outros dias fechados")}
+          valor={c.feriados.join(", ")}
+          placeholder="20/01, 09/07, 24/12/2026"
+          onCommit={(v) => aplicar({ feriados: lerDatasDeFeriado(v) })}
+          ajuda={t(
+            "Feriados do estado ou da cidade e dias de folga, separados por vírgula. 25/12 vale todo ano; 24/12/2026, só naquele dia.",
+          )}
+        />
+      </div>
     </div>
   );
 }
@@ -2951,6 +3069,7 @@ const NOMES_DO_FORMATO_DE_RESPOSTA: Record<FormatoDeResposta, string> = {
   cnpj: "CNPJ",
   numero: "Número",
   data: "Data (dd/mm/aaaa)",
+  hora: "Hora (hh:mm)",
 };
 
 const NOMES_DO_MODO_DE_ATENDENTE: Record<ModoDeAtendente, string> = {
@@ -2978,6 +3097,7 @@ const NOMES_DO_TIPO_DE_RESPOSTA: Record<PerguntaDoFormulario["tipo"], string> = 
   telefone: "Telefone",
   cpf: "CPF",
   cnpj: "CNPJ",
+  hora: "Hora (hh:mm)",
 };
 
 function EnviarFormulario({

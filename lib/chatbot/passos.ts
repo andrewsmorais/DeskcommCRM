@@ -124,6 +124,7 @@ export const FORMATOS_DE_RESPOSTA = [
   "cnpj",
   "numero",
   "data",
+  "hora",
 ] as const;
 export type FormatoDeResposta = (typeof FORMATOS_DE_RESPOSTA)[number];
 
@@ -140,6 +141,7 @@ export const TIPOS_DE_RESPOSTA = [
   "telefone",
   "cpf",
   "cnpj",
+  "hora",
 ] as const;
 export type TipoDeResposta = (typeof TIPOS_DE_RESPOSTA)[number];
 
@@ -269,6 +271,15 @@ export const configDoPasso = {
       .min(1)
       .max(6)
       .default([{ inicio: "08:00", fim: "18:00" }]),
+    /** Feriado = o dia todo "Fora do horário" (lib/chatbot/feriados.ts). */
+    feriados_nacionais: z.boolean().default(false),
+    /** Carnaval e Corpus Christi (ponto facultativo, não feriado nacional). */
+    pontos_facultativos: z.boolean().default(false),
+    /** Da empresa: "25/12" vale todo ano; "15/03/2026" só naquele dia. */
+    feriados: z
+      .array(z.string().regex(/^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])(\/\d{4})?$/))
+      .max(60)
+      .default([]),
   }),
   dias_semana: z.object({
     /** 0 = domingo … 6 = sábado. */
@@ -592,6 +603,20 @@ export const configDoPasso = {
     mensagem: z.string().trim().max(1000).default(""),
   }),
   /**
+   * Oferta com validade: até `valida_ate` (dia, no fuso da empresa) sai a
+   * mensagem; depois, nada sai e o fluxo segue por "Oferta vencida".
+   * {{validade}} = a data em dd/mm/aaaa.
+   */
+  enviar_oferta: z.object({
+    texto: z.string().trim().max(2000).default(""),
+    valida_ate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .or(z.literal(""))
+      .default(""),
+    mostrar_validade: z.boolean().default(true),
+  }),
+  /**
    * O link de pagamento de quem vende (Mercado Pago, Asaas, PagSeguro, Pix…),
    * numa mensagem arrumada. O chatbot NÃO gera cobrança nem confere se foi
    * pago: a organização não tem conta de pagamento ligada ao CRM. O link e o
@@ -904,6 +929,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Envie um cartão de contato que o cliente salva com um toque.",
     icone: "Contact",
     cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_oferta",
+    grupo: "acao",
+    nome: "Enviar oferta",
+    descricao: "Envie uma promoção com data de validade; depois dela, o fluxo segue por outro caminho.",
+    icone: "BadgePercent",
+    cor: "text-amber-500",
     temEntrada: true,
   },
   {
@@ -1313,6 +1347,11 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         { id: "proximo", rotulo: "Enviado" },
         { id: "falha", rotulo: "Sem link" },
+      ];
+    case "enviar_oferta":
+      return [
+        { id: "proximo", rotulo: "Enviada" },
+        { id: "vencida", rotulo: "Oferta vencida" },
       ];
     case "enviar_formulario":
       return [

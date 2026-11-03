@@ -5,6 +5,7 @@
  * Mensagens escritas para quem monta o fluxo, não para quem programa.
  */
 import { ehTipoDePasso, lerConfig, metaDoPasso, type Grafo } from "./passos";
+import { linksDoTexto, linksQueBloqueiam } from "./links";
 import { problemaDaRegra, problemaDoValor } from "./regras";
 
 export function problemasDoGrafo(grafo: Grafo): string[] {
@@ -42,10 +43,20 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
     }
     const nome = metaDoPasso(no.type)?.nome ?? no.type;
     switch (no.type) {
-      case "enviar_mensagem":
-        if (!lerConfig("enviar_mensagem", no.data).texto)
-          problemas.push(`escreva o texto do passo "${nome}".`);
+      case "enviar_mensagem": {
+        const texto = lerConfig("enviar_mensagem", no.data).texto;
+        if (!texto) problemas.push(`escreva o texto do passo "${nome}".`);
+        for (const l of linksQueBloqueiam(texto))
+          problemas.push(`no passo "${nome}", o link ${l.link} não abre uma página; troque ou apague.`);
         break;
+      }
+      case "enviar_oferta": {
+        const texto = lerConfig("enviar_oferta", no.data).texto;
+        if (!texto) problemas.push(`escreva a mensagem do passo "${nome}".`);
+        for (const l of linksQueBloqueiam(texto))
+          problemas.push(`no passo "${nome}", o link ${l.link} não abre uma página; troque ou apague.`);
+        break;
+      }
       case "pedir_escolher":
         if (!lerConfig("pedir_escolher", no.data).pergunta)
           problemas.push(`escreva a pergunta do passo "${nome}".`);
@@ -174,6 +185,13 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         const c = lerConfig("enviar_pagamento", no.data);
         if (!c.link && !c.pix)
           problemas.push(`escreva o link ou o Pix do passo "${nome}".`);
+        // O link inteiro numa variável ({{link_checkout}}) só existe na hora do
+        // envio; escrito à mão, precisa ser endereço de página.
+        if (c.link && !/^\{\{\s*[a-z_][a-z0-9_]*\s*\}\}$/.test(c.link)) {
+          const [l] = linksDoTexto(c.link);
+          if (!l || l.link !== c.link || l.problema === "malformado" || l.problema === "protocolo_perigoso")
+            problemas.push(`no passo "${nome}", o link precisa começar com https:// (ou ser uma {{variavel}}).`);
+        }
         break;
       }
       case "enviar_template":

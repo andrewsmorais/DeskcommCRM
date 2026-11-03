@@ -5870,9 +5870,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, él queda disponible para los agentes dentro de cualquier conversación: en la Inbox, el botón del robot en la parte superior de la conversación lista los chatbots activados que tienen este inicio.\n\nEl chatbot responde hasta que el flujo termine, incluso con la conversación a nombre del agente. Es bueno para encuesta de satisfacción al final de la atención, menú de pago o recolección de datos.\n\nEl flujo debe estar activado para aparecer en la lista. Un flujo con solo este inicio puede quedar activado junto con el flujo de atención.\n\nAl comenzar, los mensajes de espera programados en esta conversación se detienen: el flujo nuevo es quien habla ahora.",
     },
-  "Quando adicionada essa condição no seu chatbot, ele segue por um caminho dentro das faixas de horário que você marcar e por outro fora delas.\n\nUse para avisar quando a empresa está fechada, ou para só passar para a equipe no horário de atendimento. Uma faixa que passa da meia-noite (22:00 às 06:00) também vale.\n\nO horário é o do fuso da empresa, não o do cliente.":
+  "Quando adicionada essa condição no seu chatbot, ele segue por um caminho dentro das faixas de horário que você marcar e por outro fora delas.\n\nUse para avisar quando a empresa está fechada, ou para só passar para a equipe no horário de atendimento. Uma faixa que passa da meia-noite (22:00 às 06:00) também vale.\n\nO horário é o do fuso da empresa, não o do cliente.\n\nEm “Feriados”, você pode marcar os feriados nacionais (e, se quiser, Carnaval e Corpus Christi) e escrever os dias em que a empresa fecha, como os feriados do estado e da cidade. Nesses dias, o chatbot segue por “Fora do horário” o dia inteiro.":
     {
-      es: "Cuando agregues esta condición a tu chatbot, él sigue por un camino dentro de las franjas de horario que marques y por otro fuera de ellas.\n\nÚsala para avisar cuando la empresa está cerrada, o para pasar al equipo solo en horario de atención. Una franja que pasa de la medianoche (22:00 a 06:00) también vale.\n\nEl horario es el de la zona horaria de la empresa, no el del cliente.",
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por un camino dentro de las franjas de horario que marques y por otro fuera de ellas.\n\nÚsala para avisar cuando la empresa está cerrada, o para pasar al equipo solo en horario de atención. Una franja que pasa de la medianoche (22:00 a 06:00) también vale.\n\nEl horario es el de la zona horaria de la empresa, no el del cliente.\n\nEn “Feriados”, puedes marcar los feriados nacionales de Brasil (y, si quieres, Carnaval y Corpus Christi) y escribir los días en que la empresa cierra, como los feriados del estado y de la ciudad. Esos días, el chatbot sigue por “Fuera del horario” todo el día.",
     },
   "Quando adicionada essa condição no seu chatbot, ele segue por um caminho nos dias da semana marcados e por outro nos demais.\n\nCombine com “Horários” para montar o expediente: por exemplo, segunda a sexta das 8h às 18h. Usa o fuso horário da empresa.":
     {
@@ -5926,9 +5926,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta condición a tu chatbot, él compara una respuesta guardada, un campo del contacto o el último mensaje con un valor que tú escribes, y sigue por “Verdadero” o “Falso”.\n\nEl valor puede tener {{variavel}}: por ejemplo, comparar el correo que el cliente escribió con el correo del registro.\n\nEl texto ignora mayúsculas y acentos. Mayor y menor funcionan entre números (10, 4,5) o entre fechas (25/12/2026); entre texto y número la respuesta siempre es “Falso”.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele envia o texto escrito diretamente para o contato no WhatsApp.\n\nUse {{nome}} para inserir o que o contato respondeu antes em “Pedir para digitar” ou outra resposta guardada.\n\nAs mensagens saem com um pequeno intervalo entre elas e só dentro da janela de envio do número, para proteger o WhatsApp de bloqueio.":
+  "Quando adicionada essa ação no seu chatbot, ele envia o texto escrito diretamente para o contato no WhatsApp.\n\nUse {{nome}} para inserir o que o contato respondeu antes em “Pedir para digitar” ou outra resposta guardada.\n\nAs mensagens saem com um pequeno intervalo entre elas e só dentro da janela de envio do número, para proteger o WhatsApp de bloqueio.\n\nOs links do texto são conferidos: um endereço que não abre página (como javascript:) ou incompleto impede de ligar o fluxo, e um link com http:// mostra um aviso para trocar por https://.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él envía el texto escrito directamente al contacto en WhatsApp.\n\nUsa {{nome}} para insertar lo que el contacto respondió antes en “Pedir que escriba” u otra respuesta guardada.\n\nLos mensajes salen con un pequeño intervalo entre ellos y solo dentro de la ventana de envío del número, para proteger a WhatsApp de bloqueos.",
+      es: "Cuando agregues esta acción a tu chatbot, él envía el texto escrito directamente al contacto en WhatsApp.\n\nUsa {{nome}} para insertar lo que el contacto respondió antes en “Pedir que escriba” u otra respuesta guardada.\n\nLos mensajes salen con un pequeño intervalo entre ellos y solo dentro de la ventana de envío del número, para proteger a WhatsApp de bloqueos.\n\nLos enlaces del texto se verifican: una dirección que no abre una página (como javascript:) o incompleta impide activar el flujo, y un enlace con http:// muestra un aviso para cambiarlo por https://.",
     },
   "Quando adicionada essa ação no seu chatbot, ele envia uma foto, um vídeo, um áudio ou um documento (como PDF) para o contato, com legenda opcional.\n\nO arquivo fica guardado no sistema e aparece na conversa como qualquer outra mídia enviada.":
     {
@@ -5942,9 +5942,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, él envía la pregunta con las opciones numeradas y espera la respuesta del contacto. Cada opción tiene su propia salida en el tablero.\n\nEl contacto puede responder con el número (“2”) o con el texto de la opción. Si responde otra cosa, el chatbot pregunta de nuevo, hasta el número de intentos; después sigue por “No respondió bien”.\n\nEn un número de la API oficial de Meta, las opciones se vuelven botones: hasta 3 opciones de hasta 20 letras aparecen como botones, y hasta 10 opciones de hasta 24 letras aparecen en una lista. El contacto solo toca la opción. En un número conectado por código QR, el propio WhatsApp no muestra botones, así que las opciones van numeradas.\n\nEn “Si el contacto no responde”, puedes dar un plazo: pasado el tiempo sin respuesta, el flujo sigue por la salida “No respondió a tiempo” (por ejemplo, para enviar un recordatorio o pasar al equipo). Sin plazo, el chatbot espera el tiempo que sea.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato responder.\n\nEm “O que a resposta precisa ser”, você escolhe o formato: qualquer texto, e-mail, telefone, CPF, CNPJ, número ou data. Fora do formato, o chatbot pede de novo; depois das tentativas, segue por “Não respondeu certo”. O CPF e o CNPJ têm os dígitos conferidos, então número digitado errado não passa.\n\nA resposta fica guardada já arrumada (e-mail em minúsculas, CPF e CNPJ com pontuação, data em dia/mês/ano) com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.\n\nCom “Usar a mensagem anterior”, o chatbot não faz a pergunta se a mensagem que o contato acabou de mandar já estiver no formato. Por exemplo: o cliente começa a conversa mandando o CPF.\n\nEm “Se o contato não responder”, você pode dar um prazo: passado o tempo sem resposta, o fluxo segue pela saída “Não respondeu a tempo” (por exemplo, para mandar um lembrete ou passar para a equipe). Sem prazo, o chatbot espera pelo tempo que for.":
+  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato responder.\n\nEm “O que a resposta precisa ser”, você escolhe o formato: qualquer texto, e-mail, telefone, CPF, CNPJ, número, data ou hora. Fora do formato, o chatbot pede de novo; depois das tentativas, segue por “Não respondeu certo”. O CPF e o CNPJ têm os dígitos conferidos, então número digitado errado não passa.\n\nA resposta fica guardada já arrumada (e-mail em minúsculas, CPF e CNPJ com pontuação, data em dia/mês/ano, hora em hh:mm) com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.\n\nCom “Usar a mensagem anterior”, o chatbot não faz a pergunta se a mensagem que o contato acabou de mandar já estiver no formato. Por exemplo: o cliente começa a conversa mandando o CPF.\n\nEm “Se o contato não responder”, você pode dar um prazo: passado o tempo sem resposta, o fluxo segue pela saída “Não respondeu a tempo” (por exemplo, para mandar um lembrete ou passar para a equipe). Sem prazo, o chatbot espera pelo tempo que for.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, envía la pregunta y espera que el contacto responda.\n\nEn “Lo que debe ser la respuesta”, eliges el formato: cualquier texto, correo, teléfono, CPF, CNPJ, número o fecha. Fuera del formato, el chatbot vuelve a preguntar; después de los intentos, sigue por “No respondió bien”. El CPF y el CNPJ tienen los dígitos verificados, así que un número mal escrito no pasa.\n\nLa respuesta queda guardada ya ordenada (correo en minúsculas, CPF y CNPJ con puntuación, fecha en día/mes/año) con el nombre que elijas, para usarla después en un mensaje, en una condición o para guardarla en el registro con “Campo del contacto”.\n\nCon “Usar el mensaje anterior”, el chatbot no hace la pregunta si el mensaje que el contacto acaba de enviar ya está en el formato. Por ejemplo: el cliente empieza la conversación enviando el CPF.\n\nEn “Si el contacto no responde”, puedes dar un plazo: pasado el tiempo sin respuesta, el flujo sigue por la salida “No respondió a tiempo” (por ejemplo, para enviar un recordatorio o pasar al equipo). Sin plazo, el chatbot espera el tiempo que sea.",
+      es: "Cuando agregues esta acción a tu chatbot, envía la pregunta y espera que el contacto responda.\n\nEn “Lo que debe ser la respuesta”, eliges el formato: cualquier texto, correo, teléfono, CPF, CNPJ, número, fecha u hora. Fuera del formato, el chatbot vuelve a preguntar; después de los intentos, sigue por “No respondió bien”. El CPF y el CNPJ tienen los dígitos verificados, así que un número mal escrito no pasa.\n\nLa respuesta queda guardada ya ordenada (correo en minúsculas, CPF y CNPJ con puntuación, fecha en día/mes/año, hora en hh:mm) con el nombre que elijas, para usarla después en un mensaje, en una condición o para guardarla en el registro con “Campo del contacto”.\n\nCon “Usar el mensaje anterior”, el chatbot no hace la pregunta si el mensaje que el contacto acaba de enviar ya está en el formato. Por ejemplo: el cliente empieza la conversación enviando el CPF.\n\nEn “Si el contacto no responde”, puedes dar un plazo: pasado el tiempo sin respuesta, el flujo sigue por la salida “No respondió a tiempo” (por ejemplo, para enviar un recordatorio o pasar al equipo). Sin plazo, el chatbot espera el tiempo que sea.",
     },
   "O que a resposta precisa ser": { es: "Lo que debe ser la respuesta" },
   "Qualquer texto": { es: "Cualquier texto" },
@@ -6181,6 +6181,57 @@ export const DICIONARIO: Traducoes = {
       es: 'El chatbot envía el enlace, pero no verifica si se pagó. Si el enlace queda vacío (una variable sin valor), el flujo sigue por "Sin enlace".',
     },
   "Sem link": { es: "Sin enlace" },
+  "Quando adicionada essa ação no seu chatbot, ele envia uma promoção que vale até a data que você escolher.\n\nAté esse dia (inclusive, no fuso da empresa), a mensagem sai com a linha “Válida até” no fim; se preferir pôr a data no meio do texto, escreva {{validade}} onde ela deve aparecer.\n\nDepois da data, nada é enviado e o fluxo segue por “Oferta vencida”: ligue ali outra mensagem (“essa promoção acabou, mas temos…”) ou a passagem para a equipe. Sem nada ligado, o fluxo termina.\n\nSem data, a oferta não vence e funciona como uma mensagem comum.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, envía una promoción que vale hasta la fecha que elijas.\n\nHasta ese día (inclusive, en la zona horaria de la empresa), el mensaje sale con la línea “Válida hasta” al final; si prefieres poner la fecha en medio del texto, escribe {{validade}} donde debe aparecer.\n\nDespués de la fecha, no se envía nada y el flujo sigue por “Oferta vencida”: conecta ahí otro mensaje (“esa promoción terminó, pero tenemos…”) o el paso al equipo. Sin nada conectado, el flujo termina.\n\nSin fecha, la oferta no vence y funciona como un mensaje común.",
+    },
+  "Hora (hh:mm)": { es: "Hora (hh:mm)" },
+  "Enviar oferta": { es: "Enviar oferta" },
+  "Envie uma promoção com data de validade; depois dela, o fluxo segue por outro caminho.": {
+    es: "Envía una promoción con fecha de validez; después de ella, el flujo sigue por otro camino.",
+  },
+  "Oferta vencida": { es: "Oferta vencida" },
+  "Mensagem da oferta": { es: "Mensaje de la oferta" },
+  "Ex.: 20% de desconto no plano anual: {{link}}": {
+    es: "Ej.: 20% de descuento en el plan anual: {{link}}",
+  },
+  "Escreva {{validade}} onde quiser mostrar a data. Sem isso, o chatbot acrescenta a linha “Válida até” no fim.":
+    {
+      es: "Escribe {{validade}} donde quieras mostrar la fecha. Sin eso, el chatbot agrega la línea “Válida hasta” al final.",
+    },
+  "Válida até (inclusive)": { es: "Válida hasta (inclusive)" },
+  "Depois desse dia, no fuso da empresa, o contato não recebe a oferta e o fluxo segue por “Oferta vencida”. Sem data, ela não vence.":
+    {
+      es: "Después de ese día, en la zona horaria de la empresa, el contacto no recibe la oferta y el flujo sigue por “Oferta vencida”. Sin fecha, no vence.",
+    },
+  "Mostrar a data de validade na mensagem": { es: "Mostrar la fecha de validez en el mensaje" },
+  Feriados: { es: "Feriados" },
+  "Feriados nacionais contam como fora do horário": {
+    es: "Los feriados nacionales cuentan como fuera del horario",
+  },
+  "Ano-Novo, Sexta-feira Santa, Tiradentes, Dia do Trabalho, Independência, Nossa Senhora Aparecida, Finados, Proclamação da República, Consciência Negra e Natal.":
+    {
+      es: "Año Nuevo, Viernes Santo, Tiradentes, Día del Trabajo, Independencia, Nuestra Señora Aparecida, Difuntos, Proclamación de la República, Conciencia Negra y Navidad (feriados de Brasil).",
+    },
+  "Também Carnaval (segunda e terça) e Corpus Christi": {
+    es: "También Carnaval (lunes y martes) y Corpus Christi",
+  },
+  "Outros dias fechados": { es: "Otros días cerrados" },
+  "Feriados do estado ou da cidade e dias de folga, separados por vírgula. 25/12 vale todo ano; 24/12/2026, só naquele dia.":
+    {
+      es: "Feriados del estado o de la ciudad y días libres, separados por coma. 25/12 vale todos los años; 24/12/2026, solo ese día.",
+    },
+  "Este endereço não abre uma página e é usado em golpes. O fluxo não liga com ele.": {
+    es: "Esta dirección no abre una página y se usa en estafas. El flujo no se activa con ella.",
+  },
+  "Este link está incompleto. Confira o endereço — o fluxo não liga com ele.": {
+    es: "Este enlace está incompleto. Revisa la dirección: el flujo no se activa con él.",
+  },
+  "Este link começa com http://. Prefira https:// — muitos celulares avisam que a página não é segura.":
+    {
+      es: "Este enlace empieza con http://. Prefiere https://: muchos celulares avisan que la página no es segura.",
+    },
+  "fecha em feriado": { es: "cierra en feriado" },
   Pix: { es: "Pix" },
   "Quando adicionada essa ação no seu chatbot, ele envia ao contato o link de pagamento numa mensagem arrumada: o que está sendo cobrado, o valor e o link. Se você colocar o Pix copia e cola, ele vai numa mensagem separada, para o contato copiar inteiro.\n\nUse o link do Mercado Pago, Asaas, PagSeguro, da sua loja ou de qualquer plataforma. O link aceita {{variavel}}: por exemplo, o {{link_checkout}} que chega numa automação de venda, ou um link guardado pelo WebHook.\n\nO chatbot não gera a cobrança nem confere se foi pago. Fica uma nota interna na conversa dizendo que o link foi enviado.\n\nSe o link e o Pix ficarem vazios (uma variável sem valor), nada é enviado e o fluxo segue por “Sem link”.":
     {
@@ -6192,9 +6243,9 @@ export const DICIONARIO: Traducoes = {
       es: "Sin hacer la pregunta, usa el mensaje que el contacto acaba de enviar, si está en el formato. Si no lo está, el chatbot hace la pregunta.",
     },
   "Respondeu certo": { es: "Respondió bien" },
-  "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data, telefone, CPF ou CNPJ (com os dígitos conferidos).\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.":
+  "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data, hora, telefone, CPF ou CNPJ (com os dígitos conferidos).\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él hace varias preguntas en secuencia, una por mensaje, y verifica cada respuesta según su tipo: texto, correo electrónico, número, fecha, teléfono, CPF o CNPJ (con los dígitos verificados).\n\nCada respuesta queda guardada con el nombre elegido y, si lo marcas, también se guarda en el nombre, correo electrónico o cumpleaños del contacto.\n\nSi el contacto falla todos los intentos de una pregunta, el flujo sigue por “No respondió bien”. No es el formulario nativo de WhatsApp: funciona en cualquier número.",
+      es: "Cuando agregues esta acción a tu chatbot, él hace varias preguntas en secuencia, una por mensaje, y verifica cada respuesta según su tipo: texto, correo electrónico, número, fecha, hora, teléfono, CPF o CNPJ (con los dígitos verificados).\n\nCada respuesta queda guardada con el nombre elegido y, si lo marcas, también se guarda en el nombre, correo electrónico o cumpleaños del contacto.\n\nSi el contacto falla todos los intentos de una pregunta, el flujo sigue por “No respondió bien”. No es el formulario nativo de WhatsApp: funciona en cualquier número.",
     },
   "Quando adicionada essa ação no seu chatbot, ele oferece os próximos horários livres de um tipo de atendimento da Agenda e marca o que o contato escolher.\n\nÉ a mesma agenda e a mesma marcação que o agente de IA usa. Se não houver horário livre, segue por “Sem horário livre”; se o contato não escolher nenhum, por “Não escolheu”.\n\nEm atendimentos que a equipe aprova antes, o horário fica reservado até a confirmação.":
     {

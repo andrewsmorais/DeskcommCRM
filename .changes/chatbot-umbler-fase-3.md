@@ -17,6 +17,10 @@ O editor de chatbot ganha o que a Umbler documenta e o nosso ainda não tinha, s
 - **Seis cards novos**: Enviar produto (lido no Catálogo na hora, com foto e preço atuais), Enviar localização (endereço com link do mapa), Enviar contato (cartão), condição Etapa do funil, Reagendar horário e Cancelar agendamento (os dois pelo mesmo caminho da Agenda da tela).
 - **Modelos prontos**: agora são 19, entre eles qualificação comercial, apresentação de produtos, confirmação de agendamento, reagendamento, pós-venda e recuperação de oportunidade parada.
 - **Copiar e colar passos** (Ctrl+C / Ctrl+V), inclusive de um fluxo para outro, e **salvar automático** com o fluxo desligado. Com o fluxo ligado, as mudanças só valem quando você salva.
+- **Feriados no Horários**: os feriados nacionais (a Sexta-feira Santa é calculada a cada ano), Carnaval e Corpus Christi se você quiser, e os dias em que a empresa fecha (25/12 vale todo ano; 24/12/2026, só aquele dia) contam como fora do horário o dia inteiro.
+- **Hora** como formato no Pedir para digitar e no Enviar formulário: aceita 14, 14h, 14h30 ou "às 14:30" e guarda em hh:mm.
+- **Links conferidos** no Enviar mensagem e no link de pagamento: endereço que não abre página (javascript:, data:) ou incompleto impede de ligar o fluxo; link com http:// mostra um aviso para trocar por https://.
+- **Enviar oferta**, card novo: a promoção vai com a linha "Válida até" (ou com {{validade}} onde você escrever); depois da data, nada é enviado e o fluxo segue por "Oferta vencida".
 - **Biblioteca de mídia** no Enviar mídia: reusar um arquivo que outro chatbot da empresa já manda, e ouvir o áudio antes de salvar.
 
 Fluxos salvos antes continuam iguais.

@@ -52,6 +52,7 @@ import {
   type ContatoDoTurno,
 } from "./regras";
 import { fimDoIntervalo, proximoHorario } from "./relogio";
+import { ehFeriado } from "./feriados";
 
 export { normalizar };
 
@@ -252,6 +253,22 @@ function horaLocal(agora: Date, fuso: string): { minutos: number; diaDaSemana: n
   };
 }
 
+/** O dia de hoje no fuso da empresa, "AAAA-MM-DD". */
+function dataLocal(agora: Date, fuso: string): string {
+  const formatar = (tz: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(agora);
+  try {
+    return formatar(fuso);
+  } catch {
+    return formatar("America/Sao_Paulo");
+  }
+}
+
 function emMinutos(hhmm: string): number {
   const [h = 0, m = 0] = hhmm.split(":").map(Number);
   return h * 60 + m;
@@ -293,6 +310,7 @@ const SAIDAS_DE_ERRO = new Set([
   "sem_horario",
   "sem_resposta",
   "sem_agendamento",
+  "vencida",
 ]);
 
 /** O compromisso que o "Reagendar horário" vai mudar (guardado ao buscar os horários). */
@@ -364,6 +382,7 @@ export const MENSAGEM_FORA_DO_FORMATO: Record<FormatoDeResposta, string> = {
   cnpj: "Esse CNPJ não parece certo. Pode conferir e mandar de novo? Só os 14 números já servem.",
   numero: "Preciso de um número. Pode mandar de novo?",
   data: "Não entendi a data. Pode mandar no formato dia/mês/ano? Exemplo: 25/12/2026",
+  hora: "Não entendi o horário. Pode mandar assim? Exemplo: 14:30",
 };
 
 /** Os horários guardados na sessão; lixo vira lista vazia. */
@@ -730,9 +749,34 @@ function andar(
       }
       case "horarios": {
         const c = lerConfig("horarios", no.data);
-        saida = dentroDasFaixas(horaLocal(ctx.agora, ctx.fuso).minutos, c.faixas)
-          ? "dentro"
-          : "fora";
+        // Feriado: o dia todo conta como fora do horário.
+        const feriado = ehFeriado(dataLocal(ctx.agora, ctx.fuso), {
+          feriados_nacionais: c.feriados_nacionais,
+          pontos_facultativos: c.pontos_facultativos,
+          datas: c.feriados,
+        });
+        saida =
+          !feriado && dentroDasFaixas(horaLocal(ctx.agora, ctx.fuso).minutos, c.faixas)
+            ? "dentro"
+            : "fora";
+        break;
+      }
+      case "enviar_oferta": {
+        const c = lerConfig("enviar_oferta", no.data);
+        if (c.valida_ate && dataLocal(ctx.agora, ctx.fuso) > c.valida_ate) {
+          // Vencida: nada sai para o contato.
+          saida = "vencida";
+          break;
+        }
+        const [ano, mes, dia] = c.valida_ate.split("-");
+        const validade = c.valida_ate ? `${dia}/${mes}/${ano}` : "";
+        if (validade) sessao.dados.validade = validade;
+        const texto = preencher(c.texto, sessao.dados).trim();
+        const rodape =
+          validade && c.mostrar_validade && !/\{\{\s*validade\s*\}\}/.test(c.texto)
+            ? `\n\n⏳ Válida até ${validade}.`
+            : "";
+        if (texto) efeitos.push({ tipo: "enviar", texto: `${texto}${rodape}` });
         break;
       }
       case "dias_semana": {

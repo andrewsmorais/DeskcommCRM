@@ -11,7 +11,7 @@ Status usados: **F** funcional · **P** parcial · **T** só na tela · **N** n�
 **E** implementado com erro · **NA** não se aplica ao canal/arquitetura · **B** bloqueado por
 dependência externa.
 
-O chatbot do produto tem **54 passos** hoje. Um card do prompt pode ser atendido por um passo
+O chatbot do produto tem **55 passos** em 03/11/2026 (o número muda; quem vale é a lista `PASSOS` de `lib/chatbot/passos.ts`). Um card do prompt pode ser atendido por um passo
 mais geral (ex.: "Perguntar e-mail" = "Pedir para digitar" com formato e-mail) — o prompt pede
 para não duplicar implementação, e foi isso que se seguiu.
 
@@ -38,7 +38,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 03 | Enviar áudio | P | F | Enviar mídia (áudio) | executor | prévia de áudio no painel entrou hoje; nota de voz convertida de webm |
 | 04 | Enviar vídeo | F | F | Enviar mídia (vídeo) | executor | até 16 MB |
 | 05 | Enviar arquivo/PDF | F | F | Enviar mídia (documento) | executor | — |
-| 06 | Enviar link | P | P | Enviar mensagem com o link | — | não há card próprio que valide o protocolo da URL |
+| 06 | Enviar link | P | F | Enviar mensagem com o link — os links do texto são conferidos (`lib/chatbot/links.ts`) | feriados-horas-links-oferta.test | `javascript:`/`data:`/`file:` e link incompleto impedem ligar; `http://` só avisa; link que chega inteiro numa `{{variavel}}` não é conferido no desenho; não é filtro de golpe (https para site ruim passa) |
 | 07 | Enviar localização | N | F | Enviar localização (novo) | cards-fase-4.test | sai como mensagem com endereço e link do mapa; o pino nativo não (o envio do CRM não fala esse formato) |
 | 08 | Enviar contato | N | F | Enviar contato (novo) — o cartão da Inbox | cards-fase-4 (unit + invariante) | — |
 | 09 | Botões de resposta | N | F (API oficial) / NA (QR Code) | Pedir para escolher | escolhas-interativas.test | até 3 opções ≤20 letras; QR Code não exibe botão (o WhatsApp não mostra) |
@@ -49,7 +49,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 14 | Enviar Pix | N | P | Enviar link de pagamento (Pix copia e cola) | enviar-pagamento.test | QR Code do Pix: subir a imagem num Enviar mídia |
 | 15 | Enviar boleto | N | P | Enviar link de pagamento (link do boleto) | — | sem geração de boleto (B) |
 | 16 | Catálogo de produtos | N | F | Enviar produto (novo): lido no Catálogo na hora, com a primeira foto | cards-fase-4 (unit + invariante) | um produto por card; desativado não sai e vira nota |
-| 17 | Oferta/promoção | P | P | Enviar mensagem / mídia | — | sem validade nem regra comercial |
+| 17 | Oferta/promoção | P | F | Enviar oferta (novo): texto + validade; vencida, nada sai e segue por "Oferta vencida" | feriados-horas-links-oferta.test | validade por dia, no fuso da empresa; sem regra comercial (preço, estoque, cupom — ver 18) |
 | 18 | Cupom de desconto | N | B | — | — | o CRM não tem módulo de cupom |
 | 19 | Status do pagamento | N | P | aviso da plataforma de venda (Kiwify, Cakto, Hotmart nova) → automação → chatbot | plataformas-de-venda.test | a plataforma avisa; consulta ativa ao provedor não existe |
 | 20 | Confirmar compra | P | F | aviso da plataforma (compra aprovada) move o negócio e pode iniciar chatbot | plataformas-de-venda.test | Kiwify, Cakto e Hotmart; outras pelo mapeador genérico |
@@ -58,7 +58,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 23 | Perguntar e-mail | P | F | Pedir para digitar (formato e-mail, novo) | pedir-digitar-formato.test | não confere se a caixa existe |
 | 24 | Pergunta personalizada | F | F | Pedir para digitar | motor.test | — |
 | 25 | Múltipla escolha | F | F | Pedir para escolher | motor.test | — |
-| 26 | Data e horário | P | P | Pedir para digitar (formato data) | pedir-digitar-formato.test | horário avulso não; data em dd/mm/aaaa |
+| 26 | Data e horário | P | F | Pedir para digitar (formato data ou hora) e Enviar formulário (tipo hora) | pedir-digitar-formato.test, feriados-horas-links-oferta.test | data em dd/mm/aaaa; hora guardada em hh:mm (aceita 14, 14h, 14h30, às 14:30); não confere se o horário está livre — para isso, Agendar horário |
 | 27 | Salvar em variável | F | P | respostas do fluxo + Campo do contato | regras.test | sem tipo declarado nem escopo "conversa" |
 | 28 | Condição SE/SENÃO | F | F | Definir condição | regras.test | — |
 | 29 | Verificar resposta | F | F | Definir condição / Valor | regras.test | — |
@@ -74,7 +74,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 39 | Follow-up automático | F | F | Iniciar follow-up (módulo existente) | invariantes do follow-up | janela, opt-out e modelo aprovado ficam no módulo |
 | 40 | Reativar conversa | P | P | Enviar template + follow-up | — | fora da janela só modelo aprovado (API oficial) |
 | 41 | Agendar envio | P | P | Aguardar até + Enviar mensagem | — | — |
-| 42 | Horário comercial | P | P | Horários + Dias da semana | motor.test | sem feriados |
+| 42 | Horário comercial | P | F | Horários + Dias da semana; feriados no Horários | motor.test, feriados-horas-links-oferta.test | nacionais calculados (Páscoa móvel); Carnaval e Corpus Christi opcionais; estaduais e municipais a empresa escreve |
 | 43 | Consultar horários | F | F | Agendar horário (Agenda do CRM) | invariante da agenda | — |
 | 44 | Enviar opções de horário | F | F | Agendar horário (lista clicável na API oficial, nova) | motor.test | — |
 | 45 | Criar agendamento | F | F | Agendar horário | invariante | horário tomado no meio segue por "Sem horário livre" |
@@ -110,6 +110,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 
 ## Pendências (o que falta, por quê, próxima ação)
 
+- **Feito em 03/11 (segunda rodada):** feriados no Horários (42), formato hora (26), conferência de links (06) e Enviar oferta com validade (17).
 - **A1 — Prazo de resposta nas perguntas** (cards 37/38): feito. Falta estender ao Enviar formulário e ao Agendar horário.
 - **V1 — Versões publicadas imutáveis:** pede tabela de versões (migration nova, não destrutiva) e decisão de produto (publicar ≠ salvar). Próxima ação: desenhar e aprovar.
 - **Cards 07, 08, 16, 33, 47, 48:** feitos, reaproveitando o que já existia (cartão de contato da Inbox, Catálogo, funil, handlers da Agenda).

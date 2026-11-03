@@ -381,6 +381,9 @@ export function respostaDoFormulario(
     case "cnpj":
       valor = comoCnpj(v);
       break;
+    case "hora":
+      valor = comoHora(v);
+      break;
   }
   if (valor === null) return null;
   if (!p.gravar_em) return { valor, gravado: null };
@@ -405,6 +408,23 @@ function digitosConferem(digitos: string, pesos: number[]): boolean {
 
 const PESOS_CPF = [10, 9, 8, 7, 6, 5, 4, 3, 2];
 const PESOS_CNPJ = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+/**
+ * Um horário → "HH:MM". Aceita "14", "14h", "14:30", "14h30", "9:05",
+ * "às 14h", "14 horas". Fora de 00:00–23:59 (ou texto com outra coisa) → null.
+ */
+export function comoHora(texto: string): string | null {
+  const v = texto
+    .trim()
+    .toLowerCase()
+    .replace(/^(as|às|a partir das)\s+/, "");
+  const m = v.match(/^(\d{1,2})\s*(?:(?::|h)\s*(\d{2})?)?\s*(?:h|hs|hrs|horas?)?$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = m[2] === undefined ? 0 : Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
 
 /** CPF válido (dígitos conferidos), escrito com ou sem pontuação → "123.456.789-09". */
 export function comoCpf(texto: string): string | null {
@@ -442,6 +462,7 @@ export function respostaNoFormato(formato: FormatoDeResposta, bruto: string): st
     case "telefone":
     case "numero":
     case "data":
+    case "hora":
       return respostaDoFormulario({ tipo: formato, gravar_em: "" }, bruto)?.valor ?? null;
   }
 }

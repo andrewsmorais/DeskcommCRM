@@ -8,6 +8,7 @@
 import {
   Activity,
   AlarmClock,
+  BadgePercent,
   Ban,
   BellRing,
   CalendarCheck,
@@ -61,6 +62,7 @@ import {
 } from "lucide-react";
 
 const ICONES: Record<string, LucideIcon> = {
+  BadgePercent,
   CreditCard,
   Contact,
   MapPin,

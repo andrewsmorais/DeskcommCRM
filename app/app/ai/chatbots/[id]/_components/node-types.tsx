@@ -105,6 +105,12 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     }
     case "enviar_mensagem":
       return lerConfig("enviar_mensagem", dados).texto;
+    case "enviar_oferta": {
+      const c = lerConfig("enviar_oferta", dados);
+      if (!c.valida_ate) return c.texto;
+      const [ano, mes, dia] = c.valida_ate.split("-");
+      return `${t("Até")} ${dia}/${mes}/${ano} · ${c.texto}`;
+    }
     case "pedir_escolher":
       return lerConfig("pedir_escolher", dados).pergunta;
     case "pedir_digitar": {
@@ -113,10 +119,13 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     }
     case "mensagem_contem":
       return lerConfig("mensagem_contem", dados).palavras.join(", ");
-    case "horarios":
-      return lerConfig("horarios", dados)
-        .faixas.map((f) => `${f.inicio}–${f.fim}`)
-        .join(", ");
+    case "horarios": {
+      const c = lerConfig("horarios", dados);
+      const faixas = c.faixas.map((f) => `${f.inicio}–${f.fim}`).join(", ");
+      return c.feriados_nacionais || c.feriados.length
+        ? `${faixas} · ${t("fecha em feriado")}`
+        : faixas;
+    }
     case "dias_semana": {
       const nomes = [t("Dom"), t("Seg"), t("Ter"), t("Qua"), t("Qui"), t("Sex"), t("Sáb")];
       return lerConfig("dias_semana", dados)
