@@ -511,6 +511,33 @@ function Campos({
         </>
       );
     }
+    case "guardar_valor": {
+      const c = lerConfig("guardar_valor", dados);
+      return (
+        <>
+          <Texto
+            id="guardar-variavel"
+            rotulo={t("Nome da variável")}
+            valor={c.variavel}
+            placeholder="origem"
+            onCommit={(v) => {
+              const limpo = v.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^[^a-z]+/, "");
+              if (limpo) aplicar({ variavel: limpo.slice(0, 40) });
+            }}
+            ajuda={t("Letras minúsculas, números e _. Depois, use como {{nome}} numa mensagem, no Valor ou no WebHook.")}
+          />
+          <Texto
+            id="guardar-valor"
+            rotulo={t("Valor")}
+            valor={c.valor}
+            linhas={2}
+            placeholder={t("Ex.: instagram, ou {{nome}} {{sobrenome}}")}
+            onCommit={(v) => aplicar({ valor: v })}
+            ajuda={t("Aceita {{variavel}}. Se a variável já existir, o valor novo toma o lugar do antigo.")}
+          />
+        </>
+      );
+    }
     case "enviar_oferta": {
       const c = lerConfig("enviar_oferta", dados);
       return (
@@ -1197,6 +1224,18 @@ function Campos({
       return (
         <>
           <div className="space-y-1.5">
+            <Label htmlFor="ate-quando">{t("Seguir")}</Label>
+            <select
+              id="ate-quando"
+              className={SELECT}
+              value={c.quando}
+              onChange={(e) => aplicar({ quando: e.target.value })}
+            >
+              <option value="dias">{t("No próximo horário, nos dias da semana marcados")}</option>
+              <option value="data">{t("Numa data")}</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="ate-hora">{t("Horário")}</Label>
             <Input
               id="ate-hora"
@@ -1205,6 +1244,9 @@ function Campos({
               onChange={(e) => e.target.value && aplicar({ hora: e.target.value })}
             />
           </div>
+          {c.quando === "data" ? (
+            <AguardarAteData dados={dados} aplicar={aplicar} />
+          ) : (
           <div className="space-y-1.5">
             <Label>{t("Nos dias")}</Label>
             {nomes.map((n, i) => (
@@ -1226,6 +1268,7 @@ function Campos({
               {t("O fluxo segue no próximo horário marcado, no fuso horário da empresa.")}
             </p>
           </div>
+          )}
           <SeResponder valor={c.se_responder} aplicar={aplicar} />
         </>
       );
@@ -1603,6 +1646,98 @@ function AvisosDeLink({ texto }: { texto: string }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+const DESLOCAMENTOS_DA_DATA = [-7, -3, -2, -1, 0, 1, 2, 3, 7] as const;
+const NOMES_DO_DESLOCAMENTO: Record<(typeof DESLOCAMENTOS_DA_DATA)[number], string> = {
+  [-7]: "7 dias antes",
+  [-3]: "3 dias antes",
+  [-2]: "2 dias antes",
+  [-1]: "1 dia antes (véspera)",
+  0: "No próprio dia",
+  1: "1 dia depois",
+  2: "2 dias depois",
+  3: "3 dias depois",
+  7: "7 dias depois",
+};
+
+function AguardarAteData({
+  dados,
+  aplicar,
+}: {
+  dados: NodeData;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const c = lerConfig("aguardar_ate", dados);
+  return (
+    <>
+      <div className="space-y-1.5">
+        <Label htmlFor="ate-fonte">{t("A data")}</Label>
+        <select
+          id="ate-fonte"
+          className={SELECT}
+          value={c.fonte_da_data}
+          onChange={(e) => aplicar({ fonte_da_data: e.target.value })}
+        >
+          <option value="fixa">{t("Uma data que eu escolho")}</option>
+          <option value="resposta">{t("Uma data guardada numa resposta")}</option>
+        </select>
+      </div>
+      {c.fonte_da_data === "fixa" ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="ate-data">{t("Dia")}</Label>
+          <Input
+            id="ate-data"
+            type="date"
+            value={c.data}
+            onChange={(e) => aplicar({ data: e.target.value })}
+          />
+        </div>
+      ) : (
+        <Texto
+          id="ate-variavel"
+          rotulo={t("Nome da resposta com a data")}
+          valor={c.variavel}
+          placeholder="data_consulta"
+          onCommit={(v) =>
+            // Só o que o formato aceita: um valor inválido zeraria o passo inteiro.
+            aplicar({
+              variavel: v
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9_]/g, "_")
+                .replace(/^[^a-z_]+/, "")
+                .slice(0, 40),
+            })
+          }
+          ajuda={t(
+            "A resposta de um Pedir para digitar no formato data (dd/mm/aaaa), ou horario_inicio, que o Agendar horário guarda ao marcar.",
+          )}
+        />
+      )}
+      <div className="space-y-1.5">
+        <Label htmlFor="ate-deslocamento">{t("Quando")}</Label>
+        <select
+          id="ate-deslocamento"
+          className={SELECT}
+          value={c.deslocamento_dias}
+          onChange={(e) => aplicar({ deslocamento_dias: Number(e.target.value) })}
+        >
+          {DESLOCAMENTOS_DA_DATA.map((d) => (
+            <option key={d} value={d}>
+              {t(NOMES_DO_DESLOCAMENTO[d])}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "No horário acima, no fuso da empresa. Se a data já passou, faltou ou está a mais de um ano, o fluxo não espera e segue por “Sem data válida” — sem nada ligado ali, ele termina.",
+          )}
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -2614,6 +2749,7 @@ function AgendarHorario({
           ))}
         </select>
       </div>
+      <PrazoDaResposta id="agenda-prazo" valor={c.prazo_minutos} aplicar={aplicar} />
       <p className="text-xs text-muted-foreground">
         {t(
           'Os horários respeitam a jornada, as folgas, o que já está marcado e a agenda do Google de quem atende — os mesmos que a tela da Agenda mostra. O compromisso aparece na Agenda e no negócio do contato. Sem horário livre (ou agenda não configurada), segue por "Sem horário livre".',
@@ -3229,6 +3365,12 @@ function EnviarFormulario({
           ))}
         </select>
       </div>
+      <PrazoDaResposta id="form-prazo" valor={c.prazo_minutos} aplicar={aplicar} />
+      {c.prazo_minutos > 0 ? (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          {t("O prazo vale para cada pergunta: recomeça quando a próxima sai.")}
+        </p>
+      ) : null}
       <Texto
         id="form-fim"
         rotulo={t("Mensagem ao terminar (opcional)")}

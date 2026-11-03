@@ -212,3 +212,65 @@ describe("prazo da pergunta", () => {
     expect(typeof r === "object" && "adiarAte" in r).toBe(true);
   });
 });
+
+describe("prazo no Enviar formulário (executor)", () => {
+  beforeAll(async () => {
+    // Mesmo número e mesma org: o fluxo ligado passa a ser o do formulário.
+    const grafo = {
+      nodes: [
+        { id: "i", type: "inicio_canal", position: { x: 0, y: 0 }, data: {} },
+        {
+          id: "f",
+          type: "enviar_formulario",
+          position: { x: 0, y: 0 },
+          data: {
+            prazo_minutos: 5,
+            perguntas: [
+              { pergunta: "Seu nome?", variavel: "nome" },
+              { pergunta: "Seu e-mail?", variavel: "email", tipo: "email" },
+            ],
+          },
+        },
+        { id: "ok", type: "enviar_mensagem", position: { x: 0, y: 0 }, data: { texto: "Obrigado!" } },
+        {
+          id: "sem",
+          type: "enviar_mensagem",
+          position: { x: 0, y: 0 },
+          data: { texto: "Parou no meio, {{nome}}?" },
+        },
+      ],
+      edges: [
+        { id: "a", source: "i", target: "f", sourceHandle: "proximo" },
+        { id: "b", source: "f", target: "ok", sourceHandle: "proximo" },
+        { id: "c", source: "f", target: "sem", sourceHandle: "sem_resposta" },
+      ],
+    };
+    await pool.query(`update chatbot_flows set grafo = $2::jsonb where id = $1`, [
+      FLUXO,
+      JSON.stringify(grafo),
+    ]);
+  });
+
+  it("cada pergunta arma um relógio novo; vencido no meio, segue com o que já veio", async () => {
+    const c = await conversaNova();
+    await chega(c, "oi");
+    const primeiro = await relogioDa(c.conversa);
+    await chega(c, "Ana");
+    expect(enviadas).toEqual(["Seu nome?", "Seu e-mail?"]);
+    const segundo = await relogioDa(c.conversa);
+    expect(segundo.pedido.token).not.toBe(primeiro.pedido.token);
+
+    // O relógio da primeira pergunta já não vale.
+    await vencer(segundo.pedido.session_id);
+    expect(await retomarChatbotPeloRelogio(pool, admin, primeiro.pedido, ORG, log)).toBe("descartado");
+
+    enviadas.length = 0;
+    expect(await retomarChatbotPeloRelogio(pool, admin, segundo.pedido, ORG, log)).toBe("retomou");
+    expect(enviadas).toEqual(["Parou no meio, Ana?"]);
+    const { rows } = await pool.query(
+      `select collected_data->>'_formulario' as posicao, collected_data->>'nome' as nome from chatbot_sessions where id = $1`,
+      [segundo.pedido.session_id],
+    );
+    expect(rows[0]).toMatchObject({ posicao: null, nome: "Ana" });
+  });
+});

@@ -6089,9 +6089,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta condición a tu chatbot, mira los negocios abiertos del contacto y sigue por “Está” si tiene un negocio en el embudo elegido, en una de las etapas marcadas (o en cualquier etapa, si no hay ninguna marcada). Si no, sigue por “No está”.\n\nÚsala para tratar distinto a quien ya está en negociación, a quien ya pagó o a quien aún no entró en el embudo.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele acha o próximo compromisso do contato na Agenda e oferece os horários livres do mesmo tipo de atendimento e da mesma agenda. O contato escolhe e o compromisso muda de horário: a Agenda confere de novo se o horário está livre, avisa a agenda conectada e registra a mudança.\n\nSe o horário escolhido for ocupado no meio do caminho, o chatbot oferece os livres de novo. Sem compromisso futuro, segue por “Sem agendamento”; sem horário livre, por “Sem horário livre”.":
+  "Quando adicionada essa ação no seu chatbot, ele acha o próximo compromisso do contato na Agenda e oferece os horários livres do mesmo tipo de atendimento e da mesma agenda. O contato escolhe e o compromisso muda de horário: a Agenda confere de novo se o horário está livre, avisa a agenda conectada e registra a mudança.\n\nSe o horário escolhido for ocupado no meio do caminho, o chatbot oferece os livres de novo. Sem compromisso futuro, segue por “Sem agendamento”; sem horário livre, por “Sem horário livre”.\n\nEm “Se o contato não responder”, você pode dar um prazo, contado a partir da lista de horários: passado o tempo sem escolha, o fluxo segue por “Não respondeu a tempo”. Nada é marcado.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, encuentra la próxima cita del contacto en la Agenda y ofrece los horarios libres del mismo tipo de atención y de la misma agenda. El contacto elige y la cita cambia de horario: la Agenda vuelve a verificar que el horario esté libre, avisa a la agenda conectada y registra el cambio.\n\nSi el horario elegido se ocupa en el camino, el chatbot vuelve a ofrecer los libres. Sin cita futura, sigue por “Sin cita”; sin horario libre, por “Sin horario libre”.",
+      es: "Cuando agregues esta acción a tu chatbot, encuentra la próxima cita del contacto en la Agenda y ofrece los horarios libres del mismo tipo de atención y de la misma agenda. El contacto elige y la cita cambia de horario: la Agenda vuelve a verificar que el horario esté libre, avisa a la agenda conectada y registra el cambio.\n\nSi el horario elegido se ocupa en el camino, el chatbot vuelve a ofrecer los libres. Sin cita futura, sigue por “Sin cita”; sin horario libre, por “Sin horario libre”.\n\nEn “Si el contacto no responde”, puedes dar un plazo, contado desde la lista de horarios: pasado el tiempo sin elección, el flujo sigue por “No respondió a tiempo”. No se agenda nada.",
     },
   "Quando adicionada essa ação no seu chatbot, ele cancela o próximo compromisso do contato na Agenda, do mesmo jeito que o botão da tela: o horário volta a ficar livre e a agenda conectada é avisada. O horário cancelado fica em {{agendamento}}, para você confirmar numa mensagem.\n\nSem compromisso futuro, segue por “Sem agendamento”. Para pedir confirmação antes de cancelar, coloque um “Pedir para escolher” na frente.":
     {
@@ -6181,6 +6181,56 @@ export const DICIONARIO: Traducoes = {
       es: 'El chatbot envía el enlace, pero no verifica si se pagó. Si el enlace queda vacío (una variable sin valor), el flujo sigue por "Sin enlace".',
     },
   "Sem link": { es: "Sin enlace" },
+  "Quando adicionada essa ação no seu chatbot, ele guarda um valor com o nome que você escolher, para usar depois como {{nome}}: numa mensagem, no “Valor”, no WebHook ou em outro passo.\n\nO valor pode ter outras variáveis — por exemplo, {{nome}} {{sobrenome}} — ou ser um texto fixo, como “instagram” para marcar de onde o contato veio. Se a variável já existir, o valor novo toma o lugar do antigo.\n\nO valor vale até o fim da conversa com o chatbot e vai junto para o fluxo chamado em “Acionar outro fluxo”. Para guardar no cadastro do contato, use “Campo do contato”.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, guarda un valor con el nombre que elijas, para usarlo después como {{nome}}: en un mensaje, en “Valor”, en el WebHook o en otro paso.\n\nEl valor puede tener otras variables —por ejemplo, {{nome}} {{sobrenome}}— o ser un texto fijo, como “instagram” para marcar de dónde vino el contacto. Si la variable ya existe, el valor nuevo reemplaza al anterior.\n\nEl valor vale hasta el fin de la conversación con el chatbot y va junto al flujo llamado en “Activar otro flujo”. Para guardarlo en el registro del contacto, usa “Campo del contacto”.",
+    },
+  "Guardar em variável": { es: "Guardar en variable" },
+  "Guarde um valor para usar depois no fluxo como {{variavel}}.": {
+    es: "Guarda un valor para usarlo después en el flujo como {{variavel}}.",
+  },
+  "Chegou a data": { es: "Llegó la fecha" },
+  "Sem data válida": { es: "Sin fecha válida" },
+  "antes de": { es: "antes de" },
+  "depois de": { es: "después de" },
+  Seguir: { es: "Seguir" },
+  "No próximo horário, nos dias da semana marcados": {
+    es: "En el próximo horario, en los días de la semana marcados",
+  },
+  "Numa data": { es: "En una fecha" },
+  "A data": { es: "La fecha" },
+  "Uma data que eu escolho": { es: "Una fecha que yo elijo" },
+  "Uma data guardada numa resposta": { es: "Una fecha guardada en una respuesta" },
+  "Nome da resposta com a data": { es: "Nombre de la respuesta con la fecha" },
+  "A resposta de um Pedir para digitar no formato data (dd/mm/aaaa), ou horario_inicio, que o Agendar horário guarda ao marcar.":
+    {
+      es: "La respuesta de un Pedir que escriba en formato fecha (dd/mm/aaaa), o horario_inicio, que Agendar horario guarda al reservar.",
+    },
+  "7 dias antes": { es: "7 días antes" },
+  "3 dias antes": { es: "3 días antes" },
+  "2 dias antes": { es: "2 días antes" },
+  "1 dia antes (véspera)": { es: "1 día antes (víspera)" },
+  "No próprio dia": { es: "El mismo día" },
+  "1 dia depois": { es: "1 día después" },
+  "2 dias depois": { es: "2 días después" },
+  "3 dias depois": { es: "3 días después" },
+  "7 dias depois": { es: "7 días después" },
+  "No horário acima, no fuso da empresa. Se a data já passou, faltou ou está a mais de um ano, o fluxo não espera e segue por “Sem data válida” — sem nada ligado ali, ele termina.":
+    {
+      es: "En el horario de arriba, en la zona horaria de la empresa. Si la fecha ya pasó, falta o está a más de un año, el flujo no espera y sigue por “Sin fecha válida”; sin nada conectado ahí, termina.",
+    },
+  "Nome da variável": { es: "Nombre de la variable" },
+  "Letras minúsculas, números e _. Depois, use como {{nome}} numa mensagem, no Valor ou no WebHook.":
+    {
+      es: "Letras minúsculas, números y _. Después, úsala como {{nome}} en un mensaje, en Valor o en el WebHook.",
+    },
+  "Ex.: instagram, ou {{nome}} {{sobrenome}}": { es: "Ej.: instagram, o {{nome}} {{sobrenome}}" },
+  "Aceita {{variavel}}. Se a variável já existir, o valor novo toma o lugar do antigo.": {
+    es: "Acepta {{variavel}}. Si la variable ya existe, el valor nuevo reemplaza al anterior.",
+  },
+  "O prazo vale para cada pergunta: recomeça quando a próxima sai.": {
+    es: "El plazo vale para cada pregunta: vuelve a empezar cuando sale la siguiente.",
+  },
   "Quando adicionada essa ação no seu chatbot, ele envia uma promoção que vale até a data que você escolher.\n\nAté esse dia (inclusive, no fuso da empresa), a mensagem sai com a linha “Válida até” no fim; se preferir pôr a data no meio do texto, escreva {{validade}} onde ela deve aparecer.\n\nDepois da data, nada é enviado e o fluxo segue por “Oferta vencida”: ligue ali outra mensagem (“essa promoção acabou, mas temos…”) ou a passagem para a equipe. Sem nada ligado, o fluxo termina.\n\nSem data, a oferta não vence e funciona como uma mensagem comum.":
     {
       es: "Cuando agregues esta acción a tu chatbot, envía una promoción que vale hasta la fecha que elijas.\n\nHasta ese día (inclusive, en la zona horaria de la empresa), el mensaje sale con la línea “Válida hasta” al final; si prefieres poner la fecha en medio del texto, escribe {{validade}} donde debe aparecer.\n\nDespués de la fecha, no se envía nada y el flujo sigue por “Oferta vencida”: conecta ahí otro mensaje (“esa promoción terminó, pero tenemos…”) o el paso al equipo. Sin nada conectado, el flujo termina.\n\nSin fecha, la oferta no vence y funciona como un mensaje común.",
@@ -6243,13 +6293,13 @@ export const DICIONARIO: Traducoes = {
       es: "Sin hacer la pregunta, usa el mensaje que el contacto acaba de enviar, si está en el formato. Si no lo está, el chatbot hace la pregunta.",
     },
   "Respondeu certo": { es: "Respondió bien" },
-  "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data, hora, telefone, CPF ou CNPJ (com os dígitos conferidos).\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.":
+  "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data, hora, telefone, CPF ou CNPJ (com os dígitos conferidos).\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.\n\nEm “Se o contato não responder”, você pode dar um prazo para cada pergunta: passado o tempo sem resposta, o fluxo segue por “Não respondeu a tempo”. As respostas que já chegaram ficam guardadas.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él hace varias preguntas en secuencia, una por mensaje, y verifica cada respuesta según su tipo: texto, correo electrónico, número, fecha, hora, teléfono, CPF o CNPJ (con los dígitos verificados).\n\nCada respuesta queda guardada con el nombre elegido y, si lo marcas, también se guarda en el nombre, correo electrónico o cumpleaños del contacto.\n\nSi el contacto falla todos los intentos de una pregunta, el flujo sigue por “No respondió bien”. No es el formulario nativo de WhatsApp: funciona en cualquier número.",
+      es: "Cuando agregues esta acción a tu chatbot, él hace varias preguntas en secuencia, una por mensaje, y verifica cada respuesta según su tipo: texto, correo electrónico, número, fecha, hora, teléfono, CPF o CNPJ (con los dígitos verificados).\n\nCada respuesta queda guardada con el nombre elegido y, si lo marcas, también se guarda en el nombre, correo electrónico o cumpleaños del contacto.\n\nSi el contacto falla todos los intentos de una pregunta, el flujo sigue por “No respondió bien”. No es el formulario nativo de WhatsApp: funciona en cualquier número.\n\nEn “Si el contacto no responde”, puedes dar un plazo para cada pregunta: pasado el tiempo sin respuesta, el flujo sigue por “No respondió a tiempo”. Las respuestas que ya llegaron quedan guardadas.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele oferece os próximos horários livres de um tipo de atendimento da Agenda e marca o que o contato escolher.\n\nÉ a mesma agenda e a mesma marcação que o agente de IA usa. Se não houver horário livre, segue por “Sem horário livre”; se o contato não escolher nenhum, por “Não escolheu”.\n\nEm atendimentos que a equipe aprova antes, o horário fica reservado até a confirmação.":
+  "Quando adicionada essa ação no seu chatbot, ele oferece os próximos horários livres de um tipo de atendimento da Agenda e marca o que o contato escolher.\n\nÉ a mesma agenda e a mesma marcação que o agente de IA usa. Se não houver horário livre, segue por “Sem horário livre”; se o contato não escolher nenhum, por “Não escolheu”.\n\nEm atendimentos que a equipe aprova antes, o horário fica reservado até a confirmação.\n\nEm “Se o contato não responder”, você pode dar um prazo, contado a partir da lista de horários: passado o tempo sem escolha, o fluxo segue por “Não respondeu a tempo”. Nada é marcado.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él ofrece los próximos horarios libres de un tipo de atención de la Agenda y agenda lo que el contacto elija.\n\nEs la misma agenda y la misma reserva que usa el agente de IA. Si no hay horario libre, sigue por “Sin horario libre”; si el contacto no elige ninguno, por “No eligió”.\n\nEn atenciones que el equipo aprueba antes, el horario queda reservado hasta la confirmación.",
+      es: "Cuando agregues esta acción a tu chatbot, él ofrece los próximos horarios libres de un tipo de atención de la Agenda y agenda lo que el contacto elija.\n\nEs la misma agenda y la misma reserva que usa el agente de IA. Si no hay horario libre, sigue por “Sin horario libre”; si el contacto no elige ninguno, por “No eligió”.\n\nEn atenciones que el equipo aprueba antes, el horario queda reservado hasta la confirmación.\n\nEn “Si el contacto no responde”, puedes dar un plazo, contado desde la lista de horarios: pasado el tiempo sin elección, el flujo sigue por “No respondió a tiempo”. No se agenda nada.",
     },
   "Quando adicionada essa ação no seu chatbot, ele põe o contato no funil de vendas: se o contato já tem um negócio aberto naquele funil, o negócio vai para a etapa escolhida; se não tem, nasce nela.\n\nO título do negócio novo pode usar {{variavel}}; vazio, usa o nome do contato.":
     {
@@ -6342,9 +6392,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, el flujo espera el tiempo elegido (segundos, minutos, horas o días) antes de seguir.\n\nTú eliges qué hacer si el contacto envía un mensaje durante la espera: seguir el flujo de inmediato, o seguir esperando (el mensaje queda para que el equipo lo vea).",
     },
-  "Quando adicionada essa ação no seu chatbot, o fluxo pausa até o próximo horário marcado (por exemplo, amanhã às 9h, só em dias úteis) e segue dali.\n\nUsa o fuso horário da empresa. Como em “Aguardar intervalo”, você escolhe o que fazer se o contato escrever durante a espera.":
+  "Quando adicionada essa ação no seu chatbot, o fluxo pausa até o próximo horário marcado (por exemplo, amanhã às 9h, só em dias úteis) e segue dali.\n\nEm “Numa data”, ele espera um dia certo: uma data que você escolhe, ou a que o contato respondeu (por exemplo, a data da consulta num Pedir para digitar, ou o horário marcado pelo Agendar horário). Dá para seguir alguns dias antes ou depois — “1 dia antes, às 9h” é o lembrete da véspera. Se a data já passou, faltou ou está a mais de um ano, o fluxo segue na hora por “Sem data válida”.\n\nUsa o fuso horário da empresa. Como em “Aguardar intervalo”, você escolhe o que fazer se o contato escrever durante a espera.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, el flujo se pausa hasta el próximo horario marcado (por ejemplo, mañana a las 9h, solo en días hábiles) y sigue desde ahí.\n\nUsa la zona horaria de la empresa. Como en “Esperar un intervalo”, tú eliges qué hacer si el contacto escribe durante la espera.",
+      es: "Cuando agregues esta acción a tu chatbot, el flujo se pausa hasta el próximo horario marcado (por ejemplo, mañana a las 9h, solo en días hábiles) y sigue desde ahí.\n\nEn “En una fecha”, espera un día concreto: una fecha que eliges, o la que respondió el contacto (por ejemplo, la fecha de la consulta en un Pedir que escriba, o el horario reservado por Agendar horario). Puedes seguir algunos días antes o después: “1 día antes, a las 9h” es el recordatorio de la víspera. Si la fecha ya pasó, falta o está a más de un año, el flujo sigue en el momento por “Sin fecha válida”.\n\nUsa la zona horaria de la empresa. Como en “Esperar intervalo”, eliges qué hacer si el contacto escribe durante la espera.",
     },
   "Quando adicionada essa ação no seu chatbot, ele bloqueia o contato e finaliza a conversa: nem chatbot, nem agente de IA, nem campanha escrevem mais para ele.\n\nA mensagem, se houver, sai antes do bloqueio. O bloqueio fica registrado na auditoria e numa nota da conversa.":
     {
@@ -6538,9 +6588,10 @@ export const DICIONARIO: Traducoes = {
     es: "Espera un tiempo (segundos, minutos, horas o días) antes de seguir.",
   },
   "Aguardar até": { es: "Esperar hasta" },
-  "Pause o fluxo até um horário (ex.: amanhã às 9h) e siga dali.": {
-    es: "Pausa el flujo hasta un horario (ej.: mañana a las 9 h) y sigue desde ahí.",
-  },
+  "Pause o fluxo até um horário ou uma data (ex.: amanhã às 9h, ou a véspera da consulta) e siga dali.":
+    {
+      es: "Pausa el flujo hasta un horario o una fecha (ej.: mañana a las 9h, o la víspera de la consulta) y sigue desde ahí.",
+    },
   Avaliou: { es: "Calificó" },
   "Não avaliou": { es: "No calificó" },
   "O chatbot pediu atenção numa conversa": { es: "El chatbot pidió atención en una conversación" },

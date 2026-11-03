@@ -161,6 +161,18 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (p) problemas.push(`no passo "${nome}", ${p}.`);
         break;
       }
+      case "guardar_valor":
+        if (!lerConfig("guardar_valor", no.data).valor)
+          problemas.push(`no passo "${nome}", escreva o valor a guardar.`);
+        break;
+      case "aguardar_ate": {
+        const c = lerConfig("aguardar_ate", no.data);
+        if (c.quando === "data" && c.fonte_da_data === "fixa" && !c.data)
+          problemas.push(`escolha a data do passo "${nome}".`);
+        if (c.quando === "data" && c.fonte_da_data === "resposta" && !c.variavel)
+          problemas.push(`no passo "${nome}", escreva o nome da resposta que tem a data.`);
+        break;
+      }
       case "enviar_localizacao": {
         const c = lerConfig("enviar_localizacao", no.data);
         if (!c.endereco && (c.latitude === null || c.longitude === null))

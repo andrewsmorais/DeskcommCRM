@@ -51,7 +51,7 @@ import {
   valorVale,
   type ContatoDoTurno,
 } from "./regras";
-import { fimDoIntervalo, proximoHorario } from "./relogio";
+import { fimDoIntervalo, instanteDaData, proximoHorario } from "./relogio";
 import { ehFeriado } from "./feriados";
 
 export { normalizar };
@@ -921,9 +921,7 @@ function andar(
             texto: `${c.mensagem_invalida}\n\n${textoDasOpcoes("", ofertas.map((o) => o.quando))}`,
             escolhas: { pergunta: c.mensagem_invalida, opcoes: ofertas.map((o) => o.quando) },
           });
-          sessao.no_atual = no.id;
-          sessao.status = "waiting_input";
-          return { sessao, efeitos, passos };
+          return esperarResposta(no.id, c.prazo_minutos);
         }
         sessao.tentativas = 0;
         delete sessao.dados[CHAVE_DOS_HORARIOS];
@@ -974,10 +972,8 @@ function andar(
             .join("\n\n");
           if (abertura) efeitos.push({ tipo: "enviar", texto: abertura });
           sessao.dados[CHAVE_DO_FORMULARIO] = "0";
-          sessao.no_atual = no.id;
-          sessao.status = "waiting_input";
           sessao.tentativas = 0;
-          return { sessao, efeitos, passos };
+          return esperarResposta(no.id, c.prazo_minutos);
         }
         resposta = false;
         const i = Number(sessao.dados[CHAVE_DO_FORMULARIO] ?? "0");
@@ -997,9 +993,7 @@ function andar(
               tipo: "enviar",
               texto: [c.mensagem_invalida, pergunta(i)].filter(Boolean).join("\n\n"),
             });
-            sessao.no_atual = no.id;
-            sessao.status = "waiting_input";
-            return { sessao, efeitos, passos };
+            return esperarResposta(no.id, c.prazo_minutos);
           }
           sessao.tentativas = 0;
           delete sessao.dados[CHAVE_DO_FORMULARIO];
@@ -1016,9 +1010,7 @@ function andar(
           sessao.dados[CHAVE_DO_FORMULARIO] = String(i + 1);
           const proxima = pergunta(i + 1);
           if (proxima) efeitos.push({ tipo: "enviar", texto: proxima });
-          sessao.no_atual = no.id;
-          sessao.status = "waiting_input";
-          return { sessao, efeitos, passos };
+          return esperarResposta(no.id, c.prazo_minutos);
         }
         delete sessao.dados[CHAVE_DO_FORMULARIO];
         const fecho = preencher(c.conclusao, sessao.dados).trim();
@@ -1107,11 +1099,22 @@ function andar(
         return { sessao, efeitos, passos, pendente: { tipo: "webhook", no: no.id } };
       case "aguardar_intervalo":
         return esperarRelogio(no.id, fimDoIntervalo(lerConfig("aguardar_intervalo", no.data), ctx.agora));
-      case "aguardar_ate":
-        return esperarRelogio(
-          no.id,
-          proximoHorario(lerConfig("aguardar_ate", no.data), ctx.agora, ctx.fuso),
-        );
+      case "aguardar_ate": {
+        const c = lerConfig("aguardar_ate", no.data);
+        if (c.quando === "dias") return esperarRelogio(no.id, proximoHorario(c, ctx.agora, ctx.fuso));
+        const quando = instanteDaData(c, sessao.dados, ctx.agora, ctx.fuso);
+        // Sem data válida (passou, faltou, fora do formato): não espera nada.
+        if (!quando) {
+          saida = "vencida";
+          break;
+        }
+        return esperarRelogio(no.id, quando);
+      }
+      case "guardar_valor": {
+        const c = lerConfig("guardar_valor", no.data);
+        sessao.dados[c.variavel] = preencher(c.valor, sessao.dados).trim().slice(0, 1000);
+        break;
+      }
       case "bloco_de_notas":
         return fim("completed");
     }
@@ -1170,14 +1173,21 @@ export function retomarFluxo(
   const parada =
     (sessao.status === "waiting_timer" || semResposta) && sessao.no_atual ? sessao.no_atual : null;
   const seguinte = parada ? proximo(grafo, parada, semResposta ? "sem_resposta" : "proximo") : null;
+  // A pergunta que venceu não volta: a posição do formulário e os horários
+  // oferecidos saem, senão um passo igual adiante herdaria o estado dela.
+  const dados = { ...sessao.dados };
+  if (semResposta) {
+    delete dados[CHAVE_DO_FORMULARIO];
+    delete dados[CHAVE_DOS_HORARIOS];
+  }
   if (!seguinte) {
     return {
-      sessao: { ...sessao, status: "completed", no_atual: null, tentativas: 0, retomar_em: null },
+      sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null },
       efeitos: [],
       passos: 0,
     };
   }
-  return andar(grafo, { ...sessao, status: "running", tentativas: 0 }, seguinte, ctx, false);
+  return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
 }
 
 /** `a.b.0.c` dentro do JSON; só valor simples (texto, número, sim/não) conta. */
@@ -1276,8 +1286,11 @@ export function continuarComHorarios(
     return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
   }
   dados[CHAVE_DOS_HORARIOS] = JSON.stringify(ofertas);
+  // Com prazo, o relógio começa quando a lista sai (é ela a pergunta).
+  const retomar_em =
+    c.prazo_minutos > 0 ? new Date(ctx.agora.getTime() + c.prazo_minutos * 60_000).toISOString() : null;
   return {
-    sessao: { ...sessao, dados, status: "waiting_input", no_atual: parada.id, retomar_em: null },
+    sessao: { ...sessao, dados, status: "waiting_input", no_atual: parada.id, retomar_em },
     efeitos: [
       {
         tipo: "enviar",

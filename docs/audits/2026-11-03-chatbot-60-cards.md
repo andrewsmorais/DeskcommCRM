@@ -11,7 +11,7 @@ Status usados: **F** funcional · **P** parcial · **T** só na tela · **N** n�
 **E** implementado com erro · **NA** não se aplica ao canal/arquitetura · **B** bloqueado por
 dependência externa.
 
-O chatbot do produto tem **55 passos** em 03/11/2026 (o número muda; quem vale é a lista `PASSOS` de `lib/chatbot/passos.ts`). Um card do prompt pode ser atendido por um passo
+O chatbot do produto tem **56 passos** em 03/11/2026 (o número muda; quem vale é a lista `PASSOS` de `lib/chatbot/passos.ts`). Um card do prompt pode ser atendido por um passo
 mais geral (ex.: "Perguntar e-mail" = "Pedir para digitar" com formato e-mail) — o prompt pede
 para não duplicar implementação, e foi isso que se seguiu.
 
@@ -59,7 +59,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 24 | Pergunta personalizada | F | F | Pedir para digitar | motor.test | — |
 | 25 | Múltipla escolha | F | F | Pedir para escolher | motor.test | — |
 | 26 | Data e horário | P | F | Pedir para digitar (formato data ou hora) e Enviar formulário (tipo hora) | pedir-digitar-formato.test, feriados-horas-links-oferta.test | data em dd/mm/aaaa; hora guardada em hh:mm (aceita 14, 14h, 14h30, às 14:30); não confere se o horário está livre — para isso, Agendar horário |
-| 27 | Salvar em variável | F | P | respostas do fluxo + Campo do contato | regras.test | sem tipo declarado nem escopo "conversa" |
+| 27 | Salvar em variável | F | F | Guardar em variável (novo) + respostas do fluxo + Campo do contato | aguardar-data-e-guardar-valor.test | sem tipo declarado: tudo é texto, e o Valor compara como número ou data quando dá; vale até o fim da conversa com o chatbot e viaja no Acionar outro fluxo |
 | 28 | Condição SE/SENÃO | F | F | Definir condição | regras.test | — |
 | 29 | Verificar resposta | F | F | Definir condição / Valor | regras.test | — |
 | 30 | Verificar palavra-chave | F | F | Mensagem contém | motor.test | normaliza acento e maiúscula |
@@ -73,7 +73,7 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 38 | Cliente parou de responder | N | F | saída "Não respondeu a tempo" das perguntas (novo) | chatbot-prazo-da-resposta (invariante) | silêncio de dias continua na automação "N dias sem mensagem" |
 | 39 | Follow-up automático | F | F | Iniciar follow-up (módulo existente) | invariantes do follow-up | janela, opt-out e modelo aprovado ficam no módulo |
 | 40 | Reativar conversa | P | P | Enviar template + follow-up | — | fora da janela só modelo aprovado (API oficial) |
-| 41 | Agendar envio | P | P | Aguardar até + Enviar mensagem | — | — |
+| 41 | Agendar envio | P | F | Aguardar até numa data (fixa ou de uma resposta, com dias antes/depois) + Enviar mensagem | aguardar-data-e-guardar-valor.test | até um ano à frente; data passada, vazia ou fora do formato segue por "Sem data válida" |
 | 42 | Horário comercial | P | F | Horários + Dias da semana; feriados no Horários | motor.test, feriados-horas-links-oferta.test | nacionais calculados (Páscoa móvel); Carnaval e Corpus Christi opcionais; estaduais e municipais a empresa escreve |
 | 43 | Consultar horários | F | F | Agendar horário (Agenda do CRM) | invariante da agenda | — |
 | 44 | Enviar opções de horário | F | F | Agendar horário (lista clicável na API oficial, nova) | motor.test | — |
@@ -139,11 +139,17 @@ Capturas do editor montado com o código desta branch (Playwright, 1440×960), s
 - `evidence/chatbot-umbler-fase-3/i5-teste-oferta.png` — simulador em 03/11: oferta com "Válida até 30/11/2026", e "às 15h" guardado como 15:00.
 - `evidence/chatbot-umbler-fase-3/i6-teste-vencida.png` — simulador em 01/12: a oferta venceu e o fluxo seguiu por "Oferta vencida".
 - `evidence/chatbot-umbler-fase-3/i7-teste-feriado.png` — simulador em 25/12: o Horários seguiu por "Fora do horário".
+- `evidence/chatbot-umbler-fase-3/j1-aguardar-data.png` — Aguardar até numa data guardada numa resposta, 1 dia antes, às 9h.
+- `evidence/chatbot-umbler-fase-3/j2-guardar-valor.png` — painel do Guardar em variável.
+- `evidence/chatbot-umbler-fase-3/j3-formulario-prazo.png` — Enviar formulário com prazo de 30 minutos por pergunta e a saída "Não respondeu a tempo".
+- `evidence/chatbot-umbler-fase-3/j4-agenda-prazo.png` — Agendar horário com prazo de 1 hora e a saída "Não respondeu a tempo".
+- `evidence/chatbot-umbler-fase-3/j5-teste-esperando-vespera.png` — simulador em 03/11: o contato responde 10/11/2026 e o fluxo espera até 09/11/2026 às 09:00.
+- `evidence/chatbot-umbler-fase-3/j6-teste-lembrete.png` — simulador depois de "Pular espera": o lembrete sai com a data e o nome guardado pelo Guardar em variável.
 
 ## Pendências (o que falta, por quê, próxima ação)
 
 - **Feito em 03/11 (segunda rodada):** feriados no Horários (42), formato hora (26), conferência de links (06) e Enviar oferta com validade (17).
-- **A1 — Prazo de resposta nas perguntas** (cards 37/38): feito. Falta estender ao Enviar formulário e ao Agendar horário.
+- **A1 — Prazo de resposta** (cards 37/38): feito nas perguntas, no Enviar formulário (por pergunta) e no Agendar/Reagendar horário (a partir da lista), com invariante no banco para o formulário (`chatbot-prazo-da-resposta`).
 - **V1 — Versões publicadas imutáveis:** pede tabela de versões (migration nova, não destrutiva) e decisão de produto (publicar ≠ salvar). Próxima ação: desenhar e aprovar.
 - **Cards 07, 08, 16, 33, 47, 48:** feitos, reaproveitando o que já existia (cartão de contato da Inbox, Catálogo, funil, handlers da Agenda).
 - **B (bloqueados):** 11, 18, 19 e a geração de link/boleto (13, 15) — dependem de conta de pagamento da empresa ligada ao CRM ou de recurso que o canal não oferece.

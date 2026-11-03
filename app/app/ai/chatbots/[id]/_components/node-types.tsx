@@ -190,8 +190,28 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       };
       return `${t("Esperar")} ${c.quantidade} ${unidades[c.unidade]}`;
     }
+    case "guardar_valor": {
+      const c = lerConfig("guardar_valor", dados);
+      return `{{${c.variavel}}} = ${c.valor}`;
+    }
     case "aguardar_ate": {
       const c = lerConfig("aguardar_ate", dados);
+      if (c.quando === "data") {
+        const dia =
+          c.fonte_da_data === "fixa"
+            ? c.data
+              ? c.data.split("-").reverse().join("/")
+              : ""
+            : c.variavel
+              ? `{{${c.variavel}}}`
+              : "";
+        if (!dia) return "";
+        const desloc =
+          c.deslocamento_dias === 0
+            ? ""
+            : `${Math.abs(c.deslocamento_dias)} ${t(Math.abs(c.deslocamento_dias) === 1 ? "dia" : "dias")} ${t(c.deslocamento_dias < 0 ? "antes de" : "depois de")} `;
+        return `${desloc}${dia} ${t("às")} ${c.hora}`;
+      }
       const todos = c.dias.length === 7;
       const nomes = [t("Dom"), t("Seg"), t("Ter"), t("Qua"), t("Qui"), t("Sex"), t("Sáb")];
       return `${t("Até")} ${c.hora}${todos ? "" : ` (${c.dias.slice().sort().map((d) => nomes[d]).join(", ")})`}`;

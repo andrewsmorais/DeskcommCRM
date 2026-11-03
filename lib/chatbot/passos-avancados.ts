@@ -26,6 +26,8 @@ export const PASSOS_AVANCADOS: ReadonlySet<string> = new Set([
   // Os que a Umbler marca com o diamante (plano pago) entre os que entraram em
   // 03/11/2026. "Transferir p/ agentes de IA" e "Enviar template" ficam no básico.
   "valor",
+  // Par do "Valor": guarda o que ele compara.
+  "guardar_valor",
   "enviar_formulario",
   "fluxo_de_espera",
   "privar_liberar",

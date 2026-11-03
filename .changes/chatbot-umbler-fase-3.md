@@ -8,7 +8,7 @@ O editor de chatbot ganha o que a Umbler documenta e o nosso ainda não tinha, s
 
 - **Transferir p/ atendente** com quatro modos: um atendente fixo, rodízio, quem tem menos conversas abertas, ou quem atendeu o contato antes. Rodízio e menos conversas só entregam a quem está disponível; sem ninguém para receber, a conversa vai para a fila da equipe com nota explicando.
 - **Pedir para digitar** confere o formato da resposta (e-mail, telefone, CPF, CNPJ com dígito verificador, número, data), pede de novo e segue por "Não respondeu certo" depois das tentativas. Pode usar a mensagem que o contato acabou de mandar, sem fazer a pergunta. O Enviar formulário também aceita CPF e CNPJ.
-- **Prazo de resposta** nas perguntas: "Se o contato não responder" em até 7 dias, com a saída "Não respondeu a tempo", no mesmo relógio persistente do Aguardar.
+- **Prazo de resposta** nas perguntas, no Enviar formulário (vale para cada pergunta) e no Agendar/Reagendar horário (conta a partir da lista de horários): "Se o contato não responder" em até 7 dias, com a saída "Não respondeu a tempo", no mesmo relógio persistente do Aguardar.
 - **Enviar link de pagamento**: o que é, valor, link (aceita `{{link_checkout}}`) e Pix copia e cola numa mensagem só dele. Não gera cobrança nem confere pagamento.
 - **Botões e lista** no Pedir para escolher e no Agendar horário quando o número é da API oficial da Meta (até 3 opções curtas viram botões; até 10, lista). Em número por QR Code as opções seguem numeradas, porque o WhatsApp não mostra botão ali.
 - **Etiqueta de origem** no Iniciar por um canal: frase da primeira mensagem vira etiqueta do contato.
@@ -20,6 +20,8 @@ O editor de chatbot ganha o que a Umbler documenta e o nosso ainda não tinha, s
 - **Feriados no Horários**: os feriados nacionais (a Sexta-feira Santa é calculada a cada ano), Carnaval e Corpus Christi se você quiser, e os dias em que a empresa fecha (25/12 vale todo ano; 24/12/2026, só aquele dia) contam como fora do horário o dia inteiro.
 - **Hora** como formato no Pedir para digitar e no Enviar formulário: aceita 14, 14h, 14h30 ou "às 14:30" e guarda em hh:mm.
 - **Links conferidos** no Enviar mensagem e no link de pagamento: endereço que não abre página (javascript:, data:) ou incompleto impede de ligar o fluxo; link com http:// mostra um aviso para trocar por https://.
+- **Aguardar até numa data**: um dia que você escolhe ou a data que o contato respondeu (ou o horário marcado pelo Agendar horário), no próprio dia ou alguns dias antes ou depois — "1 dia antes, às 9h" é o lembrete da véspera. Data passada, vazia ou fora do formato segue por "Sem data válida".
+- **Guardar em variável**, card novo: guarda um texto fixo ou montado com outras {{variaveis}} para usar depois na mensagem, no Valor ou no WebHook.
 - **Enviar oferta**, card novo: a promoção vai com a linha "Válida até" (ou com {{validade}} onde você escrever); depois da data, nada é enviado e o fluxo segue por "Oferta vencida".
 - **Biblioteca de mídia** no Enviar mídia: reusar um arquivo que outro chatbot da empresa já manda, e ouvir o áudio antes de salvar.
 

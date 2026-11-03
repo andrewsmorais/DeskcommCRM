@@ -10,6 +10,7 @@ import {
   AlarmClock,
   BadgePercent,
   Ban,
+  PencilLine,
   BellRing,
   CalendarCheck,
   CalendarDays,
@@ -63,6 +64,7 @@ import {
 
 const ICONES: Record<string, LucideIcon> = {
   BadgePercent,
+  PencilLine,
   CreditCard,
   Contact,
   MapPin,

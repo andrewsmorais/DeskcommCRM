@@ -68,6 +68,69 @@ function instanteLocal(ano: number, mes: number, dia: number, hora: number, minu
   return new Date(palpite);
 }
 
+/** O "Aguardar até" numa data aceita até um ano à frente: é intenção escrita, não esquecimento. */
+export const ESPERA_MAXIMA_DA_DATA_MS = 366 * 24 * 60 * 60 * 1000;
+
+function diaValido(ano: number, mes: number, dia: number): { ano: number; mes: number; dia: number } | null {
+  const d = new Date(Date.UTC(ano, mes - 1, dia));
+  return d.getUTCFullYear() === ano && d.getUTCMonth() === mes - 1 && d.getUTCDate() === dia
+    ? { ano, mes, dia }
+    : null;
+}
+
+/**
+ * O dia de um valor guardado: "20/11/2026" (Pedir para digitar, formato data),
+ * "2026-11-20" ou um instante ISO (o `{{horario_inicio}}` do Agendar horário,
+ * lido no fuso da empresa). Outra coisa → null.
+ */
+export function diaDoValor(
+  valor: string,
+  fuso: string,
+): { ano: number; mes: number; dia: number } | null {
+  const v = valor.trim();
+  let m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return diaValido(Number(m[3]), Number(m[2]), Number(m[1]));
+  m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return diaValido(Number(m[1]), Number(m[2]), Number(m[3]));
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v)) {
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return null;
+    const p = partesLocais(d, fuso);
+    return { ano: p.ano, mes: p.mes, dia: p.dia };
+  }
+  return null;
+}
+
+/**
+ * O instante do "Aguardar até" numa data: o dia (fixo ou da resposta), mais o
+ * deslocamento em dias de calendário, na `hora` do fuso da empresa. null =
+ * sem data válida — vazia, fora do formato, já passou, ou mais de um ano à
+ * frente — e o motor segue por "Sem data válida".
+ */
+export function instanteDaData(
+  c: ConfigDe<"aguardar_ate">,
+  dados: Record<string, string>,
+  agora: Date,
+  fuso: string,
+): Date | null {
+  const bruto = c.fonte_da_data === "fixa" ? c.data : c.variavel ? (dados[c.variavel] ?? "") : "";
+  const dia = diaDoValor(bruto, fuso);
+  if (!dia) return null;
+  const [h = 9, m = 0] = c.hora.split(":").map(Number);
+  const alvoDoDia = new Date(Date.UTC(dia.ano, dia.mes - 1, dia.dia + c.deslocamento_dias));
+  const alvo = instanteLocal(
+    alvoDoDia.getUTCFullYear(),
+    alvoDoDia.getUTCMonth() + 1,
+    alvoDoDia.getUTCDate(),
+    h,
+    m,
+    fuso,
+  );
+  const falta = alvo.getTime() - agora.getTime();
+  if (falta <= ESPERA_MINIMA_MS || falta > ESPERA_MAXIMA_DA_DATA_MS) return null;
+  return alvo;
+}
+
 /** A próxima vez (estritamente depois de `agora`) que for `hora` num dos `dias`, no fuso da empresa. */
 export function proximoHorario(c: ConfigDe<"aguardar_ate">, agora: Date, fuso: string): Date {
   const [h = 9, m = 0] = c.hora.split(":").map(Number);

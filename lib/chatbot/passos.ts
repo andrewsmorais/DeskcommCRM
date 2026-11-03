@@ -170,6 +170,8 @@ const CONFIG_DA_AGENDA = z.object({
       .max(500)
       .default("Não entendi. Responda com o número de um dos horários."),
     tentativas: z.number().int().min(1).max(5).default(2),
+    /** Conta a partir da lista de horários enviada; vale de novo a cada pedido de novo. */
+    ...PRAZO_DA_RESPOSTA,
     confirmacao: z
       .string()
       .trim()
@@ -367,10 +369,45 @@ export const configDoPasso = {
     se_responder: SE_RESPONDER,
   }),
   aguardar_ate: z.object({
+    /**
+     * "dias": o próximo `hora` num dos `dias` da semana (como sempre foi).
+     * "data": um dia certo — fixo (`data`) ou o de uma resposta (`variavel`,
+     * em dd/mm/aaaa, AAAA-MM-DD ou o instante do Agendar horário) — com
+     * `deslocamento_dias` (-1 = véspera). É o "agendar envio" e o lembrete.
+     */
+    quando: z.enum(["dias", "data"]).default("dias"),
     hora: HORA.default("09:00"),
     /** 0 = domingo … 6 = sábado. */
     dias: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([0, 1, 2, 3, 4, 5, 6]),
+    fonte_da_data: z.enum(["fixa", "resposta"]).default("fixa"),
+    data: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .or(z.literal(""))
+      .default(""),
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .or(z.literal(""))
+      .default(""),
+    deslocamento_dias: z.number().int().min(-30).max(30).default(0),
     se_responder: SE_RESPONDER,
+  }),
+  /**
+   * "Salvar em variável": guarda um valor nas respostas do fluxo, para usar
+   * depois como {{variavel}} numa mensagem, no "Valor" ou no WebHook. Aceita
+   * {{outra_variavel}} no valor. Vale até o fim da conversa com o chatbot e
+   * viaja para o fluxo chamado em "Acionar outro fluxo", como as respostas.
+   */
+  guardar_valor: z.object({
+    /** Sem "_" no começo: esses nomes são do motor (posição do formulário, horários…). */
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .default("valor"),
+    valor: z.string().trim().max(1000).default(""),
   }),
   /**
    * Põe o contato num dos follow-ups publicados do CRM (os mesmos que o agente
@@ -650,6 +687,8 @@ export const configDoPasso = {
    */
   enviar_formulario: z.object({
     introducao: z.string().trim().max(1000).default(""),
+    /** Vale para CADA pergunta: o relógio recomeça quando a próxima sai. */
+    ...PRAZO_DA_RESPOSTA,
     perguntas: z
       .array(perguntaDoFormularioSchema)
       .min(1)
@@ -883,6 +922,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     nome: "Valor",
     descricao: "Compara um valor de variável ou campo com uma expressão.",
     icone: "Variable",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "guardar_valor",
+    grupo: "acao",
+    nome: "Guardar em variável",
+    descricao: "Guarde um valor para usar depois no fluxo como {{variavel}}.",
+    icone: "PencilLine",
     cor: "text-orange-500",
     temEntrada: true,
   },
@@ -1152,7 +1200,7 @@ export const PASSOS: readonly MetaDoPasso[] = [
     tipo: "aguardar_ate",
     grupo: "acao",
     nome: "Aguardar até",
-    descricao: "Pause o fluxo até um horário (ex.: amanhã às 9h) e siga dali.",
+    descricao: "Pause o fluxo até um horário ou uma data (ex.: amanhã às 9h, ou a véspera da consulta) e siga dali.",
     icone: "AlarmClock",
     cor: "text-purple-400",
     temEntrada: true,
@@ -1353,10 +1401,18 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Enviada" },
         { id: "vencida", rotulo: "Oferta vencida" },
       ];
+    case "aguardar_ate":
+      return lerConfig("aguardar_ate", dados).quando === "data"
+        ? [
+            { id: "proximo", rotulo: "Chegou a data" },
+            { id: "vencida", rotulo: "Sem data válida" },
+          ]
+        : [{ id: "proximo", rotulo: "" }];
     case "enviar_formulario":
       return [
         { id: "proximo", rotulo: "Respondeu tudo" },
         { id: "invalida", rotulo: "Não respondeu certo" },
+        ...(lerConfig("enviar_formulario", dados).prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
       ];
     case "pedir_digitar": {
       const c = lerConfig("pedir_digitar", dados);
@@ -1374,6 +1430,7 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Marcou" },
         { id: "sem_horario", rotulo: "Sem horário livre" },
         { id: "invalida", rotulo: "Não escolheu" },
+        ...(lerConfig("agendar_horario", dados).prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
       ];
     case "reagendar_horario":
       return [
@@ -1381,6 +1438,7 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "sem_agendamento", rotulo: "Sem agendamento" },
         { id: "sem_horario", rotulo: "Sem horário livre" },
         { id: "invalida", rotulo: "Não escolheu" },
+        ...(lerConfig("reagendar_horario", dados).prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
       ];
     case "cancelar_agendamento":
       return [
