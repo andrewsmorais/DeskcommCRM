@@ -164,6 +164,21 @@ export const configDoPasso = {
     /** Começa em toda conversa nova, ou só quando a mensagem contém uma palavra. */
     gatilho: z.enum(["toda_conversa_nova", "palavra_chave"]).default("toda_conversa_nova"),
     palavras: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    /**
+     * Etiqueta de origem: se a mensagem que abriu a conversa tiver a frase
+     * (a mensagem pronta de um anúncio, de um link do site…), o contato ganha
+     * a etiqueta. Assim dá para saber de onde veio e separar o caminho depois
+     * com "Etiquetas". Maiúsculas e acentos não importam.
+     */
+    origens: z
+      .array(
+        z.object({
+          frase: z.string().trim().min(1).max(120),
+          etiqueta: z.string().trim().min(1).max(60),
+        }),
+      )
+      .max(20)
+      .default([]),
   }),
   enviar_mensagem: z.object({
     texto: z.string().trim().max(4000).default(""),

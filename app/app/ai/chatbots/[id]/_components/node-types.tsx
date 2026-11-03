@@ -74,9 +74,12 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       return t("Abre o pedido LGPD para um admin aprovar");
     case "inicio_canal": {
       const c = lerConfig("inicio_canal", dados);
-      return c.gatilho === "palavra_chave"
-        ? `${t("Quando a mensagem contém")}: ${c.palavras.join(", ") || "…"}`
-        : t("Toda conversa nova");
+      const quando =
+        c.gatilho === "palavra_chave"
+          ? `${t("Quando a mensagem contém")}: ${c.palavras.join(", ") || "…"}`
+          : t("Toda conversa nova");
+      const origens = c.origens.map((o) => o.etiqueta).join(", ");
+      return origens ? `${quando}\n🏷 ${origens}` : quando;
     }
     case "enviar_mensagem":
       return lerConfig("enviar_mensagem", dados).texto;

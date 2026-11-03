@@ -5856,9 +5856,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta condición a tu chatbot, él verifica si el contacto está esperando respuesta, es decir, si el último mensaje de la conversación es suyo, y sigue por “Esperando respuesta” o “Ya respondido”.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele passa a responder sozinho as conversas que chegam pelo número de WhatsApp escolhido, assim que o fluxo estiver ligado.\n\nVocê escolhe se ele começa em toda conversa nova ou só quando a mensagem do cliente tiver uma das palavras-chave. Cada número tem um só chatbot de entrada ligado: ligar outro para o mesmo número desliga o anterior.\n\nDepois que o fluxo termina, ele só recomeça na mesma conversa 6 horas depois, para não responder a cada “obrigado”.\n\nO chatbot não responde quando a conversa já está com um atendente, quando o contato está bloqueado, nem em grupos de WhatsApp.":
+  "Quando adicionada essa ação no seu chatbot, ele passa a responder sozinho as conversas que chegam pelo número de WhatsApp escolhido, assim que o fluxo estiver ligado.\n\nVocê escolhe se ele começa em toda conversa nova ou só quando a mensagem do cliente tiver uma das palavras-chave. Cada número tem um só chatbot de entrada ligado: ligar outro para o mesmo número desliga o anterior.\n\nDepois que o fluxo termina, ele só recomeça na mesma conversa 6 horas depois, para não responder a cada “obrigado”.\n\nEm “Etiqueta de origem”, você liga frases a etiquetas: se a primeira mensagem tiver a frase, o contato ganha a etiqueta. Use a mensagem pronta do seu anúncio (“vi no Instagram”) ou do link do site para saber de onde cada contato veio, e separe o caminho depois com a condição “Etiquetas”.\n\nO chatbot não responde quando a conversa já está com um atendente, quando o contato está bloqueado, nem em grupos de WhatsApp.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él empezará a responder solo las conversaciones que lleguen por el número de WhatsApp elegido, en cuanto el flujo esté activado.\n\nTú eliges si empieza en toda conversación nueva o solo cuando el mensaje del cliente tenga una de las palabras clave. Cada número tiene un solo chatbot de entrada activado: activar otro para el mismo número desactiva el anterior.\n\nDespués de que el flujo termina, solo vuelve a empezar en la misma conversación 6 horas después, para no responder a cada “gracias”.\n\nEl chatbot no responde cuando la conversación ya está con un agente, cuando el contacto está bloqueado, ni en grupos de WhatsApp.",
+      es: "Cuando agregues esta acción a tu chatbot, él empezará a responder solo las conversaciones que lleguen por el número de WhatsApp elegido, en cuanto el flujo esté activado.\n\nTú eliges si empieza en toda conversación nueva o solo cuando el mensaje del cliente tenga una de las palabras clave. Cada número tiene un solo chatbot de entrada activado: activar otro para el mismo número desactiva el anterior.\n\nDespués de que el flujo termina, solo vuelve a empezar en la misma conversación 6 horas después, para no responder a cada “gracias”.\n\nEn “Etiqueta de origen”, vinculas frases a etiquetas: si el primer mensaje tiene la frase, el contacto recibe la etiqueta. Usa el mensaje listo de tu anuncio (“lo vi en Instagram”) o del enlace del sitio para saber de dónde vino cada contacto, y separa el camino después con la condición “Etiquetas”.\n\nEl chatbot no responde cuando la conversación ya está con un agente, cuando el contacto está bloqueado, ni en grupos de WhatsApp.",
     },
   "Quando adicionada essa ação no seu chatbot, ele não responde mensagens sozinho: ele começa quando uma regra de Automações manda, com a ação “Iniciar chatbot”. Por exemplo, quando uma compra é aprovada na Kiwify ou na Cakto, ou quando um negócio muda de etapa.\n\nUm fluxo que só tem este início pode ficar ligado junto com o fluxo de atendimento do mesmo número.\n\nSe o contato estava parado em outro fluxo, aquele termina e este começa: a automação é o fato mais novo.":
     {
@@ -5955,6 +5955,15 @@ export const DICIONARIO: Traducoes = {
     },
   "Se a resposta não estiver no formato": { es: "Si la respuesta no está en el formato" },
   "Usar a mensagem anterior": { es: "Usar el mensaje anterior" },
+  "Etiqueta de origem (opcional)": { es: "Etiqueta de origen (opcional)" },
+  "Se a primeira mensagem tiver a frase, o contato ganha a etiqueta. Use a mensagem pronta do seu anúncio ou do link do site para saber de onde ele veio.":
+    {
+      es: "Si el primer mensaje tiene la frase, el contacto recibe la etiqueta. Usa el mensaje listo de tu anuncio o del enlace del sitio para saber de dónde vino.",
+    },
+  Frase: { es: "Frase" },
+  "Ex.: vi no Instagram": { es: "Ej.: lo vi en Instagram" },
+  "Ex.: instagram": { es: "Ej.: instagram" },
+  "Adicionar origem": { es: "Agregar origen" },
   "Enviar link de pagamento": { es: "Enviar enlace de pago" },
   "Envie o link de pagamento (e o Pix, se quiser) numa mensagem arrumada.": {
     es: "Envía el enlace de pago (y el Pix, si quieres) en un mensaje ordenado.",

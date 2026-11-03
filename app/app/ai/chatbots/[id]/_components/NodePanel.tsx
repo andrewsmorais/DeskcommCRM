@@ -480,6 +480,7 @@ function Campos({
               ajuda={t("Separe com vírgula. Maiúsculas e acentos não importam.")}
             />
           ) : null}
+          <OrigensDoInicio origens={c.origens} aplicar={aplicar} />
           <p className="text-xs text-muted-foreground">
             {t("Depois de terminar, o fluxo só recomeça na mesma conversa 6 horas depois.")}
           </p>
@@ -2557,6 +2558,80 @@ function EnviarTemplate({
             )}
       </p>
     </>
+  );
+}
+
+/**
+ * "Etiqueta de origem" do Iniciar por um canal: frase da primeira mensagem →
+ * etiqueta. Cada linha só vale com os dois campos preenchidos.
+ */
+function OrigensDoInicio({
+  origens,
+  aplicar,
+}: {
+  origens: { frase: string; etiqueta: string }[];
+  aplicar: (patch: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const [linhas, setLinhas] = useState(origens.length ? origens : []);
+  const salvar = (novas: { frase: string; etiqueta: string }[]) => {
+    setLinhas(novas);
+    aplicar({
+      origens: novas
+        .map((o) => ({ frase: o.frase.trim(), etiqueta: o.etiqueta.trim() }))
+        .filter((o) => o.frase && o.etiqueta),
+    });
+  };
+  const mudar = (i: number, campo: "frase" | "etiqueta", v: string) =>
+    setLinhas(linhas.map((o, j) => (j === i ? { ...o, [campo]: v } : o)));
+  return (
+    <div className="space-y-1.5" data-testid="origens-do-inicio">
+      <Label>{t("Etiqueta de origem (opcional)")}</Label>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "Se a primeira mensagem tiver a frase, o contato ganha a etiqueta. Use a mensagem pronta do seu anúncio ou do link do site para saber de onde ele veio.",
+        )}
+      </p>
+      {linhas.map((o, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <Input
+            aria-label={t("Frase")}
+            placeholder={t("Ex.: vi no Instagram")}
+            value={o.frase}
+            onChange={(e) => mudar(i, "frase", e.target.value)}
+            onBlur={() => salvar(linhas)}
+          />
+          <Input
+            aria-label={t("Etiqueta")}
+            placeholder={t("Ex.: instagram")}
+            value={o.etiqueta}
+            className="w-32"
+            onChange={(e) => mudar(i, "etiqueta", e.target.value)}
+            onBlur={() => salvar(linhas)}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t("Remover")}
+            onClick={() => salvar(linhas.filter((_, j) => j !== i))}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      ))}
+      {linhas.length < 20 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setLinhas([...linhas, { frase: "", etiqueta: "" }])}
+        >
+          <Plus className="size-4" />
+          {t("Adicionar origem")}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

@@ -434,7 +434,24 @@ function andar(
     let saida = "proximo";
 
     switch (tipo) {
-      case "inicio_canal":
+      case "inicio_canal": {
+        // Etiqueta de origem: a frase da mensagem que abriu a conversa.
+        const m = normalizar(ctx.mensagem ?? "");
+        const novas = m
+          ? [
+              ...new Set(
+                lerConfig("inicio_canal", no.data)
+                  .origens.filter((o) => m.includes(normalizar(o.frase)))
+                  .map((o) => o.etiqueta),
+              ),
+            ].filter((t) => !contato.tags.some((x) => normalizar(x) === normalizar(t)))
+          : [];
+        if (novas.length > 0) {
+          efeitos.push({ tipo: "etiquetas", adicionar: novas, remover: [] });
+          contato.tags.push(...novas);
+        }
+        break;
+      }
       case "inicio_automacao":
       case "inicio_manual":
         break;
