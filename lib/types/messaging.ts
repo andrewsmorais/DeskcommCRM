@@ -40,6 +40,8 @@ export interface Conversation {
   last_message_preview: string | null;
   unread_count_for_assignee: number;
   is_group: boolean;
+  /** Conversa privada (migration 0495): só o responsável e os gestores veem. */
+  is_private?: boolean;
   group_chat_id: string | null;
   tags: string[];
   metadata: Record<string, unknown>;

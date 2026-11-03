@@ -895,6 +895,39 @@ function Campos({
       return <EnviarTemplate dados={dados} opcoes={opcoes} aplicar={aplicar} />;
     case "enviar_formulario":
       return <EnviarFormulario dados={dados} aplicar={aplicar} />;
+    case "privar_liberar": {
+      const c = lerConfig("privar_liberar", dados);
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label>{t("O que fazer")}</Label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="privar-acao"
+                checked={c.acao === "privar"}
+                onChange={() => aplicar({ acao: "privar" })}
+              />
+              {t("Tornar a conversa privada")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="privar-acao"
+                checked={c.acao === "liberar"}
+                onChange={() => aplicar({ acao: "liberar" })}
+              />
+              {t("Liberar a conversa")}
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Privada, a conversa só aparece para o atendente responsável e para os gestores. Use depois de transferir para um atendente: sem responsável, só os gestores a veem até alguém assumi-la.",
+            )}
+          </p>
+        </>
+      );
+    }
     case "fluxo_de_espera": {
       const c = lerConfig("fluxo_de_espera", dados);
       return (

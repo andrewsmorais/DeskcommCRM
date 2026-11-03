@@ -89,6 +89,8 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
     "Quando adicionada essa ação no seu chatbot, ele coloca o contato num dos follow-ups publicados do CRM, os mesmos que o agente de IA usa.\n\nSe o contato já estiver em outro follow-up ativo, ele fica no que está, e a conversa ganha uma nota dizendo isso.",
   notificar_atendente:
     "Quando adicionada essa ação no seu chatbot, ele abre um aviso na Central de avisos, com som e notificação para a equipe, levando à conversa.\n\nAs respostas do contato entram só na nota da conversa, não no aviso.",
+  privar_liberar:
+    "Quando adicionada essa ação no seu chatbot, ela torna a conversa privada ou a libera de novo. Privada, a conversa só aparece para o atendente responsável, para os gerentes e administradores; os outros atendentes não a veem, nem as mensagens e notas dela, mesmo que a empresa deixe todos verem tudo.\n\nUse depois de transferir para um atendente específico: sem responsável, só os gestores enxergam a conversa até alguém assumi-la.\n\nLiberar devolve a conversa à visibilidade da empresa. A mudança fica registrada na auditoria e numa nota da conversa.",
   fluxo_de_espera:
     "Quando adicionada essa ação no seu chatbot, ela liga ou desliga as mensagens de espera desta conversa: as que “Transferir para a equipe” e “Transferir p/ atendente” mandam enquanto ninguém responde.\n\nDesligar para as que estão programadas. Ligar volta a programá-las, se ainda faltarem vezes e ninguém da equipe tiver respondido.\n\nQuando um atendente aciona um fluxo, ou uma automação começa um, elas já param sozinhas: nesses fluxos, use “Ligar” para mantê-las.",
   aguardar_intervalo:

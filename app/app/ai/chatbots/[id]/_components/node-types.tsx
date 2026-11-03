@@ -179,6 +179,10 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const n = lerConfig("enviar_formulario", dados).perguntas.length;
       return n === 1 ? t("1 pergunta") : `${n} ${t("perguntas")}`;
     }
+    case "privar_liberar":
+      return lerConfig("privar_liberar", dados).acao === "privar"
+        ? t("Torna a conversa privada")
+        : t("Libera a conversa");
     case "fluxo_de_espera":
       return lerConfig("fluxo_de_espera", dados).acao === "ligar"
         ? t("Liga as mensagens de espera")

@@ -5733,6 +5733,41 @@ export const DICIONARIO: Traducoes = {
     es: "Pide una nota para la atención (1 a 5 o 0 a 10).",
   },
   "Pedir feedback escrito": { es: "Pedir comentario escrito" },
+  // Conversa privada (Inbox e passo "Privar ou liberar", 03/11/2026).
+  "Tornar a conversa privada": { es: "Hacer la conversación privada" },
+  "Liberar a conversa": { es: "Liberar la conversación" },
+  "Privada, a conversa só aparece para o atendente responsável e para os gestores. Use depois de transferir para um atendente: sem responsável, só os gestores a veem até alguém assumi-la.":
+    {
+      es: "Privada, la conversación solo aparece para el agente responsable y para los gestores. Úsala después de transferir a un agente: sin responsable, solo los gestores la ven hasta que alguien la tome.",
+    },
+  "Conversa privada: só o responsável e os gestores a veem": {
+    es: "Conversación privada: solo el responsable y los gestores la ven",
+  },
+  "Conversa liberada: volta a seguir a visibilidade da empresa": {
+    es: "Conversación liberada: vuelve a seguir la visibilidad de la empresa",
+  },
+  "Torna a conversa privada": { es: "Hace la conversación privada" },
+  "Libera a conversa": { es: "Libera la conversación" },
+  "Conversa privada: só o responsável e os gestores a veem. Clique para liberar.": {
+    es: "Conversación privada: solo el responsable y los gestores la ven. Haz clic para liberarla.",
+  },
+  "Atribua a conversa a um atendente antes de torná-la privada.": {
+    es: "Asigna la conversación a un agente antes de hacerla privada.",
+  },
+  "Tornar privada: só o responsável e os gestores vão ver esta conversa.": {
+    es: "Hacer privada: solo el responsable y los gestores verán esta conversación.",
+  },
+  "Só o atendente responsável ou um gerente pode mudar a privacidade desta conversa.": {
+    es: "Solo el agente responsable o un gerente puede cambiar la privacidad de esta conversación.",
+  },
+  "Quando adicionada essa ação no seu chatbot, ela torna a conversa privada ou a libera de novo. Privada, a conversa só aparece para o atendente responsável, para os gerentes e administradores; os outros atendentes não a veem, nem as mensagens e notas dela, mesmo que a empresa deixe todos verem tudo.\n\nUse depois de transferir para um atendente específico: sem responsável, só os gestores enxergam a conversa até alguém assumi-la.\n\nLiberar devolve a conversa à visibilidade da empresa. A mudança fica registrada na auditoria e numa nota da conversa.":
+    {
+      es: "Cuando agregas esta acción a tu chatbot, hace la conversación privada o la vuelve a liberar. Privada, la conversación solo aparece para el agente responsable, para los gerentes y los administradores; los demás agentes no la ven, ni sus mensajes ni sus notas, aunque la empresa permita que todos vean todo.\n\nÚsala después de transferir a un agente específico: sin responsable, solo los gestores ven la conversación hasta que alguien la tome.\n\nLiberar devuelve la conversación a la visibilidad de la empresa. El cambio queda registrado en la auditoría y en una nota de la conversación.",
+    },
+  "Privar ou liberar": { es: "Hacer privada o liberar" },
+  "Torne o atendimento privado (só o responsável e os gestores veem) ou livre de novo.": {
+    es: "Haz la atención privada (solo el responsable y los gestores la ven) o vuelve a liberarla.",
+  },
   // Chatbot: barra do editor, ideias de bot e ajuda de cada passo (03/11/2026).
   "Quando adicionada essa condição no seu chatbot, ele verifica se o contato está esperando resposta, isto é, se a última mensagem da conversa é dele, e segue por “Esperando resposta” ou “Já respondido”.":
     {

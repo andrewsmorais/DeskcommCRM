@@ -280,6 +280,10 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
       const nome = opcoes.modelos.find((m) => m.id === e.template_id)?.nome ?? t("o modelo");
       return `📄 ${t("Aqui sairia o modelo")} "${nome}". ${t("No teste, nada é enviado; no WhatsApp só sai por número oficial da Meta.")}`;
     }
+    case "privacidade":
+      return e.privada
+        ? `🔒 ${t("Conversa privada: só o responsável e os gestores a veem")}`
+        : `🔓 ${t("Conversa liberada: volta a seguir a visibilidade da empresa")}`;
     case "fluxo_de_espera":
       return e.ligar
         ? `⏳ ${t("Mensagens de espera ligadas de novo")}`

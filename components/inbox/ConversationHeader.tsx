@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { JanelaSelo } from "@/components/inbox/JanelaSelo";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
 import { Phone, ArrowRight, MagnifyingGlass } from "@/lib/ui/icons";
-import { useAuth } from "@/hooks/auth/AuthProvider";
+import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import {
@@ -33,6 +33,7 @@ import { comandoDaConversa, ROTULO_DO_MOTIVO } from "@/lib/inbox/comando-da-conv
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { IniciarChatbotButton } from "@/components/inbox/IniciarChatbotButton";
+import { PrivacidadeButton } from "@/components/inbox/PrivacidadeButton";
 import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
@@ -87,6 +88,7 @@ export function ConversationHeader({
 }: Props) {
   const t = useT();
   const { user } = useAuth();
+  const privacidadeDeQualquer = usePermission("inbox.privacy.any");
   const claim = useClaimConversation();
   const release = useReleaseConversation();
   const close = useCloseConversation();
@@ -253,6 +255,14 @@ export function ConversationHeader({
         )}
         {/* O chatbot não atende grupo; e só aparece com chatbot de início manual ligado. */}
         {!conversation.is_group && !encerrada && <IniciarChatbotButton conversationId={conversation.id} />}
+        {!conversation.is_group &&
+          (privacidadeDeQualquer || conversation.assigned_to_user_id === user.id) && (
+            <PrivacidadeButton
+              conversationId={conversation.id}
+              privada={Boolean(conversation.is_private)}
+              temResponsavel={conversation.assigned_to_user_id != null}
+            />
+          )}
         {isOpen && (
           <Button
             size="sm"

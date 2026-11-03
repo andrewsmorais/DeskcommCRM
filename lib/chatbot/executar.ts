@@ -1771,6 +1771,41 @@ async function executarEfeitos(
           );
           break;
         }
+        case "privacidade": {
+          // Quem garante a privacidade é a RLS (fn_can_view_conversation de 3
+          // argumentos); aqui só a marca muda, auditada e com nota para a equipe.
+          const { rows } = await pool.query<{ antes: boolean }>(
+            `update conversations c set is_private = $3, updated_at = now()
+               from (select is_private as antes from conversations
+                      where organization_id = $1 and id = $2) a
+              where c.organization_id = $1 and c.id = $2 and c.is_private is distinct from $3
+              returning a.antes`,
+            [e.organizationId, e.conversationId, efeito.privada],
+          );
+          if (rows.length === 0) break;
+          void audit({
+            action: "conversation.privacy_changed",
+            actorUserId: null,
+            organizationId: e.organizationId,
+            resourceType: "conversation",
+            resourceId: e.conversationId,
+            requestId,
+            bypassedRls: true,
+            metadata: {
+              conversation_id: e.conversationId,
+              is_private: efeito.privada,
+              prev: rows[0]?.antes ?? null,
+              source: "chatbot",
+              flow_id: fluxoId,
+            },
+          });
+          await notaInterna(
+            efeito.privada
+              ? "O chatbot tornou esta conversa privada: só o responsável e os gestores a veem."
+              : "O chatbot liberou esta conversa: ela volta a seguir a visibilidade da empresa.",
+          );
+          break;
+        }
         case "fluxo_de_espera": {
           if (!efeito.ligar) {
             // Desarma as mensagens de espera das transferências desta conversa:

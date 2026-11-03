@@ -28,4 +28,5 @@ export const PASSOS_AVANCADOS: ReadonlySet<string> = new Set([
   "valor",
   "enviar_formulario",
   "fluxo_de_espera",
+  "privar_liberar",
 ]);

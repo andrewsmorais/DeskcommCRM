@@ -335,3 +335,20 @@ describe("tela e validação", () => {
     expect(p).toContain("nome diferente");
   });
 });
+
+describe("Privar ou liberar", () => {
+  it("vira efeito de privacidade e o fluxo segue", () => {
+    const grafo: Grafo = {
+      nodes: [
+        no("ini", "inicio_manual"),
+        no("p", "privar_liberar", { acao: "privar" }),
+        no("l", "privar_liberar", { acao: "liberar" }),
+      ],
+      edges: [liga("ini", "p"), liga("p", "l")],
+    };
+    expect(iniciarFluxo(grafo, "ini", ctx(null)).efeitos).toEqual([
+      { tipo: "privacidade", privada: true },
+      { tipo: "privacidade", privada: false },
+    ]);
+  });
+});

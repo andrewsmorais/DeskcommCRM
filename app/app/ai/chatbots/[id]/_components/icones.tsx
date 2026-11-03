@@ -24,6 +24,7 @@ import {
   Hourglass,
   Kanban,
   ListChecks,
+  Lock,
   MessageCircle,
   MessageSquareQuote,
   MessageSquareText,
@@ -54,6 +55,7 @@ import {
 } from "lucide-react";
 
 const ICONES: Record<string, LucideIcon> = {
+  Lock,
   ClipboardList,
   FileText,
   Variable,

@@ -498,6 +498,14 @@ export const configDoPasso = {
   fluxo_de_espera: z.object({
     acao: z.enum(["desligar", "ligar"]).default("desligar"),
   }),
+  /**
+   * "Privar ou liberar" da Umbler: conversa privada só é vista pelo atendente
+   * responsável, por gerente/admin e pelo super-admin (`conversations.is_private`,
+   * migration 0495 — quem garante é a RLS). Liberar volta à regra da organização.
+   */
+  privar_liberar: z.object({
+    acao: z.enum(["privar", "liberar"]).default("privar"),
+  }),
 } as const;
 
 export type TipoDePasso = keyof typeof configDoPasso;
@@ -848,6 +856,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Abra um aviso na Central de avisos, com link para a conversa.",
     icone: "BellRing",
     cor: "text-orange-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "privar_liberar",
+    grupo: "acao",
+    nome: "Privar ou liberar",
+    descricao: "Torne o atendimento privado (só o responsável e os gestores veem) ou livre de novo.",
+    icone: "Lock",
+    cor: "text-red-500",
     temEntrada: true,
   },
   {

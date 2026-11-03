@@ -64,6 +64,28 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
     contactName,
     icon,
   });
+  // Conversa privada (migration 0495): o aviso leva o nome do contato e o
+  // trecho da mensagem, então só vai para quem pode vê-la — o responsável.
+  // Sem responsável, ninguém recebe (os gestores a veem na Inbox).
+  if (conversationId) {
+    const { data: conv } = await createAdminClient()
+      .from("conversations")
+      .select("is_private, assigned_to_user_id")
+      .eq("id", conversationId)
+      .eq("organization_id", row.organization_id)
+      .maybeSingle();
+    const privada = conv as { is_private?: boolean; assigned_to_user_id?: string | null } | null;
+    if (privada?.is_private) {
+      if (!privada.assigned_to_user_id)
+        return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: "privada_sem_responsavel" };
+      const { sent } = await enviarPushAoUsuario(
+        row.organization_id,
+        privada.assigned_to_user_id,
+        payload,
+      );
+      return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `privada:sent:${sent}` };
+    }
+  }
   const { sent } = await enviarPushDaOrg(row.organization_id, payload);
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
 }

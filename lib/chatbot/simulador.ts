@@ -57,6 +57,7 @@ export type EventoDoTeste =
   | { tipo: "transferiu_ia" }
   | { tipo: "modelo_de_exemplo"; template_id: string }
   | { tipo: "fluxo_de_espera"; ligar: boolean }
+  | { tipo: "privacidade"; privada: boolean }
   | { tipo: "horarios_de_exemplo" }
   | { tipo: "marcou_de_exemplo" }
   | { tipo: "abriria_fluxo"; flow_id: string }
@@ -376,6 +377,9 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         break;
       case "fluxo_de_espera":
         bolhas.push({ de: "evento", evento: { tipo: "fluxo_de_espera", ligar: e.ligar } });
+        break;
+      case "privacidade":
+        bolhas.push({ de: "evento", evento: { tipo: "privacidade", privada: e.privada } });
         break;
     }
   }

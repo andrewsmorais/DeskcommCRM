@@ -112,6 +112,9 @@ const ACTION_MIN_ROLE: Record<string, Role> = {
   "inbox.view": "viewer",
   "inbox.reply": "agent",
   "inbox.claim": "agent",
+  // Privar/liberar qualquer conversa; o atendente só a que é dele (a rota
+  // app/api/v1/conversations/[id]/privacy confere as duas coisas).
+  "inbox.privacy.any": "manager",
   "contact.view": "viewer",
   "contact.create": "agent",
   "contact.update": "agent",

@@ -89,6 +89,8 @@ export type Efeito =
   | { tipo: "pedido_exclusao" }
   /** Liga ou desliga as mensagens de espera das transferências desta conversa. */
   | { tipo: "fluxo_de_espera"; ligar: boolean }
+  /** Torna a conversa privada ou a libera (`conversations.is_private`). */
+  | { tipo: "privacidade"; privada: boolean }
   | { tipo: "finalizar" };
 
 /**
@@ -727,6 +729,12 @@ function andar(
         if (fecho) efeitos.push({ tipo: "enviar", texto: fecho });
         break;
       }
+      case "privar_liberar":
+        efeitos.push({
+          tipo: "privacidade",
+          privada: lerConfig("privar_liberar", no.data).acao === "privar",
+        });
+        break;
       case "fluxo_de_espera":
         efeitos.push({
           tipo: "fluxo_de_espera",
