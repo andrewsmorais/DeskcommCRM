@@ -44645,7 +44645,10 @@ drop policy if exists setores_delete on public.setores;
 create policy setores_delete on public.setores
   for delete using (organization_id in (select public.fn_user_org_ids())
                     and public.fn_role_at_least(organization_id, 'manager'));
-revoke all on table public.setores from anon;
+-- Revoga dos DOIS papéis antes de conceder: o default ACL do Supabase dá
+-- tudo (TRUNCATE inclusive, que ignora a RLS) a anon e authenticated, e um
+-- GRANT enumerado só acrescenta.
+revoke all on table public.setores from anon, authenticated;
 grant select, insert, update, delete on table public.setores to authenticated;
 grant all on table public.setores to service_role;
 
@@ -44661,6 +44664,9 @@ drop policy if exists setor_membros_delete on public.setor_membros;
 create policy setor_membros_delete on public.setor_membros
   for delete using (organization_id in (select public.fn_user_org_ids())
                     and public.fn_role_at_least(organization_id, 'manager'));
-revoke all on table public.setor_membros from anon;
+-- Revoga dos DOIS papéis antes de conceder: o default ACL do Supabase dá
+-- tudo (TRUNCATE inclusive, que ignora a RLS) a anon e authenticated, e um
+-- GRANT enumerado só acrescenta.
+revoke all on table public.setor_membros from anon, authenticated;
 grant select, insert, delete on table public.setor_membros to authenticated;
 grant all on table public.setor_membros to service_role;
