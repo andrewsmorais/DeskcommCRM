@@ -1,5 +1,5 @@
 /**
- * Avisos das plataformas de venda (Kiwify, Cakto) na rota pública de captação
+ * Avisos das plataformas de venda (Kiwify, Cakto, Hotmart) na rota pública de captação
  * (`/api/v1/webhooks/in/[token]`) — PURO, sem I/O.
  *
  * As duas mandam o comprador ANINHADO (`Customer.mobile`, `data.customer.phone`
@@ -32,7 +32,7 @@ function normalizar(texto: string): string {
     .trim();
 }
 
-export type PlataformaDeVenda = "kiwify" | "cakto";
+export type PlataformaDeVenda = "kiwify" | "cakto" | "hotmart";
 
 export const EVENTOS_DA_VENDA = [
   "carrinho_abandonado",
@@ -44,12 +44,19 @@ export const EVENTOS_DA_VENDA = [
   "assinatura_cancelada",
   "assinatura_atrasada",
   "assinatura_renovada",
+  "pagamento_expirado",
 ] as const;
 export type EventoDaVenda = (typeof EVENTOS_DA_VENDA)[number];
 
 /** Como cada plataforma chama cada evento (nome do gatilho ou status do pedido). */
 const SINONIMOS: Record<EventoDaVenda, string[]> = {
-  carrinho_abandonado: ["carrinho_abandonado", "abandoned_cart", "abandoned", "checkout_abandonment", "abandonment"],
+  carrinho_abandonado: [
+    "carrinho_abandonado",
+    "abandoned_cart",
+    "abandoned",
+    "checkout_abandonment",
+    "abandonment",
+  ],
   aguardando_pagamento: [
     "boleto_gerado",
     "pix_gerado",
@@ -58,14 +65,32 @@ const SINONIMOS: Record<EventoDaVenda, string[]> = {
     "pix_created",
     "waiting_payment",
     "pending",
+    // Hotmart: boleto ou Pix gerado e ainda não pago.
+    "purchase_billet_printed",
   ],
-  compra_aprovada: ["compra_aprovada", "order_approved", "purchase_approved", "paid", "approved"],
-  compra_recusada: ["compra_recusada", "order_rejected", "purchase_refused", "refused", "rejected"],
-  reembolso: ["compra_reembolsada", "order_refunded", "refund", "refunded"],
-  chargeback: ["chargeback", "chargedback"],
+  compra_aprovada: [
+    "compra_aprovada",
+    "order_approved",
+    "purchase_approved",
+    "paid",
+    "approved",
+    "purchase_complete",
+  ],
+  compra_recusada: [
+    "compra_recusada",
+    "order_rejected",
+    "purchase_refused",
+    "refused",
+    "rejected",
+    "purchase_canceled",
+  ],
+  reembolso: ["compra_reembolsada", "order_refunded", "refund", "refunded", "purchase_refunded"],
+  chargeback: ["chargeback", "chargedback", "purchase_chargeback"],
   assinatura_cancelada: ["subscription_canceled", "subscription_cancelled"],
-  assinatura_atrasada: ["subscription_late"],
+  assinatura_atrasada: ["subscription_late", "purchase_delayed"],
   assinatura_renovada: ["subscription_renewed"],
+  // Pix ou boleto que venceu sem pagamento (Hotmart `PURCHASE_EXPIRED`).
+  pagamento_expirado: ["purchase_expired", "expired"],
 };
 
 export function eventoDaVenda(bruto: unknown): EventoDaVenda | null {
@@ -80,15 +105,34 @@ export function eventoDaVenda(bruto: unknown): EventoDaVenda | null {
  * evento. O dono do funil só precisa ter uma etapa com um destes nomes.
  */
 export const ETAPAS_DO_EVENTO: Record<EventoDaVenda, string[]> = {
-  carrinho_abandonado: ["carrinho abandonado", "abandonou o carrinho", "abandono de carrinho", "carrinho"],
-  aguardando_pagamento: ["aguardando pagamento", "pix gerado", "boleto gerado", "pagamento pendente", "aguardando"],
-  compra_aprovada: ["pago", "compra aprovada", "venda aprovada", "aprovado", "pagamento aprovado", "cliente"],
+  carrinho_abandonado: [
+    "carrinho abandonado",
+    "abandonou o carrinho",
+    "abandono de carrinho",
+    "carrinho",
+  ],
+  aguardando_pagamento: [
+    "aguardando pagamento",
+    "pix gerado",
+    "boleto gerado",
+    "pagamento pendente",
+    "aguardando",
+  ],
+  compra_aprovada: [
+    "pago",
+    "compra aprovada",
+    "venda aprovada",
+    "aprovado",
+    "pagamento aprovado",
+    "cliente",
+  ],
   compra_recusada: ["compra recusada", "pagamento recusado", "recusado"],
   reembolso: ["reembolsado", "reembolso", "estornado"],
   chargeback: ["chargeback", "contestado"],
   assinatura_cancelada: ["assinatura cancelada", "cancelado"],
   assinatura_atrasada: ["assinatura atrasada", "atrasado", "inadimplente"],
   assinatura_renovada: ["assinatura renovada", "renovado"],
+  pagamento_expirado: ["pagamento expirado", "expirado", "pix expirado", "boleto vencido"],
 };
 
 /** A etapa do funil que recebe o evento, pelo nome; null = fica onde está (ou na etapa padrão). */
@@ -106,7 +150,8 @@ export function etapaDoEvento(
 }
 
 type Objeto = Record<string, unknown>;
-const ehObjeto = (v: unknown): v is Objeto => typeof v === "object" && v !== null && !Array.isArray(v);
+const ehObjeto = (v: unknown): v is Objeto =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** O primeiro valor simples (texto ou número) entre os caminhos. */
 function primeiro(raiz: unknown, caminhos: string[]): string | null {
@@ -120,8 +165,19 @@ function primeiro(raiz: unknown, caminhos: string[]): string | null {
 }
 
 export function detectarPlataforma(payload: Objeto): PlataformaDeVenda | null {
+  // Hotmart (webhook 2.0.0): { event: "PURCHASE_…", data: { buyer, product, purchase } }.
+  // Vem ANTES da Cakto: "PURCHASE_APPROVED" também é sinônimo de compra aprovada
+  // e o envelope é parecido — o que separa é o `data.buyer`.
+  if (
+    typeof payload.event === "string" &&
+    /^PURCHASE_[A-Z_]+$/.test(payload.event) &&
+    ehObjeto(payload.data) &&
+    ehObjeto(payload.data.buyer)
+  )
+    return "hotmart";
   // Cakto: envelope { secret?, event, data: {...} }.
-  if (typeof payload.event === "string" && ehObjeto(payload.data) && eventoDaVenda(payload.event)) return "cakto";
+  if (typeof payload.event === "string" && ehObjeto(payload.data) && eventoDaVenda(payload.event))
+    return "cakto";
   // Kiwify: pedido com status/gatilho e o comprador em `Customer`; ou o
   // carrinho abandonado, que vem plano, com o link do checkout.
   if (
@@ -129,7 +185,10 @@ export function detectarPlataforma(payload: Objeto): PlataformaDeVenda | null {
     ehObjeto(payload.Customer)
   )
     return "kiwify";
-  if (typeof payload.checkout_link === "string" && (payload.status === "abandoned" || payload.product_name))
+  if (
+    typeof payload.checkout_link === "string" &&
+    (payload.status === "abandoned" || payload.product_name)
+  )
     return "kiwify";
   return null;
 }
@@ -152,50 +211,103 @@ function emReais(centavos: number): string {
 }
 
 function chave(...partes: (string | null)[]): string {
-  return partes.map((p) => normalizar(p ?? "").replace(/\s+/g, "-")).join(":").slice(0, 255);
+  return partes
+    .map((p) => normalizar(p ?? "").replace(/\s+/g, "-"))
+    .join(":")
+    .slice(0, 255);
+}
+
+/**
+ * Telefone do comprador da Hotmart: `buyer.checkout_phone`, com o DDD em
+ * `buyer.checkout_phone_code` (só para comprador brasileiro) quando o número
+ * vem sem ele. null quando não é Hotmart ou não há telefone.
+ */
+function telefoneDaHotmart(d: Objeto): string | null {
+  const numero = primeiro(d, ["buyer.checkout_phone"]);
+  if (!numero) return null;
+  const ddd = primeiro(d, ["buyer.checkout_phone_code"]);
+  const digitos = numero.replace(/\D/g, "");
+  return ddd && digitos.length <= 9 ? `${ddd}${digitos}` : numero;
 }
 
 export function mapearAvisoDeVenda(payload: Objeto): AvisoDeVenda | null {
   const plataforma = detectarPlataforma(payload);
   if (!plataforma) return null;
 
-  const d: Objeto = plataforma === "cakto" && ehObjeto(payload.data) ? payload.data : payload;
+  const d: Objeto =
+    (plataforma === "cakto" || plataforma === "hotmart") && ehObjeto(payload.data)
+      ? payload.data
+      : payload;
   const evento =
-    plataforma === "cakto"
+    plataforma === "cakto" || plataforma === "hotmart"
       ? eventoDaVenda(payload.event)
       : (eventoDaVenda(payload.webhook_event_type) ??
         eventoDaVenda(payload.order_status) ??
-        (typeof payload.checkout_link === "string" && !payload.order_id ? "carrinho_abandonado" : null));
+        (typeof payload.checkout_link === "string" && !payload.order_id
+          ? "carrinho_abandonado"
+          : null));
 
-  const nome = primeiro(d, ["Customer.full_name", "Customer.first_name", "customer.name", "customerName", "name"]);
-  const telefoneBruto = primeiro(d, [
-    "Customer.mobile",
-    "Customer.phone",
-    "customer.phone",
-    "customer.cellphone",
-    "customerCellphone",
-    "phone",
-    "mobile",
+  const nome = primeiro(d, [
+    "Customer.full_name",
+    "Customer.first_name",
+    "customer.name",
+    "customerName",
+    "buyer.name",
+    "name",
   ]);
-  const email = primeiro(d, ["Customer.email", "customer.email", "customerEmail", "email"]);
-  const produto = primeiro(d, ["Product.product_name", "product.name", "product_name", "offer.name"]);
-  const pedido = primeiro(d, ["order_id", "id", "refId", "order.id"]);
-  const link = primeiro(d, ["checkout_link", "checkoutUrl", "checkout_url", "paymentUrl"]);
+  const telefoneBruto =
+    telefoneDaHotmart(d) ??
+    primeiro(d, [
+      "Customer.mobile",
+      "Customer.phone",
+      "customer.phone",
+      "customer.cellphone",
+      "customerCellphone",
+      "phone",
+      "mobile",
+    ]);
+  const email = primeiro(d, [
+    "Customer.email",
+    "customer.email",
+    "customerEmail",
+    "buyer.email",
+    "email",
+  ]);
+  const produto = primeiro(d, [
+    "Product.product_name",
+    "product.name",
+    "product_name",
+    "offer.name",
+  ]);
+  const pedido = primeiro(d, ["order_id", "purchase.transaction", "id", "refId", "order.id"]);
+  // Hotmart não manda link do checkout; manda o do boleto quando há boleto.
+  const link = primeiro(d, [
+    "checkout_link",
+    "checkoutUrl",
+    "checkout_url",
+    "paymentUrl",
+    "purchase.payment.billet_url",
+  ]);
+  // O Pix copia e cola da compra pendente (Hotmart): é o que a recuperação manda.
+  const pix = plataforma === "hotmart" ? primeiro(d, ["purchase.payment.pix_code"]) : null;
   // Cakto manda o preço em reais (`offer.price: 97.9`, `amount`). Kiwify manda
   // valores em centavos em campos que mudam entre eventos — não adivinhamos.
-  const reais = plataforma === "cakto" ? primeiro(d, ["amount", "offer.price", "baseAmount"]) : null;
-  const valor = reais !== null && Number.isFinite(Number(reais)) ? Math.round(Number(reais) * 100) : null;
+  const reais =
+    plataforma === "cakto" ? primeiro(d, ["amount", "offer.price", "baseAmount"]) : null;
+  const valor =
+    reais !== null && Number.isFinite(Number(reais)) ? Math.round(Number(reais) * 100) : null;
   const telefone = normalizePhoneBR(telefoneBruto);
 
   const custom_fields: Record<string, string> = { plataforma };
   if (evento) custom_fields.evento_da_venda = evento;
   if (produto) custom_fields.produto = produto.slice(0, 200);
   if (link) custom_fields.link_checkout = link.slice(0, 500);
+  if (pix) custom_fields.pix_copia_e_cola = pix.slice(0, 600);
   if (pedido && evento !== "carrinho_abandonado") custom_fields.id_do_pedido = pedido.slice(0, 120);
-  if (valor !== null)
-    custom_fields.valor = emReais(valor);
+  if (valor !== null) custom_fields.valor = emReais(valor);
 
-  const chaveDoCarrinho = telefone || email ? `${plataforma}:carrinho:${chave(telefone ?? email, produto)}` : null;
+  const chaveDoCarrinho =
+    telefone || email ? `${plataforma}:carrinho:${chave(telefone ?? email, produto)}` : null;
   const externalId =
     evento === "carrinho_abandonado"
       ? chaveDoCarrinho
@@ -228,16 +340,21 @@ function iguais(a: string, b: string): boolean {
  * prova do jeito dela, com o segredo da fonte de captação:
  *   - Cakto: o campo `secret` do corpo é o segredo do webhook;
  *   - Kiwify: o parâmetro `?signature=` da URL é o HMAC-SHA1 do corpo cru com
- *     o token do webhook.
+ *     o token do webhook;
+ *   - Hotmart: o cabeçalho `X-HOTMART-HOTTOK` é o token da conta, que vai
+ *     cadastrado como segredo da fonte.
  */
 export function avisoDaPlataformaAutentico(
   rawBody: string,
   payload: Record<string, unknown>,
   assinaturaNaUrl: string | null,
   segredo: string,
+  hottok: string | null = null,
 ): boolean {
   const plataforma = detectarPlataforma(payload);
-  if (plataforma === "cakto") return typeof payload.secret === "string" && iguais(payload.secret, segredo);
+  if (plataforma === "hotmart") return !!hottok && iguais(hottok.trim(), segredo);
+  if (plataforma === "cakto")
+    return typeof payload.secret === "string" && iguais(payload.secret, segredo);
   if (plataforma === "kiwify" && assinaturaNaUrl) {
     const esperado = createHmac("sha1", segredo).update(rawBody).digest("hex");
     return iguais(esperado, assinaturaNaUrl.trim().toLowerCase());

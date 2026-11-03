@@ -18,7 +18,7 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
   inicio_canal:
     "Quando adicionada essa ação no seu chatbot, ele passa a responder sozinho as conversas que chegam pelo número de WhatsApp escolhido, assim que o fluxo estiver ligado.\n\nVocê escolhe se ele começa em toda conversa nova ou só quando a mensagem do cliente tiver uma das palavras-chave. Cada número tem um só chatbot de entrada ligado: ligar outro para o mesmo número desliga o anterior.\n\nDepois que o fluxo termina, ele só recomeça na mesma conversa 6 horas depois, para não responder a cada “obrigado”.\n\nEm “Etiqueta de origem”, você liga frases a etiquetas: se a primeira mensagem tiver a frase, o contato ganha a etiqueta. Use a mensagem pronta do seu anúncio (“vi no Instagram”) ou do link do site para saber de onde cada contato veio, e separe o caminho depois com a condição “Etiquetas”.\n\nO chatbot não responde quando a conversa já está com um atendente, quando o contato está bloqueado, nem em grupos de WhatsApp.",
   inicio_automacao:
-    "Quando adicionada essa ação no seu chatbot, ele não responde mensagens sozinho: ele começa quando uma regra de Automações manda, com a ação “Iniciar chatbot”. Por exemplo, quando uma compra é aprovada na Kiwify ou na Cakto, ou quando um negócio muda de etapa.\n\nUm fluxo que só tem este início pode ficar ligado junto com o fluxo de atendimento do mesmo número.\n\nSe o contato estava parado em outro fluxo, aquele termina e este começa: a automação é o fato mais novo.",
+    "Quando adicionada essa ação no seu chatbot, ele não responde mensagens sozinho: ele começa quando uma regra de Automações manda, com a ação “Iniciar chatbot”. Por exemplo, quando uma compra é aprovada na Kiwify, na Cakto ou na Hotmart, ou quando um negócio muda de etapa.\n\nUm fluxo que só tem este início pode ficar ligado junto com o fluxo de atendimento do mesmo número.\n\nSe o contato estava parado em outro fluxo, aquele termina e este começa: a automação é o fato mais novo.",
   inicio_manual:
     "Quando adicionada essa ação no seu chatbot, ele fica disponível para os atendentes dentro de qualquer conversa: na Inbox, o botão do robô no topo da conversa lista os chatbots ligados que têm este início.\n\nO chatbot responde até o fluxo terminar, mesmo com a conversa no nome do atendente. É bom para pesquisa de satisfação no fim do atendimento, menu de pagamento ou coleta de dados.\n\nO fluxo precisa estar ligado para aparecer na lista. Um fluxo só com este início pode ficar ligado junto com o fluxo de atendimento.\n\nAo começar, as mensagens de espera programadas nesta conversa param: o fluxo novo é quem fala agora.",
   horarios:
@@ -127,6 +127,7 @@ export const DESCRICOES_DE_VARIAVEL = {
   link_checkout: "Link de pagamento ou do carrinho.",
   valor: "Valor da venda ou do negócio.",
   evento_da_venda: "O que aconteceu na plataforma de vendas (aprovada, abandonada…).",
+  pix_copia_e_cola: "O Pix copia e cola da compra que ainda não foi paga (quando a plataforma manda).",
   digitado: "O que o contato digitou.",
   resposta_do_formulario: "Resposta da pergunta:",
   horario: "O horário marcado, como o contato leu.",
@@ -154,6 +155,7 @@ export function variaveisDoPasso(tipo: TipoDePasso, dados: unknown): VariavelExp
         { nome: "link_checkout", descricao: "link_checkout" },
         { nome: "valor", descricao: "valor" },
         { nome: "evento_da_venda", descricao: "evento_da_venda" },
+        { nome: "pix_copia_e_cola", descricao: "pix_copia_e_cola" },
       ];
     case "pedir_digitar":
       return [{ nome: lerConfig("pedir_digitar", dados).variavel, descricao: "digitado" }];

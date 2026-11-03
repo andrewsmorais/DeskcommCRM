@@ -5616,8 +5616,8 @@ export const DICIONARIO: Traducoes = {
   // ─── Chatbot fase 2: condições, campo do contato, nota ───
   "Iniciar chatbot": { es: "Iniciar chatbot" },
   "Iniciar por automação": { es: "Iniciar por automatización" },
-  "Começa quando uma automação manda — ex.: compra aprovada na Kiwify ou na Cakto.": {
-    es: "Empieza cuando una automatización lo ordena, ej.: compra aprobada en Kiwify o en Cakto.",
+  "Começa quando uma automação manda — ex.: compra aprovada na Kiwify, na Cakto ou na Hotmart.": {
+    es: "Empieza cuando una automatización lo ordena, ej.: compra aprobada en Kiwify, en Cakto o en Hotmart.",
   },
   "Quando uma automação mandar": { es: "Cuando una automatización lo ordene" },
   "Este fluxo não responde a mensagens: ele começa quando uma automação manda, e pode ficar ligado junto com o fluxo de atendimento.":
@@ -5860,9 +5860,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, él empezará a responder solo las conversaciones que lleguen por el número de WhatsApp elegido, en cuanto el flujo esté activado.\n\nTú eliges si empieza en toda conversación nueva o solo cuando el mensaje del cliente tenga una de las palabras clave. Cada número tiene un solo chatbot de entrada activado: activar otro para el mismo número desactiva el anterior.\n\nDespués de que el flujo termina, solo vuelve a empezar en la misma conversación 6 horas después, para no responder a cada “gracias”.\n\nEn “Etiqueta de origen”, vinculas frases a etiquetas: si el primer mensaje tiene la frase, el contacto recibe la etiqueta. Usa el mensaje listo de tu anuncio (“lo vi en Instagram”) o del enlace del sitio para saber de dónde vino cada contacto, y separa el camino después con la condición “Etiquetas”.\n\nEl chatbot no responde cuando la conversación ya está con un agente, cuando el contacto está bloqueado, ni en grupos de WhatsApp.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele não responde mensagens sozinho: ele começa quando uma regra de Automações manda, com a ação “Iniciar chatbot”. Por exemplo, quando uma compra é aprovada na Kiwify ou na Cakto, ou quando um negócio muda de etapa.\n\nUm fluxo que só tem este início pode ficar ligado junto com o fluxo de atendimento do mesmo número.\n\nSe o contato estava parado em outro fluxo, aquele termina e este começa: a automação é o fato mais novo.":
+  "Quando adicionada essa ação no seu chatbot, ele não responde mensagens sozinho: ele começa quando uma regra de Automações manda, com a ação “Iniciar chatbot”. Por exemplo, quando uma compra é aprovada na Kiwify, na Cakto ou na Hotmart, ou quando um negócio muda de etapa.\n\nUm fluxo que só tem este início pode ficar ligado junto com o fluxo de atendimento do mesmo número.\n\nSe o contato estava parado em outro fluxo, aquele termina e este começa: a automação é o fato mais novo.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él no responde mensajes solo: empieza cuando una regla de Automatizaciones lo indica, con la acción “Iniciar chatbot”. Por ejemplo, cuando una compra es aprobada en Kiwify o en Cakto, o cuando un negocio cambia de etapa.\n\nUn flujo que solo tiene este inicio puede quedar activado junto con el flujo de atención del mismo número.\n\nSi el contacto estaba detenido en otro flujo, ese termina y este comienza: la automatización es el hecho más reciente.",
+      es: "Cuando agregues esta acción a tu chatbot, él no responde mensajes solo: empieza cuando una regla de Automatizaciones lo indica, con la acción “Iniciar chatbot”. Por ejemplo, cuando una compra es aprobada en Kiwify, en Cakto o en Hotmart, o cuando un negocio cambia de etapa.\n\nUn flujo que solo tiene este inicio puede quedar activado junto con el flujo de atención del mismo número.\n\nSi el contacto estaba detenido en otro flujo, ese termina y este comienza: la automatización es el hecho más reciente.",
     },
   "Quando adicionada essa ação no seu chatbot, ele fica disponível para os atendentes dentro de qualquer conversa: na Inbox, o botão do robô no topo da conversa lista os chatbots ligados que têm este início.\n\nO chatbot responde até o fluxo terminar, mesmo com a conversa no nome do atendente. É bom para pesquisa de satisfação no fim do atendimento, menu de pagamento ou coleta de dados.\n\nO fluxo precisa estar ligado para aparecer na lista. Um fluxo só com este início pode ficar ligado junto com o fluxo de atendimento.\n\nAo começar, as mensagens de espera programadas nesta conversa param: o fluxo novo é quem fala agora.":
     {
@@ -5955,6 +5955,14 @@ export const DICIONARIO: Traducoes = {
     },
   "Se a resposta não estiver no formato": { es: "Si la respuesta no está en el formato" },
   "Usar a mensagem anterior": { es: "Usar el mensaje anterior" },
+  "Recuperar Pix ou carrinho": { es: "Recuperar Pix o carrito" },
+  'Quando a plataforma de venda avisa Pix gerado ou carrinho abandonado, lembra o cliente com o link e o Pix, e pergunta se precisa de ajuda. Ligue numa automação "Iniciar chatbot".':
+    {
+      es: 'Cuando la plataforma de ventas avisa Pix generado o carrito abandonado, le recuerda al cliente con el enlace y el Pix, y pregunta si necesita ayuda. Conéctalo en una automatización "Iniciar chatbot".',
+    },
+  "O Pix copia e cola da compra que ainda não foi paga (quando a plataforma manda).": {
+    es: "El Pix copia y pega de la compra que aún no se pagó (cuando la plataforma lo envía).",
+  },
   "Se o contato não responder": { es: "Si el contacto no responde" },
   'Passado o prazo sem resposta, o fluxo segue pela saída "Não respondeu a tempo". Sem nada ligado nela, o fluxo termina.':
     {

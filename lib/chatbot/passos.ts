@@ -635,7 +635,7 @@ export const PASSOS: readonly MetaDoPasso[] = [
     tipo: "inicio_automacao",
     grupo: "inicio",
     nome: "Iniciar por automação",
-    descricao: "Começa quando uma automação manda — ex.: compra aprovada na Kiwify ou na Cakto.",
+    descricao: "Começa quando uma automação manda — ex.: compra aprovada na Kiwify, na Cakto ou na Hotmart.",
     icone: "Zap",
     cor: "text-amber-500",
     temEntrada: false,

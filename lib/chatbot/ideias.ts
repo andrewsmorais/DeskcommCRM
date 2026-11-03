@@ -207,6 +207,100 @@ export const IDEIAS_DE_BOT: readonly Ideia[] = [
       ["ia", "equipe", "falha"],
     ],
   },
+  {
+    // Começa pela automação "Iniciar chatbot" quando a plataforma de venda
+    // (Kiwify, Cakto, Hotmart…) avisa Pix gerado ou carrinho abandonado: as
+    // variáveis {{produto}}, {{valor}}, {{link_checkout}} e {{pix_copia_e_cola}}
+    // chegam do aviso. Quem confirma o pagamento é a plataforma, nunca a
+    // resposta do cliente — por isso "Já paguei" só agradece.
+    id: "recuperar_pagamento",
+    nome: "Recuperar Pix ou carrinho",
+    descricao:
+      'Quando a plataforma de venda avisa Pix gerado ou carrinho abandonado, lembra o cliente com o link e o Pix, e pergunta se precisa de ajuda. Ligue numa automação "Iniciar chatbot".',
+    nos: [
+      { chave: "ini", tipo: "inicio_automacao" },
+      {
+        chave: "espera",
+        tipo: "aguardar_intervalo",
+        dados: { quantidade: 15, unidade: "minutos", se_responder: "seguir" },
+      },
+      {
+        chave: "lembrete",
+        tipo: "enviar_mensagem",
+        dados: {
+          texto:
+            "Oi! Vi que seu pedido de {{produto}} ficou pendente. Se quiser concluir, é por aqui:",
+        },
+      },
+      {
+        chave: "pagamento",
+        tipo: "enviar_pagamento",
+        dados: {
+          descricao: "{{produto}}",
+          valor: "{{valor}}",
+          link: "{{link_checkout}}",
+          pix: "{{pix_copia_e_cola}}",
+        },
+      },
+      {
+        chave: "menu",
+        tipo: "pedir_escolher",
+        dados: {
+          pergunta: "Conseguiu finalizar?",
+          opcoes: ["Já paguei", "Tive um problema", "Desisti"],
+          prazo_minutos: 1440,
+        },
+      },
+      {
+        chave: "pago",
+        tipo: "enviar_mensagem",
+        dados: {
+          texto: "Que ótimo! Assim que a plataforma confirmar, você recebe tudo por lá. 😊",
+        },
+      },
+      {
+        chave: "equipe",
+        tipo: "transferir_equipe",
+        dados: { mensagem: "Vou te passar para alguém da equipe te ajudar a concluir." },
+      },
+      {
+        chave: "motivo",
+        tipo: "pedir_digitar",
+        dados: {
+          pergunta: "Tudo bem! Pode me contar o que te fez desistir? Isso nos ajuda a melhorar.",
+          variavel: "motivo",
+          prazo_minutos: 1440,
+        },
+      },
+      { chave: "nota", tipo: "criar_nota", dados: { texto: "Desistiu da compra: {{motivo}}" } },
+      {
+        chave: "obrigado",
+        tipo: "enviar_mensagem",
+        dados: { texto: "Obrigado por contar! Se mudar de ideia, é só chamar aqui." },
+      },
+      {
+        chave: "ultimo",
+        tipo: "enviar_mensagem",
+        dados: {
+          texto: "Seu pedido de {{produto}} ainda está aqui. Qualquer dúvida, é só responder. 👋",
+        },
+      },
+    ],
+    ligacoes: [
+      ["ini", "espera"],
+      ["espera", "lembrete"],
+      ["lembrete", "pagamento"],
+      ["pagamento", "menu"],
+      ["pagamento", "equipe", "falha"],
+      ["menu", "pago", "opcao-0"],
+      ["menu", "equipe", "opcao-1"],
+      ["menu", "motivo", "opcao-2"],
+      ["menu", "equipe", "invalida"],
+      ["menu", "ultimo", "sem_resposta"],
+      ["motivo", "nota"],
+      ["nota", "obrigado"],
+    ],
+  },
 ];
 
 /** Os tipos de passo que a ideia usa (para a tela marcar o que o plano não inclui). */

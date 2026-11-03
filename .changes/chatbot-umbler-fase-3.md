@@ -12,6 +12,8 @@ O editor de chatbot ganha o que a Umbler documenta e o nosso ainda não tinha, s
 - **Enviar link de pagamento**: o que é, valor, link (aceita `{{link_checkout}}`) e Pix copia e cola numa mensagem só dele. Não gera cobrança nem confere pagamento.
 - **Botões e lista** no Pedir para escolher e no Agendar horário quando o número é da API oficial da Meta (até 3 opções curtas viram botões; até 10, lista). Em número por QR Code as opções seguem numeradas, porque o WhatsApp não mostra botão ali.
 - **Etiqueta de origem** no Iniciar por um canal: frase da primeira mensagem vira etiqueta do contato.
+- **Hotmart** no aviso de venda (webhook de compras 2.0.0, autenticado pelo `X-HOTMART-HOTTOK`), ao lado de Kiwify e Cakto: compra aprovada, Pix ou boleto gerado, cancelada, reembolso, chargeback e o evento novo **pagamento expirado**. O Pix copia e cola da compra pendente chega como `{{pix_copia_e_cola}}`.
+- **Modelo pronto "Recuperar Pix ou carrinho"** nas ideias de bot: espera 15 minutos, manda o link e o Pix, pergunta se conseguiu e separa quem pagou, quem teve problema e quem desistiu. Liga numa automação "Iniciar chatbot".
 - **Biblioteca de mídia** no Enviar mídia: reusar um arquivo que outro chatbot da empresa já manda, e ouvir o áudio antes de salvar.
 
 Fluxos salvos antes continuam iguais.

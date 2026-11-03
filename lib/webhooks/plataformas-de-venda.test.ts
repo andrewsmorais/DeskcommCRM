@@ -145,3 +145,65 @@ describe("autenticidade do aviso", () => {
     expect(avisoDaPlataformaAutentico(corpo, kiwifyAprovada, null, "tok")).toBe(false);
   });
 });
+
+describe("Hotmart (webhook de compras 2.0.0)", () => {
+  // Campos da documentação oficial: data.buyer.{name,email,checkout_phone,checkout_phone_code},
+  // data.product.name, data.purchase.{transaction,payment.pix_code,payment.billet_url}.
+  const hotmart = (event: string, payment: Record<string, unknown> = {}) => ({
+    id: "evt-1",
+    event,
+    version: "2.0.0",
+    data: {
+      product: { id: 1, ucode: "u", name: "Curso de Bolos" },
+      buyer: {
+        name: "Maria Souza",
+        email: "Maria@Email.com",
+        checkout_phone: "987654321",
+        checkout_phone_code: "11",
+      },
+      purchase: { transaction: "HP123", status: "WAITING_PAYMENT", payment },
+    },
+  });
+
+  it("é reconhecida antes da Cakto (o envelope é parecido) e mapeia o comprador", () => {
+    const p = hotmart("PURCHASE_BILLET_PRINTED", { type: "PIX", pix_code: "00020126PIX" });
+    expect(detectarPlataforma(p)).toBe("hotmart");
+    const a = mapearAvisoDeVenda(p)!;
+    expect(a).toMatchObject({
+      plataforma: "hotmart",
+      evento: "aguardando_pagamento",
+      name: "Maria Souza",
+      phone: "+5511987654321",
+      email: "maria@email.com",
+      externalId: "hotmart:HP123",
+    });
+    expect(a.custom_fields).toMatchObject({
+      produto: "Curso de Bolos",
+      pix_copia_e_cola: "00020126PIX",
+      evento_da_venda: "aguardando_pagamento",
+    });
+  });
+
+  it("eventos: aprovada, completa, cancelada, reembolso, expirada", () => {
+    expect(mapearAvisoDeVenda(hotmart("PURCHASE_APPROVED"))!.evento).toBe("compra_aprovada");
+    expect(mapearAvisoDeVenda(hotmart("PURCHASE_COMPLETE"))!.evento).toBe("compra_aprovada");
+    expect(mapearAvisoDeVenda(hotmart("PURCHASE_CANCELED"))!.evento).toBe("compra_recusada");
+    expect(mapearAvisoDeVenda(hotmart("PURCHASE_REFUNDED"))!.evento).toBe("reembolso");
+    expect(mapearAvisoDeVenda(hotmart("PURCHASE_EXPIRED"))!.evento).toBe("pagamento_expirado");
+    expect(etapaDoEvento("pagamento_expirado", [{ id: "e", name: "Pix expirado" }])).toBe("e");
+  });
+
+  it("boleto vira o link do pedido", () => {
+    const a = mapearAvisoDeVenda(hotmart("PURCHASE_BILLET_PRINTED", { billet_url: "https://b/1" }))!;
+    expect(a.custom_fields.link_checkout).toBe("https://b/1");
+  });
+
+  it("autêntica só com o hottok do cabeçalho igual ao segredo da fonte", async () => {
+    const { avisoDaPlataformaAutentico } = await import("./plataformas-de-venda");
+    const p = hotmart("PURCHASE_APPROVED");
+    const corpo = JSON.stringify(p);
+    expect(avisoDaPlataformaAutentico(corpo, p, null, "tok", "tok")).toBe(true);
+    expect(avisoDaPlataformaAutentico(corpo, p, null, "tok", "outro")).toBe(false);
+    expect(avisoDaPlataformaAutentico(corpo, p, null, "tok", null)).toBe(false);
+  });
+});

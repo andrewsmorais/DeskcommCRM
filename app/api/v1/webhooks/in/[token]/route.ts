@@ -160,7 +160,8 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     sourceSecret = await decryptWebhookSecret(admin, source.secret_encrypted as unknown as string);
     if (sourceSecret === null) hmacSkipped = true;
   }
-  // Kiwify e Cakto se provam do jeito delas (segredo no corpo / HMAC na URL),
+  // Kiwify, Cakto e Hotmart se provam do jeito delas (segredo no corpo / HMAC na
+  // URL / token no cabeçalho),
   // com o MESMO segredo cadastrado na fonte.
   const validSignature = sourceSecret
     ? verifyInboundSignature(rawBody, sigHeader, sourceSecret) ||
@@ -169,6 +170,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         payload,
         req.nextUrl.searchParams.get("signature"),
         sourceSecret,
+        req.headers.get("x-hotmart-hottok"),
       )
     : null;
   if (sourceSecret && !validSignature) {
