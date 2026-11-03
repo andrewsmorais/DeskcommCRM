@@ -779,11 +779,13 @@ export function AgentForm(props: Props) {
           [
             ["conversa", t("Conversa com o cliente")],
             ["operacao", t("Organiza o sistema")],
-            // O TERCEIRO PAPEL. O rótulo diz o que ele FAZ, como os outros dois:
-            // "Segurança" é o nosso nome; quem configura quer saber o que é
-            // conferido antes de a mensagem chegar ao cliente dele.
-            ["seguranca", t("Confere antes de enviar")],
-          ] as const
+            // O TERCEIRO PAPEL. Só o super-admin da plataforma vê — junto com
+            // empresa de IA, modelo e chave, é configuração técnica que o
+            // cliente final não precisa (nem deve) ver.
+            ...(mostrarConfigTecnica
+              ? [["seguranca", t("Confere antes de enviar")] as const]
+              : []),
+          ] as Array<readonly [string, string]>
         ).map(([id, rotulo]) => (
           <button
             key={id}
@@ -791,7 +793,7 @@ export function AgentForm(props: Props) {
             role="tab"
             aria-selected={papel === id}
             data-testid={`papel-${id}`}
-            onClick={() => setPapel(id)}
+            onClick={() => setPapel(id as "conversa" | "operacao" | "seguranca")}
             className={
               papel === id
                 ? "border-b-2 border-foreground px-3 py-2 text-sm font-medium"
