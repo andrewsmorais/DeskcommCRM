@@ -114,6 +114,7 @@ beforeAll(() => {
       v_empresa uuid;
       v_pessoa uuid;
       v_lote uuid;
+      v_setor uuid;
     begin
       foreach v_org in array array['${ORG_A}'::uuid, '${ORG_B}'::uuid] loop
         select id into v_sess from public.channel_sessions where organization_id = v_org limit 1;
@@ -559,6 +560,18 @@ beforeAll(() => {
         insert into public.import_rows (organization_id, batch_id, row_number, raw_data)
           values (v_org, v_lote, 2, '{"nome": "RLS invariant"}'::jsonb)
           on conflict (batch_id, row_number) do nothing;
+        -- migration 0496 — setor e o seu membro. Vazar entrega ao vizinho como a
+        -- organização divide a equipe e quem atende cada área.
+        select id into v_setor from public.setores
+          where organization_id = v_org and nome = 'RLS invariant setor';
+        if v_setor is null then
+          insert into public.setores (organization_id, nome)
+            values (v_org, 'RLS invariant setor') returning id into v_setor;
+        end if;
+        insert into public.setor_membros (organization_id, setor_id, user_id)
+          values (v_org, v_setor,
+                  case when v_org = '${ORG_A}'::uuid then '${USER_A}'::uuid else '${USER_B}'::uuid end)
+          on conflict (setor_id, user_id) do nothing;
       end loop;
     end
     $seed$;
@@ -724,6 +737,11 @@ export const TABLES = [
   "company_people",
   "import_batches",
   "import_rows",
+  // migration 0496 — setores e os membros de cada um. Leitura org-flat (o
+  // atendente precisa ver os setores para transferir); a escrita por papel
+  // (manager) é medida em tests/invariants/setores.test.ts.
+  "setores",
+  "setor_membros",
 ] as const;
 
 describe("RLS tenant isolation (fn_user_org_ids pattern)", () => {
@@ -746,18 +764,28 @@ describe("RLS tenant isolation (fn_user_org_ids pattern)", () => {
   }
 
   it("ai_reply_drafts: org B lê sua sugestão e não lê a de A (direção inversa)", () => {
-    expect(countAs(USER_B,
-      `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_B}';`,
-    )).toBeGreaterThanOrEqual(1);
-    expect(countAs(USER_B,
-      `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_A}';`,
-    )).toBe(0);
+    expect(
+      countAs(
+        USER_B,
+        `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_B}';`,
+      ),
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      countAs(
+        USER_B,
+        `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_A}';`,
+      ),
+    ).toBe(0);
   });
 
   it("ai_reply_drafts: os dois tenants têm linhas antes de testar as cercas", () => {
-    expect(Number(sql(
-      `select count(distinct organization_id) from public.ai_reply_drafts where organization_id in ('${ORG_A}','${ORG_B}');`,
-    ))).toBe(2);
+    expect(
+      Number(
+        sql(
+          `select count(distinct organization_id) from public.ai_reply_drafts where organization_id in ('${ORG_A}','${ORG_B}');`,
+        ),
+      ),
+    ).toBe(2);
   });
 
   it("superuser sees both orgs (seed sanity: cross-tenant rows really exist)", () => {

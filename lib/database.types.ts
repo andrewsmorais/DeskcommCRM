@@ -4661,6 +4661,7 @@ export type Database = {
           id: string
           is_group: boolean
           is_private: boolean
+          setor_id: string | null
           last_handoff_at: string | null
           last_handoff_reason: string | null
           last_inbound_at: string | null
@@ -4706,6 +4707,7 @@ export type Database = {
           id?: string
           is_group?: boolean
           is_private?: boolean
+          setor_id?: string | null
           last_handoff_at?: string | null
           last_handoff_reason?: string | null
           last_inbound_at?: string | null
@@ -4751,6 +4753,7 @@ export type Database = {
           id?: string
           is_group?: boolean
           is_private?: boolean
+          setor_id?: string | null
           last_handoff_at?: string | null
           last_handoff_reason?: string | null
           last_inbound_at?: string | null
@@ -8931,6 +8934,80 @@ export type Database = {
             foreignKeyName: "send_ledger_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      setor_membros: {
+        Row: {
+          created_at: string
+          organization_id: string
+          setor_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          organization_id: string
+          setor_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          organization_id?: string
+          setor_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setor_membros_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setor_membros_organization_id_setor_id_fkey"
+            columns: ["organization_id", "setor_id"]
+            referencedRelation: "setores"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "setor_membros_organization_id_user_id_fkey"
+            columns: ["organization_id", "user_id"]
+            referencedRelation: "user_organizations"
+            referencedColumns: ["organization_id", "user_id"]
+          },
+        ]
+      }
+      setores: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          id: string
+          nome: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setores_organization_id_fkey"
+            columns: ["organization_id"]
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
