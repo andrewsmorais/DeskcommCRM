@@ -82,6 +82,8 @@ type Flow = { id: string; name: string; is_active: boolean; grafo: Grafo };
 
 const NODE_TYPES = Object.fromEntries(PASSOS.map((p) => [p.tipo, PassoNode]));
 const ARRASTO = "application/x-passo-do-chatbot";
+/** Atalho de um follow-up da empresa: o card já nasce com ele escolhido. */
+const ARRASTO_FOLLOWUP = "application/x-followup-do-chatbot";
 
 type Foto = { nodes: Node<NodeData>[]; edges: Edge[] };
 
@@ -342,7 +344,7 @@ function Editor({
   }, [sujo]);
 
   const adicionar = useCallback(
-    (tipo: TipoDePasso, posicao?: { x: number; y: number }) => {
+    (tipo: TipoDePasso, posicao?: { x: number; y: number }, dados?: NodeData) => {
       lembrar();
       const caixa = quadro.current?.getBoundingClientRect();
       const centro = caixa
@@ -355,7 +357,7 @@ function Editor({
           x: centro.x + (Math.random() * 60 - 30),
           y: centro.y + (Math.random() * 60 - 30),
         },
-        data: dadosPadrao(tipo),
+        data: { ...dadosPadrao(tipo), ...(dados ?? {}) },
       };
       setNodes((atuais) => [...atuais, novo]);
       setSelecionado(novo.id);
@@ -615,6 +617,20 @@ function Editor({
         t(p.descricao).toLowerCase().includes(termo),
     );
   }, [busca, t]);
+  // Os follow-ups da empresa viram atalhos na seção "Follow-ups" (roteiro de
+  // atendimento não: quem o conduz é o agente de IA).
+  const followupsFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return opcoes.followups.filter(
+      (f) =>
+        !f.roteiro &&
+        (!termo || f.nome.toLowerCase().includes(termo) || "follow-up".includes(termo)),
+    );
+  }, [busca, opcoes.followups]);
+  const dadosDoFollowup = (f: { id: string; nome: string }): NodeData => ({
+    pointer_id: f.id,
+    nome_do_followup: f.nome,
+  });
 
   const noDaAjuda = ajudaDe ? (nodes.find((n) => n.id === ajudaDe) ?? null) : null;
   const noSelecionado =
@@ -873,7 +889,8 @@ function Editor({
             <div className="overflow-y-auto p-4">
               {GRUPOS_DE_PASSO.map((grupo) => {
                 const doGrupo = passosFiltrados.filter((p) => p.grupo === grupo.id);
-                if (doGrupo.length === 0) return null;
+                const atalhos = grupo.id === "followups" ? followupsFiltrados : [];
+                if (doGrupo.length === 0 && atalhos.length === 0) return null;
                 const IconeGrupo = ICONE_DO_GRUPO[grupo.id];
                 return (
                   <section key={grupo.id} className="mb-5 last:mb-0">
@@ -923,11 +940,57 @@ function Editor({
                           </button>
                         );
                       })}
+                      {atalhos.map((f) => {
+                        const pronto = f.situacao === "publicado";
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            draggable={pronto}
+                            disabled={!pronto}
+                            onDragStart={(ev) => {
+                              if (!pronto) return;
+                              ev.dataTransfer.setData(ARRASTO, "iniciar_followup");
+                              ev.dataTransfer.setData(ARRASTO_FOLLOWUP, JSON.stringify(dadosDoFollowup(f)));
+                              ev.dataTransfer.effectAllowed = "move";
+                            }}
+                            onClick={() => {
+                              if (pronto) adicionar("iniciar_followup", undefined, dadosDoFollowup(f));
+                            }}
+                            className={
+                              pronto
+                                ? "rounded-xl border border-border bg-background p-3 text-left transition-colors hover:border-primary/60 hover:bg-surface-elevated"
+                                : "cursor-not-allowed rounded-xl border border-dashed border-border bg-background p-3 text-left opacity-60"
+                            }
+                            data-testid={`menu-followup-${f.id}`}
+                          >
+                            <span className="flex items-center gap-2 text-sm font-semibold">
+                              <IconeDoPasso nome="Repeat" className="h-4 w-4 text-emerald-500" />
+                              {f.nome}
+                              {!pronto ? (
+                                <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                                  {t(f.situacao === "rascunho" ? "Rascunho" : "Desligado")}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+                              {pronto
+                                ? t("Põe o contato neste follow-up.")
+                                : t("Publique em IA › Follow-ups para usar aqui.")}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
+                    {grupo.id === "followups" && !busca.trim() && followupsFiltrados.length === 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {t("Os follow-ups que você criar em IA › Follow-ups aparecem aqui como atalhos.")}
+                      </p>
+                    ) : null}
                   </section>
                 );
               })}
-              {passosFiltrados.length === 0 ? (
+              {passosFiltrados.length === 0 && followupsFiltrados.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
                   {t("Nenhum passo com esse nome.")}
                 </p>
@@ -950,7 +1013,19 @@ function Editor({
             const tipo = ev.dataTransfer.getData(ARRASTO);
             if (!tipo || !ehTipoDePasso(tipo)) return;
             ev.preventDefault();
-            adicionar(tipo, screenToFlowPosition({ x: ev.clientX, y: ev.clientY }));
+            let dados: NodeData | undefined;
+            try {
+              const bruto = ev.dataTransfer.getData(ARRASTO_FOLLOWUP);
+              // Só o id e o nome: o arrasto pode vir de fora da página.
+              const lido = bruto ? (JSON.parse(bruto) as Record<string, unknown>) : null;
+              dados =
+                lido && typeof lido.pointer_id === "string"
+                  ? { pointer_id: lido.pointer_id, nome_do_followup: String(lido.nome_do_followup ?? "") }
+                  : undefined;
+            } catch {
+              dados = undefined;
+            }
+            adicionar(tipo, screenToFlowPosition({ x: ev.clientX, y: ev.clientY }), dados);
           }}
         >
           <AcoesDoNoContext.Provider value={acoesDoNo}>

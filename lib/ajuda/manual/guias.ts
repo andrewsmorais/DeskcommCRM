@@ -53,7 +53,7 @@ Cada passo pode ser pulado e retomado depois.
 
 **Como montar:** em **Chatbots**, crie um novo (nome e descrição), monte os passos, clique em **Salvar**, teste no botão **Testar** e ligue a chave **Ligado**. Só assim ele responde no WhatsApp.
 
-**Nos planos:** passos avançados (WebHook, Definir condição, Aguardar intervalo, Aguardar até — num horário ou numa data, como a véspera da consulta —, Guardar em variável, Acionar outro fluxo, Iniciar follow-up e outros) aparecem marcados com o plano Impulso no editor.
+**Nos planos:** passos avançados (WebHook, Definir condição, Aguardar intervalo, Aguardar até — num horário ou numa data, como a véspera da consulta —, Guardar em variável, Acionar outro fluxo e outros) aparecem marcados com o plano Impulso no editor. Os follow-ups ficam numa seção própria no fim da lista de passos, em todos os planos: o card “Iniciar follow-up” e um atalho para cada follow-up da empresa.
 
 **Dica de uso:** um número com o agente de IA (vendas, conversa livre) e outro com o chatbot (suporte e perguntas repetidas). Assim o que é repetitivo não gasta IA e o agente cuida do que precisa de conversa. Um chatbot também pode passar a conversa para uma pessoa da equipe ou para o agente de IA do número.`,
   },

@@ -6,8 +6,8 @@
  *     avaliação, finalizar).
  *   - Impulso: 2 chatbots ligados e o "Chatbot avançado": webhook, condições
  *     da conversa, aguardar, distribuir por peso, bloquear e excluir contato,
- *     acionar outro fluxo, iniciar follow-up e o início por automação (é por
- *     ele que entram Kiwify e Cakto).
+ *     acionar outro fluxo e o início por automação (é por ele que entram
+ *     Kiwify e Cakto). "Iniciar follow-up" é de todos os planos desde 03/11/2026.
  *   - Escala: 3 chatbots ou mais (a proposta).
  *
  * "Chatbot ligado" é todo fluxo com `is_active = true`, comece ele por um

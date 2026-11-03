@@ -56,6 +56,8 @@ describe("chatbot avançado (Impulso)", () => {
           { type: "negocio_funil" },
           { type: "pedir_avaliacao" },
           { type: "finalizar_conversa" },
+          // Decisão do dono (03/11/2026): follow-up no chatbot em todos os planos.
+          { type: "iniciar_followup" },
         ),
       ),
     ).toBe(false);

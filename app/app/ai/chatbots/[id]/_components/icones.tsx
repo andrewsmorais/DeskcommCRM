@@ -121,6 +121,7 @@ export const ICONE_DO_GRUPO: Record<string, LucideIcon> = {
   finalizacao: Flag,
   integracao: Plug,
   utilitarios: Wrench,
+  followups: Repeat,
 };
 
 export function IconeDoPasso({ nome, className }: { nome: string; className?: string }) {

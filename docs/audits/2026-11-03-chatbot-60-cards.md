@@ -147,6 +147,8 @@ Capturas do editor montado com o código desta branch (Playwright, 1440×960), s
 - `evidence/chatbot-umbler-fase-3/j6-teste-lembrete.png` — simulador depois de "Pular espera": o lembrete sai com a data e o nome guardado pelo Guardar em variável.
 - `evidence/chatbot-umbler-fase-3/k1-followup-lista.png` — Iniciar follow-up com o publicado escolhido; o card mostra o nome.
 - `evidence/chatbot-umbler-fase-3/k2-followup-rascunho.png` — follow-up em rascunho escolhido: aviso de que o contato não entra e a conversa ganha nota.
+- `evidence/chatbot-umbler-fase-3/l1-menu-followups.png` — plano básico: a seção Follow-ups no fim do menu, com o card liberado e um atalho por follow-up (WebHook segue com o selo do Impulso).
+- `evidence/chatbot-umbler-fase-3/l2-atalho-criou-card.png` — o atalho criou o Iniciar follow-up já com o follow-up escolhido.
 
 ## Pendências (o que falta, por quê, próxima ação)
 

@@ -24,6 +24,8 @@ export const GRUPOS_DE_PASSO = [
   { id: "finalizacao", nome: "Finalização" },
   { id: "integracao", nome: "Integrações" },
   { id: "utilitarios", nome: "Utilitários" },
+  /** No fim do menu: o card e um atalho por follow-up da empresa (todos os planos). */
+  { id: "followups", nome: "Follow-ups" },
 ] as const;
 export type GrupoDePasso = (typeof GRUPOS_DE_PASSO)[number]["id"];
 
@@ -1155,7 +1157,7 @@ export const PASSOS: readonly MetaDoPasso[] = [
   },
   {
     tipo: "iniciar_followup",
-    grupo: "acao",
+    grupo: "followups",
     nome: "Iniciar follow-up",
     descricao: "Ponha o contato num dos follow-ups do CRM (os mesmos que o agente de IA usa).",
     icone: "Repeat",

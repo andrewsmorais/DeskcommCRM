@@ -6181,6 +6181,13 @@ export const DICIONARIO: Traducoes = {
       es: 'El chatbot envía el enlace, pero no verifica si se pagó. Si el enlace queda vacío (una variable sin valor), el flujo sigue por "Sin enlace".',
     },
   "Sem link": { es: "Sin enlace" },
+  "Põe o contato neste follow-up.": { es: "Pone al contacto en este follow-up." },
+  "Publique em IA › Follow-ups para usar aqui.": {
+    es: "Publícalo en IA › Follow-ups para usarlo aquí.",
+  },
+  "Os follow-ups que você criar em IA › Follow-ups aparecem aqui como atalhos.": {
+    es: "Los follow-ups que crees en IA › Follow-ups aparecen aquí como atajos.",
+  },
   "rascunho, publique para usar": { es: "borrador, publícalo para usarlo" },
   "Este follow-up não está publicado: o contato não entra nele, e a conversa ganha uma nota dizendo isso. Publique em IA › Follow-ups.":
     {
