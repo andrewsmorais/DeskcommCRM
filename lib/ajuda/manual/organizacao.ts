@@ -189,6 +189,24 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
     ],
   },
 
+  "/app/settings/setores": {
+    oQueE:
+      "Divide a equipe em setores, como Vendas, Suporte e Financeiro. A conversa posta num setor só é entregue a quem é do setor, e aparece marcada com o setor na Inbox.",
+    comoUsar: [
+      "Clique em “Novo setor”, escreva o “Nome” e, se quiser, a “Descrição (opcional)”.",
+      "Em “Quem atende neste setor”, marque as pessoas da equipe que atendem ali. Uma pessoa pode estar em mais de um setor.",
+      "Clique em “Salvar”. Para mudar depois, use “Editar” na linha do setor; para tirar, “Excluir” e confirme em “Excluir setor”.",
+      "Para mandar uma conversa a um setor, use o botão “Transferir” da Inbox, aba “Setor”. No chatbot, o passo “Transferir para a equipe” tem “Para quem”, e a condição “Setor da conversa” decide o caminho pelo setor atual.",
+    ],
+    cuidados: [
+      "Setor sem ninguém não recebe conversa: ela fica na fila até alguém do setor ser incluído.",
+      "Excluir o setor não apaga conversa nenhuma: elas continuam na Inbox, só sem a marca do setor.",
+      "Quem tem o papel “Somente leitura” não entra em setor. Quem sai da empresa sai dos setores junto.",
+      "O setor afina a “Distribuição de atendimento”: o rodízio, a capacidade e o horário de cada pessoa continuam valendo, só que entre os membros do setor.",
+      "Só gerente ou administrador abre esta tela.",
+    ],
+  },
+
   "/app/settings/tags": {
     oQueE:
       "A lista de todas as etiquetas da empresa e onde cada uma é usada (contatos, leads, conversas e regras de agente). Dá para corrigir a cor, renomear, juntar duas parecidas ou excluir uma que ninguém usa mais.",
