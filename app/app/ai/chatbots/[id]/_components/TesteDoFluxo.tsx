@@ -155,6 +155,17 @@ export function TesteDoFluxo({ fotoDoDesenho, opcoes, onFechar, onPasso }: Props
             </Button>
           </div>
         ) : null}
+        {estado.espera.tipo === "mensagem" && estado.espera.prazo ? (
+          <div className="flex items-center gap-2" data-testid="teste-prazo-da-resposta">
+            <p className="flex-1 text-xs text-muted-foreground">
+              {t("Se o contato não responder, o fluxo segue por “Não respondeu a tempo” em")}{" "}
+              {new Date(estado.espera.prazo).toLocaleString()}.
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={() => setEstado(pularEspera(grafo, estado, o))}>
+              {t("Simular: não respondeu")}
+            </Button>
+          </div>
+        ) : null}
         {estado.espera.tipo === "espera_da_equipe" ? (
           <div className="flex items-center gap-2">
             <p className="flex-1 text-xs text-muted-foreground">

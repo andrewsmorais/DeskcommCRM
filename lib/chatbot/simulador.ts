@@ -77,8 +77,11 @@ export type BolhaDoTeste =
 
 /** Do que o teste está esperando agora. */
 export type EsperaDoTeste =
-  /** Mensagem do contato (a primeira, ou a resposta de uma pergunta). */
-  | { tipo: "mensagem" }
+  /**
+   * Mensagem do contato (a primeira, ou a resposta de uma pergunta). Com
+   * `prazo`, a pergunta segue por "Não respondeu a tempo" se ninguém responder.
+   */
+  | { tipo: "mensagem"; prazo?: string }
   /** Fluxo de "Iniciar por automação": um botão começa. */
   | { tipo: "comecar" }
   | { tipo: "relogio"; ate: string }
@@ -185,7 +188,7 @@ export function comecarPorAutomacao(grafo: Grafo, estado: EstadoDoTeste, o: Opco
   return aplicar(grafo, estado, iniciarFluxo(grafo, inicio, ctx), ctx, o);
 }
 
-/** "Pular espera": o relógio do "Aguardar" venceu. */
+/** "Pular espera": o relógio do "Aguardar" venceu — ou o prazo de uma pergunta. */
 export function pularEspera(grafo: Grafo, estado: EstadoDoTeste, o: OpcoesDoTeste): EstadoDoTeste {
   if (!estado.sessao) return estado;
   const ctx = ctxDe(estado, null, o);
@@ -243,7 +246,9 @@ function comEvento(estado: EstadoDoTeste, evento: EventoDoTeste): EstadoDoTeste 
 function depoisDoTurno(estado: EstadoDoTeste, sessao: SessaoDoChatbot): EstadoDoTeste {
   const espera: EsperaDoTeste =
     sessao.status === "waiting_input"
-      ? { tipo: "mensagem" }
+      ? sessao.retomar_em
+        ? { tipo: "mensagem", prazo: sessao.retomar_em }
+        : { tipo: "mensagem" }
       : sessao.status === "waiting_timer" && sessao.retomar_em
         ? { tipo: "relogio", ate: sessao.retomar_em }
         : sessao.status === "transferred" && sessao.retomar_em

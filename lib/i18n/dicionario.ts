@@ -5936,13 +5936,13 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, él envía una plantilla de mensaje aprobada por Meta. Es el único mensaje que WhatsApp acepta después de 24 horas sin que el contacto escriba.\n\nSolo funciona en número oficial (API de Meta). En un número conectado por código QR no hay plantillas: el flujo sigue por “No enviado” y la conversación recibe una nota con el motivo.\n\nLas plantillas con variables no aparecen en la lista, porque el flujo no tiene de dónde sacar los valores.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta com as opções numeradas e espera a resposta do contato. Cada opção ganha uma saída própria no quadro.\n\nO contato pode responder com o número (“2”) ou com o texto da opção. Se responder outra coisa, o chatbot pede de novo, até o número de tentativas; depois segue por “Não respondeu certo”.":
+  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta com as opções numeradas e espera a resposta do contato. Cada opção ganha uma saída própria no quadro.\n\nO contato pode responder com o número (“2”) ou com o texto da opção. Se responder outra coisa, o chatbot pede de novo, até o número de tentativas; depois segue por “Não respondeu certo”.\n\nEm número da API oficial da Meta, as opções viram botões: até 3 opções com até 20 letras aparecem como botões, e até 10 opções com até 24 letras aparecem numa lista. O contato só toca na opção. Em número conectado por QR Code, o próprio WhatsApp não mostra botões, então as opções vão numeradas.\n\nEm “Se o contato não responder”, você pode dar um prazo: passado o tempo sem resposta, o fluxo segue pela saída “Não respondeu a tempo” (por exemplo, para mandar um lembrete ou passar para a equipe). Sem prazo, o chatbot espera pelo tempo que for.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él envía la pregunta con las opciones numeradas y espera la respuesta del contacto. Cada opción tiene su propia salida en el tablero.\n\nEl contacto puede responder con el número (“2”) o con el texto de la opción. Si responde otra cosa, el chatbot pregunta de nuevo, hasta el número de intentos; después sigue por “No respondió bien”.",
+      es: "Cuando agregues esta acción a tu chatbot, él envía la pregunta con las opciones numeradas y espera la respuesta del contacto. Cada opción tiene su propia salida en el tablero.\n\nEl contacto puede responder con el número (“2”) o con el texto de la opción. Si responde otra cosa, el chatbot pregunta de nuevo, hasta el número de intentos; después sigue por “No respondió bien”.\n\nEn un número de la API oficial de Meta, las opciones se vuelven botones: hasta 3 opciones de hasta 20 letras aparecen como botones, y hasta 10 opciones de hasta 24 letras aparecen en una lista. El contacto solo toca la opción. En un número conectado por código QR, el propio WhatsApp no muestra botones, así que las opciones van numeradas.\n\nEn “Si el contacto no responde”, puedes dar un plazo: pasado el tiempo sin respuesta, el flujo sigue por la salida “No respondió a tiempo” (por ejemplo, para enviar un recordatorio o pasar al equipo). Sin plazo, el chatbot espera el tiempo que sea.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato responder.\n\nEm “O que a resposta precisa ser”, você escolhe o formato: qualquer texto, e-mail, telefone, CPF, CNPJ, número ou data. Fora do formato, o chatbot pede de novo; depois das tentativas, segue por “Não respondeu certo”. O CPF e o CNPJ têm os dígitos conferidos, então número digitado errado não passa.\n\nA resposta fica guardada já arrumada (e-mail em minúsculas, CPF e CNPJ com pontuação, data em dia/mês/ano) com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.\n\nCom “Usar a mensagem anterior”, o chatbot não faz a pergunta se a mensagem que o contato acabou de mandar já estiver no formato. Por exemplo: o cliente começa a conversa mandando o CPF.":
+  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato responder.\n\nEm “O que a resposta precisa ser”, você escolhe o formato: qualquer texto, e-mail, telefone, CPF, CNPJ, número ou data. Fora do formato, o chatbot pede de novo; depois das tentativas, segue por “Não respondeu certo”. O CPF e o CNPJ têm os dígitos conferidos, então número digitado errado não passa.\n\nA resposta fica guardada já arrumada (e-mail em minúsculas, CPF e CNPJ com pontuação, data em dia/mês/ano) com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.\n\nCom “Usar a mensagem anterior”, o chatbot não faz a pergunta se a mensagem que o contato acabou de mandar já estiver no formato. Por exemplo: o cliente começa a conversa mandando o CPF.\n\nEm “Se o contato não responder”, você pode dar um prazo: passado o tempo sem resposta, o fluxo segue pela saída “Não respondeu a tempo” (por exemplo, para mandar um lembrete ou passar para a equipe). Sem prazo, o chatbot espera pelo tempo que for.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, envía la pregunta y espera que el contacto responda.\n\nEn “Lo que debe ser la respuesta”, eliges el formato: cualquier texto, correo, teléfono, CPF, CNPJ, número o fecha. Fuera del formato, el chatbot vuelve a preguntar; después de los intentos, sigue por “No respondió bien”. El CPF y el CNPJ tienen los dígitos verificados, así que un número mal escrito no pasa.\n\nLa respuesta queda guardada ya ordenada (correo en minúsculas, CPF y CNPJ con puntuación, fecha en día/mes/año) con el nombre que elijas, para usarla después en un mensaje, en una condición o para guardarla en el registro con “Campo del contacto”.\n\nCon “Usar el mensaje anterior”, el chatbot no hace la pregunta si el mensaje que el contacto acaba de enviar ya está en el formato. Por ejemplo: el cliente empieza la conversación enviando el CPF.",
+      es: "Cuando agregues esta acción a tu chatbot, envía la pregunta y espera que el contacto responda.\n\nEn “Lo que debe ser la respuesta”, eliges el formato: cualquier texto, correo, teléfono, CPF, CNPJ, número o fecha. Fuera del formato, el chatbot vuelve a preguntar; después de los intentos, sigue por “No respondió bien”. El CPF y el CNPJ tienen los dígitos verificados, así que un número mal escrito no pasa.\n\nLa respuesta queda guardada ya ordenada (correo en minúsculas, CPF y CNPJ con puntuación, fecha en día/mes/año) con el nombre que elijas, para usarla después en un mensaje, en una condición o para guardarla en el registro con “Campo del contacto”.\n\nCon “Usar el mensaje anterior”, el chatbot no hace la pregunta si el mensaje que el contacto acaba de enviar ya está en el formato. Por ejemplo: el cliente empieza la conversación enviando el CPF.\n\nEn “Si el contacto no responde”, puedes dar un plazo: pasado el tiempo sin respuesta, el flujo sigue por la salida “No respondió a tiempo” (por ejemplo, para enviar un recordatorio o pasar al equipo). Sin plazo, el chatbot espera el tiempo que sea.",
     },
   "O que a resposta precisa ser": { es: "Lo que debe ser la respuesta" },
   "Qualquer texto": { es: "Cualquier texto" },
@@ -5955,6 +5955,39 @@ export const DICIONARIO: Traducoes = {
     },
   "Se a resposta não estiver no formato": { es: "Si la respuesta no está en el formato" },
   "Usar a mensagem anterior": { es: "Usar el mensaje anterior" },
+  "Se o contato não responder": { es: "Si el contacto no responde" },
+  'Passado o prazo sem resposta, o fluxo segue pela saída "Não respondeu a tempo". Sem nada ligado nela, o fluxo termina.':
+    {
+      es: 'Pasado el plazo sin respuesta, el flujo sigue por la salida "No respondió a tiempo". Sin nada conectado, el flujo termina.',
+    },
+  "O chatbot espera a resposta pelo tempo que for.": {
+    es: "El chatbot espera la respuesta el tiempo que sea.",
+  },
+  "Esperar sem prazo": { es: "Esperar sin plazo" },
+  "Seguir depois de 5 minutos": { es: "Seguir después de 5 minutos" },
+  "Seguir depois de 15 minutos": { es: "Seguir después de 15 minutos" },
+  "Seguir depois de 30 minutos": { es: "Seguir después de 30 minutos" },
+  "Seguir depois de 1 hora": { es: "Seguir después de 1 hora" },
+  "Seguir depois de 2 horas": { es: "Seguir después de 2 horas" },
+  "Seguir depois de 6 horas": { es: "Seguir después de 6 horas" },
+  "Seguir depois de 12 horas": { es: "Seguir después de 12 horas" },
+  "Seguir depois de 1 dia": { es: "Seguir después de 1 día" },
+  "Seguir depois de 2 dias": { es: "Seguir después de 2 días" },
+  "Seguir depois de 7 dias": { es: "Seguir después de 7 días" },
+  "Não respondeu a tempo": { es: "No respondió a tiempo" },
+  "Se o contato não responder, o fluxo segue por “Não respondeu a tempo” em": {
+    es: "Si el contacto no responde, el flujo sigue por “No respondió a tiempo” el",
+  },
+  "Simular: não respondeu": { es: "Simular: no respondió" },
+  "Ou use um arquivo já enviado": { es: "O usa un archivo ya enviado" },
+  "Biblioteca de mídia": { es: "Biblioteca de medios" },
+  "Os arquivos que os chatbots da empresa já mandam. Usar um deles não sobe o arquivo outra vez.": {
+    es: "Los archivos que los chatbots de la empresa ya envían. Usar uno no vuelve a subir el archivo.",
+  },
+  "Em número da API oficial da Meta, até 3 opções de até 20 letras viram botões, e até 10 opções de até 24 letras viram lista. Em QR Code, vão numeradas.":
+    {
+      es: "En un número de la API oficial de Meta, hasta 3 opciones de hasta 20 letras se vuelven botones, y hasta 10 opciones de hasta 24 letras se vuelven lista. Con código QR, van numeradas.",
+    },
   "Etiqueta de origem (opcional)": { es: "Etiqueta de origen (opcional)" },
   "Se a primeira mensagem tiver a frase, o contato ganha a etiqueta. Use a mensagem pronta do seu anúncio ou do link do site para saber de onde ele veio.":
     {

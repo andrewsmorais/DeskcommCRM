@@ -74,7 +74,16 @@ export type SessaoDoChatbot = {
 };
 
 export type Efeito =
-  | { tipo: "enviar"; texto: string }
+  | {
+      tipo: "enviar";
+      texto: string;
+      /**
+       * As opções clicáveis deste texto (o texto já as traz numeradas). Vai no
+       * envio como `metadata.escolhas`; o canal que sabe desenhar botão ou
+       * lista desenha, o que não sabe manda o texto (lib/channels/escolhas.ts).
+       */
+      escolhas?: { pergunta: string; opcoes: string[] };
+    }
   | { tipo: "midia"; storage_path: string; midia: TipoDeMidia; mime: string; legenda: string }
   | { tipo: "negocio"; pipeline_id: string; stage_id: string; titulo: string }
   /** `setor_id` null = equipe toda. */
@@ -262,7 +271,7 @@ function textoDasOpcoes(pergunta: string, opcoes: string[]): string {
   return pergunta ? `${pergunta}\n\n${lista}` : lista;
 }
 
-const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha", "sem_horario"]);
+const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha", "sem_horario", "sem_resposta"]);
 
 /**
  * As mensagens do "Enviar link de pagamento": o texto com o link e, à parte,
@@ -416,6 +425,16 @@ function andar(
     sessao.retomar_em = new Date(ctx.agora.getTime() + c.espera_minutos * 60_000).toISOString();
     return { sessao, efeitos, passos };
   };
+  /** A pergunta espera a resposta; com prazo, o relógio leva a "Não respondeu a tempo". */
+  const esperarResposta = (noId: string, prazoMinutos: number): ResultadoDoTurno => {
+    sessao.no_atual = noId;
+    sessao.status = "waiting_input";
+    sessao.retomar_em =
+      prazoMinutos > 0
+        ? new Date(ctx.agora.getTime() + prazoMinutos * 60_000).toISOString()
+        : null;
+    return { sessao, efeitos, passos };
+  };
   const esperarRelogio = (noId: string, ate: Date): ResultadoDoTurno => {
     sessao.status = "waiting_timer";
     sessao.no_atual = noId;
@@ -551,11 +570,10 @@ function andar(
           efeitos.push({
             tipo: "enviar",
             texto: textoDasOpcoes(preencher(c.pergunta, sessao.dados), c.opcoes),
+            escolhas: { pergunta: preencher(c.pergunta, sessao.dados).trim(), opcoes: c.opcoes },
           });
-          sessao.no_atual = no.id;
-          sessao.status = "waiting_input";
           sessao.tentativas = 0;
-          return { sessao, efeitos, passos };
+          return esperarResposta(no.id, c.prazo_minutos);
         }
         resposta = false;
         const i = ctx.mensagem === null ? null : opcaoEscolhida(ctx.mensagem, c.opcoes);
@@ -569,10 +587,9 @@ function andar(
           efeitos.push({
             tipo: "enviar",
             texto: `${c.mensagem_invalida}\n\n${textoDasOpcoes("", c.opcoes)}`,
+            escolhas: { pergunta: c.mensagem_invalida, opcoes: c.opcoes },
           });
-          sessao.no_atual = no.id;
-          sessao.status = "waiting_input";
-          return { sessao, efeitos, passos };
+          return esperarResposta(no.id, c.prazo_minutos);
         }
         sessao.tentativas = 0;
         saida = "invalida";
@@ -597,10 +614,8 @@ function andar(
           }
           const pergunta = preencher(c.pergunta, sessao.dados).trim();
           if (pergunta) efeitos.push({ tipo: "enviar", texto: pergunta });
-          sessao.no_atual = no.id;
-          sessao.status = "waiting_input";
           sessao.tentativas = 0;
-          return { sessao, efeitos, passos };
+          return esperarResposta(no.id, c.prazo_minutos);
         }
         resposta = false;
         const valor = respostaNoFormato(c.formato, ctx.mensagem ?? "");
@@ -615,9 +630,7 @@ function andar(
             tipo: "enviar",
             texto: c.mensagem_invalida || MENSAGEM_FORA_DO_FORMATO[c.formato],
           });
-          sessao.no_atual = no.id;
-          sessao.status = "waiting_input";
-          return { sessao, efeitos, passos };
+          return esperarResposta(no.id, c.prazo_minutos);
         }
         sessao.tentativas = 0;
         saida = "invalida";
@@ -763,6 +776,7 @@ function andar(
           efeitos.push({
             tipo: "enviar",
             texto: `${c.mensagem_invalida}\n\n${textoDasOpcoes("", ofertas.map((o) => o.quando))}`,
+            escolhas: { pergunta: c.mensagem_invalida, opcoes: ofertas.map((o) => o.quando) },
           });
           sessao.no_atual = no.id;
           sessao.status = "waiting_input";
@@ -1008,16 +1022,19 @@ export function retomarFluxo(
   sessao: SessaoDoChatbot,
   ctx: ContextoDoTurno,
 ): ResultadoDoTurno {
-  const parada = sessao.status === "waiting_timer" && sessao.no_atual ? sessao.no_atual : null;
-  const seguinte = parada ? proximo(grafo, parada, "proximo") : null;
+  // Pergunta com prazo: o relógio venceu sem resposta → "Não respondeu a tempo".
+  const semResposta = sessao.status === "waiting_input";
+  const parada =
+    (sessao.status === "waiting_timer" || semResposta) && sessao.no_atual ? sessao.no_atual : null;
+  const seguinte = parada ? proximo(grafo, parada, semResposta ? "sem_resposta" : "proximo") : null;
   if (!seguinte) {
     return {
-      sessao: { ...sessao, status: "completed", no_atual: null, retomar_em: null },
+      sessao: { ...sessao, status: "completed", no_atual: null, tentativas: 0, retomar_em: null },
       efeitos: [],
       passos: 0,
     };
   }
-  return andar(grafo, { ...sessao, status: "running" }, seguinte, ctx, false);
+  return andar(grafo, { ...sessao, status: "running", tentativas: 0 }, seguinte, ctx, false);
 }
 
 /** `a.b.0.c` dentro do JSON; só valor simples (texto, número, sim/não) conta. */
@@ -1115,6 +1132,10 @@ export function continuarComHorarios(
       {
         tipo: "enviar",
         texto: textoDasOpcoes(preencher(c.pergunta, dados).trim(), ofertas.map((o) => o.quando)),
+        escolhas: {
+          pergunta: preencher(c.pergunta, dados).trim(),
+          opcoes: ofertas.map((o) => o.quando),
+        },
       },
     ],
     passos: 0,

@@ -61,7 +61,12 @@ describe("começar o fluxo", () => {
     const r = iniciarFluxo(menu, "ini", ctx("oi"));
     expect(r.efeitos).toEqual([
       { tipo: "enviar", texto: "Olá! Bem-vindo à Loja." },
-      { tipo: "enviar", texto: "Como posso ajudar?\n\n1. Comprar\n2. Suporte" },
+      {
+        tipo: "enviar",
+        texto: "Como posso ajudar?\n\n1. Comprar\n2. Suporte",
+        // As opções vão junto: o canal que sabe desenhar botão desenha.
+        escolhas: { pergunta: "Como posso ajudar?", opcoes: ["Comprar", "Suporte"] },
+      },
     ]);
     expect(r.sessao).toMatchObject({ status: "waiting_input", no_atual: "menu" });
   });

@@ -1056,9 +1056,17 @@ async function agendarRetomada(
   );
 }
 
-/** A sessão para no relógio: espera do fluxo, ou mensagem de espera de uma transferência. */
+/**
+ * A sessão para no relógio: espera do fluxo, mensagem de espera de uma
+ * transferência, ou o prazo de uma pergunta ("Não respondeu a tempo"). A
+ * resposta que chega antes regrava a sessão com outro token (ou sem), e o
+ * relógio antigo é descartado ao acordar — não há corrida.
+ */
 function temRelogio(s: SessaoDoChatbot): boolean {
-  return Boolean(s.retomar_em) && (s.status === "waiting_timer" || s.status === "transferred");
+  return (
+    Boolean(s.retomar_em) &&
+    (s.status === "waiting_timer" || s.status === "transferred" || s.status === "waiting_input")
+  );
 }
 
 /** O que viaja no `chatbot.inicio_requested` (ação de automação "Iniciar chatbot"). */
@@ -1251,7 +1259,8 @@ export async function retomarChatbotPeloRelogio(
        join chatbot_flows f on f.id = s.flow_id and f.organization_id = s.organization_id
        join organizations o on o.id = s.organization_id
       where s.organization_id = $1 and s.id = $2
-        and s.status in ('waiting_timer', 'transferred') and s.retomada_token = $3::uuid`,
+        and s.status in ('waiting_timer', 'transferred', 'waiting_input')
+        and s.retomada_token = $3::uuid`,
     [organizationId, pedido.session_id, pedido.token],
   );
   const sessao = rows[0];
@@ -1326,7 +1335,8 @@ export async function retomarChatbotPeloRelogio(
     g.data,
     {
       no_atual: sessao.no_atual,
-      status: "waiting_timer",
+      // Pergunta com prazo vencido segue por "Não respondeu a tempo".
+      status: sessao.status === "waiting_input" ? "waiting_input" : "waiting_timer",
       tentativas: sessao.tentativas ?? 0,
       dados: dadosDeTexto(sessao.collected_data),
     },
@@ -1569,7 +1579,11 @@ async function executarEfeitos(
     try {
       switch (efeito.tipo) {
         case "enviar":
-          await enviar({ type: "text", body: efeito.texto });
+          await enviar({
+            type: "text",
+            body: efeito.texto,
+            ...(efeito.escolhas ? { metadata: { escolhas: efeito.escolhas } } : {}),
+          });
           break;
         case "midia": {
           // Só arquivo do chatbot DESTA organização: o desenho é gravável pela

@@ -7,6 +7,7 @@ import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { listSelectableChannels } from "@/lib/channels/selectable";
 import { grafoSchema } from "@/lib/chatbot/passos";
 import { modelosQueOFluxoEnvia, type LinhaDeModeloDoCanal } from "@/lib/followup/modelos-aprovados";
+import { bibliotecaDeMidias } from "@/lib/chatbot/biblioteca-de-midias";
 import { createClient } from "@/lib/supabase/server";
 import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 import { ChatbotCanvas } from "./_components/ChatbotCanvas";
@@ -59,7 +60,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
       .order("name"),
     db
       .from("chatbot_flows")
-      .select("id, name, is_active")
+      .select("id, name, is_active, grafo")
       .eq("organization_id", activeOrg.orgId)
       .order("name"),
     db
@@ -144,6 +145,10 @@ export default async function ChatbotEditorPage({ params }: Props) {
         setores: (setoresRes.data ?? []).map((s) => ({ id: String(s.id), nome: String(s.nome) })),
         modelos: modelosQueOFluxoEnvia((modelosRes.data ?? []) as LinhaDeModeloDoCanal[]).map(
           (m) => ({ id: m.id, nome: m.name, idioma: m.language, texto: m.texto }),
+        ),
+        midias: bibliotecaDeMidias(
+          (fluxosRes.data ?? []).map((f) => ({ name: String(f.name), grafo: f.grafo })),
+          activeOrg.orgId,
         ),
       }}
     />

@@ -47,6 +47,7 @@ import {
 } from "@/lib/messaging/contact-card";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
+import { escolhasDoEnvio } from "@/lib/channels/escolhas";
 import { emitirFalhaDeEntrega } from "@/lib/messaging/falha-de-entrega";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -1034,6 +1035,8 @@ export async function sendMessageHandler(
           providerConversationId: c.provider_conversation_id,
           kind: input.type,
           body: input.body ?? "",
+          // Botões/lista quando o canal sabe desenhar; o body já tem a lista numerada.
+          escolhas: escolhasDoEnvio(input.metadata),
           replyToExternalId: citada?.external_id ?? null,
         }));
       }

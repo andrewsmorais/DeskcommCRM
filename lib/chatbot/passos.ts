@@ -104,6 +104,17 @@ export const OPERADORES_DE_VALOR = [
 ] as const;
 export type OperadorDeValor = (typeof OPERADORES_DE_VALOR)[number];
 
+/**
+ * "Cliente não respondeu": a pergunta espera no máximo `prazo_minutos` e então
+ * segue pela saída "Não respondeu a tempo" — no mesmo relógio persistente do
+ * "Aguardar" (`event_log`), nunca timer em memória. 0 = espera sem prazo,
+ * como antes. Até 7 dias.
+ */
+export const PRAZOS_DE_RESPOSTA = [0, 5, 15, 30, 60, 120, 360, 720, 1440, 2880, 10080] as const;
+const PRAZO_DA_RESPOSTA = {
+  prazo_minutos: z.number().int().min(0).max(10080).default(0),
+};
+
 /** O que o "Pedir para digitar" aceita como resposta. */
 export const FORMATOS_DE_RESPOSTA = [
   "qualquer",
@@ -196,6 +207,7 @@ export const configDoPasso = {
       .max(500)
       .default("Não entendi. Responda com o número de uma das opções."),
     tentativas: z.number().int().min(1).max(5).default(3),
+    ...PRAZO_DA_RESPOSTA,
   }),
   pedir_digitar: z.object({
     pergunta: z.string().trim().max(2000).default(""),
@@ -219,6 +231,7 @@ export const configDoPasso = {
      * ela ainda for a última da conversa e estiver no formato. Senão, pergunta.
      */
     usar_mensagem_anterior: z.boolean().default(false),
+    ...PRAZO_DA_RESPOSTA,
   }),
   mensagem_contem: z.object({
     palavras: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
@@ -1064,6 +1077,8 @@ export function lerConfig<T extends TipoDePasso>(tipo: T, dados: unknown): Confi
  * Saídas de cada passo (os "pontinhos" de baixo no quadro). O id é o
  * `sourceHandle` gravado na ligação; o motor segue a ligação cujo handle bate.
  */
+const SAIDA_SEM_RESPOSTA = { id: "sem_resposta", rotulo: "Não respondeu a tempo" };
+
 export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; rotulo: string }[] {
   switch (tipo) {
     case "pedir_escolher": {
@@ -1071,6 +1086,7 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         ...c.opcoes.map((o, i) => ({ id: `opcao-${i}`, rotulo: `${i + 1}. ${o}` })),
         { id: "invalida", rotulo: "Não respondeu certo" },
+        ...(c.prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
       ];
     }
     case "mensagem_contem":
@@ -1190,13 +1206,17 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Respondeu tudo" },
         { id: "invalida", rotulo: "Não respondeu certo" },
       ];
-    case "pedir_digitar":
-      return lerConfig("pedir_digitar", dados).formato === "qualquer"
-        ? [{ id: "proximo", rotulo: "" }]
-        : [
-            { id: "proximo", rotulo: "Respondeu certo" },
-            { id: "invalida", rotulo: "Não respondeu certo" },
-          ];
+    case "pedir_digitar": {
+      const c = lerConfig("pedir_digitar", dados);
+      const prazo = c.prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : [];
+      if (c.formato === "qualquer")
+        return [{ id: "proximo", rotulo: prazo.length ? "Respondeu" : "" }, ...prazo];
+      return [
+        { id: "proximo", rotulo: "Respondeu certo" },
+        { id: "invalida", rotulo: "Não respondeu certo" },
+        ...prazo,
+      ];
+    }
     case "agendar_horario":
       return [
         { id: "proximo", rotulo: "Marcou" },

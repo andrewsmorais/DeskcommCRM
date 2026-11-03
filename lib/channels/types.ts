@@ -6,6 +6,7 @@
 import type { SendMessageInput } from "@/lib/schemas";
 import type { FetchedMedia } from "@/lib/messaging/media/types";
 import type { OutboundMedia } from "@/lib/waha/media-send";
+import type { Escolhas } from "./escolhas";
 
 export type { OutboundMedia };
 
@@ -131,6 +132,12 @@ export interface OutboundEnvelope extends ChannelTenantScope {
   media?: OutboundMedia;
   /** Cartão de contato — preenchido quando `kind === "contact"`. */
   contact?: OutboundContact;
+  /**
+   * Opções clicáveis para este texto (`lib/channels/escolhas.ts`). O `body`
+   * JÁ traz as opções numeradas: canal que não sabe desenhar botão ignora
+   * este campo e o contato lê a lista. Enfeite, nunca condição de envio.
+   */
+  escolhas?: Escolhas | null;
   /**
    * Id que o PROVIDER dá a esta thread, quando ele endereça por thread própria
    * em vez de por telefone (`conversations.provider_conversation_id`).

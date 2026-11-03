@@ -15,6 +15,7 @@
  * depois que o endpoint devolve o desafio **em texto puro** — não JSON, não
  * `{data:...}`. Envelopar quebra a verificação com uma mensagem inútil no dashboard.
  */
+import { textoDoClique } from "./escolhas-interativas";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { parseMetaInboundContact } from "@/lib/channels/meta/contact-card";
@@ -250,7 +251,10 @@ export function parseMetaWebhook(envelope: MetaWebhookEnvelope): MetaWebhookEven
           const tipo = str(raw.type) ?? "unknown";
           const corpoMidia = tipo !== "contacts" ? (raw[tipo] as Record<string, unknown> | undefined) : undefined;
           const sharedContact = tipo === "contacts" ? parseMetaInboundContact(raw) : null;
-          const tipoCrm = tipo === "contacts" ? "contact" : tipo;
+          // Clique num botão ou numa lista: chega como o TEXTO da opção, que é
+          // como o chatbot reconhece a escolha e como a Inbox mostra.
+          const clique = textoDoClique(raw);
+          const tipoCrm = tipo === "contacts" ? "contact" : clique !== null ? "text" : tipo;
 
           out.push({
             kind: "inbound_message",
@@ -264,11 +268,11 @@ export function parseMetaWebhook(envelope: MetaWebhookEnvelope): MetaWebhookEven
             type: tipoCrm,
             text:
               tipoCrm === "text"
-                ? str((raw.text as Record<string, unknown>)?.body)
+                ? (clique ?? str((raw.text as Record<string, unknown>)?.body))
                 : sharedContact?.name ?? null,
             ...(sharedContact ? { sharedContact } : {}),
             media:
-              corpoMidia && str(corpoMidia.id)
+              clique === null && corpoMidia && str(corpoMidia.id)
                 ? {
                     id: str(corpoMidia.id)!,
                     url: str(corpoMidia.url),

@@ -19,6 +19,7 @@ import {
   lerConfig,
   FORMATOS_DE_RESPOSTA,
   metaDoPasso,
+  PRAZOS_DE_RESPOSTA,
   MODOS_DE_ATENDENTE,
   perguntaDoFormularioSchema,
   regraSchema,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/chatbot/passos";
 
 import { MENSAGEM_FORA_DO_FORMATO } from "@/lib/chatbot/motor";
+import type { MidiaDaBiblioteca } from "@/lib/chatbot/biblioteca-de-midias";
 import { IconeDoPasso } from "./icones";
 import type { NodeData } from "./node-types";
 
@@ -48,6 +50,8 @@ export type OpcoesDoPainel = {
   setores: { id: string; nome: string }[];
   /** Modelos aprovados pela Meta que um fluxo consegue mandar sozinho (sem variáveis). */
   modelos: { id: string; nome: string; idioma: string; texto: string }[];
+  /** Arquivos que os "Enviar mídia" dos fluxos da empresa já usam (biblioteca). */
+  midias: MidiaDaBiblioteca[];
 };
 
 type Props = {
@@ -649,6 +653,7 @@ function Campos({
               </span>
             </span>
           </label>
+          <PrazoDaResposta id="digitar-prazo" valor={c.prazo_minutos} aplicar={aplicar} />
         </>
       );
     }
@@ -1059,7 +1064,14 @@ function Campos({
       );
     }
     case "enviar_midia":
-      return <EnviarMidia dados={dados} fluxoId={opcoes.fluxoAtual} aplicar={aplicar} />;
+      return (
+        <EnviarMidia
+          dados={dados}
+          fluxoId={opcoes.fluxoAtual}
+          biblioteca={opcoes.midias}
+          aplicar={aplicar}
+        />
+      );
     case "agendar_horario":
       return <AgendarHorario dados={dados} opcoes={opcoes} aplicar={aplicar} />;
     case "negocio_funil":
@@ -1288,6 +1300,11 @@ function PedirEscolher({
             "O contato responde com o número ou com o texto da opção. Cada opção tem uma saída no quadro.",
           )}
         </p>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Em número da API oficial da Meta, até 3 opções de até 20 letras viram botões, e até 10 opções de até 24 letras viram lista. Em QR Code, vão numeradas.",
+          )}
+        </p>
       </div>
       <Texto
         id="escolher-invalida"
@@ -1313,6 +1330,7 @@ function PedirEscolher({
           ))}
         </select>
       </div>
+      <PrazoDaResposta id="escolher-prazo" valor={c.prazo_minutos} aplicar={aplicar} />
     </>
   );
 }
@@ -1985,10 +2003,12 @@ const ROTULO_DO_TIPO_DE_MIDIA: Record<string, string> = {
 function EnviarMidia({
   dados,
   fluxoId,
+  biblioteca,
   aplicar,
 }: {
   dados: NodeData;
   fluxoId: string;
+  biblioteca: MidiaDaBiblioteca[];
   aplicar: (p: Record<string, unknown>) => void;
 }) {
   const t = useT();
@@ -1997,10 +2017,10 @@ function EnviarMidia({
   const [previa, setPrevia] = useState<string | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
 
-  // Link curto para mostrar a imagem/vídeo já escolhido (o bucket é privado).
+  // Link curto para mostrar (ou ouvir) o arquivo já escolhido (o bucket é privado).
   useEffect(() => {
     let vivo = true;
-    if (!c.storage_path || (c.tipo !== "image" && c.tipo !== "video")) return;
+    if (!c.storage_path || (c.tipo !== "image" && c.tipo !== "video" && c.tipo !== "audio")) return;
     void fetch(`/api/v1/chatbot-flows/${fluxoId}/media?path=${encodeURIComponent(c.storage_path)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((corpo) => {
@@ -2047,6 +2067,8 @@ function EnviarMidia({
               <img src={previa} alt={c.nome_arquivo} className="max-h-40 w-full rounded-md object-contain" />
             ) : previa && c.tipo === "video" ? (
               <video src={previa} controls className="max-h-40 w-full rounded-md" />
+            ) : previa && c.tipo === "audio" ? (
+              <audio src={previa} controls className="w-full" data-testid="chatbot-midia-previa-audio" />
             ) : null}
             <p className="flex items-center gap-1.5 text-xs">
               <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -2086,6 +2108,40 @@ function EnviarMidia({
           {t("Foto, vídeo, áudio ou documento (PDF, Word, Excel), até 16 MB.")}
         </p>
       </div>
+      {biblioteca.some((m) => m.storage_path !== c.storage_path) ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="midia-biblioteca">{t("Ou use um arquivo já enviado")}</Label>
+          <select
+            id="midia-biblioteca"
+            className={SELECT}
+            value=""
+            data-testid="chatbot-midia-biblioteca"
+            onChange={(e) => {
+              const m = biblioteca.find((x) => x.storage_path === e.target.value);
+              if (!m) return;
+              setPrevia(null);
+              aplicar({
+                storage_path: m.storage_path,
+                tipo: m.tipo,
+                mime: m.mime,
+                nome_arquivo: m.nome_arquivo,
+              });
+            }}
+          >
+            <option value="">{t("Biblioteca de mídia")}</option>
+            {biblioteca
+              .filter((m) => m.storage_path !== c.storage_path)
+              .map((m) => (
+                <option key={m.storage_path} value={m.storage_path}>
+                  {`${m.nome_arquivo || t("Arquivo")} · ${t(ROTULO_DO_TIPO_DE_MIDIA[m.tipo] ?? "Arquivo")} · ${m.fluxo}`}
+                </option>
+              ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {t("Os arquivos que os chatbots da empresa já mandam. Usar um deles não sobe o arquivo outra vez.")}
+          </p>
+        </div>
+      ) : null}
       {c.tipo !== "audio" ? (
         <Texto
           id="midia-legenda"
@@ -2634,6 +2690,55 @@ function OrigensDoInicio({
     </div>
   );
 }
+
+/** "Se não responder": o prazo da pergunta, com a saída "Não respondeu a tempo". */
+function PrazoDaResposta({
+  id,
+  valor,
+  aplicar,
+}: {
+  id: string;
+  valor: number;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{t("Se o contato não responder")}</Label>
+      <select
+        id={id}
+        className={SELECT}
+        value={valor}
+        onChange={(e) => aplicar({ prazo_minutos: Number(e.target.value) })}
+      >
+        {PRAZOS_DE_RESPOSTA.map((m) => (
+          <option key={m} value={m}>
+            {t(NOMES_DO_PRAZO[m])}
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-muted-foreground">
+        {valor > 0
+          ? t('Passado o prazo sem resposta, o fluxo segue pela saída "Não respondeu a tempo". Sem nada ligado nela, o fluxo termina.')
+          : t("O chatbot espera a resposta pelo tempo que for.")}
+      </p>
+    </div>
+  );
+}
+
+const NOMES_DO_PRAZO: Record<(typeof PRAZOS_DE_RESPOSTA)[number], string> = {
+  0: "Esperar sem prazo",
+  5: "Seguir depois de 5 minutos",
+  15: "Seguir depois de 15 minutos",
+  30: "Seguir depois de 30 minutos",
+  60: "Seguir depois de 1 hora",
+  120: "Seguir depois de 2 horas",
+  360: "Seguir depois de 6 horas",
+  720: "Seguir depois de 12 horas",
+  1440: "Seguir depois de 1 dia",
+  2880: "Seguir depois de 2 dias",
+  10080: "Seguir depois de 7 dias",
+};
 
 const NOMES_DO_FORMATO_DE_RESPOSTA: Record<FormatoDeResposta, string> = {
   qualquer: "Qualquer texto",

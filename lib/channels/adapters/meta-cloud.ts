@@ -19,6 +19,7 @@
  *    da bolha de voz. E a Meta **não converte** — quem manda mp3 com `voice:true` erra;
  *    o outro canal converte por nós, este não.
  */
+import { payloadDeEscolhas } from "../meta/escolhas-interativas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { metaContactsPayload } from "@/lib/channels/meta/contact-card";
 import { graphBaseUrl } from "@/lib/channels/meta/graph-base";
@@ -288,6 +289,7 @@ export const metaCloudAdapter: ChannelAdapter = {
     const corpo =
       contactPayload(envelope) ??
       mediaPayload(envelope) ??
+      (envelope.kind === "text" ? payloadDeEscolhas(envelope.escolhas) : null) ??
       { type: "text", text: { body: envelope.body ?? "" } };
 
     await envelope.beforeSend?.();
