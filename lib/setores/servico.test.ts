@@ -7,6 +7,7 @@
  *   - tirar o setor (null) só limpa a marca;
  *   - setor de outra organização não é achado (a busca filtra a organização).
  */
+import { comandoDaConversa } from "@/lib/inbox/comando-da-conversa";
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -130,7 +131,19 @@ describe("transferirParaSetor", () => {
       conversationId: CONVERSA,
       setorId: SETOR,
     });
-    expect((chamadas[0] as Extract<Chamada, { tipo: "update" }>).valores.status).toBe("pending");
+    const valores = (chamadas[0] as Extract<Chamada, { tipo: "update" }>).valores;
+    // Quem manda é o comando, não o status: a trava do robô põe na fila humana.
+    expect(valores.bot_silenced_until).toBe("infinity");
+    expect("status" in valores).toBe(false);
+    const comando = comandoDaConversa(
+      {
+        status: "ai_handling",
+        assigned_to_user_id: null,
+        bot_silenced_until: valores.bot_silenced_until as string,
+      } as never,
+      new Date("2026-11-03T12:00:00Z"),
+    );
+    expect(comando.comando.quem).toBe("aguardando");
   });
 
   it("tirar o setor só limpa a marca", async () => {

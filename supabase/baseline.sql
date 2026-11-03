@@ -5385,11 +5385,9 @@ revoke execute on function public.fn_can_view_conversation(uuid, uuid) from anon
 grant execute on function public.fn_can_view_conversation(uuid, uuid)
   to authenticated, service_role;
 
-drop policy if exists "conversations_select" on public.conversations;
-create policy "conversations_select" on public.conversations
-  for select using (
-    public.fn_can_view_conversation(organization_id, assigned_to_user_id)
-  );
+-- (conversations_select: a definição que vale é a da migration 0495, no fim do
+-- arquivo — com privacidade. Ela faz o drop; uma intermediária aqui rodaria a
+-- cada update e valeria até a final chegar.)
 
 drop policy if exists "conversations_agent_write" on public.conversations;
 drop policy if exists "conversations_agent_insert" on public.conversations;
@@ -42964,6 +42962,33 @@ begin
 end $$;
 revoke execute on function public.fn_emitir_plano_alterado() from public, anon;
 
+-- ---- regra de visibilidade com privacidade (migration 0495) ----
+-- Antes da varredura de anon de propósito: função criada depois dela nasceria
+-- com EXECUTE para anon (tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts).
+-- A coluna is_private, a policy e a troca nas funções definer ficam lá embaixo,
+-- no bloco da migration 0495; esta função não lê a coluna, só recebe o valor.
+create or replace function public.fn_can_view_conversation(
+  p_org uuid,
+  p_assigned_to_user_id uuid,
+  p_is_private boolean
+) returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select public.fn_can_view_conversation(p_org, p_assigned_to_user_id)
+    and (
+      not coalesce(p_is_private, false)
+      or public.fn_is_platform_admin()
+      or p_assigned_to_user_id = auth.uid()
+      or public.fn_user_role_in_org(p_org) in ('manager', 'admin')
+    );
+$$;
+
+revoke all on function public.fn_can_view_conversation(uuid, uuid, boolean) from public;
+revoke execute on function public.fn_can_view_conversation(uuid, uuid, boolean) from anon;
+grant execute on function public.fn_can_view_conversation(uuid, uuid, boolean)
+  to authenticated, service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria
@@ -44503,27 +44528,7 @@ alter table public.conversations add column if not exists is_private boolean not
 comment on column public.conversations.is_private is
   'Conversa privada: só o atendente responsável, gerente/admin e o super-admin a veem (fn_can_view_conversation de 3 argumentos). false = segue settings.visibility_mode. Gravada pela rota PATCH /api/v1/conversations/[id]/privacy e pelo passo "Privar ou liberar" do chatbot.';
 
-create or replace function public.fn_can_view_conversation(
-  p_org uuid,
-  p_assigned_to_user_id uuid,
-  p_is_private boolean
-) returns boolean
-language sql stable security definer
-set search_path = public
-as $$
-  select public.fn_can_view_conversation(p_org, p_assigned_to_user_id)
-    and (
-      not coalesce(p_is_private, false)
-      or public.fn_is_platform_admin()
-      or p_assigned_to_user_id = auth.uid()
-      or public.fn_user_role_in_org(p_org) in ('manager', 'admin')
-    );
-$$;
-
-revoke all on function public.fn_can_view_conversation(uuid, uuid, boolean) from public;
-revoke execute on function public.fn_can_view_conversation(uuid, uuid, boolean) from anon;
-grant execute on function public.fn_can_view_conversation(uuid, uuid, boolean)
-  to authenticated, service_role;
+-- (a função fn_can_view_conversation de 3 argumentos mora ANTES da varredura de anon; ver lá)
 
 drop policy if exists "conversations_select" on public.conversations;
 create policy "conversations_select" on public.conversations
@@ -44670,3 +44675,13 @@ create policy setor_membros_delete on public.setor_membros
 revoke all on table public.setor_membros from anon, authenticated;
 grant select, insert, delete on table public.setor_membros to authenticated;
 grant all on table public.setor_membros to service_role;
+
+-- ---- gatilho do aviso de plano não fica executável por authenticated (migration 0497) ----
+-- `fn_emitir_plano_alterado` (migration 0493) é função de GATILHO de
+-- `subscriptions`: o Postgres não confere EXECUTE de quem dispara o gatilho, só
+-- de quem o cria. O `revoke … from public, anon` da 0493 deixava o EXECUTE
+-- concedido a `authenticated` pelo default ACL — uma definer que escreve
+-- (emit_event) ao alcance de qualquer usuário logado pela REST.
+-- tests/invariants/hardening-definer-varredura.test.ts cobra isto.
+-- Idempotente: revogar o que já foi revogado não faz nada.
+revoke execute on function public.fn_emitir_plano_alterado() from public, anon, authenticated;

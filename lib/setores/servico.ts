@@ -161,7 +161,10 @@ export async function transferirParaSetor(
     donoEhDoSetor = Boolean(m);
   }
 
-  // 1. setor + passagem para humanos (a IA fica calada nesta conversa).
+  // 1. setor + passagem para humanos (a IA fica calada nesta conversa). O
+  // `status` não muda: quem manda é `comando_da_conversa`, e a trava do robô
+  // (`bot_silenced_until` no futuro) já a põe como "aguardando" na fila humana
+  // (tests/unit/fila-tem-uma-definicao-so.test.ts proíbe decidir por status).
   const agora = new Date().toISOString();
   const { error: erroUpdate } = await admin
     .from("conversations")
@@ -173,7 +176,6 @@ export async function transferirParaSetor(
       active_ai_agent_id: null,
       active_intent: null,
       active_agent_set_at: null,
-      ...(conversa.status === "ai_handling" ? { status: "pending", status_changed_at: agora } : {}),
       updated_at: agora,
     })
     .eq("organization_id", organizationId)
