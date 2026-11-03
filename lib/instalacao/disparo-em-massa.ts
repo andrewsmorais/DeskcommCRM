@@ -5,7 +5,7 @@
  * ─── Por que desligado ──────────────────────────────────────────────────────
  *
  * Decisão do dono do ChatAI Online (22/10/2026): o WhatsApp dos clientes entra
- * por QR code (WAHA), e o que derruba número conectado assim é mandar mensagem
+ * por QR code, e o que derruba número conectado assim é mandar mensagem
  * para quem não pediu — lista de campanha e esteira fria de prospecção. O
  * produto vende atendimento: responder quem chamou. Follow-up continua, porque
  * fala com quem já conversou com a empresa.

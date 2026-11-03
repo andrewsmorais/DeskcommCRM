@@ -41,7 +41,8 @@
  * diz ter apagado. Por isso todo canal sai primeiro, e se algum não sair a rodada
  * para (tenta de novo amanhã):
  *
- * - WhatsApp por QR: logout e remoção da sessão no WAHA, depois arquivamento.
+ * - WhatsApp por QR Code: logout e remoção da sessão no servidor do QR Code,
+ *   depois arquivamento.
  * - Canal oficial da Meta (e qualquer outro provedor): o MESMO procedimento da
  *   tela (`lib/channels/meta/devolver-webhook.ts`) — pede à Meta que devolva o
  *   número, apaga a credencial, troca a URL do webhook e arquiva. A troca da URL
@@ -50,13 +51,15 @@
  *   Meta continuaria tentando entregar numa URL morta até alguém desfazer lá.
  */
 import { audit } from "@/lib/audit";
-import { CHANNEL_PROVIDER_WAHA } from "@/lib/channels/capabilities";
 import { resolverSaudeDaConexaoRemovida } from "@/lib/channels/health";
-import { devolverWebhookDoNumero, revogacaoDoCanalOficial } from "@/lib/channels/meta/devolver-webhook";
+import {
+  COLUNAS_DO_DESLIGAMENTO,
+  prepararDesligamento,
+  type CanalParaDesligar,
+} from "@/lib/channels/desligar-canal";
 import { createLgpdRequest } from "@/lib/lgpd/repository";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getWahaClient } from "@/lib/waha/client";
 
 import { lerAssinaturasMaisRecentes, lerOrganizacao, type DadosDaOrganizacao, type LinhaDeAssinatura } from "./avisos";
 import { acessoEncerrado, exclusaoLiberada, exclusaoLiberadaEm, fimDoAcesso } from "./ciclo-de-vida";
@@ -209,26 +212,22 @@ export function dependenciasReaisDaExclusao(): DependenciasDaExclusao {
     async desconectarCanais(orgId) {
       const { data, error } = await db
         .from("channel_sessions")
-        .select("id, provider, waha_session_name, meta_token_encrypted, meta_phone_number_id")
+        .select(COLUNAS_DO_DESLIGAMENTO)
         .eq("organization_id", orgId)
         .is("archived_at", null);
       if (error) {
         logger.warn("exportacao_exclusao_leitura_de_canais_falhou", { orgId, detail: error.message });
         return { desconectados: 0, webhooksDaMetaPendentes: 0, falhou: true };
       }
-      const linhas = (data ?? []) as {
-        id: string;
-        provider: string | null;
-        waha_session_name: string | null;
-        meta_token_encrypted: string | null;
-        meta_phone_number_id: string | null;
-      }[];
+      const linhas = (data ?? []) as CanalParaDesligar[];
       if (linhas.length === 0) return { desconectados: 0, webhooksDaMetaPendentes: 0, falhou: false };
 
-      const porQr = (c: (typeof linhas)[number]) => (c.provider ?? CHANNEL_PROVIDER_WAHA) === CHANNEL_PROVIDER_WAHA;
-      const waha = linhas.some(porQr) ? getWahaClient() : null;
-      if (linhas.some(porQr) && !waha) {
-        logger.warn("exportacao_exclusao_sem_waha", { orgId, canais: linhas.filter(porQr).length });
+      const desligador = prepararDesligamento(db, linhas);
+      if (desligador.faltaServidorDoQrCode) {
+        logger.warn("exportacao_exclusao_sem_servidor_do_qr_code", {
+          orgId,
+          canais: desligador.canaisPorQrCode,
+        });
         return { desconectados: 0, webhooksDaMetaPendentes: 0, falhou: true };
       }
 
@@ -239,23 +238,13 @@ export function dependenciasReaisDaExclusao(): DependenciasDaExclusao {
         try {
           const agora = new Date().toISOString();
           const patch: Record<string, unknown> = { archived_at: agora, status: "STOPPED", last_status_change_at: agora };
-          if (porQr(canal)) {
-            // O cliente já trata "sessão não existe" como desconectada.
-            if (canal.waha_session_name && waha) {
-              await waha.logoutSession(canal.waha_session_name);
-              await waha.deleteSession(canal.waha_session_name);
-            }
-          } else {
-            // Antes de zerar a credencial: é ela que autoriza a chamada à Meta.
-            const devolucao = await devolverWebhookDoNumero(db, canal, {
-              organization_id: orgId,
-              channel_session_id: canal.id,
-              origem: "exportacao_exclusao",
-            });
-            const tinhaOverride = Boolean(canal.meta_token_encrypted && canal.meta_phone_number_id);
-            if (tinhaOverride && devolucao !== "desfeito") webhooksDaMetaPendentes += 1;
-            Object.assign(patch, revogacaoDoCanalOficial());
-          }
+          const desfecho = await desligador.desligar(canal, {
+            organization_id: orgId,
+            channel_session_id: canal.id,
+            origem: "exportacao_exclusao",
+          });
+          if (desfecho.webhookPendente) webhooksDaMetaPendentes += 1;
+          Object.assign(patch, desfecho.patch);
           const { error: erroAoArquivar } = await db
             .from("channel_sessions")
             .update(patch as never)

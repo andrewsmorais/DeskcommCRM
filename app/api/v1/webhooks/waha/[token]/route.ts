@@ -31,7 +31,8 @@ interface RouteCtx {
 }
 
 export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextResponse> {
-  const rl = await enforceRateLimit(req, "webhook-waha", getIp(req), 60, 60 * 1000); if (rl) return rl as any;
+  const rl = await enforceRateLimit(req, "webhook-waha", getIp(req), 60, 60 * 1000);
+  if (rl) return rl;
   const requestId = randomUUID();
   const { token } = await ctx.params;
 
