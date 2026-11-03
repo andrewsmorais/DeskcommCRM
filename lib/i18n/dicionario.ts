@@ -5733,6 +5733,252 @@ export const DICIONARIO: Traducoes = {
     es: "Pide una nota para la atención (1 a 5 o 0 a 10).",
   },
   "Pedir feedback escrito": { es: "Pedir comentario escrito" },
+  // Chatbot: barra do editor, ideias de bot e ajuda de cada passo (03/11/2026).
+  "Quando adicionada essa condição no seu chatbot, ele verifica se o contato está esperando resposta, isto é, se a última mensagem da conversa é dele, e segue por “Esperando resposta” ou “Já respondido”.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él verifica si el contacto está esperando respuesta, es decir, si el último mensaje de la conversación es suyo, y sigue por “Esperando respuesta” o “Ya respondido”.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele passa a responder sozinho as conversas que chegam pelo número de WhatsApp escolhido, assim que o fluxo estiver ligado.\n\nVocê escolhe se ele começa em toda conversa nova ou só quando a mensagem do cliente tiver uma das palavras-chave. Cada número tem um só chatbot de entrada ligado: ligar outro para o mesmo número desliga o anterior.\n\nDepois que o fluxo termina, ele só recomeça na mesma conversa 6 horas depois, para não responder a cada “obrigado”.\n\nO chatbot não responde quando a conversa já está com um atendente, quando o contato está bloqueado, nem em grupos de WhatsApp.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él empezará a responder solo las conversaciones que lleguen por el número de WhatsApp elegido, en cuanto el flujo esté activado.\n\nTú eliges si empieza en toda conversación nueva o solo cuando el mensaje del cliente tenga una de las palabras clave. Cada número tiene un solo chatbot de entrada activado: activar otro para el mismo número desactiva el anterior.\n\nDespués de que el flujo termina, solo vuelve a empezar en la misma conversación 6 horas después, para no responder a cada “gracias”.\n\nEl chatbot no responde cuando la conversación ya está con un agente, cuando el contacto está bloqueado, ni en grupos de WhatsApp.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele não responde mensagens sozinho: ele começa quando uma regra de Automações manda, com a ação “Iniciar chatbot”. Por exemplo, quando uma compra é aprovada na Kiwify ou na Cakto, ou quando um negócio muda de etapa.\n\nUm fluxo que só tem este início pode ficar ligado junto com o fluxo de atendimento do mesmo número.\n\nSe o contato estava parado em outro fluxo, aquele termina e este começa: a automação é o fato mais novo.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él no responde mensajes solo: empieza cuando una regla de Automatizaciones lo indica, con la acción “Iniciar chatbot”. Por ejemplo, cuando una compra es aprobada en Kiwify o en Cakto, o cuando un negocio cambia de etapa.\n\nUn flujo que solo tiene este inicio puede quedar activado junto con el flujo de atención del mismo número.\n\nSi el contacto estaba detenido en otro flujo, ese termina y este comienza: la automatización es el hecho más reciente.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele fica disponível para os atendentes dentro de qualquer conversa: na Inbox, o botão do robô no topo da conversa lista os chatbots ligados que têm este início.\n\nO chatbot responde até o fluxo terminar, mesmo com a conversa no nome do atendente. É bom para pesquisa de satisfação no fim do atendimento, menu de pagamento ou coleta de dados.\n\nO fluxo precisa estar ligado para aparecer na lista. Um fluxo só com este início pode ficar ligado junto com o fluxo de atendimento.\n\nAo começar, as mensagens de espera programadas nesta conversa param: o fluxo novo é quem fala agora.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él queda disponible para los agentes dentro de cualquier conversación: en la Inbox, el botón del robot en la parte superior de la conversación lista los chatbots activados que tienen este inicio.\n\nEl chatbot responde hasta que el flujo termine, incluso con la conversación a nombre del agente. Es bueno para encuesta de satisfacción al final de la atención, menú de pago o recolección de datos.\n\nEl flujo debe estar activado para aparecer en la lista. Un flujo con solo este inicio puede quedar activado junto con el flujo de atención.\n\nAl comenzar, los mensajes de espera programados en esta conversación se detienen: el flujo nuevo es quien habla ahora.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele segue por um caminho dentro das faixas de horário que você marcar e por outro fora delas.\n\nUse para avisar quando a empresa está fechada, ou para só passar para a equipe no horário de atendimento. Uma faixa que passa da meia-noite (22:00 às 06:00) também vale.\n\nO horário é o do fuso da empresa, não o do cliente.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por un camino dentro de las franjas de horario que marques y por otro fuera de ellas.\n\nÚsala para avisar cuando la empresa está cerrada, o para pasar al equipo solo en horario de atención. Una franja que pasa de la medianoche (22:00 a 06:00) también vale.\n\nEl horario es el de la zona horaria de la empresa, no el del cliente.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele segue por um caminho nos dias da semana marcados e por outro nos demais.\n\nCombine com “Horários” para montar o expediente: por exemplo, segunda a sexta das 8h às 18h. Usa o fuso horário da empresa.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por un camino en los días de la semana marcados y por otro en los demás.\n\nCombínala con “Horarios” para armar el horario laboral: por ejemplo, de lunes a viernes de 8h a 18h. Usa la zona horaria de la empresa.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele olha a última mensagem do contato e segue por “Contém” se ela tiver qualquer uma das palavras escritas, ou por “Não contém”.\n\nMaiúsculas e acentos não importam: “Preço” encontra “preco”. Separe as palavras com vírgula.\n\nÁudio, foto ou figurinha não têm texto, então seguem por “Não contém”.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él mira el último mensaje del contacto y sigue por “Contiene” si tiene cualquiera de las palabras escritas, o por “No contiene”.\n\nMayúsculas y acentos no importan: “Precio” encuentra “precio”. Separa las palabras con coma.\n\nAudio, foto o sticker no tienen texto, así que siguen por “No contiene”.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele segue por “Regra atendida” ou “Regra não atendida” conforme uma regra que você monta.\n\nA regra pode olhar uma etiqueta do contato, uma resposta guardada antes no fluxo, um campo do contato (nome, e-mail, aniversário ou campo personalizado) ou a última mensagem.\n\nMaiúsculas e acentos não importam. Para comparar números (por exemplo, uma nota), use “É maior ou igual a”.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por “Regla cumplida” o “Regla no cumplida” según una regla que tú armas.\n\nLa regla puede mirar una etiqueta del contacto, una respuesta guardada antes en el flujo, un campo del contacto (nombre, correo electrónico, cumpleaños o campo personalizado) o el último mensaje.\n\nMayúsculas y acentos no importan. Para comparar números (por ejemplo, una calificación), usa “Es mayor o igual a”.",
+    },
+  "Quando adicionada essa condição no seu chatbot, você monta várias regras e cada uma ganha uma saída própria. Vale a primeira regra que bater, de cima para baixo.\n\nSe nenhuma bater, o fluxo segue por “Nenhuma regra”. Dê um nome a cada saída para o quadro ficar fácil de ler.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, armas varias reglas y cada una tiene su propia salida. Vale la primera regla que se cumpla, de arriba hacia abajo.\n\nSi ninguna se cumple, el flujo sigue por “Ninguna regla”. Ponle un nombre a cada salida para que el tablero sea fácil de leer.",
+    },
+  "Quando adicionada essa condição no seu chatbot, cada contato segue por uma das saídas, sorteada pelo peso de cada uma. Pesos 70 e 30 mandam cerca de 70% dos contatos para a primeira e 30% para a segunda.\n\nÉ o jeito de fazer teste A/B: duas mensagens de boas-vindas diferentes, por exemplo, para ver qual vende mais.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, cada contacto sigue por una de las salidas, sorteada según el peso de cada una. Pesos 70 y 30 envían cerca del 70% de los contactos a la primera y 30% a la segunda.\n\nEs la forma de hacer una prueba A/B: dos mensajes de bienvenida distintos, por ejemplo, para ver cuál vende más.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele verifica se o contato mandou mensagem dentro do tempo escolhido (24 horas por padrão) e segue por “Ativo” ou “Inativo”.\n\n24 horas é a janela do WhatsApp: fora dela, escrever primeiro tem mais risco de bloqueio, e no número oficial só modelo aprovado pode sair.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él verifica si el contacto envió mensaje dentro del tiempo elegido (24 horas por defecto) y sigue por “Activo” o “Inactivo”.\n\n24 horas es la ventana de WhatsApp: fuera de ella, escribir primero tiene más riesgo de bloqueo, y en el número oficial solo puede salir una plantilla aprobada.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele segue por “Tem” se o contato tiver as etiquetas escritas, ou por “Não tem”.\n\nVocê escolhe se basta uma delas ou se precisa ter todas. Uma etiqueta que o próprio fluxo acabou de pôr (em “Editar etiquetas”) já conta.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por “Tiene” si el contacto tiene las etiquetas escritas, o por “No tiene”.\n\nTú eliges si basta con una de ellas o si debe tenerlas todas. Una etiqueta que el propio flujo acaba de poner (en “Editar etiquetas”) ya cuenta.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele segue por “Primeira vez” se o contato nunca tinha mandado mensagem antes deste atendimento, ou por “Já conversou antes”.\n\nUse para dar boas-vindas diferentes a quem é novo e a quem já é cliente.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por “Primera vez” si el contacto nunca había enviado mensaje antes de esta atención, o por “Ya conversó antes”.\n\nÚsala para dar bienvenidas distintas a quien es nuevo y a quien ya es cliente.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele segue por “Um dos números” se a conversa estiver acontecendo por um dos números de WhatsApp marcados, ou por “Outro número”.\n\nÚtil quando o mesmo fluxo atende mais de um número (por exemplo, vendas e suporte) e cada um precisa de um caminho.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por “Uno de los números” si la conversación está ocurriendo por uno de los números de WhatsApp marcados, o por “Otro número”.\n\nÚtil cuando el mismo flujo atiende más de un número (por ejemplo, ventas y soporte) y cada uno necesita un camino.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele verifica quem é o atendente responsável pela conversa e segue por “É um deles” ou “Outro ou ninguém”.\n\nSem nenhum atendente marcado, a condição vale para qualquer atendente: serve para saber se a conversa já tem dono.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él verifica quién es el agente responsable de la conversación y sigue por “Es uno de ellos” u “Otro o nadie”.\n\nSin ningún agente marcado, la condición vale para cualquier agente: sirve para saber si la conversación ya tiene dueño.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele verifica se alguém da equipe pode assumir a conversa agora: disponível, dentro do horário e com folga no limite de conversas.\n\nÉ a mesma regra da Distribuição de atendimento. Use antes de transferir: se ninguém estiver disponível, avise o cliente quando vão responder.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él verifica si alguien del equipo puede asumir la conversación ahora: disponible, dentro del horario y con margen en el límite de conversaciones.\n\nEs la misma regla de la Distribución de atención. Úsala antes de transferir: si nadie está disponible, avisa al cliente cuándo le van a responder.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele verifica se o agente de IA ou outro chatbot está atendendo esta mesma conversa agora, e segue por “Tem outro bot” ou “Só este”.\n\nUse para não deixar dois robôs respondendo o mesmo cliente ao mesmo tempo.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él verifica si el agente de IA u otro chatbot está atendiendo esta misma conversación ahora, y sigue por “Hay otro bot” o “Solo este”.\n\nÚsala para no dejar que dos robots respondan al mismo cliente al mismo tiempo.",
+    },
+  "Quando adicionada essa condição no seu chatbot, ele compara uma resposta guardada, um campo do contato ou a última mensagem com um valor que você escreve, e segue por “Verdadeiro” ou “Falso”.\n\nO valor pode ter {{variavel}}: por exemplo, comparar o e-mail que o cliente digitou com o e-mail do cadastro.\n\nTexto ignora maiúsculas e acentos. Maior e menor funcionam entre números (10, 4,5) ou entre datas (25/12/2026); entre texto e número a resposta é sempre “Falso”.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él compara una respuesta guardada, un campo del contacto o el último mensaje con un valor que tú escribes, y sigue por “Verdadero” o “Falso”.\n\nEl valor puede tener {{variavel}}: por ejemplo, comparar el correo que el cliente escribió con el correo del registro.\n\nEl texto ignora mayúsculas y acentos. Mayor y menor funcionan entre números (10, 4,5) o entre fechas (25/12/2026); entre texto y número la respuesta siempre es “Falso”.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia o texto escrito diretamente para o contato no WhatsApp.\n\nUse {{nome}} para inserir o que o contato respondeu antes em “Pedir para digitar” ou outra resposta guardada.\n\nAs mensagens saem com um pequeno intervalo entre elas e só dentro da janela de envio do número, para proteger o WhatsApp de bloqueio.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él envía el texto escrito directamente al contacto en WhatsApp.\n\nUsa {{nome}} para insertar lo que el contacto respondió antes en “Pedir que escriba” u otra respuesta guardada.\n\nLos mensajes salen con un pequeño intervalo entre ellos y solo dentro de la ventana de envío del número, para proteger a WhatsApp de bloqueos.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia uma foto, um vídeo, um áudio ou um documento (como PDF) para o contato, com legenda opcional.\n\nO arquivo fica guardado no sistema e aparece na conversa como qualquer outra mídia enviada.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él envía una foto, un video, un audio o un documento (como PDF) al contacto, con leyenda opcional.\n\nEl archivo queda guardado en el sistema y aparece en la conversación como cualquier otro archivo multimedia enviado.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia um modelo de mensagem aprovado pela Meta. É a única mensagem que o WhatsApp aceita depois de 24 horas sem o contato escrever.\n\nSó funciona em número oficial (API da Meta). Em número conectado por QR Code não há modelo: o fluxo segue por “Não enviado” e a conversa ganha uma nota com o motivo.\n\nModelos com variáveis não aparecem na lista, porque o fluxo não tem de onde tirar os valores.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él envía una plantilla de mensaje aprobada por Meta. Es el único mensaje que WhatsApp acepta después de 24 horas sin que el contacto escriba.\n\nSolo funciona en número oficial (API de Meta). En un número conectado por código QR no hay plantillas: el flujo sigue por “No enviado” y la conversación recibe una nota con el motivo.\n\nLas plantillas con variables no aparecen en la lista, porque el flujo no tiene de dónde sacar los valores.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta com as opções numeradas e espera a resposta do contato. Cada opção ganha uma saída própria no quadro.\n\nO contato pode responder com o número (“2”) ou com o texto da opção. Se responder outra coisa, o chatbot pede de novo, até o número de tentativas; depois segue por “Não respondeu certo”.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él envía la pregunta con las opciones numeradas y espera la respuesta del contacto. Cada opción tiene su propia salida en el tablero.\n\nEl contacto puede responder con el número (“2”) o con el texto de la opción. Si responde otra cosa, el chatbot pregunta de nuevo, hasta el número de intentos; después sigue por “No respondió bien”.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato digitar uma resposta livre.\n\nA resposta fica guardada com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él envía la pregunta y espera que el contacto escriba una respuesta libre.\n\nLa respuesta queda guardada con el nombre que elijas, para usarla después en un mensaje, en una condición o para guardarla en el registro con “Campo del contacto”.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data ou telefone.\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él hace varias preguntas en secuencia, una por mensaje, y verifica cada respuesta según su tipo: texto, correo electrónico, número, fecha o teléfono.\n\nCada respuesta queda guardada con el nombre elegido y, si lo marcas, también se guarda en el nombre, correo electrónico o cumpleaños del contacto.\n\nSi el contacto falla todos los intentos de una pregunta, el flujo sigue por “No respondió bien”. No es el formulario nativo de WhatsApp: funciona en cualquier número.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele oferece os próximos horários livres de um tipo de atendimento da Agenda e marca o que o contato escolher.\n\nÉ a mesma agenda e a mesma marcação que o agente de IA usa. Se não houver horário livre, segue por “Sem horário livre”; se o contato não escolher nenhum, por “Não escolheu”.\n\nEm atendimentos que a equipe aprova antes, o horário fica reservado até a confirmação.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él ofrece los próximos horarios libres de un tipo de atención de la Agenda y agenda lo que el contacto elija.\n\nEs la misma agenda y la misma reserva que usa el agente de IA. Si no hay horario libre, sigue por “Sin horario libre”; si el contacto no elige ninguno, por “No eligió”.\n\nEn atenciones que el equipo aprueba antes, el horario queda reservado hasta la confirmación.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele põe o contato no funil de vendas: se o contato já tem um negócio aberto naquele funil, o negócio vai para a etapa escolhida; se não tem, nasce nela.\n\nO título do negócio novo pode usar {{variavel}}; vazio, usa o nome do contato.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él pone al contacto en el embudo de ventas: si el contacto ya tiene un negocio abierto en ese embudo, el negocio pasa a la etapa elegida; si no tiene, nace en ella.\n\nEl título del negocio nuevo puede usar {{variavel}}; si está vacío, usa el nombre del contacto.",
+    },
+  "Quando adicionada essa ação no seu chatbot, este fluxo termina aqui e o fluxo escolhido começa do início, levando as respostas já guardadas.\n\nEscolha este mesmo fluxo para “voltar ao menu”. Para montar submenus, crie o outro fluxo com “Iniciar por automação”: ele pode ficar ligado junto com este.\n\nO fluxo escolhido precisa estar ligado.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, este flujo termina aquí y el flujo elegido comienza desde el inicio, llevando las respuestas ya guardadas.\n\nElige este mismo flujo para “volver al menú”. Para armar submenús, crea el otro flujo con “Iniciar por automatización”: puede quedar activado junto con este.\n\nEl flujo elegido debe estar activado.",
+    },
+  "Quando adicionada essa ação no seu chatbot, a conversa vai para a fila de atendimento humano e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.\n\nO agente de IA fica calado nesta conversa até uma pessoa devolvê-la (ou até vencer o prazo de devolução automática, se a empresa ligou um). A mensagem antes de transferir é opcional.\n\nEm “Mensagem de espera”, o chatbot pode mandar um aviso se ninguém responder dentro do tempo escolhido, até 3 vezes. Ele para assim que uma pessoa responder.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, la conversación pasa a la fila de atención humana y queda como En espera hasta que alguien la tome. La Distribución de atención elige quién la toma.\n\nEl agente de IA se queda en silencio en esta conversación hasta que una persona la devuelva (o hasta que venza el plazo de devolución automática, si la empresa activó uno). El mensaje antes de transferir es opcional.\n\nEn “Mensaje de espera”, el chatbot puede enviar un aviso si nadie responde dentro del tiempo elegido, hasta 3 veces. Se detiene en cuanto una persona responda.",
+    },
+  "Quando adicionada essa ação no seu chatbot, a conversa vai direto para o atendente escolhido.\n\nSe esse atendente não fizer mais parte da equipe, a transferência não acontece. A mensagem antes de transferir e a mensagem de espera funcionam como em “Transferir para a equipe”.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, la conversación va directo al agente elegido.\n\nSi ese agente ya no forma parte del equipo, la transferencia no ocurre. El mensaje antes de transferir y el mensaje de espera funcionan como en “Transferir al equipo”.",
+    },
+  "Quando adicionada essa ação no seu chatbot, a conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar.\n\nSe não houver agente de IA ligado no número, o fluxo segue por “Sem agente de IA”. Ligue ali um “Transferir para a equipe”.\n\nO chatbot em si não usa IA; o agente gasta IA como sempre, dentro do orçamento dele.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, la conversación vuelve a la atención automática: el agente de IA de este número (o el enrutador) responde de ahí en adelante, incluido el mensaje que el contacto acaba de enviar.\n\nSi no hay un agente de IA activado en el número, el flujo sigue por “Sin agente de IA”. Conecta ahí un “Transferir al equipo”.\n\nEl chatbot en sí no usa IA; el agente gasta IA como siempre, dentro de su presupuesto.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele adiciona ou remove etiquetas do contato.\n\nAs etiquetas novas disparam as automações de “etiqueta adicionada”, como se uma pessoa as tivesse posto.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él agrega o quita etiquetas del contacto.\n\nLas etiquetas nuevas disparan las automatizaciones de “etiqueta agregada”, como si una persona las hubiera puesto.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele grava um valor no cadastro do contato: nome, e-mail, aniversário ou um campo personalizado.\n\nO valor costuma ser uma resposta do contato, como {{email}}. Se o valor não servir (e-mail sem @, data que não existe), o fluxo segue por “Valor inválido”, para você pedir de novo.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él guarda un valor en el registro del contacto: nombre, correo electrónico, cumpleaños o un campo personalizado.\n\nEl valor suele ser una respuesta del contacto, como {{email}}. Si el valor no sirve (correo sin @, fecha que no existe), el flujo sigue por “Valor inválido”, para que vuelvas a preguntar.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele deixa uma nota interna na conversa. A equipe vê, o contato não.\n\nUse para resumir o que o cliente respondeu antes de passar para um atendente.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él deja una nota interna en la conversación. El equipo la ve, el contacto no.\n\nÚsala para resumir lo que el cliente respondió antes de pasar a un agente.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele pede uma nota para o atendimento, de 1 a 5 ou de 0 a 10, e espera a resposta.\n\nO contato pode responder com o número ou com estrelas. A nota aparece na conversa como nota interna e entra na média da lista de chatbots.\n\nSe o contato não der uma nota válida depois das tentativas, segue por “Não avaliou”.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él pide una calificación para la atención, de 1 a 5 o de 0 a 10, y espera la respuesta.\n\nEl contacto puede responder con el número o con estrellas. La calificación aparece en la conversación como nota interna y entra en el promedio de la lista de chatbots.\n\nSi el contacto no da una calificación válida después de los intentos, sigue por “No calificó”.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele pede um comentário sobre o atendimento e espera a resposta.\n\nO comentário vai para a conversa como nota interna, junto da nota da avaliação.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él pide un comentario sobre la atención y espera la respuesta.\n\nEl comentario va a la conversación como nota interna, junto con la calificación de la evaluación.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele coloca o contato num dos follow-ups publicados do CRM, os mesmos que o agente de IA usa.\n\nSe o contato já estiver em outro follow-up ativo, ele fica no que está, e a conversa ganha uma nota dizendo isso.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él pone al contacto en uno de los seguimientos publicados del CRM, los mismos que usa el agente de IA.\n\nSi el contacto ya está en otro seguimiento activo, se queda en el que está, y la conversación recibe una nota que lo indica.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele abre um aviso na Central de avisos, com som e notificação para a equipe, levando à conversa.\n\nAs respostas do contato entram só na nota da conversa, não no aviso.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él abre un aviso en la Central de avisos, con sonido y notificación para el equipo, que lleva a la conversación.\n\nLas respuestas del contacto entran solo en la nota de la conversación, no en el aviso.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ela liga ou desliga as mensagens de espera desta conversa: as que “Transferir para a equipe” e “Transferir p/ atendente” mandam enquanto ninguém responde.\n\nDesligar para as que estão programadas. Ligar volta a programá-las, se ainda faltarem vezes e ninguém da equipe tiver respondido.\n\nQuando um atendente aciona um fluxo, ou uma automação começa um, elas já param sozinhas: nesses fluxos, use “Ligar” para mantê-las.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, ella activa o desactiva los mensajes de espera de esta conversación: los que “Transferir al equipo” y “Transferir a un agente” envían mientras nadie responde.\n\nDesactivar para los que están programados. Activar vuelve a programarlos, si aún faltan veces y nadie del equipo ha respondido.\n\nCuando un agente activa un flujo, o una automatización inicia uno, ellos ya se detienen solos: en esos flujos, usa “Activar” para mantenerlos.",
+    },
+  "Quando adicionada essa ação no seu chatbot, o fluxo espera o tempo escolhido (segundos, minutos, horas ou dias) antes de seguir.\n\nVocê escolhe o que fazer se o contato mandar mensagem durante a espera: seguir o fluxo na hora, ou continuar esperando (a mensagem fica para a equipe ver).":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, el flujo espera el tiempo elegido (segundos, minutos, horas o días) antes de seguir.\n\nTú eliges qué hacer si el contacto envía un mensaje durante la espera: seguir el flujo de inmediato, o seguir esperando (el mensaje queda para que el equipo lo vea).",
+    },
+  "Quando adicionada essa ação no seu chatbot, o fluxo pausa até o próximo horário marcado (por exemplo, amanhã às 9h, só em dias úteis) e segue dali.\n\nUsa o fuso horário da empresa. Como em “Aguardar intervalo”, você escolhe o que fazer se o contato escrever durante a espera.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, el flujo se pausa hasta el próximo horario marcado (por ejemplo, mañana a las 9h, solo en días hábiles) y sigue desde ahí.\n\nUsa la zona horaria de la empresa. Como en “Esperar un intervalo”, tú eliges qué hacer si el contacto escribe durante la espera.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele bloqueia o contato e finaliza a conversa: nem chatbot, nem agente de IA, nem campanha escrevem mais para ele.\n\nA mensagem, se houver, sai antes do bloqueio. O bloqueio fica registrado na auditoria e numa nota da conversa.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él bloquea al contacto y finaliza la conversación: ni chatbot, ni agente de IA, ni campaña le escriben más.\n\nEl mensaje, si lo hay, sale antes del bloqueo. El bloqueo queda registrado en la auditoría y en una nota de la conversación.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele abre o pedido de exclusão dos dados do contato (LGPD), que um administrador aprova em Configurações › LGPD.\n\nO chatbot nunca apaga dados sozinho: uma frase mal entendida não pode destruir o histórico de um cliente. Um pedido aberto por contato basta; repetir não abre outro.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él abre la solicitud de eliminación de los datos del contacto (LGPD), que un administrador aprueba en Configuraciones › LGPD.\n\nEl chatbot nunca borra datos solo: una frase mal entendida no puede destruir el historial de un cliente. Una solicitud abierta por contacto basta; repetir no abre otra.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele finaliza a conversa automaticamente, com uma mensagem de despedida opcional antes.\n\nUse no fim dos caminhos em que o cliente já foi atendido, para a conversa sair da fila da equipe.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él finaliza la conversación automáticamente, con un mensaje de despedida opcional antes.\n\nÚsala al final de los caminos en que el cliente ya fue atendido, para que la conversación salga de la fila del equipo.",
+    },
+  "Quando adicionada essa ação no seu chatbot, ele chama um endereço de fora (n8n, Make, o sistema da sua loja) com os dados do contato e as respostas, e segue por “Deu certo” ou “Falhou”.\n\nVocê escolhe partes da resposta para guardar em variáveis, como pedido.status. Segredo e autorização ficam guardados cifrados.\n\nO endereço precisa começar com https://. Se o WebHook falhar e não houver ligação em “Falhou”, o fluxo termina ali.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él llama a una dirección externa (n8n, Make, el sistema de tu tienda) con los datos del contacto y las respuestas, y sigue por “Funcionó” o “Falló”.\n\nTú eliges partes de la respuesta para guardar en variables, como pedido.status. El secreto y la autorización quedan guardados cifrados.\n\nLa dirección debe comenzar con https://. Si el WebHook falla y no hay conexión en “Falló”, el flujo termina ahí.",
+    },
+  "Quando adicionado no seu chatbot, o bloco de notas serve só para documentar o fluxo: explicar um caminho, deixar um lembrete para a equipe.\n\nEle aparece só aqui no quadro. O contato nunca vê, e o fluxo não passa por ele.":
+    {
+      es: "Cuando se agrega a tu chatbot, el bloque de notas sirve solo para documentar el flujo: explicar un camino, dejar un recordatorio para el equipo.\n\nAparece solo aquí en el tablero. El contacto nunca lo ve, y el flujo no pasa por él.",
+    },
+  "Resposta da pergunta:": { es: "Respuesta de la pregunta:" },
+  "Valor deste caminho na resposta:": { es: "Valor de esta ruta en la respuesta:" },
+  "Ideia adicionada ao quadro. Configure os passos e salve.": {
+    es: "Idea agregada al tablero. Configura los pasos y guarda.",
+  },
+  "Escolher novo passo (Tab)": { es: "Elegir nuevo paso (Tab)" },
+  "Ver ideias de bot": { es: "Ver ideas de bot" },
+  "Desfazer (Ctrl + Z)": { es: "Deshacer (Ctrl + Z)" },
+  "Refazer (Ctrl + Y)": { es: "Rehacer (Ctrl + Y)" },
+  "Organizar blocos automaticamente": { es: "Organizar bloques automáticamente" },
+  "Salvar (Ctrl + S)": { es: "Guardar (Ctrl + S)" },
+  "Ideias de bot": { es: "Ideas de bot" },
+  "Escolha um fluxo pronto para começar. Ele entra no quadro já ligado; depois é só ajustar os textos e salvar.":
+    {
+      es: "Elige un flujo listo para comenzar. Entra al tablero ya activado; después solo ajusta los textos y guarda.",
+    },
+  "Copiar Id": { es: "Copiar Id" },
+  "Id do passo copiado.": { es: "Id del paso copiado." },
+  "Duplicar bloco (Ctrl + O, Ctrl + P)": { es: "Duplicar bloque (Ctrl + O, Ctrl + P)" },
+  "Variáveis exportadas": { es: "Variables exportadas" },
+  "Nome do produto da venda (quando a automação vem de uma venda).": {
+    es: "Nombre del producto de la venta (cuando la automatización viene de una venta).",
+  },
+  "Link de pagamento ou do carrinho.": { es: "Enlace de pago o del carrito." },
+  "Valor da venda ou do negócio.": { es: "Valor de la venta o del negocio." },
+  "O que aconteceu na plataforma de vendas (aprovada, abandonada…).": {
+    es: "Lo que ocurrió en la plataforma de ventas (aprobada, abandonada…).",
+  },
+  "O que o contato digitou.": { es: "Lo que el contacto escribió." },
+  "Qual é o seu nome?": { es: "¿Cuál es tu nombre?" },
+  "Qual é o seu e-mail?": { es: "¿Cuál es tu correo electrónico?" },
+  "O horário marcado, como o contato leu.": {
+    es: "El horario agendado, como lo leyó el contacto.",
+  },
+  "O mesmo horário, em formato de data e hora.": {
+    es: "El mismo horario, en formato de fecha y hora.",
+  },
+  "“confirmado” ou “aguardando confirmação”.": { es: "“confirmado” o “esperando confirmación”." },
+  "A nota que o contato deu.": { es: "La calificación que dio el contacto." },
+  "O comentário que o contato escreveu.": { es: "El comentario que el contacto escribió." },
+  "O código de resposta do endereço chamado (200, 404…).": {
+    es: "El código de respuesta de la dirección llamada (200, 404…).",
+  },
+  "Menu de atendimento": { es: "Menú de atención" },
+  "Boas-vindas com opções numeradas: cada opção leva a um caminho.": {
+    es: "Bienvenida con opciones numeradas: cada opción lleva a un camino.",
+  },
+  "No horário, passa para a equipe; fora dele, avisa quando vocês voltam.": {
+    es: "En horario, pasa al equipo; fuera de él, avisa cuándo vuelven.",
+  },
+  "Coletar dados antes de atender": { es: "Recopilar datos antes de atender" },
+  "Pede nome e e-mail, grava no contato e só então passa para a equipe.": {
+    es: "Pide nombre y correo electrónico, los guarda en el contacto y solo entonces pasa al equipo.",
+  },
+  "Pesquisa de satisfação": { es: "Encuesta de satisfacción" },
+  "O atendente aciona no fim do atendimento: nota, comentário e despedida.": {
+    es: "El agente la activa al final de la atención: calificación, comentario y despedida.",
+  },
+  "Oferece os horários livres da Agenda e marca o que o cliente escolher.": {
+    es: "Ofrece los horarios libres de la Agenda y agenda lo que el cliente elija.",
+  },
+  "Triagem com o agente de IA": { es: "Triaje con el agente de IA" },
+  "Dúvidas vão para o agente de IA do número; quem pede uma pessoa vai para a equipe.": {
+    es: "Las dudas van al agente de IA del número; quien pide a una persona va al equipo.",
+  },
   // Chatbot: blocos da Umbler que entraram em 03/11/2026.
   "A conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar. O chatbot sai da conversa.":
     {

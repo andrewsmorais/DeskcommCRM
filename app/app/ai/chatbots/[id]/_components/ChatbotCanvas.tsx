@@ -3,8 +3,10 @@
 /**
  * Editor do Chatbot Builder, no modelo do editor da Umbler Talk: quadro com
  * pontinhos, botão "+" que abre o menu de passos (busca, grupos, clique ou
- * arraste), desfazer/refazer, "Alterações não salvas" e salvar. O desenho vai
- * inteiro num PATCH (`grafo`). Ligar o fluxo passa pela validação do servidor.
+ * arraste; atalho Tab), "Ver ideias de bot", desfazer/refazer, "Organizar
+ * blocos automaticamente", salvar e "Alterações não salvas". Os passos são
+ * ligados por linhas curvas com seta. O desenho vai inteiro num PATCH
+ * (`grafo`). Ligar o fluxo passa pela validação do servidor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -13,6 +15,7 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
+  MarkerType,
   ReactFlowProvider,
   addEdge,
   useEdgesState,
@@ -28,17 +31,27 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   FlaskConical,
+  Lightbulb,
   Loader2,
   Pencil,
   Plus,
   Redo2,
   Save,
   Search,
+  Spline,
   Undo2,
   X,
 } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { IDEIAS_DE_BOT, montarIdeia, passosDaIdeia, type Ideia } from "@/lib/chatbot/ideias";
+import { organizarBlocos } from "@/lib/chatbot/organizar";
 import { randomId } from "@/lib/random-id";
 import { PASSOS_AVANCADOS } from "@/lib/chatbot/passos-avancados";
 import { useT } from "@/hooks/i18n/useT";
@@ -52,9 +65,11 @@ import {
   type TipoDePasso,
 } from "@/lib/chatbot/passos";
 
+import { AcoesDoNoContext } from "./acoes-do-no";
 import { PassoNode, type NodeData } from "./node-types";
 import { IconeDoPasso, ICONE_DO_GRUPO } from "./icones";
 import { NodePanel, type OpcoesDoPainel } from "./NodePanel";
+import { PainelDeAjuda } from "./PainelDeAjuda";
 import { TesteDoFluxo } from "./TesteDoFluxo";
 
 type Flow = { id: string; name: string; is_active: boolean; grafo: Grafo };
@@ -63,6 +78,52 @@ const NODE_TYPES = Object.fromEntries(PASSOS.map((p) => [p.tipo, PassoNode]));
 const ARRASTO = "application/x-passo-do-chatbot";
 
 type Foto = { nodes: Node<NodeData>[]; edges: Edge[] };
+
+/**
+ * A linha entre dois passos, como na Umbler: curva, contínua, com seta no
+ * passo seguinte. Cor fixa (não token de tema) porque o React Flow monta o id
+ * do marcador da seta a partir da cor, e `var(--x)` dentro de `url(#…)` quebra.
+ */
+const COR_DA_LINHA = "#94a3b8";
+const COR_DA_LINHA_SELECIONADA = "#8b5cf6";
+function comoLinha(e: Edge): Edge {
+  const cor = e.selected ? COR_DA_LINHA_SELECIONADA : COR_DA_LINHA;
+  return {
+    ...e,
+    type: "default",
+    animated: false,
+    markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18, color: cor },
+    style: { stroke: cor, strokeWidth: e.selected ? 2.5 : 2 },
+  };
+}
+
+/** Botão redondo da barra de cima, com a dica (e o atalho) ao passar o mouse. */
+function BotaoDaBarra(props: {
+  dica: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className: string;
+  testid?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={props.onClick}
+          disabled={props.disabled}
+          className={props.className}
+          aria-label={props.dica}
+          data-testid={props.testid}
+        >
+          {props.children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{props.dica}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 function paraReactFlow(g: Grafo): Foto {
   return {
@@ -117,7 +178,9 @@ export function ChatbotCanvas(props: {
 }) {
   return (
     <ReactFlowProvider>
-      <Editor {...props} />
+      <TooltipProvider delayDuration={200}>
+        <Editor {...props} />
+      </TooltipProvider>
     </ReactFlowProvider>
   );
 }
@@ -159,7 +222,10 @@ function Editor({
   const [futuro, setFuturo] = useState<Foto[]>([]);
   const [testando, setTestando] = useState(false);
   const [passoDoTeste, setPassoDoTeste] = useState<string | null>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const [ideiasAbertas, setIdeiasAbertas] = useState(false);
+  /** O passo cuja "Ajuda" (?) está aberta no painel da direita. */
+  const [ajudaDe, setAjudaDe] = useState<string | null>(null);
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const quadro = useRef<HTMLDivElement>(null);
 
   /** Guarda a foto atual antes de uma mudança, para o desfazer. */
@@ -238,27 +304,6 @@ function Editor({
     toast.success(valor ? t("Fluxo ligado: ele já responde no WhatsApp.") : t("Fluxo desligado."));
   }
 
-  // Ctrl+S salva, Ctrl+Z desfaz, Ctrl+Shift+Z / Ctrl+Y refaz.
-  useEffect(() => {
-    function teclado(ev: KeyboardEvent) {
-      const alvo = ev.target as HTMLElement | null;
-      if (alvo && ["INPUT", "TEXTAREA"].includes(alvo.tagName)) return;
-      if (!(ev.ctrlKey || ev.metaKey)) return;
-      const k = ev.key.toLowerCase();
-      if (k === "s") {
-        ev.preventDefault();
-        void salvar();
-      } else if (k === "z" && !ev.shiftKey) {
-        ev.preventDefault();
-        desfazer();
-      } else if (k === "y" || (k === "z" && ev.shiftKey)) {
-        ev.preventDefault();
-        refazer();
-      }
-    }
-    window.addEventListener("keydown", teclado);
-    return () => window.removeEventListener("keydown", teclado);
-  }, [salvar, desfazer, refazer]);
 
   // Sair com alterações não salvas pergunta antes.
   useEffect(() => {
@@ -336,6 +381,132 @@ function Editor({
     [lembrar, setNodes, setEdges],
   );
 
+  const duplicar = useCallback(
+    (id: string) => {
+      const original = nodes.find((n) => n.id === id);
+      if (!original) return;
+      lembrar();
+      const copia: Node<NodeData> = {
+        id: randomId(),
+        type: original.type,
+        position: { x: original.position.x + 40, y: original.position.y + 40 },
+        data: structuredClone(original.data),
+      };
+      setNodes((atuais) => [...atuais.map((n) => ({ ...n, selected: false })), { ...copia, selected: true }]);
+      setSelecionado(copia.id);
+    },
+    [nodes, lembrar, setNodes],
+  );
+
+  const abrirAjuda = useCallback((id: string) => {
+    setTestando(false);
+    setPassoDoTeste(null);
+    setAjudaDe(id);
+  }, []);
+
+  const acoesDoNo = useMemo(
+    () => ({ ajuda: abrirAjuda, duplicar, apagar }),
+    [abrirAjuda, duplicar, apagar],
+  );
+
+  // Tab abre os passos; Ctrl+S salva; Ctrl+Z desfaz; Ctrl+Shift+Z / Ctrl+Y refaz;
+  // Ctrl+O / Ctrl+P duplicam o passo selecionado.
+  useEffect(() => {
+    function teclado(ev: KeyboardEvent) {
+      const alvo = ev.target as HTMLElement | null;
+      if (alvo && ["INPUT", "TEXTAREA", "SELECT"].includes(alvo.tagName)) return;
+      // Tab abre o menu de passos (Umbler) — só com o foco no quadro, para não
+      // roubar o Tab de quem navega pelos botões com o teclado.
+      if (
+        ev.key === "Tab" &&
+        !ev.shiftKey &&
+        !ev.ctrlKey &&
+        !ev.metaKey &&
+        (!alvo || alvo === document.body || alvo.closest(".react-flow"))
+      ) {
+        ev.preventDefault();
+        setMenuAberto((v) => !v);
+        return;
+      }
+      if (!(ev.ctrlKey || ev.metaKey)) return;
+      const k = ev.key.toLowerCase();
+      if ((k === "o" || k === "p") && selecionado) {
+        // Duplicar bloco, como na Umbler (Ctrl + O ou Ctrl + P).
+        ev.preventDefault();
+        duplicar(selecionado);
+        return;
+      }
+      if (k === "s") {
+        ev.preventDefault();
+        void salvar();
+      } else if (k === "z" && !ev.shiftKey) {
+        ev.preventDefault();
+        desfazer();
+      } else if (k === "y" || (k === "z" && ev.shiftKey)) {
+        ev.preventDefault();
+        refazer();
+      }
+    }
+    window.addEventListener("keydown", teclado);
+    return () => window.removeEventListener("keydown", teclado);
+  }, [salvar, desfazer, refazer, selecionado, duplicar]);
+
+  const organizar = useCallback(() => {
+    if (nodes.length === 0) return;
+    lembrar();
+    const posicoes = organizarBlocos(
+      nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        largura: n.measured?.width,
+        altura: n.measured?.height,
+      })),
+      edges,
+    );
+    setNodes((atuais) =>
+      atuais.map((n) => {
+        const p = posicoes.get(n.id);
+        return p ? { ...n, position: p } : n;
+      }),
+    );
+    window.requestAnimationFrame(() => void fitView({ padding: 0.3, maxZoom: 1, duration: 300 }));
+  }, [nodes, edges, lembrar, setNodes, fitView]);
+
+  const usarIdeia = useCallback(
+    (ideia: Ideia) => {
+      lembrar();
+      // Quadro novo (só o início que a tela pôs, sem ligação): a ideia o substitui.
+      const vazio = nodes.length <= 1 && edges.length === 0 && nodes.every((n) => n.type === "inicio_canal");
+      const direita = vazio
+        ? 0
+        : Math.max(...nodes.map((n) => n.position.x + (n.measured?.width ?? 260))) + 160;
+      const topo = vazio ? 0 : Math.min(...nodes.map((n) => n.position.y));
+      const g = montarIdeia(ideia, randomId, { x: direita, y: topo });
+      const novos: Node<NodeData>[] = g.nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data: n.data,
+      }));
+      const ligacoes: Edge[] = g.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+      }));
+      setNodes((atuais) => (vazio ? novos : [...atuais, ...novos]));
+      setEdges((atuais) => (vazio ? ligacoes : [...atuais, ...ligacoes]));
+      setSelecionado(null);
+      setIdeiasAbertas(false);
+      toast.success(t("Ideia adicionada ao quadro. Configure os passos e salve."));
+      window.requestAnimationFrame(() => void fitView({ padding: 0.3, maxZoom: 1, duration: 300 }));
+    },
+    [nodes, edges, lembrar, setNodes, setEdges, fitView, t],
+  );
+
+  const edgesNaTela = useMemo(() => edges.map(comoLinha), [edges]);
+
   const passosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return PASSOS.filter(
@@ -346,7 +517,9 @@ function Editor({
     );
   }, [busca, t]);
 
-  const noSelecionado = testando ? null : (nodes.find((n) => n.id === selecionado) ?? null);
+  const noDaAjuda = ajudaDe ? (nodes.find((n) => n.id === ajudaDe) ?? null) : null;
+  const noSelecionado =
+    testando || noDaAjuda ? null : (nodes.find((n) => n.id === selecionado) ?? null);
 
   // O passo em que o teste parou ganha destaque no quadro.
   const nodesNaTela = useMemo(
@@ -375,43 +548,61 @@ function Editor({
           <ArrowLeft className="h-4 w-4" />
           {t("Chatbots")}
         </Link>
-        <button
-          type="button"
-          onClick={() => setMenuAberto((v) => !v)}
+        <BotaoDaBarra
+          dica={t("Escolher novo passo (Tab)")}
+          onClick={() => {
+            setIdeiasAbertas(false);
+            setMenuAberto((v) => !v);
+          }}
           className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:opacity-90"
-          aria-label={t("Adicionar passo")}
-          data-testid="chatbot-adicionar-passo"
+          testid="chatbot-adicionar-passo"
         >
           <Plus className="h-5 w-5" />
-        </button>
-        <button
-          type="button"
+        </BotaoDaBarra>
+        <BotaoDaBarra
+          dica={t("Ver ideias de bot")}
+          onClick={() => {
+            setMenuAberto(false);
+            setIdeiasAbertas((v) => !v);
+          }}
+          className={botaoRedondo}
+          testid="chatbot-ideias"
+        >
+          <Lightbulb className="h-4 w-4" />
+        </BotaoDaBarra>
+        <BotaoDaBarra
+          dica={t("Desfazer (Ctrl + Z)")}
           onClick={desfazer}
           disabled={passado.length === 0}
           className={botaoRedondo}
-          aria-label={t("Desfazer")}
         >
           <Undo2 className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
+        </BotaoDaBarra>
+        <BotaoDaBarra
+          dica={t("Refazer (Ctrl + Y)")}
           onClick={refazer}
           disabled={futuro.length === 0}
           className={botaoRedondo}
-          aria-label={t("Refazer")}
         >
           <Redo2 className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
+        </BotaoDaBarra>
+        <BotaoDaBarra
+          dica={t("Organizar blocos automaticamente")}
+          onClick={organizar}
+          className={botaoRedondo}
+          testid="chatbot-organizar"
+        >
+          <Spline className="h-4 w-4" />
+        </BotaoDaBarra>
+        <BotaoDaBarra
+          dica={t("Salvar (Ctrl + S)")}
           onClick={() => void salvar()}
           disabled={salvando}
           className={botaoRedondo}
-          aria-label={t("Salvar")}
-          data-testid="chatbot-salvar"
+          testid="chatbot-salvar"
         >
           {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-        </button>
+        </BotaoDaBarra>
         <button
           type="button"
           onClick={() => {
@@ -481,6 +672,66 @@ function Editor({
       </header>
 
       <div className="relative flex min-h-0 flex-1">
+        {/* ── ideias de bot (lâmpada) ───────────────────────── */}
+        {ideiasAbertas ? (
+          <div
+            className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-2rem)] w-[min(540px,calc(100%-2rem))] flex-col rounded-2xl border border-border bg-surface shadow-xl"
+            data-testid="chatbot-painel-de-ideias"
+          >
+            <div className="flex items-center gap-3 border-b border-border p-4">
+              <Lightbulb className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-semibold">{t("Ideias de bot")}</span>
+              <button
+                type="button"
+                onClick={() => setIdeiasAbertas(false)}
+                aria-label={t("Fechar")}
+                className="ml-auto text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              <p className="mb-3 text-xs text-muted-foreground">
+                {t(
+                  "Escolha um fluxo pronto para começar. Ele entra no quadro já ligado; depois é só ajustar os textos e salvar.",
+                )}
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {IDEIAS_DE_BOT.map((ideia) => {
+                  const trancada =
+                    !avancadoLiberado && passosDaIdeia(ideia).some((p) => PASSOS_AVANCADOS.has(p));
+                  return (
+                    <button
+                      key={ideia.id}
+                      type="button"
+                      disabled={trancada}
+                      onClick={() => usarIdeia(ideia)}
+                      className={
+                        trancada
+                          ? "cursor-not-allowed rounded-xl border border-dashed border-border bg-background p-3 text-left opacity-60"
+                          : "rounded-xl border border-border bg-background p-3 text-left transition-colors hover:border-primary/60 hover:bg-surface-elevated"
+                      }
+                      data-testid={`ideia-${ideia.id}`}
+                    >
+                      <span className="flex items-center gap-2 text-sm font-semibold">
+                        {t(ideia.nome)}
+                        {trancada ? (
+                          <span className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                            {t("Plano Impulso")}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-1 block text-xs leading-snug text-muted-foreground">
+                        {t(ideia.descricao)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {/* ── menu de passos ("+") ─────────────────────────── */}
         {menuAberto ? (
           <div
@@ -591,9 +842,10 @@ function Editor({
             adicionar(tipo, screenToFlowPosition({ x: ev.clientX, y: ev.clientY }));
           }}
         >
+          <AcoesDoNoContext.Provider value={acoesDoNo}>
           <ReactFlow
             nodes={nodesNaTela}
-            edges={edges}
+            edges={edgesNaTela}
             nodeTypes={NODE_TYPES}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -608,12 +860,16 @@ function Editor({
               lembrar();
               return true;
             }}
-            onNodeClick={(_, n) => setSelecionado(n.id)}
+            onNodeClick={(_, n) => {
+              setSelecionado(n.id);
+              if (ajudaDe && ajudaDe !== n.id) setAjudaDe(null);
+            }}
             onPaneClick={() => {
               setSelecionado(null);
               setMenuAberto(false);
+              setIdeiasAbertas(false);
             }}
-            defaultEdgeOptions={{ animated: true }}
+            connectionLineStyle={{ stroke: COR_DA_LINHA_SELECIONADA, strokeWidth: 2 }}
             fitView
             fitViewOptions={{ padding: 0.4, maxZoom: 1 }}
             deleteKeyCode={["Delete", "Backspace"]}
@@ -628,6 +884,7 @@ function Editor({
             <Controls position="bottom-center" orientation="horizontal" showInteractive={false} />
             <MiniMap position="bottom-right" pannable zoomable className="!bg-surface" />
           </ReactFlow>
+          </AcoesDoNoContext.Provider>
         </div>
 
         {/* ── teste do fluxo ───────────────────────────────── */}
@@ -641,6 +898,18 @@ function Editor({
                 setPassoDoTeste(null);
               }}
               onPasso={setPassoDoTeste}
+            />
+          </aside>
+        ) : null}
+
+        {/* ── ajuda do passo ("?" da mini-barra) ───────────── */}
+        {noDaAjuda ? (
+          <aside className="w-96 shrink-0 border-l border-border bg-surface">
+            <PainelDeAjuda
+              key={noDaAjuda.id}
+              tipo={noDaAjuda.type ?? ""}
+              dados={noDaAjuda.data}
+              onClose={() => setAjudaDe(null)}
             />
           </aside>
         ) : null}

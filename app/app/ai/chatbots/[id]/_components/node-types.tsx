@@ -6,11 +6,17 @@
  * no catálogo aparece no quadro sem mexer aqui.
  */
 import { memo } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
+import { CircleHelp, Copy, Hash, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { copyToClipboard } from "@/lib/clipboard";
 
 import { useT } from "@/hooks/i18n/useT";
 import { lerConfig, metaDoPasso, saidasDoPasso, ehTipoDePasso } from "@/lib/chatbot/passos";
 import { descreverRegra, descreverValor } from "@/lib/chatbot/regras";
+import { useAcoesDoNo } from "./acoes-do-no";
 import { IconeDoPasso } from "./icones";
 
 export type NodeData = Record<string, unknown>;
@@ -180,7 +186,80 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
   }
 }
 
-export const PassoNode = memo(function PassoNode({ type, data, selected }: NodeProps) {
+/** A mini-barra em cima do passo selecionado, como na Umbler: ajuda, ID, duplicar, apagar. */
+function BarraDoPasso({ id, inicio }: { id: string; inicio: boolean }) {
+  const t = useT();
+  const acoes = useAcoesDoNo();
+  const botao =
+    "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground";
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-1 shadow-md"
+      data-testid="chatbot-barra-do-passo"
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={botao}
+            aria-label={t("Ajuda")}
+            onClick={() => acoes?.ajuda(id)}
+            data-testid="chatbot-ajuda-do-passo"
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{t("Ajuda")}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={botao}
+            aria-label={t("Copiar Id")}
+            onClick={async () => {
+              if (await copyToClipboard(id)) toast.success(t("Id do passo copiado."));
+            }}
+          >
+            <Hash className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{t("Copiar Id")}</TooltipContent>
+      </Tooltip>
+      {inicio ? null : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className={botao}
+              aria-label={t("Duplicar bloco (Ctrl + O, Ctrl + P)")}
+              onClick={() => acoes?.duplicar(id)}
+              data-testid="chatbot-duplicar-passo"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t("Duplicar bloco (Ctrl + O, Ctrl + P)")}</TooltipContent>
+        </Tooltip>
+      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className={`${botao} hover:!text-destructive`}
+            aria-label={t("Excluir")}
+            onClick={() => acoes?.apagar(id)}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{t("Excluir")}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
+export const PassoNode = memo(function PassoNode({ id, type, data, selected }: NodeProps) {
   const t = useT();
   const meta = metaDoPasso(type);
   if (!meta) {
@@ -202,6 +281,9 @@ export const PassoNode = memo(function PassoNode({ type, data, selected }: NodeP
       } ${selected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "border-border"}`}
       data-testid={`passo-${meta.tipo}`}
     >
+      <NodeToolbar isVisible={Boolean(selected)} position={Position.Top} offset={8}>
+        <BarraDoPasso id={id} inicio={meta.grupo === "inicio"} />
+      </NodeToolbar>
       {meta.temEntrada ? (
         <Handle
           type="target"
