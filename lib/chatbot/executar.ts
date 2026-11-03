@@ -31,6 +31,8 @@ import { grafoSchema, type Grafo } from "./passos";
 import type { ContatoDoTurno } from "./regras";
 import { randomUUID } from "node:crypto";
 import { insertInboxItem } from "@/lib/agent-engine/db/repository";
+import { loadEligibleAttendants, type RoutingScope } from "@/lib/routing/eligibles";
+import { escolherAtendente, notaSemAtendente } from "./atendente-do-passo";
 import { enrollFollowupFlow } from "@/lib/followup/enroll";
 import { horariosLivresDaOrg } from "@/lib/agenda/consulta";
 import { rotuloLocal } from "@/lib/tempo/agora";
@@ -432,11 +434,17 @@ async function conduzir(
           conversa: await lerFatosDaConversa(pool, e, alvo.id, alvo.grafo),
         };
         log.info("chatbot: fluxo acionou outro fluxo", { de: fluxoId, para: alvo.id });
-        resultado = iniciarFluxo(alvo.grafo, alvo.inicio, ctx, {
-          ...respostasVisiveis(resultado.sessao.dados),
-          // Fluxo começado por um atendente segue sendo dele no fluxo chamado.
-          ...(resultado.sessao.dados[CHAVE_MANUAL] ? { [CHAVE_MANUAL]: "1" } : {}),
-        });
+        resultado = iniciarFluxo(
+          alvo.grafo,
+          alvo.inicio,
+          ctx,
+          {
+            ...respostasVisiveis(resultado.sessao.dados),
+            // Fluxo começado por um atendente segue sendo dele no fluxo chamado.
+            ...(resultado.sessao.dados[CHAVE_MANUAL] ? { [CHAVE_MANUAL]: "1" } : {}),
+          },
+          false,
+        );
         fluxoId = alvo.id;
         grafo = alvo.grafo;
         // Rodada nova no outro fluxo (a avaliação de cada rodada fica separada).
@@ -473,6 +481,85 @@ async function conduzir(
         break;
       }
     }
+  }
+}
+
+/**
+ * Quem recebe a conversa no "Transferir p/ atendente", pelo modo do passo, ou
+ * null quando não há ninguém (a conversa vai para a fila). Só atendente
+ * (agent/manager/admin) ativo na organização recebe — em todos os modos.
+ *
+ *   - específico: o escolhido no passo, esteja ou não disponível agora (é a
+ *     escolha explícita de quem montou o fluxo, como na Umbler);
+ *   - rodízio / menos conversas: entre quem a Distribuição de atendimento
+ *     consideraria agora (disponível ∧ no horário ∧ com folga). Sem lista no
+ *     passo valem as regras da conversa (responsáveis do número e setor); com
+ *     lista, a lista é a escolha explícita e substitui as duas;
+ *   - quem atendeu antes: o último atendente que esta conversa (ou outra do
+ *     mesmo contato no mesmo número) recebeu e que segue na equipe.
+ */
+async function atendenteDoPasso(
+  pool: pg.Pool,
+  admin: SupabaseClient,
+  e: EntradaDoChatbot,
+  efeito: Extract<Efeito, { tipo: "transferir_atendente" }>,
+  log: Log,
+): Promise<string | null> {
+  if (efeito.modo === "especifico") {
+    if (!efeito.user_id) return null;
+    const { rows } = await pool.query<{ ok: boolean }>(
+      `select true as ok
+         from user_organizations
+        where organization_id = $1 and user_id = $2 and revoked_at is null
+          and role in ('agent', 'manager', 'admin')`,
+      [e.organizationId, efeito.user_id],
+    );
+    return rows[0] ? efeito.user_id : null;
+  }
+  if (efeito.modo === "anterior") {
+    const { rows } = await pool.query<{ user_id: string }>(
+      `select ev.to_user_id as user_id
+         from conversation_assignment_events ev
+         join conversations c
+           on c.id = ev.conversation_id and c.organization_id = ev.organization_id
+         join user_organizations uo
+           on uo.organization_id = ev.organization_id and uo.user_id = ev.to_user_id
+          and uo.revoked_at is null and uo.role in ('agent', 'manager', 'admin')
+        where ev.organization_id = $1
+          and ev.to_user_id is not null
+          and c.contact_id = $2
+          and c.channel_session_id is not distinct from $3
+        order by ev.created_at desc
+        limit 1`,
+      [e.organizationId, e.contactId, e.channelSessionId],
+    );
+    return rows[0]?.user_id ?? null;
+  }
+  const { rows: conversa } = await pool.query<{
+    channel_session_id: string | null;
+    setor_id: string | null;
+  }>(
+    `select channel_session_id, setor_id from conversations where organization_id = $1 and id = $2`,
+    [e.organizationId, e.conversationId],
+  );
+  const canal = conversa[0]?.channel_session_id ?? null;
+  const escopo: RoutingScope =
+    efeito.atendentes.length > 0 || !canal
+      ? { kind: "organization_summary" }
+      : {
+          kind: "conversation_channel",
+          channelSessionId: canal,
+          setorId: conversa[0]?.setor_id ?? null,
+        };
+  try {
+    const candidatos = await loadEligibleAttendants(admin, e.organizationId, new Date(), escopo);
+    return escolherAtendente(efeito.modo, candidatos, efeito.atendentes);
+  } catch (err) {
+    log.warn("chatbot: não deu para ler quem está disponível — conversa na fila", {
+      modo: efeito.modo,
+      erro: (err as Error).message.slice(0, 120),
+    });
+    return null;
   }
 }
 
@@ -1436,6 +1523,21 @@ async function executarEfeitos(
   if (efeitos.length === 0) return;
   const requestId = `chatbot:${fluxoId}:${e.inboundMessageId ?? e.referencia ?? sessao.id}`;
   const notaInterna = (texto: string) => notaDoChatbot(pool, e, fluxoId, requestId, texto);
+  // Fila humana: a IA fica calada nesta conversa e a Distribuição de
+  // atendimento escolhe quem pega. Só o humano devolve ao robô.
+  const paraAFilaDaEquipe = () =>
+    pool.query(
+      `update conversations
+          set status = case when status = 'ai_handling' then 'pending' else status end,
+              bot_silenced_until = 'infinity',
+              last_handoff_at = now(),
+              last_handoff_reason = 'chatbot',
+              active_ai_agent_id = null,
+              active_intent = null,
+              active_agent_set_at = null
+        where organization_id = $1 and id = $2`,
+      [e.organizationId, e.conversationId],
+    );
   const gravarAvaliacao = (campos: { nota?: number; escala?: string; comentou?: boolean }) =>
     pool.query(
       `insert into chatbot_avaliacoes
@@ -1604,48 +1706,33 @@ async function executarEfeitos(
               break;
             }
           }
-          // Fila humana: a IA fica calada nesta conversa e a Distribuição de
-          // atendimento escolhe quem pega. Só o humano devolve ao robô.
-          await pool.query(
-            `update conversations
-                set status = case when status = 'ai_handling' then 'pending' else status end,
-                    bot_silenced_until = 'infinity',
-                    last_handoff_at = now(),
-                    last_handoff_reason = 'chatbot',
-                    active_ai_agent_id = null,
-                    active_intent = null,
-                    active_agent_set_at = null
-              where organization_id = $1 and id = $2`,
-            [e.organizationId, e.conversationId],
-          );
+          await paraAFilaDaEquipe();
           break;
         }
         case "transferir_atendente": {
-          if (!efeito.user_id) break;
-          const { data: membro } = await admin
-            .from("user_organizations")
-            .select("role")
-            .eq("organization_id", e.organizationId)
-            .eq("user_id", efeito.user_id)
-            .is("revoked_at", null)
-            .maybeSingle();
-          if (!membro || membro.role === "viewer") {
-            log.warn("chatbot: atendente do passo não é mais da equipe — transferência ignorada", {
-              flow_id: fluxoId,
-            });
+          const quem = await atendenteDoPasso(pool, admin, e, efeito, log);
+          if (!quem) {
+            // Ninguém para receber: a conversa não fica sem dono nem com o
+            // robô — vai para a fila humana, e a equipe lê o porquê.
+            await notaInterna(notaSemAtendente(efeito.modo));
+            await paraAFilaDaEquipe();
             break;
           }
           const { error } = await admin.rpc("fn_conversation_assign", {
             p_organization_id: e.organizationId,
             p_conversation_id: e.conversationId,
-            p_to_user_id: efeito.user_id,
+            p_to_user_id: quem,
             p_reason: "transfer",
             p_enforce_expected: false,
           });
-          if (error)
-            log.warn("chatbot: transferência para atendente falhou", {
+          if (error) {
+            log.warn("chatbot: transferência para atendente falhou — conversa na fila", {
+              flow_id: fluxoId,
+              modo: efeito.modo,
               erro: error.message.slice(0, 120),
             });
+            await paraAFilaDaEquipe();
+          }
           break;
         }
         case "nota":

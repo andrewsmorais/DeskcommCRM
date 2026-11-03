@@ -17,14 +17,19 @@ import { useT } from "@/hooks/i18n/useT";
 import {
   ehTipoDePasso,
   lerConfig,
+  FORMATOS_DE_RESPOSTA,
   metaDoPasso,
+  MODOS_DE_ATENDENTE,
   perguntaDoFormularioSchema,
   regraSchema,
   type ConfigDe,
+  type FormatoDeResposta,
+  type ModoDeAtendente,
   type PerguntaDoFormulario,
   type Regra,
 } from "@/lib/chatbot/passos";
 
+import { MENSAGEM_FORA_DO_FORMATO } from "@/lib/chatbot/motor";
 import { IconeDoPasso } from "./icones";
 import type { NodeData } from "./node-types";
 
@@ -524,6 +529,73 @@ function Campos({
             }
             ajuda={t("Depois use {{nome_que_você_escolheu}} numa mensagem.")}
           />
+          <div className="space-y-1.5">
+            <Label htmlFor="digitar-formato">{t("O que a resposta precisa ser")}</Label>
+            <select
+              id="digitar-formato"
+              className={SELECT}
+              value={c.formato}
+              onChange={(e) => aplicar({ formato: e.target.value as FormatoDeResposta })}
+            >
+              {FORMATOS_DE_RESPOSTA.map((f) => (
+                <option key={f} value={f}>
+                  {t(NOMES_DO_FORMATO_DE_RESPOSTA[f])}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {c.formato === "qualquer"
+                ? t("Qualquer resposta serve, até áudio ou foto.")
+                : t(
+                    'Se a resposta não estiver no formato, o chatbot pede de novo. Depois das tentativas, segue por "Não respondeu certo".',
+                  )}
+            </p>
+          </div>
+          {c.formato !== "qualquer" ? (
+            <>
+              <Texto
+                id="digitar-invalida"
+                rotulo={t("Se a resposta não estiver no formato")}
+                valor={c.mensagem_invalida}
+                linhas={2}
+                placeholder={MENSAGEM_FORA_DO_FORMATO[c.formato]}
+                onCommit={(v) => aplicar({ mensagem_invalida: v })}
+              />
+              <div className="space-y-1.5">
+                <Label htmlFor="digitar-tentativas">
+                  {t('Tentativas antes de seguir por "Não respondeu certo"')}
+                </Label>
+                <select
+                  id="digitar-tentativas"
+                  className={SELECT}
+                  value={c.tentativas}
+                  onChange={(e) => aplicar({ tentativas: Number(e.target.value) })}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : null}
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={c.usar_mensagem_anterior}
+              onChange={(e) => aplicar({ usar_mensagem_anterior: e.target.checked })}
+            />
+            <span>
+              {t("Usar a mensagem anterior")}
+              <span className="block text-xs text-muted-foreground">
+                {t(
+                  "Sem fazer a pergunta, usa a mensagem que o contato acabou de mandar, se ela estiver no formato. Se não estiver, o chatbot faz a pergunta.",
+                )}
+              </span>
+            </span>
+          </label>
         </>
       );
     }
@@ -625,24 +697,73 @@ function Campos({
     }
     case "transferir_atendente": {
       const c = lerConfig("transferir_atendente", dados);
+      const comLista = c.modo === "rodizio" || c.modo === "menos_conversas";
       return (
         <>
           <div className="space-y-1.5">
-            <Label htmlFor="atendente">{t("Atendente")}</Label>
+            <Label htmlFor="atendente-modo">{t("Para quem")}</Label>
             <select
-              id="atendente"
+              id="atendente-modo"
               className={SELECT}
-              value={c.user_id ?? ""}
-              onChange={(e) => aplicar({ user_id: e.target.value || null })}
+              value={c.modo}
+              onChange={(e) => aplicar({ modo: e.target.value as ModoDeAtendente })}
             >
-              <option value="">{t("Escolha um atendente")}</option>
-              {opcoes.atendentes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nome}
+              {MODOS_DE_ATENDENTE.map((m) => (
+                <option key={m} value={m}>
+                  {t(NOMES_DO_MODO_DE_ATENDENTE[m])}
                 </option>
               ))}
             </select>
+            <p className="text-xs text-muted-foreground">
+              {t(EXPLICACAO_DO_MODO_DE_ATENDENTE[c.modo])}
+            </p>
           </div>
+          {c.modo === "especifico" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="atendente">{t("Atendente")}</Label>
+              <select
+                id="atendente"
+                className={SELECT}
+                value={c.user_id ?? ""}
+                onChange={(e) => aplicar({ user_id: e.target.value || null })}
+              >
+                <option value="">{t("Escolha um atendente")}</option>
+                {opcoes.atendentes.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {comLista && opcoes.atendentes.length > 0 ? (
+            <div className="space-y-1.5" data-testid="atendentes-do-rodizio">
+              <Label>{t("Só entre estes (opcional)")}</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {opcoes.atendentes.map((a) => (
+                  <label key={a.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={c.atendentes.includes(a.id)}
+                      onChange={(e) =>
+                        aplicar({
+                          atendentes: e.target.checked
+                            ? [...c.atendentes, a.id]
+                            : c.atendentes.filter((x) => x !== a.id),
+                        })
+                      }
+                    />
+                    {a.nome}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Sem ninguém marcado, entra quem pode receber esta conversa pelas regras do número e do setor.",
+                )}
+              </p>
+            </div>
+          ) : null}
           <Texto
             id="atendente-msg"
             rotulo={t("Mensagem antes de transferir (opcional)")}
@@ -2387,12 +2508,41 @@ function EnviarTemplate({
   );
 }
 
+const NOMES_DO_FORMATO_DE_RESPOSTA: Record<FormatoDeResposta, string> = {
+  qualquer: "Qualquer texto",
+  email: "E-mail",
+  telefone: "Telefone",
+  cpf: "CPF",
+  cnpj: "CNPJ",
+  numero: "Número",
+  data: "Data (dd/mm/aaaa)",
+};
+
+const NOMES_DO_MODO_DE_ATENDENTE: Record<ModoDeAtendente, string> = {
+  especifico: "Um atendente específico",
+  rodizio: "Rodízio entre a equipe",
+  menos_conversas: "Quem tem menos conversas abertas",
+  anterior: "Quem atendeu o contato antes",
+};
+
+const EXPLICACAO_DO_MODO_DE_ATENDENTE: Record<ModoDeAtendente, string> = {
+  especifico: "A conversa vai sempre para a mesma pessoa, mesmo que ela esteja fora do ar.",
+  rodizio:
+    "Cada conversa vai para um atendente disponível, um de cada vez: recebe primeiro quem está há mais tempo sem receber. Se ninguém estiver disponível, ela vai para a fila da equipe.",
+  menos_conversas:
+    "A conversa vai para o atendente disponível com menos conversas abertas no momento. Se ninguém estiver disponível, ela vai para a fila da equipe.",
+  anterior:
+    "A conversa volta para quem atendeu este contato da última vez neste número. Se não houver ninguém, ela vai para a fila da equipe.",
+};
+
 const NOMES_DO_TIPO_DE_RESPOSTA: Record<PerguntaDoFormulario["tipo"], string> = {
   texto: "Texto livre",
   email: "E-mail",
   numero: "Número",
   data: "Data (dd/mm/aaaa)",
   telefone: "Telefone",
+  cpf: "CPF",
+  cnpj: "CNPJ",
 };
 
 function EnviarFormulario({

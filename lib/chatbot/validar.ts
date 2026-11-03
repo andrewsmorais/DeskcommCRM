@@ -60,7 +60,8 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         break;
       case "transferir_atendente": {
         const c = lerConfig("transferir_atendente", no.data);
-        if (!c.user_id) problemas.push(`escolha o atendente do passo "${nome}".`);
+        if (c.modo === "especifico" && !c.user_id)
+          problemas.push(`escolha o atendente do passo "${nome}".`);
         if (c.espera_minutos > 0 && !c.espera_mensagem)
           problemas.push(`escreva a mensagem de espera do passo "${nome}".`);
         break;

@@ -32,7 +32,9 @@
 import {
   lerConfig,
   type CampoDoContato,
+  type FormatoDeResposta,
   type Grafo,
+  type ModoDeAtendente,
   type TipoDeMidia,
   type TipoDePasso,
   ehTipoDePasso,
@@ -43,6 +45,7 @@ import {
   notaDaResposta,
   regraVale,
   respostaDoFormulario,
+  respostaNoFormato,
   valorDoCampo,
   valorVale,
   type ContatoDoTurno,
@@ -75,7 +78,13 @@ export type Efeito =
   | { tipo: "negocio"; pipeline_id: string; stage_id: string; titulo: string }
   /** `setor_id` null = equipe toda. */
   | { tipo: "transferir_equipe"; setor_id: string | null }
-  | { tipo: "transferir_atendente"; user_id: string | null }
+  | {
+      tipo: "transferir_atendente";
+      modo: ModoDeAtendente;
+      user_id: string | null;
+      /** Rodízio e menos conversas: só entre estes (vazio = quem pode receber). */
+      atendentes: string[];
+    }
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
   | { tipo: "campo_contato"; campo: CampoDoContato; chave: string; valor: string }
@@ -254,6 +263,21 @@ function textoDasOpcoes(pergunta: string, opcoes: string[]): string {
 
 const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha", "sem_horario"]);
 
+/**
+ * O que o chatbot diz ao contato quando a resposta do "Pedir para digitar" não
+ * está no formato e quem montou o fluxo não escreveu outra mensagem. Vai para
+ * o contato, então é texto do fluxo (português), como os padrões dos passos.
+ */
+export const MENSAGEM_FORA_DO_FORMATO: Record<FormatoDeResposta, string> = {
+  qualquer: "Não consegui ler sua resposta. Pode mandar de novo?",
+  email: "Esse e-mail não parece certo. Pode mandar de novo? Exemplo: nome@email.com",
+  telefone: "Esse telefone não parece certo. Pode mandar de novo, com o DDD?",
+  cpf: "Esse CPF não parece certo. Pode conferir e mandar de novo? Só os 11 números já servem.",
+  cnpj: "Esse CNPJ não parece certo. Pode conferir e mandar de novo? Só os 14 números já servem.",
+  numero: "Preciso de um número. Pode mandar de novo?",
+  data: "Não entendi a data. Pode mandar no formato dia/mês/ano? Exemplo: 25/12/2026",
+};
+
 /** Os horários guardados na sessão; lixo vira lista vazia. */
 export function ofertasGuardadas(dados: Record<string, string>): OfertaDeHorario[] {
   try {
@@ -317,6 +341,13 @@ function andar(
   inicio: string,
   ctx: ContextoDoTurno,
   respondendo: boolean,
+  /**
+   * A mensagem do turno ainda não respondeu passo nenhum e nada saiu depois
+   * dela ("Usar a mensagem anterior" do Pedir para digitar). Só o começo de um
+   * fluxo e a volta do relógio garantem isso; a continuação depois de uma ação
+   * (webhook, modelo, agenda) e o fluxo acionado por outro não garantem.
+   */
+  mensagemLivre = !respondendo,
 ): ResultadoDoTurno {
   const efeitos: Efeito[] = [];
   const sessao: SessaoDoChatbot = { ...sessaoInicial, dados: { ...sessaoInicial.dados } };
@@ -489,14 +520,46 @@ function andar(
       case "pedir_digitar": {
         const c = lerConfig("pedir_digitar", no.data);
         if (!resposta) {
+          // "Usar a mensagem anterior": a mensagem que trouxe este turno
+          // responde sem a pergunta — só se ela ainda é a ÚLTIMA da conversa
+          // (não respondeu outro passo e o chatbot não falou depois dela).
+          const ultima =
+            c.usar_mensagem_anterior &&
+            mensagemLivre &&
+            !!ctx.mensagem?.trim() &&
+            !efeitos.some((e) => e.tipo === "enviar" || e.tipo === "midia");
+          const pronta = ultima ? respostaNoFormato(c.formato, ctx.mensagem ?? "") : null;
+          if (pronta !== null) {
+            sessao.dados[c.variavel] = pronta;
+            sessao.tentativas = 0;
+            break;
+          }
           const pergunta = preencher(c.pergunta, sessao.dados).trim();
           if (pergunta) efeitos.push({ tipo: "enviar", texto: pergunta });
           sessao.no_atual = no.id;
           sessao.status = "waiting_input";
+          sessao.tentativas = 0;
           return { sessao, efeitos, passos };
         }
         resposta = false;
-        sessao.dados[c.variavel] = (ctx.mensagem ?? "").trim().slice(0, 1000);
+        const valor = respostaNoFormato(c.formato, ctx.mensagem ?? "");
+        if (valor !== null) {
+          sessao.dados[c.variavel] = valor;
+          sessao.tentativas = 0;
+          break;
+        }
+        sessao.tentativas += 1;
+        if (sessao.tentativas < c.tentativas) {
+          efeitos.push({
+            tipo: "enviar",
+            texto: c.mensagem_invalida || MENSAGEM_FORA_DO_FORMATO[c.formato],
+          });
+          sessao.no_atual = no.id;
+          sessao.status = "waiting_input";
+          return { sessao, efeitos, passos };
+        }
+        sessao.tentativas = 0;
+        saida = "invalida";
         break;
       }
       case "mensagem_contem": {
@@ -571,7 +634,12 @@ function andar(
         const c = lerConfig("transferir_atendente", no.data);
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
-        efeitos.push({ tipo: "transferir_atendente", user_id: c.user_id });
+        efeitos.push({
+          tipo: "transferir_atendente",
+          modo: c.modo,
+          user_id: c.modo === "especifico" ? c.user_id : null,
+          atendentes: c.modo === "rodizio" || c.modo === "menos_conversas" ? c.atendentes : [],
+        });
         return transferido(no.id, c);
       }
       case "enviar_midia": {
@@ -848,8 +916,10 @@ export function iniciarFluxo(
   inicio: string,
   ctx: ContextoDoTurno,
   dados: Record<string, string> = {},
+  /** false quando outro fluxo acionou este: a mensagem do turno já foi usada lá. */
+  mensagemLivre = true,
 ): ResultadoDoTurno {
-  return andar(grafo, { ...sessaoNova(), dados: { ...dados } }, inicio, ctx, false);
+  return andar(grafo, { ...sessaoNova(), dados: { ...dados } }, inicio, ctx, false, mensagemLivre);
 }
 
 /** O passo "Iniciar manualmente" do desenho, se houver. */
@@ -930,7 +1000,7 @@ export function continuarAposWebhook(
   }
   const seguinte = proximo(grafo, parada.id, resposta.ok ? "proximo" : "falha");
   if (!seguinte) return { ...encerrado(), sessao: { ...encerrado().sessao, dados } };
-  return andar(grafo, { ...sessao, dados, status: "running" }, seguinte, ctx, false);
+  return andar(grafo, { ...sessao, dados, status: "running" }, seguinte, ctx, false, false);
 }
 
 /** O passo de espera em que a sessão parou deixa a mensagem nova acordar o fluxo? */
@@ -975,7 +1045,7 @@ export function continuarComHorarios(
     const seguinte = proximo(grafo, parada.id, "sem_horario");
     if (!seguinte)
       return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos: [], passos: 0 };
-    return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
+    return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
   }
   dados[CHAVE_DOS_HORARIOS] = JSON.stringify(ofertas);
   return {
@@ -1022,7 +1092,7 @@ export function continuarAposMarcar(
     const seguinte = proximo(grafo, parada.id, "sem_horario");
     if (!seguinte)
       return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos: [], passos: 0 };
-    return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
+    return andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
   }
   dados.agendamento_status = r.aguardaConfirmacao ? "aguardando confirmação" : "confirmado";
   const texto = preencher(r.aguardaConfirmacao ? c.confirmacao_pendente : c.confirmacao, dados).trim();
@@ -1030,7 +1100,7 @@ export function continuarAposMarcar(
   const seguinte = proximo(grafo, parada.id, "proximo");
   if (!seguinte)
     return { sessao: { ...sessao, dados, status: "completed", no_atual: null, tentativas: 0, retomar_em: null }, efeitos, passos: 0 };
-  const depois = andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false);
+  const depois = andar(grafo, { ...sessao, dados, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
   return { ...depois, efeitos: [...efeitos, ...depois.efeitos] };
 }
 
@@ -1062,7 +1132,7 @@ export function continuarAposAcao(
   }
   const seguinte = proximo(grafo, parada.id, deuCerto ? "proximo" : "falha");
   if (!seguinte) return encerrado("completed");
-  return andar(grafo, { ...sessao, status: "running", tentativas: 0 }, seguinte, ctx, false);
+  return andar(grafo, { ...sessao, status: "running", tentativas: 0 }, seguinte, ctx, false, false);
 }
 
 /**

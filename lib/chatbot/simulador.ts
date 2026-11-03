@@ -35,14 +35,14 @@ import {
   type ResultadoDoTurno,
   type SessaoDoChatbot,
 } from "./motor";
-import { lerConfig, type Grafo, type TipoDeMidia } from "./passos";
+import { lerConfig, type Grafo, type ModoDeAtendente, type TipoDeMidia } from "./passos";
 import { contatoVazio, type ContatoDoTurno } from "./regras";
 import { rotuloLocal } from "@/lib/tempo/agora";
 
 /** O que acontece no teste além das mensagens — a tela dá o texto de cada um. */
 export type EventoDoTeste =
   | { tipo: "transferiu_equipe"; setor_id: string | null }
-  | { tipo: "transferiu_atendente"; user_id: string | null }
+  | { tipo: "transferiu_atendente"; modo: ModoDeAtendente; user_id: string | null }
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
   | { tipo: "campo"; campo: string; valor: string }
@@ -305,7 +305,7 @@ function aplicar(
         }
         estado = comEvento(estado, { tipo: "voltou_ao_inicio" });
         const dados = Object.fromEntries(Object.entries(r.sessao.dados).filter(([k]) => !k.startsWith("_")));
-        r = iniciarFluxo(grafo, inicio, c, dados);
+        r = iniciarFluxo(grafo, inicio, c, dados, false);
         break;
       }
     }
@@ -331,7 +331,10 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         bolhas.push({ de: "evento", evento: { tipo: "transferiu_equipe", setor_id: e.setor_id } });
         break;
       case "transferir_atendente":
-        bolhas.push({ de: "evento", evento: { tipo: "transferiu_atendente", user_id: e.user_id } });
+        bolhas.push({
+          de: "evento",
+          evento: { tipo: "transferiu_atendente", modo: e.modo, user_id: e.user_id },
+        });
         break;
       case "etiquetas": {
         const sai = new Set(e.remover.map(normalizar));

@@ -14,7 +14,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { copyToClipboard } from "@/lib/clipboard";
 
 import { useT } from "@/hooks/i18n/useT";
-import { lerConfig, metaDoPasso, saidasDoPasso, ehTipoDePasso } from "@/lib/chatbot/passos";
+import {
+  ehTipoDePasso,
+  lerConfig,
+  metaDoPasso,
+  saidasDoPasso,
+  type ModoDeAtendente,
+} from "@/lib/chatbot/passos";
 import { descreverRegra, descreverValor } from "@/lib/chatbot/regras";
 import { useAcoesDoNo } from "./acoes-do-no";
 import { IconeDoPasso } from "./icones";
@@ -22,6 +28,13 @@ import { IconeDoPasso } from "./icones";
 export type NodeData = Record<string, unknown>;
 
 /** O que o nó mostra embaixo do título: um resumo da configuração. */
+/** Como o card do "Transferir p/ atendente" diz quem recebe (o específico não diz). */
+const RESUMO_DO_MODO_DE_ATENDENTE: Record<Exclude<ModoDeAtendente, "especifico">, string> = {
+  rodizio: "Rodízio",
+  menos_conversas: "Menos conversas abertas",
+  anterior: "Quem atendeu antes",
+};
+
 function resumo(tipo: string, dados: unknown, t: (s: string) => string): string {
   if (!ehTipoDePasso(tipo)) return "";
   switch (tipo) {
@@ -94,8 +107,13 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     case "transferir_equipe":
     case "transferir_atendente": {
       const c = lerConfig(tipo, dados);
+      const modo = tipo === "transferir_atendente" ? lerConfig(tipo, dados).modo : "especifico";
       const setor =
-        tipo === "transferir_equipe" ? lerConfig("transferir_equipe", dados).nome_do_setor : "";
+        tipo === "transferir_equipe"
+          ? lerConfig("transferir_equipe", dados).nome_do_setor
+          : modo === "especifico"
+            ? ""
+            : t(RESUMO_DO_MODO_DE_ATENDENTE[modo]);
       const espera =
         c.espera_minutos > 0 && c.espera_mensagem
           ? `⏳ ${t("Espera")}: ${c.espera_minutos} min${c.espera_vezes > 1 ? ` × ${c.espera_vezes}` : ""}`

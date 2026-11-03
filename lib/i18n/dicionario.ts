@@ -5940,13 +5940,30 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, él envía la pregunta con las opciones numeradas y espera la respuesta del contacto. Cada opción tiene su propia salida en el tablero.\n\nEl contacto puede responder con el número (“2”) o con el texto de la opción. Si responde otra cosa, el chatbot pregunta de nuevo, hasta el número de intentos; después sigue por “No respondió bien”.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato digitar uma resposta livre.\n\nA resposta fica guardada com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.":
+  "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato responder.\n\nEm “O que a resposta precisa ser”, você escolhe o formato: qualquer texto, e-mail, telefone, CPF, CNPJ, número ou data. Fora do formato, o chatbot pede de novo; depois das tentativas, segue por “Não respondeu certo”. O CPF e o CNPJ têm os dígitos conferidos, então número digitado errado não passa.\n\nA resposta fica guardada já arrumada (e-mail em minúsculas, CPF e CNPJ com pontuação, data em dia/mês/ano) com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.\n\nCom “Usar a mensagem anterior”, o chatbot não faz a pergunta se a mensagem que o contato acabou de mandar já estiver no formato. Por exemplo: o cliente começa a conversa mandando o CPF.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él envía la pregunta y espera que el contacto escriba una respuesta libre.\n\nLa respuesta queda guardada con el nombre que elijas, para usarla después en un mensaje, en una condición o para guardarla en el registro con “Campo del contacto”.",
+      es: "Cuando agregues esta acción a tu chatbot, envía la pregunta y espera que el contacto responda.\n\nEn “Lo que debe ser la respuesta”, eliges el formato: cualquier texto, correo, teléfono, CPF, CNPJ, número o fecha. Fuera del formato, el chatbot vuelve a preguntar; después de los intentos, sigue por “No respondió bien”. El CPF y el CNPJ tienen los dígitos verificados, así que un número mal escrito no pasa.\n\nLa respuesta queda guardada ya ordenada (correo en minúsculas, CPF y CNPJ con puntuación, fecha en día/mes/año) con el nombre que elijas, para usarla después en un mensaje, en una condición o para guardarla en el registro con “Campo del contacto”.\n\nCon “Usar el mensaje anterior”, el chatbot no hace la pregunta si el mensaje que el contacto acaba de enviar ya está en el formato. Por ejemplo: el cliente empieza la conversación enviando el CPF.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data ou telefone.\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.":
+  "O que a resposta precisa ser": { es: "Lo que debe ser la respuesta" },
+  "Qualquer texto": { es: "Cualquier texto" },
+  "Qualquer resposta serve, até áudio ou foto.": {
+    es: "Cualquier respuesta sirve, incluso audio o foto.",
+  },
+  'Se a resposta não estiver no formato, o chatbot pede de novo. Depois das tentativas, segue por "Não respondeu certo".':
     {
-      es: "Cuando agregues esta acción a tu chatbot, él hace varias preguntas en secuencia, una por mensaje, y verifica cada respuesta según su tipo: texto, correo electrónico, número, fecha o teléfono.\n\nCada respuesta queda guardada con el nombre elegido y, si lo marcas, también se guarda en el nombre, correo electrónico o cumpleaños del contacto.\n\nSi el contacto falla todos los intentos de una pregunta, el flujo sigue por “No respondió bien”. No es el formulario nativo de WhatsApp: funciona en cualquier número.",
+      es: 'Si la respuesta no está en el formato, el chatbot vuelve a pedirla. Después de los intentos, sigue por "No respondió bien".',
+    },
+  "Se a resposta não estiver no formato": { es: "Si la respuesta no está en el formato" },
+  "Usar a mensagem anterior": { es: "Usar el mensaje anterior" },
+  CPF: { es: "CPF" },
+  "Sem fazer a pergunta, usa a mensagem que o contato acabou de mandar, se ela estiver no formato. Se não estiver, o chatbot faz a pergunta.":
+    {
+      es: "Sin hacer la pregunta, usa el mensaje que el contacto acaba de enviar, si está en el formato. Si no lo está, el chatbot hace la pregunta.",
+    },
+  "Respondeu certo": { es: "Respondió bien" },
+  "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data, telefone, CPF ou CNPJ (com os dígitos conferidos).\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, él hace varias preguntas en secuencia, una por mensaje, y verifica cada respuesta según su tipo: texto, correo electrónico, número, fecha, teléfono, CPF o CNPJ (con los dígitos verificados).\n\nCada respuesta queda guardada con el nombre elegido y, si lo marcas, también se guarda en el nombre, correo electrónico o cumpleaños del contacto.\n\nSi el contacto falla todos los intentos de una pregunta, el flujo sigue por “No respondió bien”. No es el formulario nativo de WhatsApp: funciona en cualquier número.",
     },
   "Quando adicionada essa ação no seu chatbot, ele oferece os próximos horários livres de um tipo de atendimento da Agenda e marca o que o contato escolher.\n\nÉ a mesma agenda e a mesma marcação que o agente de IA usa. Se não houver horário livre, segue por “Sem horário livre”; se o contato não escolher nenhum, por “Não escolheu”.\n\nEm atendimentos que a equipe aprova antes, o horário fica reservado até a confirmação.":
     {
@@ -5964,10 +5981,46 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, la conversación pasa a la fila de atención humana y queda como En espera hasta que alguien la tome. La Distribución de atención elige quién la toma.\n\nEn “Para quién”, elige todo el equipo o un sector. Con un sector, solo sus miembros reciben la conversación, y aparece marcada con el sector en la Bandeja de entrada; si el agente que ya la tenía no es del sector, vuelve a la fila.\n\nEl agente de IA se queda en silencio en esta conversación hasta que una persona la devuelva (o hasta que venza el plazo de devolución automática, si la empresa activó uno). El mensaje antes de transferir es opcional.\n\nEn “Mensaje de espera”, el chatbot puede enviar un aviso si nadie responde dentro del tiempo elegido, hasta 3 veces. Se detiene en cuanto una persona responda.",
     },
-  "Quando adicionada essa ação no seu chatbot, a conversa vai direto para o atendente escolhido.\n\nSe esse atendente não fizer mais parte da equipe, a transferência não acontece. A mensagem antes de transferir e a mensagem de espera funcionam como em “Transferir para a equipe”.":
+  "Quando adicionada essa ação no seu chatbot, a conversa vai direto para uma pessoa da equipe. Em “Para quem”, você escolhe como ela é escolhida:\n\n• Um atendente específico: sempre a mesma pessoa, mesmo que ela esteja fora do ar.\n• Rodízio entre a equipe: um de cada vez, começando por quem está há mais tempo sem receber conversa.\n• Quem tem menos conversas abertas: quem está mais livre no momento.\n• Quem atendeu o contato antes: o último atendente que falou com esse contato neste número.\n\nNo rodízio e em menos conversas, só entra quem está disponível agora (com Presença ligada, dentro do horário e com vaga). Você pode marcar só alguns atendentes; sem ninguém marcado, valem as regras do número e do setor da conversa.\n\nSe ninguém puder receber (ninguém disponível, ninguém atendeu antes, ou o atendente escolhido saiu da equipe), a conversa vai para a fila da equipe como Aguardando e fica uma nota interna explicando o motivo.\n\nA mensagem antes de transferir e a mensagem de espera funcionam como em “Transferir para a equipe”.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, la conversación va directo al agente elegido.\n\nSi ese agente ya no forma parte del equipo, la transferencia no ocurre. El mensaje antes de transferir y el mensaje de espera funcionan como en “Transferir al equipo”.",
+      es: "Cuando agregues esta acción a tu chatbot, la conversación va directo a una persona del equipo. En “Para quién”, eliges cómo se elige:\n\n• Un agente específico: siempre la misma persona, aunque esté desconectada.\n• Rotación entre el equipo: uno a la vez, empezando por quien lleva más tiempo sin recibir conversación.\n• Quien tiene menos conversaciones abiertas: quien está más libre en ese momento.\n• Quien atendió al contacto antes: el último agente que habló con ese contacto en este número.\n\nEn la rotación y en menos conversaciones, solo entra quien está disponible ahora (con Presencia activada, dentro del horario y con espacio). Puedes marcar solo algunos agentes; sin nadie marcado, valen las reglas del número y del sector de la conversación.\n\nSi nadie puede recibirla (nadie disponible, nadie atendió antes, o el agente elegido salió del equipo), la conversación va a la fila del equipo como En espera y queda una nota interna que explica el motivo.\n\nEl mensaje antes de transferir y el mensaje de espera funcionan como en “Transferir al equipo”.",
     },
+  "Um atendente específico": { es: "Un agente específico" },
+  "Rodízio entre a equipe": { es: "Rotación entre el equipo" },
+  "Quem tem menos conversas abertas": { es: "Quien tiene menos conversaciones abiertas" },
+  "Quem atendeu o contato antes": { es: "Quien atendió al contacto antes" },
+  "A conversa vai sempre para a mesma pessoa, mesmo que ela esteja fora do ar.": {
+    es: "La conversación va siempre a la misma persona, aunque esté desconectada.",
+  },
+  "Cada conversa vai para um atendente disponível, um de cada vez: recebe primeiro quem está há mais tempo sem receber. Se ninguém estiver disponível, ela vai para a fila da equipe.":
+    {
+      es: "Cada conversación va a un agente disponible, uno a la vez: recibe primero quien lleva más tiempo sin recibir. Si nadie está disponible, va a la fila del equipo.",
+    },
+  "A conversa vai para o atendente disponível com menos conversas abertas no momento. Se ninguém estiver disponível, ela vai para a fila da equipe.":
+    {
+      es: "La conversación va al agente disponible con menos conversaciones abiertas en ese momento. Si nadie está disponible, va a la fila del equipo.",
+    },
+  "A conversa volta para quem atendeu este contato da última vez neste número. Se não houver ninguém, ela vai para a fila da equipe.":
+    {
+      es: "La conversación vuelve a quien atendió a este contacto la última vez en este número. Si no hay nadie, va a la fila del equipo.",
+    },
+  "Só entre estes (opcional)": { es: "Solo entre estos (opcional)" },
+  "Sem ninguém marcado, entra quem pode receber esta conversa pelas regras do número e do setor.":
+    {
+      es: "Sin nadie marcado, entra quien puede recibir esta conversación según las reglas del número y del sector.",
+    },
+  "Rodízio": { es: "Rotación" },
+  "Menos conversas abertas": { es: "Menos conversaciones abiertas" },
+  "Quem atendeu antes": { es: "Quien atendió antes" },
+  "Conversa transferida pelo rodízio para o próximo atendente disponível": {
+    es: "Conversación transferida por rotación al próximo agente disponible",
+  },
+  "Conversa transferida para o atendente disponível com menos conversas": {
+    es: "Conversación transferida al agente disponible con menos conversaciones",
+  },
+  "Conversa transferida para quem atendeu o contato antes": {
+    es: "Conversación transferida a quien atendió al contacto antes",
+  },
   "Quando adicionada essa ação no seu chatbot, a conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar.\n\nSe não houver agente de IA ligado no número, o fluxo segue por “Sem agente de IA”. Ligue ali um “Transferir para a equipe”.\n\nO chatbot em si não usa IA; o agente gasta IA como sempre, dentro do orçamento dele.":
     {
       es: "Cuando agregues esta acción a tu chatbot, la conversación vuelve a la atención automática: el agente de IA de este número (o el enrutador) responde de ahí en adelante, incluido el mensaje que el contacto acaba de enviar.\n\nSi no hay un agente de IA activado en el número, el flujo sigue por “Sin agente de IA”. Conecta ahí un “Transferir al equipo”.\n\nEl chatbot en sí no usa IA; el agente gasta IA como siempre, dentro de su presupuesto.",

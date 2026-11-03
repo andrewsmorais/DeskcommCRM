@@ -13,7 +13,7 @@ import { FlaskConical, Paperclip, RotateCcw, Send, SlidersHorizontal, X } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/hooks/i18n/useT";
-import type { Grafo } from "@/lib/chatbot/passos";
+import type { Grafo, ModoDeAtendente } from "@/lib/chatbot/passos";
 import {
   comecarPorAutomacao,
   comecarTeste,
@@ -237,6 +237,13 @@ function Bolha({ bolha, opcoes }: { bolha: BolhaDoTeste; opcoes: OpcoesDoPainel 
   );
 }
 
+/** No teste não há equipe de verdade: diz como a conversa seria entregue. */
+const TESTE_DO_MODO_DE_ATENDENTE: Record<Exclude<ModoDeAtendente, "especifico">, string> = {
+  rodizio: "Conversa transferida pelo rodízio para o próximo atendente disponível",
+  menos_conversas: "Conversa transferida para o atendente disponível com menos conversas",
+  anterior: "Conversa transferida para quem atendeu o contato antes",
+};
+
 function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) => string): string {
   switch (e.tipo) {
     case "transferiu_equipe": {
@@ -246,6 +253,7 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
         : `— ${t("Conversa transferida para a fila da equipe (Aguardando)")} —`;
     }
     case "transferiu_atendente": {
+      if (e.modo !== "especifico") return `— ${t(TESTE_DO_MODO_DE_ATENDENTE[e.modo])} —`;
       const nome = opcoes.atendentes.find((a) => a.id === e.user_id)?.nome ?? t("um atendente");
       return `— ${t("Conversa transferida para")} ${nome} —`;
     }

@@ -104,8 +104,32 @@ export const OPERADORES_DE_VALOR = [
 ] as const;
 export type OperadorDeValor = (typeof OPERADORES_DE_VALOR)[number];
 
+/** O que o "Pedir para digitar" aceita como resposta. */
+export const FORMATOS_DE_RESPOSTA = [
+  "qualquer",
+  "email",
+  "telefone",
+  "cpf",
+  "cnpj",
+  "numero",
+  "data",
+] as const;
+export type FormatoDeResposta = (typeof FORMATOS_DE_RESPOSTA)[number];
+
+/** Quem recebe a conversa no "Transferir p/ atendente". */
+export const MODOS_DE_ATENDENTE = ["especifico", "rodizio", "menos_conversas", "anterior"] as const;
+export type ModoDeAtendente = (typeof MODOS_DE_ATENDENTE)[number];
+
 /** O que cada pergunta do "Enviar formulário" aceita como resposta. */
-export const TIPOS_DE_RESPOSTA = ["texto", "email", "numero", "data", "telefone"] as const;
+export const TIPOS_DE_RESPOSTA = [
+  "texto",
+  "email",
+  "numero",
+  "data",
+  "telefone",
+  "cpf",
+  "cnpj",
+] as const;
 export type TipoDeResposta = (typeof TIPOS_DE_RESPOSTA)[number];
 
 /** Onde a resposta de uma pergunta do formulário pode ser gravada no contato ("" = em lugar nenhum). */
@@ -166,6 +190,20 @@ export const configDoPasso = {
       .trim()
       .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
       .default("resposta"),
+    /**
+     * O que a resposta precisa ser ("Detecção de valores" da Umbler). Fora do
+     * formato, o chatbot pede de novo até `tentativas` vezes e então segue por
+     * "Não respondeu certo". "qualquer" aceita tudo, como antes dos formatos.
+     */
+    formato: z.enum(FORMATOS_DE_RESPOSTA).default("qualquer"),
+    /** Vazio = a mensagem padrão do formato. */
+    mensagem_invalida: z.string().trim().max(500).default(""),
+    tentativas: z.number().int().min(1).max(5).default(3),
+    /**
+     * Sem fazer a pergunta, usa a mensagem que o contato acabou de mandar — se
+     * ela ainda for a última da conversa e estiver no formato. Senão, pergunta.
+     */
+    usar_mensagem_anterior: z.boolean().default(false),
   }),
   mensagem_contem: z.object({
     palavras: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
@@ -193,8 +231,16 @@ export const configDoPasso = {
     mensagem: z.string().trim().max(1000).default(""),
     ...ESPERA_DO_ATENDENTE,
   }),
+  /**
+   * Os 4 modos da Umbler: um atendente fixo, rodízio, quem tem menos conversas
+   * abertas, ou quem atendeu o contato antes. Fluxo salvo antes dos modos não
+   * tem `modo` e segue como "específico".
+   */
   transferir_atendente: z.object({
+    modo: z.enum(MODOS_DE_ATENDENTE).default("especifico"),
     user_id: z.string().uuid().nullable().default(null),
+    /** Rodízio e menos conversas: só entre estes. Vazio = quem pode receber a conversa. */
+    atendentes: z.array(z.string().uuid()).max(50).default([]),
     mensagem: z.string().trim().max(1000).default(""),
     ...ESPERA_DO_ATENDENTE,
   }),
@@ -1100,6 +1146,13 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Respondeu tudo" },
         { id: "invalida", rotulo: "Não respondeu certo" },
       ];
+    case "pedir_digitar":
+      return lerConfig("pedir_digitar", dados).formato === "qualquer"
+        ? [{ id: "proximo", rotulo: "" }]
+        : [
+            { id: "proximo", rotulo: "Respondeu certo" },
+            { id: "invalida", rotulo: "Não respondeu certo" },
+          ];
     case "agendar_horario":
       return [
         { id: "proximo", rotulo: "Marcou" },

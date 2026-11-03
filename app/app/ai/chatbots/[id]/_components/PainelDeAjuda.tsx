@@ -60,7 +60,10 @@ export function PainelDeAjuda({
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-4 text-sm leading-relaxed">
         {paragrafos.map((p, i) => (
-          <p key={i}>{p}</p>
+          // Linha simples dentro do parágrafo é quebra de linha (lista com •).
+          <p key={i} className="whitespace-pre-line">
+            {p}
+          </p>
         ))}
         {variaveis.length > 0 ? (
           <div className="rounded-md border border-border">

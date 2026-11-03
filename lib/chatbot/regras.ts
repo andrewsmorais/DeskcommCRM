@@ -9,6 +9,7 @@
 import type {
   CampoDoContato,
   ConfigDe,
+  FormatoDeResposta,
   PerguntaDoFormulario,
   Regra,
   TipoDeResposta,
@@ -374,11 +375,75 @@ export function respostaDoFormulario(
       valor = digitos.length >= 8 && digitos.length <= 15 ? digitos : null;
       break;
     }
+    case "cpf":
+      valor = comoCpf(v);
+      break;
+    case "cnpj":
+      valor = comoCnpj(v);
+      break;
   }
   if (valor === null) return null;
   if (!p.gravar_em) return { valor, gravado: null };
   const gravado = valorDoCampo(p.gravar_em, valor, hoje);
   return gravado === null ? null : { valor, gravado };
+}
+
+/** Dígitos verificadores de CPF/CNPJ (módulo 11). `pesos` vale para o 1º dígito. */
+function digitosConferem(digitos: string, pesos: number[]): boolean {
+  if (/^(\d)\1+$/.test(digitos)) return false; // 000.000.000-00 e afins passam no cálculo
+  const n = digitos.split("").map(Number);
+  const corpo = pesos.length;
+  for (const extra of [0, 1]) {
+    const p = extra === 0 ? pesos : [pesos[0]! + 1, ...pesos];
+    const soma = p.reduce((t, peso, i) => t + peso * n[i]!, 0);
+    const resto = soma % 11;
+    const dv = resto < 2 ? 0 : 11 - resto;
+    if (dv !== n[corpo + extra]) return false;
+  }
+  return true;
+}
+
+const PESOS_CPF = [10, 9, 8, 7, 6, 5, 4, 3, 2];
+const PESOS_CNPJ = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+/** CPF válido (dígitos conferidos), escrito com ou sem pontuação → "123.456.789-09". */
+export function comoCpf(texto: string): string | null {
+  const v = texto.trim();
+  if (!/^[\d.\-\s]+$/.test(v)) return null;
+  const d = v.replace(/\D/g, "");
+  if (d.length !== 11 || !digitosConferem(d, PESOS_CPF)) return null;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+/** CNPJ válido (dígitos conferidos), com ou sem pontuação → "12.345.678/0001-95". */
+export function comoCnpj(texto: string): string | null {
+  const v = texto.trim();
+  if (!/^[\d.\-/\s]+$/.test(v)) return null;
+  const d = v.replace(/\D/g, "");
+  if (d.length !== 14 || !digitosConferem(d, PESOS_CNPJ)) return null;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
+/**
+ * A resposta do "Pedir para digitar" no formato pedido, já arrumada (e-mail em
+ * minúsculas, CPF e CNPJ pontuados, data dd/mm/aaaa, telefone só dígitos), ou
+ * null quando não está no formato. "qualquer" aceita tudo, inclusive vazio
+ * (áudio, foto), como o passo fazia antes dos formatos.
+ */
+export function respostaNoFormato(formato: FormatoDeResposta, bruto: string): string | null {
+  switch (formato) {
+    case "qualquer":
+      return bruto.trim().slice(0, 1000);
+    case "cpf":
+      return comoCpf(bruto);
+    case "cnpj":
+      return comoCnpj(bruto);
+    case "email":
+    case "telefone":
+    case "numero":
+    case "data":
+      return respostaDoFormulario({ tipo: formato, gravar_em: "" }, bruto)?.valor ?? null;
+  }
 }
 
 /**
