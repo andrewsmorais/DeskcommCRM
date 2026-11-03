@@ -199,6 +199,16 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const c = lerConfig("enviar_template", dados);
       return c.template_id ? `📄 ${c.nome_do_modelo}` : "";
     }
+    case "enviar_pagamento": {
+      const c = lerConfig("enviar_pagamento", dados);
+      return [
+        [c.descricao, c.valor].filter(Boolean).join(" — "),
+        c.link ? `🔗 ${c.link}` : "",
+        c.pix ? t("Pix") : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
     case "enviar_formulario": {
       const n = lerConfig("enviar_formulario", dados).perguntas.length;
       return n === 1 ? t("1 pergunta") : `${n} ${t("perguntas")}`;

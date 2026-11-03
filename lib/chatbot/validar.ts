@@ -150,6 +150,12 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (p) problemas.push(`no passo "${nome}", ${p}.`);
         break;
       }
+      case "enviar_pagamento": {
+        const c = lerConfig("enviar_pagamento", no.data);
+        if (!c.link && !c.pix)
+          problemas.push(`escreva o link ou o Pix do passo "${nome}".`);
+        break;
+      }
       case "enviar_template":
         if (!lerConfig("enviar_template", no.data).template_id)
           problemas.push(`escolha o modelo do passo "${nome}".`);

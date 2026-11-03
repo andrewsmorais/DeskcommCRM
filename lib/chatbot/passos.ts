@@ -505,6 +505,21 @@ export const configDoPasso = {
     mensagem: z.string().trim().max(1000).default(""),
   }),
   /**
+   * O link de pagamento de quem vende (Mercado Pago, Asaas, PagSeguro, Pix…),
+   * numa mensagem arrumada. O chatbot NÃO gera cobrança nem confere se foi
+   * pago: a organização não tem conta de pagamento ligada ao CRM. O link e o
+   * Pix aceitam {{variavel}} — o caso comum é o {{link_checkout}} de uma
+   * automação de venda, ou um campo guardado pelo WebHook.
+   */
+  enviar_pagamento: z.object({
+    descricao: z.string().trim().max(200).default(""),
+    /** Texto livre ("R$ 99,90", "3x de R$ 40") — aceita {{variavel}}. */
+    valor: z.string().trim().max(60).default(""),
+    link: z.string().trim().max(2000).default(""),
+    pix: z.string().trim().max(600).default(""),
+    mensagem: z.string().trim().max(1000).default(""),
+  }),
+  /**
    * Modelo aprovado pela Meta (`meta_templates`), sem variáveis — o mesmo que o
    * follow-up manda. Só existe em número oficial (API da Meta); em número por
    * QR Code o passo segue por "Não enviado".
@@ -766,6 +781,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Envie uma foto, vídeo, áudio ou PDF para o contato.",
     icone: "Paperclip",
     cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_pagamento",
+    grupo: "acao",
+    nome: "Enviar link de pagamento",
+    descricao: "Envie o link de pagamento (e o Pix, se quiser) numa mensagem arrumada.",
+    icone: "CreditCard",
+    cor: "text-emerald-500",
     temEntrada: true,
   },
   {
@@ -1140,6 +1164,11 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         { id: "proximo", rotulo: "Enviado" },
         { id: "falha", rotulo: "Não enviado" },
+      ];
+    case "enviar_pagamento":
+      return [
+        { id: "proximo", rotulo: "Enviado" },
+        { id: "falha", rotulo: "Sem link" },
       ];
     case "enviar_formulario":
       return [

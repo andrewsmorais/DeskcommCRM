@@ -5955,6 +5955,33 @@ export const DICIONARIO: Traducoes = {
     },
   "Se a resposta não estiver no formato": { es: "Si la respuesta no está en el formato" },
   "Usar a mensagem anterior": { es: "Usar el mensaje anterior" },
+  "Enviar link de pagamento": { es: "Enviar enlace de pago" },
+  "Envie o link de pagamento (e o Pix, se quiser) numa mensagem arrumada.": {
+    es: "Envía el enlace de pago (y el Pix, si quieres) en un mensaje ordenado.",
+  },
+  "O que está sendo cobrado": { es: "Qué se está cobrando" },
+  "Ex.: Consulta de avaliação": { es: "Ej.: Consulta de evaluación" },
+  "Valor (opcional)": { es: "Valor (opcional)" },
+  "Link de pagamento": { es: "Enlace de pago" },
+  "O link do Mercado Pago, Asaas, PagSeguro ou da sua loja. Aceita {{variavel}}, como o {{link_checkout}} de uma automação de venda.":
+    {
+      es: "El enlace de Mercado Pago, Asaas, PagSeguro o de tu tienda. Acepta {{variavel}}, como el {{link_checkout}} de una automatización de venta.",
+    },
+  "Pix copia e cola (opcional)": { es: "Pix copia y pega (opcional)" },
+  "Vai numa mensagem separada, para o contato copiar inteiro.": {
+    es: "Va en un mensaje separado, para que el contacto lo copie entero.",
+  },
+  "Mensagem antes do link (opcional)": { es: "Mensaje antes del enlace (opcional)" },
+  'O chatbot envia o link, mas não confere se foi pago. Se o link ficar vazio (uma variável sem valor), o fluxo segue por "Sem link".':
+    {
+      es: 'El chatbot envía el enlace, pero no verifica si se pagó. Si el enlace queda vacío (una variable sin valor), el flujo sigue por "Sin enlace".',
+    },
+  "Sem link": { es: "Sin enlace" },
+  Pix: { es: "Pix" },
+  "Quando adicionada essa ação no seu chatbot, ele envia ao contato o link de pagamento numa mensagem arrumada: o que está sendo cobrado, o valor e o link. Se você colocar o Pix copia e cola, ele vai numa mensagem separada, para o contato copiar inteiro.\n\nUse o link do Mercado Pago, Asaas, PagSeguro, da sua loja ou de qualquer plataforma. O link aceita {{variavel}}: por exemplo, o {{link_checkout}} que chega numa automação de venda, ou um link guardado pelo WebHook.\n\nO chatbot não gera a cobrança nem confere se foi pago. Fica uma nota interna na conversa dizendo que o link foi enviado.\n\nSe o link e o Pix ficarem vazios (uma variável sem valor), nada é enviado e o fluxo segue por “Sem link”.":
+    {
+      es: "Cuando agregues esta acción a tu chatbot, envía al contacto el enlace de pago en un mensaje ordenado: qué se está cobrando, el valor y el enlace. Si pones el Pix copia y pega, va en un mensaje separado, para que el contacto lo copie entero.\n\nUsa el enlace de Mercado Pago, Asaas, PagSeguro, de tu tienda o de cualquier plataforma. El enlace acepta {{variavel}}: por ejemplo, el {{link_checkout}} que llega en una automatización de venta, o un enlace guardado por el WebHook.\n\nEl chatbot no genera el cobro ni verifica si se pagó. Queda una nota interna en la conversación que dice que se envió el enlace.\n\nSi el enlace y el Pix quedan vacíos (una variable sin valor), no se envía nada y el flujo sigue por “Sin enlace”.",
+    },
   CPF: { es: "CPF" },
   "Sem fazer a pergunta, usa a mensagem que o contato acabou de mandar, se ela estiver no formato. Se não estiver, o chatbot faz a pergunta.":
     {
@@ -6005,11 +6032,10 @@ export const DICIONARIO: Traducoes = {
       es: "La conversación vuelve a quien atendió a este contacto la última vez en este número. Si no hay nadie, va a la fila del equipo.",
     },
   "Só entre estes (opcional)": { es: "Solo entre estos (opcional)" },
-  "Sem ninguém marcado, entra quem pode receber esta conversa pelas regras do número e do setor.":
-    {
-      es: "Sin nadie marcado, entra quien puede recibir esta conversación según las reglas del número y del sector.",
-    },
-  "Rodízio": { es: "Rotación" },
+  "Sem ninguém marcado, entra quem pode receber esta conversa pelas regras do número e do setor.": {
+    es: "Sin nadie marcado, entra quien puede recibir esta conversación según las reglas del número y del sector.",
+  },
+  Rodízio: { es: "Rotación" },
   "Menos conversas abertas": { es: "Menos conversaciones abiertas" },
   "Quem atendeu antes": { es: "Quien atendió antes" },
   "Conversa transferida pelo rodízio para o próximo atendente disponível": {

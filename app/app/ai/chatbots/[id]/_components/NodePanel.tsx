@@ -499,6 +499,58 @@ function Campos({
         />
       );
     }
+    case "enviar_pagamento": {
+      const c = lerConfig("enviar_pagamento", dados);
+      return (
+        <>
+          <Texto
+            id="pagamento-descricao"
+            rotulo={t("O que está sendo cobrado")}
+            valor={c.descricao}
+            placeholder={t("Ex.: Consulta de avaliação")}
+            onCommit={(v) => aplicar({ descricao: v })}
+          />
+          <Texto
+            id="pagamento-valor"
+            rotulo={t("Valor (opcional)")}
+            valor={c.valor}
+            placeholder="R$ 99,90"
+            onCommit={(v) => aplicar({ valor: v })}
+          />
+          <Texto
+            id="pagamento-link"
+            rotulo={t("Link de pagamento")}
+            valor={c.link}
+            placeholder="https://"
+            onCommit={(v) => aplicar({ link: v })}
+            ajuda={t(
+              "O link do Mercado Pago, Asaas, PagSeguro ou da sua loja. Aceita {{variavel}}, como o {{link_checkout}} de uma automação de venda.",
+            )}
+          />
+          <Texto
+            id="pagamento-pix"
+            rotulo={t("Pix copia e cola (opcional)")}
+            valor={c.pix}
+            linhas={3}
+            onCommit={(v) => aplicar({ pix: v })}
+            ajuda={t("Vai numa mensagem separada, para o contato copiar inteiro.")}
+          />
+          <Texto
+            id="pagamento-mensagem"
+            rotulo={t("Mensagem antes do link (opcional)")}
+            valor={c.mensagem}
+            linhas={3}
+            onCommit={(v) => aplicar({ mensagem: v })}
+            ajuda={ajudaVariavel}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'O chatbot envia o link, mas não confere se foi pago. Se o link ficar vazio (uma variável sem valor), o fluxo segue por "Sem link".',
+            )}
+          </p>
+        </>
+      );
+    }
     case "pedir_escolher":
       return <PedirEscolher dados={dados} aplicar={aplicar} />;
     case "pedir_digitar": {

@@ -16,6 +16,7 @@ import {
   CircleDot,
   ClipboardList,
   Clock,
+  CreditCard,
   FileText,
   Flag,
   GitBranch,
@@ -55,6 +56,7 @@ import {
 } from "lucide-react";
 
 const ICONES: Record<string, LucideIcon> = {
+  CreditCard,
   Lock,
   ClipboardList,
   FileText,

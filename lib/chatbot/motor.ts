@@ -32,6 +32,7 @@
 import {
   lerConfig,
   type CampoDoContato,
+  type ConfigDe,
   type FormatoDeResposta,
   type Grafo,
   type ModoDeAtendente,
@@ -264,6 +265,37 @@ function textoDasOpcoes(pergunta: string, opcoes: string[]): string {
 const SAIDAS_DE_ERRO = new Set(["invalido", "invalida", "falha", "sem_horario"]);
 
 /**
+ * As mensagens do "Enviar link de pagamento": o texto com o link e, à parte,
+ * o Pix copia e cola (numa mensagem só dele, para o contato copiar inteiro), e
+ * a nota que a equipe lê. null quando não sobra link nem Pix depois de
+ * preencher as variáveis.
+ */
+export function mensagensDoPagamento(
+  c: ConfigDe<"enviar_pagamento">,
+  dados: Record<string, string>,
+): { mensagens: string[]; nota: string } | null {
+  const link = preencher(c.link, dados).trim();
+  const pix = preencher(c.pix, dados).trim();
+  if (!link && !pix) return null;
+  const descricao = preencher(c.descricao, dados).trim();
+  const valor = preencher(c.valor, dados).trim();
+  const partes: string[] = [];
+  const abertura = preencher(c.mensagem, dados).trim();
+  if (abertura) partes.push(abertura);
+  if (descricao || valor)
+    partes.push(`💳 *${descricao || "Pagamento"}*${valor ? ` — ${valor}` : ""}`);
+  if (link) partes.push(`Pague por aqui: ${link}`);
+  if (pix) partes.push("Ou pague com Pix copia e cola, na próxima mensagem.");
+  const mensagens = [partes.join("\n\n")];
+  if (pix) mensagens.push(pix);
+  const oQue = [descricao, valor].filter(Boolean).join(" — ");
+  return {
+    mensagens,
+    nota: `O chatbot enviou o link de pagamento${oQue ? ` (${oQue})` : ""}. Ele não confere se foi pago.`,
+  };
+}
+
+/**
  * O que o chatbot diz ao contato quando a resposta do "Pedir para digitar" não
  * está no formato e quem montou o fluxo não escreveu outra mensagem. Vai para
  * o contato, então é texto do fluxo (português), como os padrões dos passos.
@@ -482,6 +514,18 @@ function andar(
         const c = lerConfig("enviar_mensagem", no.data);
         const texto = preencher(c.texto, sessao.dados).trim();
         if (texto) efeitos.push({ tipo: "enviar", texto });
+        break;
+      }
+      case "enviar_pagamento": {
+        const p = mensagensDoPagamento(lerConfig("enviar_pagamento", no.data), sessao.dados);
+        if (!p) {
+          // {{link_checkout}} vazio, por exemplo: mandar "pague por aqui:" sem
+          // link seria pior que não mandar. Segue por "Sem link".
+          saida = "falha";
+          break;
+        }
+        for (const texto of p.mensagens) efeitos.push({ tipo: "enviar", texto });
+        efeitos.push({ tipo: "nota", texto: p.nota });
         break;
       }
       case "pedir_escolher": {
