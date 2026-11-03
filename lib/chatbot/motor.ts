@@ -333,7 +333,9 @@ export function textoDaLocalizacao(
     preencher(c.mensagem, dados).trim(),
     c.nome ? `📍 *${preencher(c.nome, dados).trim()}*` : "",
     preencher(c.endereco, dados).trim(),
-    `https://www.google.com/maps/search/?api=1&query=${consulta}`,
+    // O mesmo host de mapa da localização que chega (`lib/messaging/localizacao.ts`):
+    // o celular abre o app de mapas; o código não chama o host.
+    `https://maps.google.com/?q=${consulta}`,
   ].filter(Boolean);
   return partes.join("\n");
 }

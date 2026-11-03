@@ -96,10 +96,10 @@ describe("Enviar localização, contato e produto", () => {
       longitude: -46.63,
     });
     expect(textoDaLocalizacao(c, {})).toBe(
-      "📍 *Loja Centro*\nRua A, 10\nhttps://www.google.com/maps/search/?api=1&query=-23.55,-46.63",
+      "📍 *Loja Centro*\nRua A, 10\nhttps://maps.google.com/?q=-23.55,-46.63",
     );
     const soEndereco = lerConfig("enviar_localizacao", { endereco: "Rua B, 5" });
-    expect(textoDaLocalizacao(soEndereco, {})).toContain("query=Rua%20B%2C%205");
+    expect(textoDaLocalizacao(soEndereco, {})).toContain("?q=Rua%20B%2C%205");
     expect(textoDaLocalizacao(lerConfig("enviar_localizacao", {}), {})).toBe("");
   });
 

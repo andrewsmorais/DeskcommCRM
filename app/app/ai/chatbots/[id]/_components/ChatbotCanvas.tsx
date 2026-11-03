@@ -95,7 +95,8 @@ type Foto = { nodes: Node<NodeData>[]; edges: Edge[] };
 const COR_DA_LINHA = "#94a3b8";
 const COR_DA_LINHA_SELECIONADA = "#8b5cf6";
 /** Onde o Ctrl+C guarda os passos (no navegador), para colar em outro fluxo. */
-const CHAVE_DOS_COPIADOS = "deskcomm:chatbot:passos-copiados";
+// Sem o nome do produto: a chave vale para qualquer marca da instalação.
+const CHAVE_DOS_COPIADOS = "chatbot:passos-copiados";
 
 function comoLinha(e: Edge): Edge {
   const cor = e.selected ? COR_DA_LINHA_SELECIONADA : COR_DA_LINHA;
