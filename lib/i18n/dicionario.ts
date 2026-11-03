@@ -5255,17 +5255,19 @@ export const DICIONARIO: Traducoes = {
   "Pedir para escolher": { es: "Pedir que elija" },
   "Ofereça opções para o contato escolher.": { es: "Ofrece opciones para que el contacto elija." },
   "Pedir para digitar": { es: "Pedir que escriba" },
-  "Peça para o contato digitar um texto livre.": {
-    es: "Pide al contacto que escriba un texto libre.",
-  },
+  "Faça uma pergunta e guarde a resposta, conferindo o formato se quiser (e-mail, telefone, CPF…).":
+    {
+      es: "Haz una pregunta y guarda la respuesta, verificando el formato si quieres (correo, teléfono, CPF…).",
+    },
   "Transferir para a equipe": { es: "Transferir al equipo" },
   "Passe a conversa para a fila de atendentes humanos.": {
     es: "Pasa la conversación a la cola de agentes humanos.",
   },
   "Transferir p/ atendente": { es: "Transferir a un agente" },
-  "Transfira a conversa para um atendente específico.": {
-    es: "Transfiere la conversación a un agente específico.",
-  },
+  "Transfira a conversa para uma pessoa da equipe: fixa, em rodízio, a menos ocupada ou quem atendeu antes.":
+    {
+      es: "Transfiere la conversación a una persona del equipo: fija, en rotación, la menos ocupada o quien atendió antes.",
+    },
   "Editar etiquetas": { es: "Editar etiquetas" },
   "Adicione ou remova etiquetas do contato.": { es: "Agrega o quita etiquetas del contacto." },
   "Finalizar conversa": { es: "Finalizar conversación" },
