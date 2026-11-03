@@ -42,6 +42,10 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const n = lerConfig("canal_da_conversa", dados).canais.length;
       return n === 0 ? "" : n === 1 ? t("1 número") : `${n} ${t("números")}`;
     }
+    case "setor_da_conversa": {
+      const n = lerConfig("setor_da_conversa", dados).setores.length;
+      return n === 0 ? "" : n === 1 ? t("1 setor") : `${n} ${t("setores")}`;
+    }
     case "atendente_da_conversa": {
       const n = lerConfig("atendente_da_conversa", dados).atendentes.length;
       return n === 0 ? t("Qualquer atendente") : n === 1 ? t("1 atendente") : `${n} ${t("atendentes")}`;
@@ -90,11 +94,13 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     case "transferir_equipe":
     case "transferir_atendente": {
       const c = lerConfig(tipo, dados);
+      const setor =
+        tipo === "transferir_equipe" ? lerConfig("transferir_equipe", dados).nome_do_setor : "";
       const espera =
         c.espera_minutos > 0 && c.espera_mensagem
           ? `⏳ ${t("Espera")}: ${c.espera_minutos} min${c.espera_vezes > 1 ? ` × ${c.espera_vezes}` : ""}`
           : "";
-      return [c.mensagem, espera].filter(Boolean).join("\n");
+      return [setor ? `→ ${setor}` : "", c.mensagem, espera].filter(Boolean).join("\n");
     }
     case "finalizar_conversa":
       return (dados as { mensagem?: string })?.mensagem ?? "";

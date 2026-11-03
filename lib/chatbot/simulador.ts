@@ -41,7 +41,7 @@ import { rotuloLocal } from "@/lib/tempo/agora";
 
 /** O que acontece no teste além das mensagens — a tela dá o texto de cada um. */
 export type EventoDoTeste =
-  | { tipo: "transferiu_equipe" }
+  | { tipo: "transferiu_equipe"; setor_id: string | null }
   | { tipo: "transferiu_atendente"; user_id: string | null }
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
@@ -328,7 +328,7 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         bolhas.push({ de: "midia", tipo: e.midia, legenda: e.legenda, storage_path: e.storage_path });
         break;
       case "transferir_equipe":
-        bolhas.push({ de: "evento", evento: { tipo: "transferiu_equipe" } });
+        bolhas.push({ de: "evento", evento: { tipo: "transferiu_equipe", setor_id: e.setor_id } });
         break;
       case "transferir_atendente":
         bolhas.push({ de: "evento", evento: { tipo: "transferiu_atendente", user_id: e.user_id } });

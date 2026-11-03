@@ -182,10 +182,14 @@ export const configDoPasso = {
     dias: z.array(z.number().int().min(0).max(6)).max(7).default([1, 2, 3, 4, 5]),
   }),
   /**
-   * Este CRM não tem "setores" como a Umbler: a conversa vai para a fila de
-   * atendimento humano e a Distribuição de atendimento escolhe quem pega.
+   * A conversa vai para a fila de atendimento humano e a Distribuição de
+   * atendimento escolhe quem pega. Com `setor_id` ("Transferir para setor" da
+   * Umbler, migration 0496), só membros daquele setor recebem; null = equipe toda.
    */
   transferir_equipe: z.object({
+    setor_id: z.string().uuid().nullable().default(null),
+    /** Só para o resumo no quadro; quem decide é o id. */
+    nome_do_setor: z.string().max(60).default(""),
     mensagem: z.string().trim().max(1000).default(""),
     ...ESPERA_DO_ATENDENTE,
   }),
@@ -307,6 +311,10 @@ export const configDoPasso = {
   presenca_do_atendente: z.object({}),
   /** O agente de IA, ou outro chatbot, está atendendo esta conversa agora? */
   bot_paralelo: z.object({}),
+  /** A conversa está num destes setores (migration 0496)? */
+  setor_da_conversa: z.object({
+    setores: z.array(z.string().uuid()).max(30).default([]),
+  }),
   /** O contato está esperando resposta (a última mensagem é dele)? */
   status_da_conversa: z.object({}),
   /**
@@ -661,6 +669,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "setor_da_conversa",
+    grupo: "condicao",
+    nome: "Setor da conversa",
+    descricao: "Verifica o setor atual da conversa.",
+    icone: "Users",
+    cor: "text-red-500",
+    temEntrada: true,
+  },
+  {
     tipo: "bot_paralelo",
     grupo: "condicao",
     nome: "Bot paralelo em execução",
@@ -772,7 +789,8 @@ export const PASSOS: readonly MetaDoPasso[] = [
     tipo: "transferir_equipe",
     grupo: "acao",
     nome: "Transferir para a equipe",
-    descricao: "Passe a conversa para a fila de atendentes: ela fica como Aguardando até alguém pegar.",
+    descricao:
+      "Passe a conversa para a fila de atendentes, da equipe toda ou de um setor: ela fica como Aguardando até alguém pegar.",
     icone: "Users",
     cor: "text-red-400",
     temEntrada: true,
@@ -1049,6 +1067,11 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       return [
         { id: "sim", rotulo: "Alguém disponível" },
         { id: "nao", rotulo: "Ninguém disponível" },
+      ];
+    case "setor_da_conversa":
+      return [
+        { id: "sim", rotulo: "Um dos setores" },
+        { id: "nao", rotulo: "Outro ou nenhum" },
       ];
     case "bot_paralelo":
       return [

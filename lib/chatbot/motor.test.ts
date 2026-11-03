@@ -114,7 +114,7 @@ describe("pedir para escolher", () => {
     const r = continuarFluxo(menu, parado, ctx("1"));
     expect(r.efeitos).toEqual([
       { tipo: "enviar", texto: "Vou te passar para vendas." },
-      { tipo: "transferir_equipe" },
+      { tipo: "transferir_equipe", setor_id: null },
     ]);
     expect(r.sessao.status).toBe("transferred");
   });

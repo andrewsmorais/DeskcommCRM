@@ -39,6 +39,8 @@ export type OpcoesDoPainel = {
   /** Tipos de atendimento da Agenda. */
   tiposDeAtendimento: { id: string; nome: string; ativo: boolean }[];
   funis: { id: string; nome: string; etapas: { id: string; nome: string }[] }[];
+  /** Setores de atendimento (Configurações › Setores). */
+  setores: { id: string; nome: string }[];
   /** Modelos aprovados pela Meta que um fluxo consegue mandar sozinho (sem variáveis). */
   modelos: { id: string; nome: string; idioma: string; texto: string }[];
 };
@@ -306,6 +308,39 @@ function Campos({
         </div>
       );
     }
+    case "setor_da_conversa": {
+      const c = lerConfig("setor_da_conversa", dados);
+      return (
+        <div className="space-y-1.5">
+          <Label>{t("Setores")}</Label>
+          {opcoes.setores.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {t("Nenhum setor ainda. Crie os setores em Configurações › Setores.")}
+            </p>
+          ) : (
+            opcoes.setores.map((s) => (
+              <label key={s.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={c.setores.includes(s.id)}
+                  onChange={(e) =>
+                    aplicar({
+                      setores: e.target.checked
+                        ? [...c.setores, s.id]
+                        : c.setores.filter((x) => x !== s.id),
+                    })
+                  }
+                />
+                {s.nome}
+              </label>
+            ))
+          )}
+          <p className="text-xs text-muted-foreground">
+            {t('Se a conversa estiver num dos setores marcados, segue por "Um dos setores".')}
+          </p>
+        </div>
+      );
+    }
     case "atendente_da_conversa": {
       const c = lerConfig("atendente_da_conversa", dados);
       return (
@@ -544,11 +579,39 @@ function Campos({
       const c = lerConfig("transferir_equipe", dados);
       return (
         <>
+          <div className="space-y-1.5">
+            <Label htmlFor="equipe-setor">{t("Para quem")}</Label>
+            <select
+              id="equipe-setor"
+              className={SELECT}
+              value={c.setor_id ?? ""}
+              onChange={(e) => {
+                const s = opcoes.setores.find((x) => x.id === e.target.value);
+                aplicar({ setor_id: s?.id ?? null, nome_do_setor: s?.nome ?? "" });
+              }}
+            >
+              <option value="">{t("Equipe toda")}</option>
+              {opcoes.setores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nome}
+                </option>
+              ))}
+            </select>
+          </div>
           <p className="text-xs text-muted-foreground">
-            {t(
-              "A conversa vai para a fila de atendentes e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.",
-            )}
+            {c.setor_id
+              ? t(
+                  "A conversa vai para a fila do setor e fica como Aguardando até alguém pegar. A Distribuição de atendimento só a entrega a quem é do setor.",
+                )
+              : t(
+                  "A conversa vai para a fila de atendentes e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.",
+                )}
           </p>
+          {opcoes.setores.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {t("Para mandar a um setor específico, crie os setores em Configurações › Setores.")}
+            </p>
+          ) : null}
           <Texto
             id="equipe-msg"
             rotulo={t("Mensagem antes de transferir (opcional)")}

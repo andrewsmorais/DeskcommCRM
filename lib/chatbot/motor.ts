@@ -73,7 +73,8 @@ export type Efeito =
   | { tipo: "enviar"; texto: string }
   | { tipo: "midia"; storage_path: string; midia: TipoDeMidia; mime: string; legenda: string }
   | { tipo: "negocio"; pipeline_id: string; stage_id: string; titulo: string }
-  | { tipo: "transferir_equipe" }
+  /** `setor_id` null = equipe toda. */
+  | { tipo: "transferir_equipe"; setor_id: string | null }
   | { tipo: "transferir_atendente"; user_id: string | null }
   | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
@@ -112,6 +113,8 @@ export type FatosDaConversa = {
   equipe_disponivel: boolean;
   /** O agente de IA ou outro chatbot está atendendo a conversa. */
   outro_bot: boolean;
+  /** Setor da conversa (conversations.setor_id), ou null. */
+  setor: string | null;
 };
 
 export function fatosVazios(): FatosDaConversa {
@@ -123,6 +126,7 @@ export function fatosVazios(): FatosDaConversa {
     primeira_conversa: false,
     equipe_disponivel: false,
     outro_bot: false,
+    setor: null,
   };
 }
 
@@ -422,6 +426,12 @@ function andar(
       case "bot_paralelo":
         saida = fatos.outro_bot ? "sim" : "nao";
         break;
+      case "setor_da_conversa":
+        saida =
+          fatos.setor && lerConfig("setor_da_conversa", no.data).setores.includes(fatos.setor)
+            ? "sim"
+            : "nao";
+        break;
       case "status_da_conversa":
         saida = fatos.aguardando_resposta ? "sim" : "nao";
         break;
@@ -554,7 +564,7 @@ function andar(
         const c = lerConfig("transferir_equipe", no.data);
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
-        efeitos.push({ tipo: "transferir_equipe" });
+        efeitos.push({ tipo: "transferir_equipe", setor_id: c.setor_id });
         return transferido(no.id, c);
       }
       case "transferir_atendente": {

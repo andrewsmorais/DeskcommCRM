@@ -5440,9 +5440,10 @@ export const DICIONARIO: Traducoes = {
   "Encerre este fluxo e comece outro chatbot (ou volte ao início deste).": {
     es: "Termina este flujo y empieza otro chatbot (o vuelve al inicio de este).",
   },
-  "Passe a conversa para a fila de atendentes: ela fica como Aguardando até alguém pegar.": {
-    es: "Pasa la conversación a la fila de agentes: queda como En espera hasta que alguien la tome.",
-  },
+  "Passe a conversa para a fila de atendentes, da equipe toda ou de um setor: ela fica como Aguardando até alguém pegar.":
+    {
+      es: "Pasa la conversación a la fila de agentes, de todo el equipo o de un sector: queda como En espera hasta que alguien la tome.",
+    },
   Marcou: { es: "Agendó" },
   "Sem horário livre": { es: "Sin horario libre" },
   "Não escolheu": { es: "No eligió" },
@@ -5768,7 +5769,42 @@ export const DICIONARIO: Traducoes = {
   "Torne o atendimento privado (só o responsável e os gestores veem) ou livre de novo.": {
     es: "Haz la atención privada (solo el responsable y los gestores la ven) o vuelve a liberarla.",
   },
+  // Setores de atendimento (migration 0496, 03/11/2026).
+  "Setor da conversa": { es: "Sector de la conversación" },
+  "Verifica o setor atual da conversa.": { es: "Verifica el sector actual de la conversación." },
+  "Um dos setores": { es: "Uno de los sectores" },
+  "Outro ou nenhum": { es: "Otro o ninguno" },
+  "Nenhum setor ainda. Crie os setores em Configurações › Setores.": {
+    es: "Todavía no hay sectores. Crea los sectores en Configuración › Sectores.",
+  },
+  'Se a conversa estiver num dos setores marcados, segue por "Um dos setores".': {
+    es: 'Si la conversación está en uno de los sectores marcados, sigue por "Uno de los sectores".',
+  },
+  "Para quem": { es: "Para quién" },
+  "Equipe toda": { es: "Todo el equipo" },
+  "A conversa vai para a fila do setor e fica como Aguardando até alguém pegar. A Distribuição de atendimento só a entrega a quem é do setor.":
+    {
+      es: "La conversación pasa a la fila del sector y queda como En espera hasta que alguien la tome. La Distribución de atención solo la entrega a quien es del sector.",
+    },
+  "Para mandar a um setor específico, crie os setores em Configurações › Setores.": {
+    es: "Para enviar a un sector específico, crea los sectores en Configuración › Sectores.",
+  },
+  "Conversa transferida para a fila do setor": {
+    es: "Conversación transferida a la fila del sector",
+  },
+  Setor: { es: "Sector" },
+  "1 setor": { es: "1 sector" },
+  setores: { es: "sectores" },
+  "Só atendentes ativos da equipe podem entrar num setor.": {
+    es: "Solo los agentes activos del equipo pueden entrar en un sector.",
+  },
+  "Já existe um setor com esse nome.": { es: "Ya existe un sector con ese nombre." },
+  "Setor não encontrado.": { es: "Sector no encontrado." },
   // Chatbot: barra do editor, ideias de bot e ajuda de cada passo (03/11/2026).
+  "Quando adicionada essa condição no seu chatbot, ele verifica em que setor a conversa está agora e segue por “Um dos setores”, se for um dos marcados, ou por “Outro ou nenhum”.\n\nO setor muda quando um passo “Transferir para a equipe” manda a conversa a um setor, ou quando um atendente troca o setor pela Inbox. Os setores são criados em Configurações › Setores.":
+    {
+      es: "Cuando agregues esta condición a tu chatbot, él verifica en qué sector está la conversación ahora y sigue por “Uno de los sectores”, si es uno de los marcados, o por “Otro o ninguno”.\n\nEl sector cambia cuando un paso “Transferir al equipo” envía la conversación a un sector, o cuando un agente cambia el sector desde la Bandeja de entrada. Los sectores se crean en Configuración › Sectores.",
+    },
   "Quando adicionada essa condição no seu chatbot, ele verifica se o contato está esperando resposta, isto é, se a última mensagem da conversa é dele, e segue por “Esperando resposta” ou “Já respondido”.":
     {
       es: "Cuando agregues esta condición a tu chatbot, él verifica si el contacto está esperando respuesta, es decir, si el último mensaje de la conversación es suyo, y sigue por “Esperando respuesta” o “Ya respondido”.",
@@ -5877,9 +5913,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, este flujo termina aquí y el flujo elegido comienza desde el inicio, llevando las respuestas ya guardadas.\n\nElige este mismo flujo para “volver al menú”. Para armar submenús, crea el otro flujo con “Iniciar por automatización”: puede quedar activado junto con este.\n\nEl flujo elegido debe estar activado.",
     },
-  "Quando adicionada essa ação no seu chatbot, a conversa vai para a fila de atendimento humano e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.\n\nO agente de IA fica calado nesta conversa até uma pessoa devolvê-la (ou até vencer o prazo de devolução automática, se a empresa ligou um). A mensagem antes de transferir é opcional.\n\nEm “Mensagem de espera”, o chatbot pode mandar um aviso se ninguém responder dentro do tempo escolhido, até 3 vezes. Ele para assim que uma pessoa responder.":
+  "Quando adicionada essa ação no seu chatbot, a conversa vai para a fila de atendimento humano e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.\n\nEm “Para quem”, escolha a equipe toda ou um setor. Com um setor, só os membros dele recebem a conversa, e ela aparece marcada com o setor na Inbox; se o atendente que já estava com ela não for do setor, ela volta para a fila.\n\nO agente de IA fica calado nesta conversa até uma pessoa devolvê-la (ou até vencer o prazo de devolução automática, se a empresa ligou um). A mensagem antes de transferir é opcional.\n\nEm “Mensagem de espera”, o chatbot pode mandar um aviso se ninguém responder dentro do tempo escolhido, até 3 vezes. Ele para assim que uma pessoa responder.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, la conversación pasa a la fila de atención humana y queda como En espera hasta que alguien la tome. La Distribución de atención elige quién la toma.\n\nEl agente de IA se queda en silencio en esta conversación hasta que una persona la devuelva (o hasta que venza el plazo de devolución automática, si la empresa activó uno). El mensaje antes de transferir es opcional.\n\nEn “Mensaje de espera”, el chatbot puede enviar un aviso si nadie responde dentro del tiempo elegido, hasta 3 veces. Se detiene en cuanto una persona responda.",
+      es: "Cuando agregues esta acción a tu chatbot, la conversación pasa a la fila de atención humana y queda como En espera hasta que alguien la tome. La Distribución de atención elige quién la toma.\n\nEn “Para quién”, elige todo el equipo o un sector. Con un sector, solo sus miembros reciben la conversación, y aparece marcada con el sector en la Bandeja de entrada; si el agente que ya la tenía no es del sector, vuelve a la fila.\n\nEl agente de IA se queda en silencio en esta conversación hasta que una persona la devuelva (o hasta que venza el plazo de devolución automática, si la empresa activó uno). El mensaje antes de transferir es opcional.\n\nEn “Mensaje de espera”, el chatbot puede enviar un aviso si nadie responde dentro del tiempo elegido, hasta 3 veces. Se detiene en cuanto una persona responda.",
     },
   "Quando adicionada essa ação no seu chatbot, a conversa vai direto para o atendente escolhido.\n\nSe esse atendente não fizer mais parte da equipe, a transferência não acontece. A mensagem antes de transferir e a mensagem de espera funcionam como em “Transferir para a equipe”.":
     {

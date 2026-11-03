@@ -239,8 +239,12 @@ function Bolha({ bolha, opcoes }: { bolha: BolhaDoTeste; opcoes: OpcoesDoPainel 
 
 function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) => string): string {
   switch (e.tipo) {
-    case "transferiu_equipe":
-      return `— ${t("Conversa transferida para a fila da equipe (Aguardando)")} —`;
+    case "transferiu_equipe": {
+      const setor = e.setor_id ? opcoes.setores.find((s) => s.id === e.setor_id)?.nome : null;
+      return setor
+        ? `— ${t("Conversa transferida para a fila do setor")} ${setor} (${t("Aguardando")}) —`
+        : `— ${t("Conversa transferida para a fila da equipe (Aguardando)")} —`;
+    }
     case "transferiu_atendente": {
       const nome = opcoes.atendentes.find((a) => a.id === e.user_id)?.nome ?? t("um atendente");
       return `— ${t("Conversa transferida para")} ${nome} —`;
@@ -363,6 +367,21 @@ function Situacao({
             {opcoes.atendentes.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2">
+          <span className="w-24 shrink-0">{t("Setor")}</span>
+          <select
+            className="h-7 flex-1 rounded-md border border-border bg-background px-1"
+            value={f.setor ?? ""}
+            onChange={(e) => onMudar({ setor: e.target.value || null })}
+          >
+            <option value="">{t("Nenhum")}</option>
+            {opcoes.setores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nome}
               </option>
             ))}
           </select>

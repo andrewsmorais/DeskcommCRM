@@ -219,7 +219,7 @@ describe("Transferir p/ agentes de IA", () => {
     const r = iniciarFluxo(grafo, "ini", ctx("oi"));
     const depois = continuarAposAcao(grafo, r.sessao, false, ctx("oi"));
     expect(textos(depois.efeitos)).toEqual([]);
-    expect(depois.efeitos).toContainEqual({ tipo: "transferir_equipe" });
+    expect(depois.efeitos).toContainEqual({ tipo: "transferir_equipe", setor_id: null });
   });
 });
 

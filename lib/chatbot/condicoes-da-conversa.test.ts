@@ -82,6 +82,50 @@ describe("Condições da conversa (como na Umbler)", () => {
     expect(decide("atendente_da_conversa", {}, ctx())).toBe("N");
   });
 
+  it("Setor da conversa — segue por 'um dos setores' só se o setor atual está marcado", () => {
+    const VENDAS = "aaaaaaaa-0000-4000-8000-00000000000a";
+    const SUPORTE = "aaaaaaaa-0000-4000-8000-00000000000b";
+    expect(decide("setor_da_conversa", { setores: [VENDAS] }, ctx({ setor: VENDAS }))).toBe("S");
+    expect(decide("setor_da_conversa", { setores: [VENDAS] }, ctx({ setor: SUPORTE }))).toBe("N");
+    expect(
+      decide("setor_da_conversa", { setores: [VENDAS, SUPORTE] }, ctx({ setor: SUPORTE })),
+    ).toBe("S");
+    // Conversa sem setor e passo sem setor marcado seguem por "outro ou nenhum".
+    expect(decide("setor_da_conversa", { setores: [VENDAS] }, ctx())).toBe("N");
+    expect(decide("setor_da_conversa", {}, ctx({ setor: VENDAS }))).toBe("N");
+  });
+
+  it("Setor da conversa sem setor marcado não deixa ligar o fluxo", () => {
+    const g: Grafo = {
+      nodes: [no("ini", "inicio_canal"), no("c", "setor_da_conversa", { setores: [] })],
+      edges: [liga("ini", "c")],
+    };
+    expect(problemasDoGrafo(g).some((p) => /setor/i.test(p))).toBe(true);
+  });
+
+  it("Transferir para a equipe leva o setor escolhido (ou null para a equipe toda)", () => {
+    const VENDAS = "aaaaaaaa-0000-4000-8000-00000000000a";
+    const paraSetor: Grafo = {
+      nodes: [
+        no("ini", "inicio_canal"),
+        no("t", "transferir_equipe", { setor_id: VENDAS, nome_do_setor: "Vendas" }),
+      ],
+      edges: [liga("ini", "t")],
+    };
+    expect(iniciarFluxo(paraSetor, "ini", ctx()).efeitos).toContainEqual({
+      tipo: "transferir_equipe",
+      setor_id: VENDAS,
+    });
+    const paraTodos: Grafo = {
+      nodes: [no("ini", "inicio_canal"), no("t", "transferir_equipe")],
+      edges: [liga("ini", "t")],
+    };
+    expect(iniciarFluxo(paraTodos, "ini", ctx()).efeitos).toContainEqual({
+      tipo: "transferir_equipe",
+      setor_id: null,
+    });
+  });
+
   it("sem fatos (o teste antigo, ou a leitura falhou), as condições seguem por 'não'", () => {
     expect(decide("primeira_conversa", {}, { mensagem: "oi", agora: new Date(AGORA), fuso: "America/Sao_Paulo" })).toBe("N");
   });

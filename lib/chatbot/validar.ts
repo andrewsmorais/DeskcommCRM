@@ -91,6 +91,10 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (lerConfig("tem_etiqueta", no.data).etiquetas.length === 0)
           problemas.push(`escreva ao menos uma etiqueta no passo "${nome}".`);
         break;
+      case "setor_da_conversa":
+        if (lerConfig("setor_da_conversa", no.data).setores.length === 0)
+          problemas.push(`escolha ao menos um setor no passo "${nome}".`);
+        break;
       case "canal_da_conversa":
         if (lerConfig("canal_da_conversa", no.data).canais.length === 0)
           problemas.push(`escolha ao menos um número no passo "${nome}".`);

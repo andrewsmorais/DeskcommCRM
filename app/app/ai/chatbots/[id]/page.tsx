@@ -36,6 +36,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
     funisRes,
     etapasRes,
     modelosRes,
+    setoresRes,
   ] = await Promise.all([
     db
       .from("chatbot_flows")
@@ -85,6 +86,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
       .select("id, name, language, status, parameter_format, components")
       .eq("organization_id", activeOrg.orgId)
       .order("name"),
+    db.from("setores").select("id, nome").eq("organization_id", activeOrg.orgId).order("nome"),
   ]);
 
   if (!flowRes.data) notFound();
@@ -139,6 +141,7 @@ export default async function ChatbotEditorPage({ params }: Props) {
             .filter((e) => e.pipeline_id === f.id)
             .map((e) => ({ id: String(e.id), nome: String(e.name) })),
         })),
+        setores: (setoresRes.data ?? []).map((s) => ({ id: String(s.id), nome: String(s.nome) })),
         modelos: modelosQueOFluxoEnvia((modelosRes.data ?? []) as LinhaDeModeloDoCanal[]).map(
           (m) => ({ id: m.id, nome: m.name, idioma: m.language, texto: m.texto }),
         ),

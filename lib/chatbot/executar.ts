@@ -75,6 +75,7 @@ import { chamarWebhookDoChatbot } from "./webhook";
 import { capacidadeDoNumero, temQuemAtenda } from "@/lib/ai/agents/capacidade-do-numero";
 import { devolverAtendimentoAoAgente } from "@/lib/escalacao/retomada";
 import { resolverModeloAprovadoNaConexao } from "@/lib/channels/meta/modelo-aprovado-da-conexao";
+import { transferirParaSetor } from "@/lib/setores/servico";
 
 /** Teto de WebHooks numa mensagem só: um desenho em círculo não vira metralhadora. */
 export const WEBHOOKS_POR_TURNO = 3;
@@ -690,6 +691,7 @@ const PASSOS_QUE_LEEM_A_CONVERSA = new Set([
   "presenca_do_atendente",
   "bot_paralelo",
   "status_da_conversa",
+  "setor_da_conversa",
 ]);
 
 /**
@@ -713,6 +715,7 @@ async function lerFatosDaConversa(
       primeira: boolean;
       ia_ativa: boolean;
       outro_chatbot: boolean;
+      setor_id: string | null;
     }>(
       `select c.channel_session_id, c.assigned_to_user_id, c.last_inbound_at::text as last_inbound_at,
               (c.last_inbound_at is not null
@@ -729,7 +732,8 @@ async function lerFatosDaConversa(
                 select 1 from chatbot_sessions s
                  where s.organization_id = c.organization_id and s.conversation_id = c.id
                    and s.flow_id <> $3 and s.status in ('waiting_input', 'waiting_timer')
-              ) as outro_chatbot
+              ) as outro_chatbot,
+              c.setor_id
          from conversations c
         where c.organization_id = $1 and c.id = $2`,
       [e.organizationId, e.conversationId, fluxoId],
@@ -747,6 +751,7 @@ async function lerFatosDaConversa(
       primeira_conversa: c.primeira,
       equipe_disponivel: equipe,
       outro_bot: c.ia_ativa || c.outro_chatbot,
+      setor: c.setor_id,
     };
   } catch {
     // Sem os fatos, as condições seguem por "não" — o fluxo não para por isso.
@@ -1560,6 +1565,45 @@ async function executarEfeitos(
           break;
         }
         case "transferir_equipe": {
+          if (efeito.setor_id) {
+            // Fila do setor: a mesma sequência da rota da Inbox (IA calada,
+            // dono de fora do setor solta, distribuição só entre membros).
+            const r = await transferirParaSetor(admin, {
+              organizationId: e.organizationId,
+              conversationId: e.conversationId,
+              setorId: efeito.setor_id,
+            }).catch((err: unknown) => {
+              log.warn("chatbot: transferência para o setor falhou — transferido para a equipe toda", {
+                flow_id: fluxoId,
+                erro: (err as Error).message.slice(0, 120),
+              });
+              return null;
+            });
+            if (r && !r.ok) {
+              log.warn("chatbot: setor do passo não existe mais — transferido para a equipe toda", {
+                flow_id: fluxoId,
+              });
+            } else if (r?.ok) {
+              void audit({
+                action: "conversation.setor_changed",
+                actorUserId: null,
+                organizationId: e.organizationId,
+                resourceType: "conversation",
+                resourceId: e.conversationId,
+                requestId,
+                bypassedRls: true,
+                metadata: {
+                  conversation_id: e.conversationId,
+                  setor_id: efeito.setor_id,
+                  prev: r.setorAnterior,
+                  soltou_dono: r.soltouDono,
+                  source: "chatbot",
+                  flow_id: fluxoId,
+                },
+              });
+              break;
+            }
+          }
           // Fila humana: a IA fica calada nesta conversa e a Distribuição de
           // atendimento escolhe quem pega. Só o humano devolve ao robô.
           await pool.query(

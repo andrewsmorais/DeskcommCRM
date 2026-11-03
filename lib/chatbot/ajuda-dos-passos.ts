@@ -47,6 +47,8 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
     "Quando adicionada essa condição no seu chatbot, ele verifica se alguém da equipe pode assumir a conversa agora: disponível, dentro do horário e com folga no limite de conversas.\n\nÉ a mesma regra da Distribuição de atendimento. Use antes de transferir: se ninguém estiver disponível, avise o cliente quando vão responder.",
   bot_paralelo:
     "Quando adicionada essa condição no seu chatbot, ele verifica se o agente de IA ou outro chatbot está atendendo esta mesma conversa agora, e segue por “Tem outro bot” ou “Só este”.\n\nUse para não deixar dois robôs respondendo o mesmo cliente ao mesmo tempo.",
+  setor_da_conversa:
+    "Quando adicionada essa condição no seu chatbot, ele verifica em que setor a conversa está agora e segue por “Um dos setores”, se for um dos marcados, ou por “Outro ou nenhum”.\n\nO setor muda quando um passo “Transferir para a equipe” manda a conversa a um setor, ou quando um atendente troca o setor pela Inbox. Os setores são criados em Configurações › Setores.",
   status_da_conversa:
     "Quando adicionada essa condição no seu chatbot, ele verifica se o contato está esperando resposta, isto é, se a última mensagem da conversa é dele, e segue por “Esperando resposta” ou “Já respondido”.",
   valor:
@@ -70,7 +72,7 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
   acionar_fluxo:
     "Quando adicionada essa ação no seu chatbot, este fluxo termina aqui e o fluxo escolhido começa do início, levando as respostas já guardadas.\n\nEscolha este mesmo fluxo para “voltar ao menu”. Para montar submenus, crie o outro fluxo com “Iniciar por automação”: ele pode ficar ligado junto com este.\n\nO fluxo escolhido precisa estar ligado.",
   transferir_equipe:
-    "Quando adicionada essa ação no seu chatbot, a conversa vai para a fila de atendimento humano e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.\n\nO agente de IA fica calado nesta conversa até uma pessoa devolvê-la (ou até vencer o prazo de devolução automática, se a empresa ligou um). A mensagem antes de transferir é opcional.\n\nEm “Mensagem de espera”, o chatbot pode mandar um aviso se ninguém responder dentro do tempo escolhido, até 3 vezes. Ele para assim que uma pessoa responder.",
+    "Quando adicionada essa ação no seu chatbot, a conversa vai para a fila de atendimento humano e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.\n\nEm “Para quem”, escolha a equipe toda ou um setor. Com um setor, só os membros dele recebem a conversa, e ela aparece marcada com o setor na Inbox; se o atendente que já estava com ela não for do setor, ela volta para a fila.\n\nO agente de IA fica calado nesta conversa até uma pessoa devolvê-la (ou até vencer o prazo de devolução automática, se a empresa ligou um). A mensagem antes de transferir é opcional.\n\nEm “Mensagem de espera”, o chatbot pode mandar um aviso se ninguém responder dentro do tempo escolhido, até 3 vezes. Ele para assim que uma pessoa responder.",
   transferir_atendente:
     "Quando adicionada essa ação no seu chatbot, a conversa vai direto para o atendente escolhido.\n\nSe esse atendente não fizer mais parte da equipe, a transferência não acontece. A mensagem antes de transferir e a mensagem de espera funcionam como em “Transferir para a equipe”.",
   transferir_ia:
