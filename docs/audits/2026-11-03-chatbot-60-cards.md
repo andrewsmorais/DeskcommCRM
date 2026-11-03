@@ -51,8 +51,8 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 16 | Catálogo de produtos | N | N | — | — | catálogo existe (`catalog_products`, usado pelo agente de IA); falta o card |
 | 17 | Oferta/promoção | P | P | Enviar mensagem / mídia | — | sem validade nem regra comercial |
 | 18 | Cupom de desconto | N | B | — | — | o CRM não tem módulo de cupom |
-| 19 | Status do pagamento | N | B | — | — | depende do provedor de pagamento da empresa |
-| 20 | Confirmar compra | P | P | Iniciar por automação (venda aprovada na Kiwify/Cakto/Hotmart…) | invariantes de automação | só por plataforma de venda que manda webhook |
+| 19 | Status do pagamento | N | P | aviso da plataforma de venda (Kiwify, Cakto, Hotmart nova) → automação → chatbot | plataformas-de-venda.test | a plataforma avisa; consulta ativa ao provedor não existe |
+| 20 | Confirmar compra | P | F | aviso da plataforma (compra aprovada) move o negócio e pode iniciar chatbot | plataformas-de-venda.test | Kiwify, Cakto e Hotmart; outras pelo mapeador genérico |
 | 21 | Perguntar nome | F | F | Pedir para digitar + Campo do contato, ou Enviar formulário (gravar no nome) | regras.test | — |
 | 22 | Perguntar telefone | P | F | Pedir para digitar (formato telefone, novo) | pedir-digitar-formato.test | 8 a 15 dígitos |
 | 23 | Perguntar e-mail | P | F | Pedir para digitar (formato e-mail, novo) | pedir-digitar-formato.test | não confere se a caixa existe |
@@ -69,8 +69,8 @@ para não duplicar implementação, e foi isso que se seguiu.
 | 34 | Dividir caminhos | F | F | Multi-condicional / Distribuir fluxo | motor.test | — |
 | 35 | Redirecionar fluxo | F | F | Acionar outro fluxo | invariante | leva as respostas; sem "voltar"; teto contra laço |
 | 36 | Aguardar tempo | F | F | Aguardar intervalo / Aguardar até | espera-e-avaliacao.test | relógio persistente |
-| 37 | Aguardar resposta | P | ver pendência A1 | Pedir para escolher / digitar | — | hoje espera sem prazo |
-| 38 | Cliente parou de responder | N | ver pendência A1 | — | — | follow-up e automação "N dias sem mensagem" existem fora do chatbot |
+| 37 | Aguardar resposta | P | F | Pedir para escolher / digitar com "Se o contato não responder" (novo) | prazo-da-resposta (unit + invariante) | até 7 dias; relógio persistente |
+| 38 | Cliente parou de responder | N | F | saída "Não respondeu a tempo" das perguntas (novo) | chatbot-prazo-da-resposta (invariante) | silêncio de dias continua na automação "N dias sem mensagem" |
 | 39 | Follow-up automático | F | F | Iniciar follow-up (módulo existente) | invariantes do follow-up | janela, opt-out e modelo aprovado ficam no módulo |
 | 40 | Reativar conversa | P | P | Enviar template + follow-up | — | fora da janela só modelo aprovado (API oficial) |
 | 41 | Agendar envio | P | P | Aguardar até + Enviar mensagem | — | — |
@@ -110,9 +110,10 @@ para não duplicar implementação, e foi isso que se seguiu.
 
 ## Pendências (o que falta, por quê, próxima ação)
 
-- **A1 — Prazo de resposta nas perguntas** (cards 37/38): Pedir para escolher/digitar ganham "Se não responder em X minutos" com saída própria, no mesmo relógio persistente do Aguardar. Em andamento.
+- **A1 — Prazo de resposta nas perguntas** (cards 37/38): feito. Falta estender ao Enviar formulário e ao Agendar horário.
 - **V1 — Versões publicadas imutáveis:** pede tabela de versões (migration nova, não destrutiva) e decisão de produto (publicar ≠ salvar). Próxima ação: desenhar e aprovar.
 - **Cards 07, 08, 16, 33, 47, 48:** reaproveitam o que já existe (envio de localização e contato da Inbox, catálogo, funil, rotas da Agenda); falta só o card.
 - **B (bloqueados):** 11, 18, 19 e a geração de link/boleto (13, 15) — dependem de conta de pagamento da empresa ligada ao CRM ou de recurso que o canal não oferece.
 - **Copiar/colar e salvar automático no editor.**
-- **Modelos prontos:** 6 hoje (menu, fora do horário, coletar dados, satisfação, agendamento, triagem com IA); o prompt pede 18.
+- **Modelos prontos:** 7 hoje (menu, fora do horário, coletar dados, satisfação, agendamento, triagem com IA, recuperar Pix ou carrinho); o prompt pede 18.
+- **Pré-existente, fora do chatbot:** `pnpm lint:channels` reprova `lib/exportacao/exclusao.ts` e `lib/instalacao/disparo-em-massa.ts`, e o `eslint` reprova `app/api/v1/webhooks/waha/[token]/route.ts` (um `any`) — os três vieram do commit de 21/10 do fork, não desta entrega.
