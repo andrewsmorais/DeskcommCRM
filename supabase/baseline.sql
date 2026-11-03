@@ -44685,3 +44685,12 @@ grant all on table public.setor_membros to service_role;
 -- tests/invariants/hardening-definer-varredura.test.ts cobra isto.
 -- Idempotente: revogar o que já foi revogado não faz nada.
 revoke execute on function public.fn_emitir_plano_alterado() from public, anon, authenticated;
+
+-- ---- e-mail de cancelamento (migration 0498) ----
+alter table public.transactional_email_log
+  drop constraint if exists transactional_email_log_tipo_check;
+alter table public.transactional_email_log
+  add constraint transactional_email_log_tipo_check check (tipo in (
+    'boas_vindas','plano_contratado','plano_melhorado','plano_reduzido','reembolso',
+    'escala_ativo','baseline','cancelamento'
+  ));

@@ -8,6 +8,7 @@ import {
   montarPlanoContratado,
   montarPlanoMelhorado,
   montarPlanoReduzido,
+  montarCancelamento,
   montarReembolso,
   limitesDoPlano,
 } from "@/lib/emails-transacionais/modelos";
@@ -104,5 +105,28 @@ describe("e-mails de relacionamento", () => {
     expect(e.text).not.toContain("Boleto:");
     const todas = montarReembolso({ marca, nome: null, valorEmCentavos: null, forma: null });
     expect(todas.text).toContain("Boleto:");
+  });
+
+  it("o cancelamento diz até quando o acesso vale e não deixa marcador cru", () => {
+    const futuro = new Date(Date.now() + 10 * 86_400_000);
+    const e = montarCancelamento({
+      marca,
+      nome: "Ana",
+      acessoAte: futuro,
+      urlDoApp: url,
+      contato: { email: "suporte@x.com", whatsapp: "" },
+    });
+    expect(e.text).toContain("Você continua com acesso completo até");
+    expect(e.text).toContain("suporte@x.com");
+    expect(e.text).not.toContain("WhatsApp:");
+    expect(e.html).not.toMatch(/\{[a-zA-Z_]+\}|undefined|null/);
+    const acabou = montarCancelamento({
+      marca,
+      nome: null,
+      acessoAte: null,
+      urlDoApp: url,
+      contato: { email: "", whatsapp: "" },
+    });
+    expect(acabou.text).toContain("O seu acesso foi encerrado.");
   });
 });

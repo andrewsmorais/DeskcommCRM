@@ -576,3 +576,56 @@ export function montarReembolso(ctx: ContextoDoReembolso): EmailMontado {
     ],
   });
 }
+
+// ── 6. Cancelamento ─────────────────────────────────────────────────────────
+
+export type ContextoDoCancelamento = {
+  marca: MarcaDeSaida;
+  nome: string | null;
+  /** Até quando o acesso segue valendo; null = acabou agora (ou não se sabe). */
+  acessoAte: Date | null;
+  urlDoApp: string;
+  contato: { email: string; whatsapp: string };
+};
+
+export function montarCancelamento(ctx: ContextoDoCancelamento): EmailMontado {
+  const { marca } = ctx;
+  const contatos = [
+    ctx.contato.email ? `E-mail: ${ctx.contato.email}` : "",
+    ctx.contato.whatsapp ? `WhatsApp: ${ctx.contato.whatsapp}` : "",
+  ].filter(Boolean);
+  const aindaVale = ctx.acessoAte !== null && ctx.acessoAte.getTime() > Date.now();
+  return renderizar(marca, {
+    assunto: `Seu cancelamento foi confirmado${ctx.nome ? `, ${ctx.nome}` : ""}`,
+    titulo: "Seu cancelamento foi confirmado",
+    blocos: [
+      { tipo: "p", texto: saudacao(ctx.nome) },
+      {
+        tipo: "p",
+        texto:
+          "Cancelamos a renovação da sua assinatura, como você pediu. Não haverá novas cobranças.",
+      },
+      {
+        tipo: "p",
+        texto:
+          aindaVale && ctx.acessoAte
+            ? `Você continua com acesso completo até ${formatarData(ctx.acessoAte)}, que é o fim do período que já foi pago.`
+            : "O seu acesso foi encerrado.",
+      },
+      {
+        tipo: "p",
+        texto:
+          "Os seus dados ficam guardados. Se quiser voltar, é só escolher um plano de novo e tudo estará onde você deixou.",
+      },
+      {
+        tipo: "p",
+        texto:
+          "Se o motivo foi algo que não funcionou como esperado, nos conte em uma linha: responder este e-mail já nos ajuda a melhorar.",
+      },
+      ...(contatos.length > 0 ? [{ tipo: "lista" as const, itens: contatos }] : []),
+      { tipo: "botao", rotulo: `Abrir o ${marca.nome}`, url: `${ctx.urlDoApp}/app` },
+      { tipo: "p", texto: "Obrigado por ter estado com a gente 💜" },
+      assinatura(marca),
+    ],
+  });
+}

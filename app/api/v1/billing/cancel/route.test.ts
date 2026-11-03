@@ -14,6 +14,7 @@ const banco = vi.hoisted(() => ({
   update: vi.fn(),
   eq: vi.fn(),
   select: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
@@ -66,7 +67,8 @@ beforeEach(() => {
   vi.mocked(getOrganizationBilling).mockResolvedValue({ ok: true, billing: assinatura() });
   vi.mocked(deleteSubscription).mockResolvedValue({ ok: true, deleted: true });
   vi.mocked(audit).mockResolvedValue(undefined);
-  banco.criar.mockReturnValue({ from: banco.from });
+  banco.criar.mockReturnValue({ from: banco.from, rpc: banco.rpc });
+  banco.rpc.mockResolvedValue({ data: null, error: null });
   const query = { update: banco.update, eq: banco.eq, select: banco.select };
   banco.from.mockReturnValue(query);
   banco.update.mockReturnValue(query);

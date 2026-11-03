@@ -41,7 +41,8 @@ export async function POST() {
     const status = ["suspended", "past_due", "pending"].includes(billing.status)
       ? billing.status
       : "canceled";
-    const { data, error } = await createAdminClient()
+    const admin = createAdminClient();
+    const { data, error } = await admin
       .from("subscriptions")
       .update({
         status,
@@ -59,6 +60,20 @@ export async function POST() {
         503,
         { requestId },
       );
+    // Avisa quem cancelou: o worker de e-mails confere no banco que a assinatura
+    // está mesmo cancelada. Cortesia — falhar aqui nunca desfaz o cancelamento.
+    try {
+      await admin.rpc("emit_event" as never, {
+        p_event_type: "assinatura.cancelada",
+        p_entity_kind: "subscription",
+        p_entity_id: billing.subscription_id,
+        p_payload: { user_id: authz.user.id },
+        p_metadata: { source: "billing-cancel" },
+        p_organization_id: orgId,
+      } as never);
+    } catch {
+      // sem e-mail; o cancelamento em si já está gravado
+    }
     void audit({
       action: "billing.subscription_canceled",
       actorUserId: authz.user.id,

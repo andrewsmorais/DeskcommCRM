@@ -167,6 +167,33 @@ describe("aplicaEmailTransacional", () => {
     expect(m.reservas[0]).toMatchObject({ dedupeKey: "reembolso:pay_1" });
   });
 
+  it("cancelamento forjado (assinatura não cancelada) não envia", async () => {
+    const m = montar({ assinatura: { status: "active" } });
+    const r = await aplicaEmailTransacional(m.deps, evento("assinatura.cancelada", { user_id: "u1" }));
+    expect(r.detail).toBe("sem_cancelamento");
+    expect(m.enviar).not.toHaveBeenCalled();
+  });
+
+  it("cancelamento confirmado envia, com chave pelo fim do período pago", async () => {
+    const m = montar({
+      assinatura: { status: "canceled", current_period_end: "2026-11-24T12:00:00.000Z" },
+    });
+    const r = await aplicaEmailTransacional(m.deps, evento("assinatura.cancelada", { user_id: "u1" }));
+    expect(r.status).toBe("ok");
+    expect(m.enviar.mock.calls[0]![0]).toMatchObject({ tipo: "cancelamento", to: "ana@x.com" });
+    expect(m.reservas[0]).toMatchObject({
+      tipo: "cancelamento",
+      dedupeKey: "cancelamento:2026-11-24T12:00:00.000Z",
+    });
+  });
+
+  it("reentrega do cancelamento não duplica o e-mail", async () => {
+    const m = montar({ assinatura: { status: "canceled" }, jaRegistrado: true });
+    const r = await aplicaEmailTransacional(m.deps, evento("assinatura.cancelada", {}));
+    expect(r.detail).toBe("ja_enviado");
+    expect(m.enviar).not.toHaveBeenCalled();
+  });
+
   it("falha de envio devolve a reserva e pede nova tentativa", async () => {
     const m = montar({ envio: { ok: false, error: "send_failed" } });
     const r = await aplicaEmailTransacional(m.deps, evento("conta.criada"));

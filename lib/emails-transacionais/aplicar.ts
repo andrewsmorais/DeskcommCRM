@@ -29,6 +29,7 @@ import { limitesEfetivos } from "@/lib/billing/catalogo";
 import { decidirEmailDePlano } from "@/lib/emails-transacionais/decisao";
 import {
   montarBoasVindas,
+  montarCancelamento,
   montarEscalaAtivo,
   montarPlanoContratado,
   montarPlanoMelhorado,
@@ -44,6 +45,7 @@ export const EMAIL_TRANSACIONAL_HANDLER_KEY = "emails-transacionais.v1";
 export const EVENTO_CONTA_CRIADA = "conta.criada";
 export const EVENTO_PLANO_ALTERADO = "plano.alterado";
 export const EVENTO_REEMBOLSO_CONFIRMADO = "reembolso.confirmado";
+export const EVENTO_ASSINATURA_CANCELADA = "assinatura.cancelada";
 
 export type TipoDeEmail =
   | "boas_vindas"
@@ -51,6 +53,7 @@ export type TipoDeEmail =
   | "plano_melhorado"
   | "plano_reduzido"
   | "reembolso"
+  | "cancelamento"
   | "escala_ativo"
   /** Não é e-mail: registra o plano de uma mudança que não gera texto. */
   | "baseline";
@@ -272,6 +275,36 @@ export async function aplicaEmailTransacional(
             nome: primeiroNome(quem.nome),
             valorEmCentavos: Number.isFinite(valor) && valor > 0 ? Math.round(valor * 100) : null,
             forma: forma(row.payload?.billing_type),
+          }),
+      });
+    }
+
+    case EVENTO_ASSINATURA_CANCELADA: {
+      // O estado vem do BANCO: só há cancelamento se a assinatura está mesmo
+      // cancelada (regra 1 — um payload forjado não manda e-mail).
+      const assinatura = await deps.db.assinatura(org);
+      if (assinatura?.status !== "canceled") return resultado("skipped", "sem_cancelamento");
+      const quem = await deps.db.destinatario(org, texto(row.payload?.user_id));
+      if (!quem) return resultado("skipped", "sem_destinatario");
+      const marca = await deps.marca(org);
+      const contato = await deps.contato();
+      const fim = dataOuNula(assinatura.current_period_end);
+      return entregar(deps, {
+        org,
+        tipo: "cancelamento",
+        // Um cancelamento por período pago: cancelar, voltar e cancelar de novo
+        // são e-mails diferentes; a reentrega do mesmo evento não duplica.
+        dedupeKey: `cancelamento:${fim ? fim.toISOString() : row.id}`,
+        planType: null,
+        quem,
+        marca,
+        montar: () =>
+          montarCancelamento({
+            marca,
+            nome: primeiroNome(quem.nome),
+            acessoAte: fim,
+            urlDoApp: deps.urlDoApp,
+            contato,
           }),
       });
     }

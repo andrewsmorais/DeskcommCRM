@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   EMAIL_TRANSACIONAL_HANDLER_KEY,
+  EVENTO_ASSINATURA_CANCELADA,
   EVENTO_CONTA_CRIADA,
   EVENTO_PLANO_ALTERADO,
   EVENTO_REEMBOLSO_CONFIRMADO,
@@ -25,7 +26,12 @@ import { criarDbDosEmails } from "@/lib/emails-transacionais/db";
 
 export const emailsTransacionaisHandler: EventHandler = {
   key: EMAIL_TRANSACIONAL_HANDLER_KEY,
-  events: [EVENTO_CONTA_CRIADA, EVENTO_PLANO_ALTERADO, EVENTO_REEMBOLSO_CONFIRMADO],
+  events: [
+    EVENTO_CONTA_CRIADA,
+    EVENTO_PLANO_ALTERADO,
+    EVENTO_REEMBOLSO_CONFIRMADO,
+    EVENTO_ASSINATURA_CANCELADA,
+  ],
   async handle(row): Promise<HandlerResult> {
     try {
       return await aplicaEmailTransacional(
