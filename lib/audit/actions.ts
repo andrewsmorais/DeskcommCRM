@@ -152,6 +152,12 @@ export const AUDIT_ACTIONS = [
   "conversation.usable_for_rag_toggled",
   /** Conversa marcada como privada ou liberada (Inbox ou passo "Privar ou liberar" do chatbot). */
   "conversation.privacy_changed",
+  /** A conversa foi posta num setor (ou tirada dele) — Inbox ou chatbot. */
+  "conversation.setor_changed",
+  /** Setores de atendimento (migration 0496): cadastro em Configurações › Setores. */
+  "setor.created",
+  "setor.updated",
+  "setor.deleted",
   "rag.conversations_batch_run",
   "lgpd.redact_received",
   "lgpd.data_request_received",
