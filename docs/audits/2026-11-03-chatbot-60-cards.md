@@ -100,8 +100,8 @@ para não duplicar implementação, e foi isso que se seguiu.
 |---|---|---|
 | Arrastar, conectar, painel lateral, zoom, mover | F | React Flow |
 | Duplicar, excluir, desfazer/refazer, organizar | F | entrou hoje com a barra no estilo Umbler |
-| Copiar e colar | N | duplicar existe; colar entre fluxos não |
-| Salvar automático | N | salvar manual com aviso "Alterações não salvas" |
+| Copiar e colar | F | Ctrl+C / Ctrl+V, inclusive entre fluxos; o segredo do WebHook não viaja (`area-de-transferencia.test`) |
+| Salvar automático | F | com o fluxo desligado, 2 s depois da última mudança; ligado, o salvar continua no botão (o desenho pela metade não responde cliente) |
 | Publicar versões / restaurar | N | ver pendência V1 |
 | Validar antes de ligar | F | a rota recusa ligar com problemas (`problemasDoGrafo`) |
 | Conexões inválidas e cards incompletos | F | `validar.ts` |
@@ -114,6 +114,5 @@ para não duplicar implementação, e foi isso que se seguiu.
 - **V1 — Versões publicadas imutáveis:** pede tabela de versões (migration nova, não destrutiva) e decisão de produto (publicar ≠ salvar). Próxima ação: desenhar e aprovar.
 - **Cards 07, 08, 16, 33, 47, 48:** feitos, reaproveitando o que já existia (cartão de contato da Inbox, Catálogo, funil, handlers da Agenda).
 - **B (bloqueados):** 11, 18, 19 e a geração de link/boleto (13, 15) — dependem de conta de pagamento da empresa ligada ao CRM ou de recurso que o canal não oferece.
-- **Copiar/colar e salvar automático no editor.**
 - **Modelos prontos:** 19 (os 18 do prompt, com "captura de leads" atendida por "Coletar dados" e "transferência para IA" pela "Triagem com o agente de IA").
 - **Pré-existente, fora do chatbot:** `pnpm lint:channels` reprova `lib/exportacao/exclusao.ts` e `lib/instalacao/disparo-em-massa.ts`, e o `eslint` reprova `app/api/v1/webhooks/waha/[token]/route.ts` (um `any`) — os três vieram do commit de 21/10 do fork, não desta entrega.

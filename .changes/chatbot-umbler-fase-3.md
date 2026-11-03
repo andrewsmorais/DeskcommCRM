@@ -16,6 +16,7 @@ O editor de chatbot ganha o que a Umbler documenta e o nosso ainda não tinha, s
 - **Modelo pronto "Recuperar Pix ou carrinho"** nas ideias de bot: espera 15 minutos, manda o link e o Pix, pergunta se conseguiu e separa quem pagou, quem teve problema e quem desistiu. Liga numa automação "Iniciar chatbot".
 - **Seis cards novos**: Enviar produto (lido no Catálogo na hora, com foto e preço atuais), Enviar localização (endereço com link do mapa), Enviar contato (cartão), condição Etapa do funil, Reagendar horário e Cancelar agendamento (os dois pelo mesmo caminho da Agenda da tela).
 - **Modelos prontos**: agora são 19, entre eles qualificação comercial, apresentação de produtos, confirmação de agendamento, reagendamento, pós-venda e recuperação de oportunidade parada.
+- **Copiar e colar passos** (Ctrl+C / Ctrl+V), inclusive de um fluxo para outro, e **salvar automático** com o fluxo desligado. Com o fluxo ligado, as mudanças só valem quando você salva.
 - **Biblioteca de mídia** no Enviar mídia: reusar um arquivo que outro chatbot da empresa já manda, e ouvir o áudio antes de salvar.
 
 Fluxos salvos antes continuam iguais.

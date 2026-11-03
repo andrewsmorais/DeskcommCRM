@@ -52,6 +52,12 @@ import {
 } from "@/components/ui/tooltip";
 import { IDEIAS_DE_BOT, montarIdeia, passosDaIdeia, type Ideia } from "@/lib/chatbot/ideias";
 import { organizarBlocos } from "@/lib/chatbot/organizar";
+import {
+  colarPassos,
+  copiarPassos,
+  lerCopiados,
+  type Copiados,
+} from "@/lib/chatbot/area-de-transferencia";
 import { randomId } from "@/lib/random-id";
 import { PASSOS_AVANCADOS } from "@/lib/chatbot/passos-avancados";
 import { useT } from "@/hooks/i18n/useT";
@@ -86,6 +92,9 @@ type Foto = { nodes: Node<NodeData>[]; edges: Edge[] };
  */
 const COR_DA_LINHA = "#94a3b8";
 const COR_DA_LINHA_SELECIONADA = "#8b5cf6";
+/** Onde o Ctrl+C guarda os passos (no navegador), para colar em outro fluxo. */
+const CHAVE_DOS_COPIADOS = "deskcomm:chatbot:passos-copiados";
+
 function comoLinha(e: Edge): Edge {
   const cor = e.selected ? COR_DA_LINHA_SELECIONADA : COR_DA_LINHA;
   return {
@@ -215,6 +224,9 @@ function Editor({
   const [busca, setBusca] = useState("");
   const [sujo, setSujo] = useState(flow.grafo.nodes.length === 0);
   const [salvando, setSalvando] = useState(false);
+  /** Salvar automático parado depois de uma falha, até a próxima mudança. */
+  const [autoParado, setAutoParado] = useState(false);
+  const [salvoAuto, setSalvoAuto] = useState(false);
   const [ligado, setLigado] = useState(flow.is_active);
   const [nome, setNome] = useState(flow.name);
   const [editandoNome, setEditandoNome] = useState(false);
@@ -233,6 +245,8 @@ function Editor({
     setPassado((p) => [...p.slice(-49), { nodes, edges }]);
     setFuturo([]);
     setSujo(true);
+    setAutoParado(false);
+    setSalvoAuto(false);
   }, [nodes, edges]);
 
   const desfazer = useCallback(() => {
@@ -255,7 +269,7 @@ function Editor({
     setSujo(true);
   }, [futuro, nodes, edges, setNodes, setEdges]);
 
-  const salvar = useCallback(async () => {
+  const salvar = useCallback(async (opcoes: { automatico?: boolean } = {}) => {
     setSalvando(true);
     try {
       const res = await fetch(`/api/v1/chatbot-flows/${flow.id}`, {
@@ -266,6 +280,8 @@ function Editor({
       const corpo = await res.json().catch(() => null);
       if (!res.ok) {
         toast.error(corpo?.error?.message ?? t("Não foi possível salvar o fluxo."));
+        // No automático, uma falha só aparece uma vez: volta a tentar na próxima mudança.
+        if (opcoes.automatico) setAutoParado(true);
         return false;
       }
       // O servidor cifra o segredo do WebHook: a tela troca o texto digitado
@@ -281,7 +297,8 @@ function Editor({
         );
       }
       setSujo(false);
-      toast.success(t("Fluxo salvo."));
+      if (opcoes.automatico) setSalvoAuto(true);
+      else toast.success(t("Fluxo salvo."));
       return true;
     } finally {
       setSalvando(false);
@@ -304,6 +321,15 @@ function Editor({
     toast.success(valor ? t("Fluxo ligado: ele já responde no WhatsApp.") : t("Fluxo desligado."));
   }
 
+
+  // Salvar automático: com o fluxo DESLIGADO, 2 s depois da última mudança.
+  // Ligado, não — o desenho pela metade passaria a responder clientes no meio
+  // da edição. Aí o salvar é no botão (ou Ctrl+S), quando a pessoa terminar.
+  useEffect(() => {
+    if (!sujo || ligado || salvando || autoParado) return;
+    const relogio = setTimeout(() => void salvar({ automatico: true }), 2000);
+    return () => clearTimeout(relogio);
+  }, [sujo, ligado, salvando, autoParado, nodes, edges, nome, salvar]);
 
   // Sair com alterações não salvas pergunta antes.
   useEffect(() => {
@@ -398,6 +424,70 @@ function Editor({
     [nodes, lembrar, setNodes],
   );
 
+  /**
+   * Ctrl+C / Ctrl+V: os passos marcados (ou o selecionado) e as ligações entre
+   * eles. Fica no armazenamento do navegador, para colar em outro fluxo; sem
+   * ele (janela privada), vale só nesta página.
+   */
+  const copiadosAqui = useRef<Copiados | null>(null);
+  const copiar = useCallback((): boolean => {
+    const marcados = nodes.filter((n) => n.selected).map((n) => n.id);
+    const ids = marcados.length > 0 ? marcados : selecionado ? [selecionado] : [];
+    const copiados = copiarPassos(
+      nodes.map((n) => ({ id: n.id, type: n.type ?? "", position: n.position, data: n.data })),
+      edges,
+      ids,
+    );
+    if (!copiados) return false;
+    copiadosAqui.current = copiados;
+    try {
+      localStorage.setItem(CHAVE_DOS_COPIADOS, JSON.stringify(copiados));
+    } catch {
+      // Sem armazenamento: o colar desta página continua valendo.
+    }
+    toast.success(
+      copiados.passos.length === 1
+        ? t("1 passo copiado.")
+        : `${copiados.passos.length} ${t("passos copiados.")}`,
+    );
+    return true;
+  }, [nodes, edges, selecionado, t]);
+
+  const colar = useCallback((): boolean => {
+    let copiados: Copiados | null = null;
+    try {
+      copiados = lerCopiados(localStorage.getItem(CHAVE_DOS_COPIADOS));
+    } catch {
+      copiados = null;
+    }
+    copiados ??= copiadosAqui.current;
+    if (!copiados) return false;
+    lembrar();
+    const caixa = quadro.current?.getBoundingClientRect();
+    const onde = caixa
+      ? screenToFlowPosition({ x: caixa.left + caixa.width / 3, y: caixa.top + caixa.height / 4 })
+      : { x: 200, y: 200 };
+    const r = colarPassos(copiados, randomId, onde);
+    setNodes((atuais) => [
+      ...atuais.map((n) => ({ ...n, selected: false })),
+      ...r.passos.map((p) => ({
+        id: p.id,
+        type: p.type,
+        position: p.position,
+        data: p.data as NodeData,
+        selected: true,
+      })),
+    ]);
+    setEdges((atuais) => [
+      ...atuais,
+      ...r.ligacoes.map((l) => comoLinha({ ...l, sourceHandle: l.sourceHandle ?? "proximo" })),
+    ]);
+    setSelecionado(r.passos.length === 1 ? r.passos[0]!.id : null);
+    if (r.semSegredo)
+      toast.warning(t("WebHook colado sem o segredo: preencha de novo no passo."));
+    return true;
+  }, [lembrar, screenToFlowPosition, setNodes, setEdges, t]);
+
   const abrirAjuda = useCallback((id: string) => {
     setTestando(false);
     setPassoDoTeste(null);
@@ -430,6 +520,15 @@ function Editor({
       }
       if (!(ev.ctrlKey || ev.metaKey)) return;
       const k = ev.key.toLowerCase();
+      // Copiar e colar passos — com texto selecionado na página, o Ctrl+C é do texto.
+      if (k === "c" && !window.getSelection()?.toString() && copiar()) {
+        ev.preventDefault();
+        return;
+      }
+      if (k === "v" && colar()) {
+        ev.preventDefault();
+        return;
+      }
       if ((k === "o" || k === "p") && selecionado) {
         // Duplicar bloco, como na Umbler (Ctrl + O ou Ctrl + P).
         ev.preventDefault();
@@ -449,7 +548,7 @@ function Editor({
     }
     window.addEventListener("keydown", teclado);
     return () => window.removeEventListener("keydown", teclado);
-  }, [salvar, desfazer, refazer, selecionado, duplicar]);
+  }, [salvar, desfazer, refazer, selecionado, duplicar, copiar, colar]);
 
   const organizar = useCallback(() => {
     if (nodes.length === 0) return;
@@ -624,14 +723,26 @@ function Editor({
           <FlaskConical className="h-4 w-4" />
           {t("Testar")}
         </button>
-        <span className="ml-2 flex items-center gap-1.5 text-sm" data-testid="chatbot-estado">
-          {sujo ? (
+        <span
+          className="ml-2 flex items-center gap-1.5 text-sm"
+          data-testid="chatbot-estado"
+          title={
+            ligado
+              ? t("O fluxo está ligado: as mudanças só valem para os clientes quando você salvar.")
+              : t("Com o fluxo desligado, o editor salva sozinho.")
+          }
+        >
+          {sujo && !ligado && !autoParado ? (
+            <span className="text-muted-foreground">{t("Salvando…")}</span>
+          ) : sujo ? (
             <>
               <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
               {t("Alterações não salvas")}
             </>
           ) : (
-            <span className="text-muted-foreground">{t("Tudo salvo")}</span>
+            <span className="text-muted-foreground">
+              {salvoAuto ? t("Salvo automaticamente") : t("Tudo salvo")}
+            </span>
           )}
         </span>
 

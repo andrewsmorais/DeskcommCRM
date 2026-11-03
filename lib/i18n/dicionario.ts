@@ -5957,6 +5957,18 @@ export const DICIONARIO: Traducoes = {
     },
   "Se a resposta não estiver no formato": { es: "Si la respuesta no está en el formato" },
   "Usar a mensagem anterior": { es: "Usar el mensaje anterior" },
+  "1 passo copiado.": { es: "1 paso copiado." },
+  "passos copiados.": { es: "pasos copiados." },
+  "WebHook colado sem o segredo: preencha de novo no passo.": {
+    es: "WebHook pegado sin el secreto: complétalo de nuevo en el paso.",
+  },
+  "Salvo automaticamente": { es: "Guardado automáticamente" },
+  "O fluxo está ligado: as mudanças só valem para os clientes quando você salvar.": {
+    es: "El flujo está activado: los cambios solo valen para los clientes cuando guardes.",
+  },
+  "Com o fluxo desligado, o editor salva sozinho.": {
+    es: "Con el flujo desactivado, el editor guarda solo.",
+  },
   "Atendimento inicial": { es: "Atención inicial" },
   "Cumprimenta, pergunta o nome, guarda no cadastro e mostra as opções.": {
     es: "Saluda, pregunta el nombre, lo guarda en el registro y muestra las opciones.",
