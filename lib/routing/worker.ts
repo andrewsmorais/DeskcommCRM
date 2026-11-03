@@ -144,7 +144,7 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
 
   const { data: conv, error: convError } = await admin
     .from("conversations")
-    .select("id, organization_id, contact_id, channel_session_id, assigned_to_user_id, status")
+    .select("id, organization_id, contact_id, channel_session_id, assigned_to_user_id, status, setor_id")
     .eq("id", conversationId)
     .eq("organization_id", orgId)
     .maybeSingle();
@@ -182,6 +182,7 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
     try {
       eligibles = await loadEligibleAttendants(admin, orgId, now, {
         kind: "conversation_channel", channelSessionId: conv.channel_session_id,
+        setorId: conv.setor_id ?? null,
       });
     } catch (error) {
       if (!(error instanceof InvalidRoutingChannel)) throw error;
