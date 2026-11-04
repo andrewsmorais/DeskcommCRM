@@ -120,6 +120,9 @@ function makeEntriesBuilder(cfg: EntriesCfg) {
     neq() {
       return b;
     },
+    or() {
+      return b;
+    },
     order() {
       return b;
     },

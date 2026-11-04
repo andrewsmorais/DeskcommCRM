@@ -13,10 +13,7 @@
  */
 import { z } from "zod";
 
-import {
-  buscarConhecimento,
-  resolverAcervoDoAgente,
-} from "@/lib/ai/knowledge/busca";
+import { buscarConhecimento, resolverAcervoDoAgente } from "@/lib/ai/knowledge/busca";
 import type { McpToolDefinition } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -199,8 +196,9 @@ const gravarMemoriaInputShape = {
 export const crmSaveOrgMemory: McpToolDefinition<typeof gravarMemoriaInputShape> = {
   name: "crm_save_org_memory",
   description:
-    "Registra um aprendizado que vale para toda a operação, não para um cliente só. Nasce com " +
-    "origem 'agent' para o humano distinguir o que a IA anotou do que ele mesmo escreveu.",
+    "Sugere um aprendizado que valeria para toda a operação, não para um cliente só. Nasce como " +
+    "SUGESTÃO (origem 'agent') e só passa a valer nas conversas depois que alguém da equipe " +
+    "aprovar em IA › Memória. Não use para registrar o que um cliente pediu ou disse.",
   inputSchema: gravarMemoriaInputShape,
   category: "write",
   // `ai_operator`: a rota equivalente (`ai/memory/entries` POST) exige `manager`
@@ -216,7 +214,13 @@ export const crmSaveOrgMemory: McpToolDefinition<typeof gravarMemoriaInputShape>
         title: input.titulo,
         body: input.corpo,
         source: "agent",
-        status: "active",
+        // ⚠️ SUGESTÃO, NUNCA REGRA. A memória da org entra no prompt de TODO
+        // atendimento (`renderOrgMemory`), e quem conduz um turno é, em parte, o
+        // CONTATO do WhatsApp: gravar `active` daqui deixava um cliente ditar ao
+        // agente uma "regra da empresa" que valia em seguida para todos os
+        // outros clientes — sem pessoa nenhuma no meio. Nasce `proposed`, aparece
+        // em IA › Memória como sugestão, e só um gestor a ativa.
+        status: "proposed",
       })
       .select("id, title, status, created_at")
       .single();

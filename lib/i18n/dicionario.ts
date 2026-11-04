@@ -13519,6 +13519,18 @@ export const DICIONARIO: Traducoes = {
   "Só quem administra a organização faz a configuração inicial.": {
     es: "Solo quien administra la organización hace la configuración inicial.",
   },
+  "Sugestões da IA aguardando aprovação": {
+    es: "Sugerencias de la IA esperando aprobación",
+  },
+  "O agente anotou isto durante o atendimento. Só passa a valer em todas as conversas depois que alguém da equipe aprovar.": {
+    es: "El agente anotó esto durante la atención. Solo vale en todas las conversaciones después de que alguien del equipo lo apruebe.",
+  },
+  "Sugestão descartada.": {
+    es: "Sugerencia descartada.",
+  },
+  "Aprendizado aprovado.": {
+    es: "Aprendizaje aprobado.",
+  },
   "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.": {
     es: "La marca propia forma parte de un plan superior al tuyo. Revisa Configuración › Plan y facturación.",
   },

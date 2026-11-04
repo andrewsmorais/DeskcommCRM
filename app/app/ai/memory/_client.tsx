@@ -123,19 +123,26 @@ export function OrgMemoryClient({ initialState }: Props) {
     );
   }
 
-  function handleToggleArchive(id: string, next: "archived" | "active") {
+  function handleToggleArchive(id: string, next: "archived" | "active", mensagem?: string) {
     setStatus.mutate(
       { id, status: next },
       {
         onSuccess: () => {
-          toast.success(next === "archived" ? t("Aprendizado arquivado.") : t("Aprendizado reativado."));
+          toast.success(
+            mensagem ??
+              (next === "archived" ? t("Aprendizado arquivado.") : t("Aprendizado reativado.")),
+          );
         },
         onError: showApiError,
       },
     );
   }
 
-  const visibleEntries = entries.filter((e) => (showArchived ? e.status === "archived" : e.status === "active"));
+  const visibleEntries = entries.filter((e) =>
+    showArchived ? e.status === "archived" : e.status === "active",
+  );
+  // O que o agente anotou durante o atendimento NÃO vale até alguém aprovar.
+  const sugestoesDaIa = entries.filter((e) => e.status === "proposed");
 
   return (
     <div className="flex flex-col gap-6">
@@ -178,10 +185,7 @@ export function OrgMemoryClient({ initialState }: Props) {
                   {t("Somente admins podem publicar uma nova versão.")}
                 </span>
               )}
-              <Button
-                onClick={handlePublish}
-                disabled={!canSubmitPublish || publish.isPending}
-              >
+              <Button onClick={handlePublish} disabled={!canSubmitPublish || publish.isPending}>
                 {publish.isPending ? t("Publicando…") : t("Publicar versão")}
               </Button>
             </div>
@@ -189,7 +193,9 @@ export function OrgMemoryClient({ initialState }: Props) {
 
           {versions.length > 0 && (
             <div className="mt-4 border-t border-border pt-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">{t("Histórico de versões")}</p>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                {t("Histórico de versões")}
+              </p>
               <ul className="flex flex-col gap-1">
                 {versions.map((v) => (
                   <li key={v.id}>
@@ -199,7 +205,9 @@ export function OrgMemoryClient({ initialState }: Props) {
                       className="flex w-full items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent-soft"
                     >
                       <span className="font-mono text-xs">v{v.version_number}</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(v.created_at, tagDoIdioma)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(v.created_at, tagDoIdioma)}
+                      </span>
                       {document?.version_id === v.id && (
                         <Badge variant="success" className="text-[10px]">
                           {t("ativa")}
@@ -269,6 +277,57 @@ export function OrgMemoryClient({ initialState }: Props) {
             </form>
           )}
 
+          {sugestoesDaIa.length > 0 && (
+            <div
+              className="flex flex-col gap-2 rounded-md border border-border p-3"
+              data-testid="memoria-sugestoes-da-ia"
+            >
+              <p className="text-sm font-medium">{t("Sugestões da IA aguardando aprovação")}</p>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "O agente anotou isto durante o atendimento. Só passa a valer em todas as conversas depois que alguém da equipe aprovar.",
+                )}
+              </p>
+              <ol className="flex flex-col gap-2">
+                {sugestoesDaIa.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex flex-col gap-1.5 rounded-md border border-border/60 p-3 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{entry.title}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {formatDate(entry.created_at, tagDoIdioma)}
+                      </span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-text-muted">{entry.body}</p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={setStatus.isPending}
+                        onClick={() =>
+                          handleToggleArchive(entry.id, "archived", t("Sugestão descartada."))
+                        }
+                      >
+                        {t("Descartar")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={setStatus.isPending}
+                        onClick={() =>
+                          handleToggleArchive(entry.id, "active", t("Aprendizado aprovado."))
+                        }
+                      >
+                        {t("Aprovar")}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           {entries.some((e) => e.status === "archived") && (
             <button
               type="button"
@@ -296,10 +355,15 @@ export function OrgMemoryClient({ initialState }: Props) {
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{entry.title}</span>
-                    <Badge variant={entry.source === "manual" ? "neutral" : "info"} className="text-[10px]">
+                    <Badge
+                      variant={entry.source === "manual" ? "neutral" : "info"}
+                      className="text-[10px]"
+                    >
                       {rotuloDaOrigem[entry.source]}
                     </Badge>
-                    <span className="ml-auto text-xs text-muted-foreground">{formatDate(entry.created_at, tagDoIdioma)}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {formatDate(entry.created_at, tagDoIdioma)}
+                    </span>
                   </div>
                   <p className="whitespace-pre-wrap text-text-muted">{entry.body}</p>
                   <div className="flex sm:justify-end">
@@ -308,7 +372,10 @@ export function OrgMemoryClient({ initialState }: Props) {
                       size="sm"
                       disabled={setStatus.isPending}
                       onClick={() =>
-                        handleToggleArchive(entry.id, entry.status === "active" ? "archived" : "active")
+                        handleToggleArchive(
+                          entry.id,
+                          entry.status === "active" ? "archived" : "active",
+                        )
                       }
                       className="w-full sm:w-auto"
                     >
@@ -337,13 +404,15 @@ export function OrgMemoryClient({ initialState }: Props) {
               {t("Versão")} v{historyTarget?.version_number}
             </DialogTitle>
             <DialogDescription>
-              {historyTarget ? `${t("Publicada em")} ${formatDate(historyTarget.created_at, tagDoIdioma)}` : null}
+              {historyTarget
+                ? `${t("Publicada em")} ${formatDate(historyTarget.created_at, tagDoIdioma)}`
+                : null}
             </DialogDescription>
           </DialogHeader>
           {versionDetail.isLoading ? (
             <p className="text-sm text-muted-foreground">{t("Carregando…")}</p>
           ) : (
-            <pre className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-surface-elevated p-4 font-mono text-[13px]">
+            <pre className="max-h-[50vh] overflow-y-auto rounded-md border border-border bg-surface-elevated p-4 font-mono text-[13px] whitespace-pre-wrap">
               {versionDetail.data?.content}
             </pre>
           )}
