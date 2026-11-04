@@ -54,6 +54,8 @@ export function SecurityClient({
       if (r.ok) {
         setCodes(r.recovery_codes);
         toast.success(t("Novos códigos gerados."));
+      } else if (r.error === "mfa_required") {
+        toast.error(t("Confirme o código do seu aplicativo de duas etapas e tente de novo."));
       } else {
         toast.error(`${t("Erro:")} ${r.error}`);
       }

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
 import { generateRecoveryCodes, hashRecoveryCode } from "@/lib/auth/recovery-codes";
+import { sessionAal } from "@/lib/auth/server";
 
 export type RegenerateRecoveryCodesResult =
   | { ok: true; recovery_codes: string[] }
@@ -31,6 +32,13 @@ export async function regenerateRecoveryCodes(): Promise<RegenerateRecoveryCodes
   const { data: factors } = await supabase.auth.mfa.listFactors();
   const hasFactor = factors?.totp?.some((f) => f.status === "verified");
   if (!hasFactor) return { ok: false, error: "mfa_not_enrolled" };
+
+  // Códigos de recuperação SUBSTITUEM o segundo fator: emiti-los é poder tanto
+  // quanto desligar o fator, e o irmão `desligar` já exige `aal2`. Sem esta
+  // checagem, uma sessão que só provou a senha (aal1) apagava os códigos do
+  // dono e recebia 10 novos — trocava a senha roubada por acesso permanente.
+  // Fecha falhando: nível ilegível conta como não provado.
+  if ((await sessionAal()) !== "aal2") return { ok: false, error: "mfa_required" };
 
   const codes = generateRecoveryCodes();
   const rows = codes.map((c) => ({ user_id: user.id, code_hash: hashRecoveryCode(c) }));
