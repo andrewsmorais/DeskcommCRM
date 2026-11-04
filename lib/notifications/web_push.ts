@@ -1,5 +1,7 @@
 import webpush from "web-push";
 
+import { assertDestinoResolvidoSeguro } from "@/lib/automation/outbound-ip";
+import { assertSafeOutboundUrl } from "@/lib/automation/outbound-url";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
@@ -16,7 +18,10 @@ export type PushSubRow = {
 type AdminLike = {
   from: (table: string) => {
     select: (cols: string) => {
-      eq: (col: string, val: string) => Promise<{ data: PushSubRow[] | null; error: { message: string } | null }>;
+      eq: (
+        col: string,
+        val: string,
+      ) => Promise<{ data: PushSubRow[] | null; error: { message: string } | null }>;
     };
     delete: () => {
       eq: (col: string, val: string) => Promise<{ error: { message: string } | null }>;
@@ -28,6 +33,31 @@ function store(admin: AdminLike) {
   return admin.from("push_subscriptions");
 }
 
+/**
+ * Prazo de cada envio, em ms. O endpoint é escolhido por quem se inscreve
+ * (qualquer membro), e o web-push só arma timeout de socket quando recebe um:
+ * sem ele, um endpoint que manda os cabeçalhos e para deixa a promessa
+ * pendente para sempre — e o envio roda dentro do dreno do event_log, que
+ * atende todas as organizações em fila. O prazo do handler no dispatcher
+ * segura o resto (endpoint que pinga um byte por vez).
+ */
+export const PUSH_TIMEOUT_MS = 10_000;
+
+/**
+ * O mesmo par de guarda de egress dos webhooks: o textual (esquema, http em
+ * produção, literal privado) e o que resolve o DNS e julga o IP. Na inscrição
+ * (rota PUT) e de novo aqui, porque a linha também entra direto pela RLS.
+ */
+export async function endpointDePushSeguro(endpoint: string): Promise<boolean> {
+  try {
+    assertSafeOutboundUrl(endpoint);
+    await assertDestinoResolvidoSeguro(new URL(endpoint).hostname);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function enviarPushDaOrg(
   organizationId: string,
   payload: PushPayload,
@@ -35,7 +65,9 @@ export async function enviarPushDaOrg(
 ): Promise<{ sent: number; gone: number }> {
   if (!vapidPronto()) return { sent: 0, gone: 0 };
 
-  const { data, error } = await store(admin).select("id, endpoint, p256dh, auth").eq("organization_id", organizationId);
+  const { data, error } = await store(admin)
+    .select("id, endpoint, p256dh, auth")
+    .eq("organization_id", organizationId);
   if (error) {
     logger.warn("push_subscriptions_list_failed", { detail: error.message });
     return { sent: 0, gone: 0 };
@@ -51,10 +83,15 @@ export async function enviarPushDaOrg(
 
   await Promise.all(
     rows.map(async (row) => {
+      if (!(await endpointDePushSeguro(row.endpoint))) {
+        logger.warn("web_push_endpoint_recusado", { subscription_id: row.id });
+        return;
+      }
       try {
         await webpush.sendNotification(
           { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
           body,
+          { timeout: PUSH_TIMEOUT_MS },
         );
         sent += 1;
       } catch (err) {
