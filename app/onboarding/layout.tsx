@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { ROLE_RANK, type Role } from "@/lib/auth/types";
 import { loadOnboardingState } from "@/app/actions/onboarding/_shared";
 import { Stepper } from "./_components/Stepper";
 import { OutrasOrganizacoes } from "./_components/OutrasOrganizacoes";
@@ -10,6 +11,7 @@ import { branding, marcaEhADoProduto } from "@/lib/branding";
 import { passosVisiveis } from "@/lib/onboarding/passos";
 import { env } from "@/lib/env";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
+import { traduzir } from "@/lib/i18n/dicionario";
 import { getOrganizationBilling } from "@/lib/billing";
 import { FalhaNaLeituraDoPlano, ResumoDoPlano } from "@/components/app/EstadoDoPlano";
 
@@ -25,6 +27,11 @@ export default async function OnboardingLayout({ children }: { children: React.R
 
   const { state, onboardedAt } = await loadOnboardingState(activeOrg.orgId);
   if (onboardedAt) redirect("/app/inbox");
+  // A configuração inicial é de quem administra (as actions recusam os outros
+  // papéis — ver `requireOnboardingCtx`). Quem foi convidado antes de o dono
+  // terminar cai aqui pelo layout de /app; em vez de um assistente cujos botões
+  // falham, vê o aviso de esperar.
+  const quemConfigura = (ROLE_RANK[activeOrg.role as Role] ?? 0) >= ROLE_RANK.admin;
   const leituraDoPlano = await getOrganizationBilling(activeOrg.orgId);
 
   // Os passos que ESTA instalação oferece, com o que já foi resolvido. O
@@ -49,7 +56,9 @@ export default async function OnboardingLayout({ children }: { children: React.R
                 <SimboloDoProduto nome={marca.name} decorativo className="h-9 w-9" />
               )}
               <div>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">{marca.name}</p>
+                <p className="text-xs tracking-wider text-muted-foreground uppercase">
+                  {marca.name}
+                </p>
                 <h1 className="text-lg font-semibold tracking-tight">{activeOrg.name}</h1>
               </div>
             </div>
@@ -76,13 +85,35 @@ export default async function OnboardingLayout({ children }: { children: React.R
           {!leituraDoPlano.ok ? (
             <FalhaNaLeituraDoPlano reason={leituraDoPlano.reason} />
           ) : leituraDoPlano.billing ? (
-            <ResumoDoPlano billing={{
-              plan_name: leituraDoPlano.billing.plan_name,
-              billing_cycle: leituraDoPlano.billing.billing_cycle,
-              status: leituraDoPlano.billing.status,
-            }} />
+            <ResumoDoPlano
+              billing={{
+                plan_name: leituraDoPlano.billing.plan_name,
+                billing_cycle: leituraDoPlano.billing.billing_cycle,
+                status: leituraDoPlano.billing.status,
+              }}
+            />
           ) : null}
-          {children}
+          {quemConfigura ? (
+            children
+          ) : (
+            <div
+              className="rounded-lg border bg-background p-6 text-sm"
+              data-testid="onboarding-aguardando-admin"
+            >
+              <p className="font-medium">
+                {traduzir(
+                  "A configuração inicial está sendo feita por quem administra a organização.",
+                  user.idioma,
+                )}
+              </p>
+              <p className="mt-2 text-muted-foreground">
+                {traduzir(
+                  "Assim que ela terminar, você entra direto no sistema. Se demorar, fale com o administrador.",
+                  user.idioma,
+                )}
+              </p>
+            </div>
+          )}
         </main>
       </div>
     </IdiomaProvider>

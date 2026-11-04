@@ -13510,6 +13510,15 @@ export const DICIONARIO: Traducoes = {
   "Confirme o código do seu aplicativo de duas etapas e tente de novo.": {
     es: "Revisa el código de tu app de verificación en dos pasos e inténtalo de nuevo.",
   },
+  "A configuração inicial está sendo feita por quem administra a organização.": {
+    es: "La configuración inicial la está haciendo quien administra la organización.",
+  },
+  "Assim que ela terminar, você entra direto no sistema. Se demorar, fale com o administrador.": {
+    es: "En cuanto termine, entrarás directo al sistema. Si tarda, habla con el administrador.",
+  },
+  "Só quem administra a organização faz a configuração inicial.": {
+    es: "Solo quien administra la organización hace la configuración inicial.",
+  },
   "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.": {
     es: "La marca propia forma parte de un plan superior al tuyo. Revisa Configuración › Plan y facturación.",
   },
