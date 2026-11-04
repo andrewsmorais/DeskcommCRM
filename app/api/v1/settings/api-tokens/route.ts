@@ -46,6 +46,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org: activeOrg } = authz;
+  // ⚠️ ACOMPANHAMENTO NÃO EMITE CREDENCIAL PERMANENTE. A sessão de suporte é
+  // temporária e presa a quem a abriu; um token `dsk_` emitido dentro dela não
+  // tem prazo e sobrevive ao fim do acompanhamento e à revogação do admin da
+  // plataforma — o acesso temporário virava acesso de admin do tenant para
+  // sempre. Mesma régua da configuração de extensões.
+  if (authUser.support) {
+    return fail("forbidden", t("Saia do acompanhamento para criar tokens de API."), 403, {
+      requestId,
+    });
+  }
 
   let input;
   try {

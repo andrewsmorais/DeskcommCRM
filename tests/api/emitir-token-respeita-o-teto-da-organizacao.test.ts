@@ -61,7 +61,10 @@ beforeEach(() => {
 });
 
 it("no teto, a emissão devolve 409 com a mensagem do banco, verbatim", async () => {
-  deps.single.mockResolvedValue({ data: null, error: { code: "PT409", message: MENSAGEM_DO_BANCO } });
+  deps.single.mockResolvedValue({
+    data: null,
+    error: { code: "PT409", message: MENSAGEM_DO_BANCO },
+  });
 
   const res = await POST(request());
   expect(res.status).toBe(409);
@@ -83,7 +86,10 @@ it("o código do teto é contrato de wire declarado — não uma string solta no
 });
 
 it("erro que não é o teto continua sendo internal_error 500", async () => {
-  deps.single.mockResolvedValue({ data: null, error: { code: "XX000", message: "qualquer quebra" } });
+  deps.single.mockResolvedValue({
+    data: null,
+    error: { code: "XX000", message: "qualquer quebra" },
+  });
 
   const res = await POST(request());
   expect(res.status).toBe(500);
@@ -108,4 +114,21 @@ it("dentro do teto a emissão segue devolvendo o token uma única vez, com audit
   expect(deps.audit).toHaveBeenCalledWith(
     expect.objectContaining({ action: "token.created", organizationId: "org-teto" }),
   );
+});
+
+it("em acompanhamento (suporte) a emissão é recusada — token permanente não nasce de acesso temporário", async () => {
+  // Sessão de suporte em modo EDIÇÃO: `requireSupportWrite` libera e o papel
+  // projetado é admin. Um `dsk_` emitido aqui sobreviveria ao fim da sessão e
+  // à revogação do admin da plataforma.
+  deps.role.mockResolvedValue({
+    ok: true,
+    user: { id: "plataforma", idioma: "pt-BR", support: { status: "active", access_mode: "full" } },
+    org: { orgId: "org-teto" },
+  });
+  deps.single.mockResolvedValue({ data: { id: "tok-x" }, error: null });
+
+  const res = await POST(request());
+  expect(res.status).toBe(403);
+  expect(deps.single).not.toHaveBeenCalled();
+  expect(deps.audit).not.toHaveBeenCalled();
 });

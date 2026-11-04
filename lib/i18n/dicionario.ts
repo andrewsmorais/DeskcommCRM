@@ -13534,6 +13534,9 @@ export const DICIONARIO: Traducoes = {
   "Esta organização está suspensa. Fale com o suporte da plataforma.": {
     es: "Esta organización está suspendida. Habla con el soporte de la plataforma.",
   },
+  "Saia do acompanhamento para criar tokens de API.": {
+    es: "Sal del acompañamiento para crear tokens de API.",
+  },
   "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.": {
     es: "La marca propia forma parte de un plan superior al tuyo. Revisa Configuración › Plan y facturación.",
   },
