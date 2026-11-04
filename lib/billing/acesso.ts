@@ -31,6 +31,35 @@ export async function acessoPeloPlanoDaOrganizacao(orgId: string): Promise<Acess
   return decidirAcessoPeloPlano(await getOrganizationBilling(orgId));
 }
 
+/**
+ * A mesma régua, na forma de rota: `null` libera; senão, o 403 pronto.
+ *
+ * Para toda rota que chama modelo pela tela (rascunho, teste do agente,
+ * consulta à IA). Fica DEPOIS da autenticação — a organização vem do
+ * `requireRole`, nunca do corpo — e ANTES de qualquer escrita ou chamada paga.
+ * Os códigos são os de `verificarRecursoDoPlano`, que a tela já sabe ler.
+ */
+export async function exigirAssinaturaAtiva(
+  orgId: string,
+  opts: { requestId?: string } = {},
+): Promise<Response | null> {
+  const acesso = await acessoPeloPlanoDaOrganizacao(orgId);
+  if (acesso.liberado) return null;
+  return acesso.motivo === "sem_plano"
+    ? fail(
+        "billing_required",
+        "Vincule um plano em Configurações → Plano e cobrança para usar a inteligência artificial.",
+        403,
+        opts,
+      )
+    : fail(
+        "billing_inactive",
+        "A assinatura não está ativa. Confira Configurações → Plano e cobrança. Seus dados foram preservados.",
+        403,
+        opts,
+      );
+}
+
 export type AcessoAoRecurso =
   | { ok: true }
   | {

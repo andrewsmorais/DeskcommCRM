@@ -4,10 +4,15 @@ import { z } from "zod";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { env } from "@/lib/env";
 import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/credentials";
-import { LlmBudgetExceededError, LlmProviderUnknownError, LlmModelNotEnabledError } from "@/lib/agent-engine/edge/llm/run-model-call";
+import {
+  LlmBudgetExceededError,
+  LlmProviderUnknownError,
+  LlmModelNotEnabledError,
+} from "@/lib/agent-engine/edge/llm/run-model-call";
 import { getSkillsPool } from "@/lib/ai/skills/db";
 import { gerarMudancas, type EstadoDaProposta } from "@/lib/propostas/assistente";
 import { createClient } from "@/lib/supabase/server";
@@ -27,6 +32,9 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   if (!authz.ok) return authz.response;
   const desligada = await sePropostasDesligadas(authz.org.orgId, requestId);
   if (desligada) return desligada;
+  // Chama o modelo da chave da plataforma: sem assinatura ativa, não chama.
+  const semAssinatura = await exigirAssinaturaAtiva(authz.org.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { id } = await ctx.params;
 
@@ -42,7 +50,9 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     .maybeSingle();
   if (!proposta) return fail("not_found", t("Proposta não encontrada."), 404, { requestId });
   if (proposta.status !== "rascunho") {
-    return fail("proposal_context_stale", t("Só é possível ajustar um rascunho."), 409, { requestId });
+    return fail("proposal_context_stale", t("Só é possível ajustar um rascunho."), 409, {
+      requestId,
+    });
   }
 
   const { data: itens } = await supabase
@@ -53,7 +63,9 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     .order("position");
 
   const briefing =
-    proposta.briefing_json && typeof proposta.briefing_json === "object" && !Array.isArray(proposta.briefing_json)
+    proposta.briefing_json &&
+    typeof proposta.briefing_json === "object" &&
+    !Array.isArray(proposta.briefing_json)
       ? (proposta.briefing_json as Record<string, unknown>)
       : {};
 
@@ -73,7 +85,10 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       cfg: llmEdgeConfigFromEnv(env),
       tenantId: authz.org.orgId,
     });
-    return ok({ disponivel: true, motivo: null, ...resultado, revision: proposta.revision }, { requestId });
+    return ok(
+      { disponivel: true, motivo: null, ...resultado, revision: proposta.revision },
+      { requestId },
+    );
   } catch (err) {
     if (
       err instanceof LlmBudgetExceededError ||

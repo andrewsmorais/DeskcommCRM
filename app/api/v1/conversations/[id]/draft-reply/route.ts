@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 import { requestTurnDeps } from "@/lib/agent-engine/agent/request-deps";
@@ -26,7 +27,9 @@ async function context(ctx: Ctx, requestId: string) {
     .eq("id", id)
     .maybeSingle();
   if (!conversation)
-    return { response: fail("not_found", t("Conversa não encontrada."), 404, { requestId }) } as const;
+    return {
+      response: fail("not_found", t("Conversa não encontrada."), 404, { requestId }),
+    } as const;
   return { auth, conversation, t } as const;
 }
 export async function GET(_req: NextRequest, ctx: Ctx) {
@@ -54,6 +57,10 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
   } = c.conversation;
   if (!contactId || !channelId)
     return fail("unprocessable", c.t("Conversa sem contato/canal."), 422, { requestId });
+  // O rascunho é escrito pelo modelo da chave da plataforma: sem assinatura
+  // ativa, nem a linha do rascunho nasce. A tela fechada não fechava a API.
+  const semAssinatura = await exigirAssinaturaAtiva(c.auth.org.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
   try {
     const draft = await generateReplyDraft(getRequestPool(), requestTurnDeps(), {
       organizationId: c.auth.org.orgId,
