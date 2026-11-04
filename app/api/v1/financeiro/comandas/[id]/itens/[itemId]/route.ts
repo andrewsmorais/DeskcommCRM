@@ -28,7 +28,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx): Promise<Response> {
   const supportDenied = await requireSupportWrite();
   if (supportDenied) return supportDenied;
 
-  const authz = await requireRole("agent", { requestId, resource: "financeiro" });
+  const authz = await requireRole("agent", { requestId, resource: "financeiro", plano: "comandas_e_propostas" });
   if (!authz.ok) return authz.response;
 
   const { id, itemId } = await ctx.params;
@@ -38,6 +38,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx): Promise<Response> {
     .from("sales")
     .select("id, status, number")
     .eq("id", id)
+    .eq("organization_id", authz.org.orgId)
     .maybeSingle();
   if (!comanda) return fail("not_found", "Comanda não encontrada.", 404, { requestId });
   if (comanda.status !== "open") {

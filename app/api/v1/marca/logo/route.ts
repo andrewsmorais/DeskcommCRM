@@ -73,6 +73,7 @@ import {
 import { extensaoDe, farejarTipo, pareceSvg, podeApagar } from "@/lib/branding/logo-arquivo";
 import { marcaDaOrganizacaoDeSettings } from "@/lib/branding/organizacao";
 import { logger } from "@/lib/logger";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -152,7 +153,10 @@ type Recusa = { readonly codigo: string; readonly mensagem: string; readonly sta
  * dois é só para quem AINDA NÃO cadastrou fator — e essa pessoa é barrada antes,
  * pelo gate de cadastro do layout, que é onde ela pode resolver.
  */
-async function abrirContexto(escopo: Escopo): Promise<{ ctx: Contexto } | { recusa: Recusa }> {
+async function abrirContexto(
+  escopo: Escopo,
+  opcoes: { exigirPlano: boolean },
+): Promise<{ ctx: Contexto } | { recusa: Recusa }> {
   const user = await loadAuthUser();
   if (!user) {
     return { recusa: { codigo: "unauthenticated", mensagem: "Faça login.", status: 401 } };
@@ -210,6 +214,16 @@ async function abrirContexto(escopo: Escopo): Promise<{ ctx: Contexto } | { recu
         status: 403,
       },
     };
+  }
+  // "Marca própria" é recurso do plano (multimarca), e a mesma régua de
+  // `updateMarcaDaOrganizacao.ts` vale aqui: esta rota grava o MESMO logo por
+  // outra porta. Só para GRAVAR — apagar fica sempre liberado, para que uma
+  // organização que desceu de plano consiga tirar a marca que ficou.
+  if (opcoes.exigirPlano && !user.is_platform_admin) {
+    const acesso = await verificarRecursoDoPlano(org.orgId, "multimarca");
+    if (!acesso.ok) {
+      return { recusa: { codigo: acesso.code, mensagem: acesso.message, status: acesso.status } };
+    }
   }
   return {
     ctx: { escopo, userId: user.id, orgId: org.orgId, prefixo: prefixoDaOrganizacao(org.orgId) },
@@ -413,7 +427,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const lido = lerAlvo(escopoLido.data, form?.get("peca"), form?.get("tema"));
   if ("mensagem" in lido) return fail("validation_failed", lido.mensagem, 422, { requestId });
   const alvo = lido.alvo;
-  const aberto = await abrirContexto(escopoLido.data);
+  const aberto = await abrirContexto(escopoLido.data, { exigirPlano: true });
   if ("recusa" in aberto) {
     return fail(aberto.recusa.codigo, aberto.recusa.mensagem, aberto.recusa.status, { requestId });
   }
@@ -517,7 +531,7 @@ export async function DELETE(req: NextRequest): Promise<Response> {
   const lido = lerAlvo(escopoLido.data, busca.get("peca"), busca.get("tema"));
   if ("mensagem" in lido) return fail("validation_failed", lido.mensagem, 422, { requestId });
   const alvo = lido.alvo;
-  const aberto = await abrirContexto(escopoLido.data);
+  const aberto = await abrirContexto(escopoLido.data, { exigirPlano: false });
   if ("recusa" in aberto) {
     return fail(aberto.recusa.codigo, aberto.recusa.mensagem, aberto.recusa.status, { requestId });
   }

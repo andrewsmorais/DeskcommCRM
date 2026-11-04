@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getOrganizationBilling } from "@/lib/billing";
 import { decidirAcessoPeloPlano } from "@/lib/billing/exigencia";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { espacarEnvio } from "@/lib/automation/throttle";
 import { parseServiceBoundary, type ServiceBoundary } from "@/lib/atendimento/fronteira";
@@ -552,6 +553,19 @@ async function atendenteDoPasso(
       [e.organizationId, e.contactId, e.channelSessionId],
     );
     return rows[0]?.user_id ?? null;
+  }
+  // Rodízio e menos conversas são a Distribuição automática do plano por dentro
+  // do fluxo. O desenho já é barrado ao gravar; aqui cobre o fluxo gravado ANTES
+  // de um downgrade — a mesma régua do worker de roteamento: sem o recurso, a
+  // conversa vai para a fila da equipe. Leitura do plano indisponível também
+  // manda para a fila (não distribui às cegas, e a conversa não se perde).
+  const acesso = await verificarRecursoDoPlano(e.organizationId, "distribuicao_automatica");
+  if (!acesso.ok) {
+    log.info("chatbot: plano sem distribuição automática — conversa na fila", {
+      modo: efeito.modo,
+      motivo: acesso.code,
+    });
+    return null;
   }
   const { rows: conversa } = await pool.query<{
     channel_session_id: string | null;

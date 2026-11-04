@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const supportDenied = await requireSupportWrite();
   if (supportDenied) return supportDenied;
 
-  const authz = await requireRole("agent", { requestId, resource: "financeiro" });
+  const authz = await requireRole("agent", { requestId, resource: "financeiro", plano: "comandas_e_propostas" });
   if (!authz.ok) return authz.response;
 
   const lido = itemSchema.safeParse(await req.json().catch(() => ({})));
@@ -45,10 +45,16 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const supabase = await createClient();
   const org = authz.org.orgId;
 
+  // A comanda tem de ser da organização AUTORIZADA. O RLS de `sales` deixa ver
+  // as de TODAS as orgs do usuário, e o item nasce com `organization_id = org`:
+  // sem este filtro, quem é atendente em A e só leitor em B pendurava um item
+  // da org A numa comanda de B — que a finalização de B somava como receita e
+  // comissão.
   const { data: comanda } = await supabase
     .from("sales")
     .select("id, status, number")
     .eq("id", id)
+    .eq("organization_id", org)
     .maybeSingle();
   if (!comanda) return fail("not_found", "Comanda não encontrada.", 404, { requestId });
   if (comanda.status !== "open") {

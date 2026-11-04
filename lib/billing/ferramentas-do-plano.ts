@@ -27,18 +27,40 @@ export function eSoDeOrganizar(toolId: string): boolean {
  * recurso. Leitura do plano indisponível NÃO tira nada (falha aberta só aqui,
  * porque a trava de assinatura inativa já para o agente inteiro antes).
  */
+/**
+ * Ferramentas de proposta comercial são o recurso "Comandas e propostas"
+ * (Impulso em diante). O handler também recusa (é a trava de verdade); tirar do
+ * turno evita o modelo oferecer ao cliente uma proposta que não vai sair.
+ */
+const DE_PROPOSTAS: ReadonlySet<string> = new Set(["crm_draft_proposal", "crm_preparar_proposta"]);
+
+export function eDePropostas(toolId: string): boolean {
+  return DE_PROPOSTAS.has(toolId);
+}
+
+async function semORecurso(
+  organizationId: string,
+  recurso: "organizar_crm" | "comandas_e_propostas",
+): Promise<boolean> {
+  const acesso = await verificarRecursoDoPlano(organizationId, recurso);
+  return !acesso.ok && acesso.code === "billing_feature";
+}
+
 export async function ferramentasDoPlano(
   organizationId: string,
   toolIds: readonly string[],
 ): Promise<{ toolIds: string[]; retiradas: string[] }> {
-  const candidatas = toolIds.filter(eSoDeOrganizar);
-  if (candidatas.length === 0) return { toolIds: [...toolIds], retiradas: [] };
-  const acesso = await verificarRecursoDoPlano(organizationId, "organizar_crm");
-  if (acesso.ok || acesso.code !== "billing_feature") {
-    return { toolIds: [...toolIds], retiradas: [] };
+  const fora = new Set<string>();
+  const deOrganizar = toolIds.filter(eSoDeOrganizar);
+  if (deOrganizar.length > 0 && (await semORecurso(organizationId, "organizar_crm"))) {
+    for (const id of deOrganizar) fora.add(id);
+  }
+  const dePropostas = toolIds.filter(eDePropostas);
+  if (dePropostas.length > 0 && (await semORecurso(organizationId, "comandas_e_propostas"))) {
+    for (const id of dePropostas) fora.add(id);
   }
   return {
-    toolIds: toolIds.filter((id) => !eSoDeOrganizar(id)),
-    retiradas: candidatas,
+    toolIds: toolIds.filter((id) => !fora.has(id)),
+    retiradas: toolIds.filter((id) => fora.has(id)),
   };
 }

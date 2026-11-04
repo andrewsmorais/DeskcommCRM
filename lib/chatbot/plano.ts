@@ -35,10 +35,35 @@ export function usaPassoAvancado(grafo: Grafo): boolean {
   return grafo.nodes.some((n) => PASSOS_AVANCADOS.has(String(n.type)));
 }
 
-/** Desenho com passo avançado só grava se o plano incluir o Chatbot avançado. */
+/**
+ * Modos do "Transferir p/ atendente" que DISTRIBUEM sozinhos (rodízio e menos
+ * conversas). São o mesmo serviço que a "Distribuição automática de leads" do
+ * Impulso vende — só que por dentro do fluxo. "Específico" e "quem atendeu
+ * antes" são escolha explícita de quem montou o fluxo e ficam em todo plano.
+ */
+export const MODOS_QUE_DISTRIBUEM: ReadonlySet<string> = new Set(["rodizio", "menos_conversas"]);
+
+export function usaDistribuicaoAutomatica(grafo: Grafo): boolean {
+  return grafo.nodes.some(
+    (n) =>
+      String(n.type) === "transferir_atendente" &&
+      MODOS_QUE_DISTRIBUEM.has(String(lerConfig("transferir_atendente", n.data).modo)),
+  );
+}
+
+/**
+ * Desenho com passo avançado só grava se o plano incluir o Chatbot avançado; e
+ * transferência que distribui sozinha, só com a Distribuição automática.
+ */
 export async function conferirPassosDoPlano(orgId: string, grafo: Grafo): Promise<AcessoAoRecurso> {
-  if (!usaPassoAvancado(grafo)) return { ok: true };
-  return verificarRecursoDoPlano(orgId, "chatbot_avancado");
+  if (usaPassoAvancado(grafo)) {
+    const avancado = await verificarRecursoDoPlano(orgId, "chatbot_avancado");
+    if (!avancado.ok) return avancado;
+  }
+  if (usaDistribuicaoAutomatica(grafo)) {
+    return verificarRecursoDoPlano(orgId, "distribuicao_automatica");
+  }
+  return { ok: true };
 }
 
 export type CotaDeChatbots =

@@ -18,6 +18,7 @@ import { listarModelosAtivos } from "@/lib/propostas/modelos/catalogo-da-organiz
 import { resolverModelo } from "@/lib/propostas/modelos/resolver";
 import { capacidadesDaOrganizacao } from "@/lib/organizacao/capacidades";
 import type { Actor } from "@/lib/api/handlers/types";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import type { McpContext, McpToolDefinition } from "@/lib/mcp/types";
 
 const itemShape = {
@@ -165,6 +166,20 @@ async function loteDoTurnoAtual(
   return { pendente: textos.some((t) => t.trim().length === 0), textos };
 }
 
+/**
+ * "Comandas e propostas" é recurso do plano (Impulso em diante). A rota HTTP
+ * que cria proposta já o exige; a ferramenta do agente é a outra porta para o
+ * mesmo efeito e cobra a mesma régua. Leitura do plano indisponível também
+ * recusa: é escrita (ou o caminho para ela), e falhar fechado não perde nada.
+ */
+async function propostasForaDoPlano(organizationId: string): Promise<string | null> {
+  const acesso = await verificarRecursoDoPlano(organizationId, "comandas_e_propostas");
+  if (acesso.ok) return null;
+  return acesso.code === "billing_feature"
+    ? "O plano desta organização não inclui propostas comerciais. Ofereça falar com a equipe."
+    : "Não foi possível confirmar o plano agora. Tente de novo em instantes.";
+}
+
 export const crmDraftProposal: McpToolDefinition<typeof draftProposalInputShape> = {
   name: "crm_draft_proposal",
   category: "write",
@@ -179,6 +194,8 @@ export const crmDraftProposal: McpToolDefinition<typeof draftProposalInputShape>
     if (!(await capacidadesDaOrganizacao(ctx.supabase, ctx.organizationId)).includes("propostas")) {
       return { error: "Propostas estão desligadas nesta organização." };
     }
+    const foraDoPlano = await propostasForaDoPlano(ctx.organizationId);
+    if (foraDoPlano) return { error: foraDoPlano };
     const { data: lead, error: leadErr } = await ctx.supabase
       .from("crm_leads")
       .select("id, contact_id")
@@ -433,6 +450,8 @@ export const crmPrepararProposta: McpToolDefinition<typeof prepararPropostaInput
     if (!(await capacidadesDaOrganizacao(ctx.supabase, ctx.organizationId)).includes("propostas")) {
       return { error: "Propostas estão desligadas nesta organização." };
     }
+    const foraDoPlano = await propostasForaDoPlano(ctx.organizationId);
+    if (foraDoPlano) return { error: foraDoPlano };
     const ativos = await listarModelosAtivos(ctx.supabase, ctx.organizationId);
     const resposta = {
       modelos: ativos.map((m) => ({ slug: m.slug, nome: m.nome, origem: m.origem })),

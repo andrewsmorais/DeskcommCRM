@@ -37,4 +37,17 @@ describe("agente que organiza o CRM (Impulso)", () => {
     const r = await ferramentasDoPlano("org", [soOrganizar.name]);
     expect(r.toolIds).toEqual([soOrganizar.name]);
   });
+
+  it("Essencial: tira as ferramentas de proposta (Comandas e propostas é do Impulso)", async () => {
+    acesso.resposta = { ok: false, code: "billing_feature", status: 403, message: "x" };
+    const r = await ferramentasDoPlano("org", ["crm_draft_proposal", "crm_preparar_proposta", compartilhada.name]);
+    expect(r.toolIds).toEqual([compartilhada.name]);
+    expect(r.retiradas).toEqual(["crm_draft_proposal", "crm_preparar_proposta"]);
+  });
+
+  it("Impulso: ferramentas de proposta ficam", async () => {
+    acesso.resposta = { ok: true };
+    const r = await ferramentasDoPlano("org", ["crm_draft_proposal"]);
+    expect(r.toolIds).toEqual(["crm_draft_proposal"]);
+  });
 });
