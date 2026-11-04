@@ -59,6 +59,7 @@ import { trocarCodigoPorToken } from "@/lib/agenda/google/token";
 import { contaDaAgendaPrimaria } from "@/lib/agenda/google/calendarios";
 import { classificarErroDoGoogle } from "@/lib/agenda/google/erros";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -158,11 +159,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!estado) {
     // Um motivo só para assinatura inválida, prazo vencido e formato estranho:
     // distinguir na URL entregaria a um atacante a diferença que ele precisa
-    // para calibrar. O detalhe fica no audit, que é do servidor.
-    await audit({
-      action: "agenda.google.conexao_falhou",
-      metadata: { reason: "state_invalido" },
-    });
+    // para calibrar.
+    //
+    // NÃO AUDITA. A rota é pública e o `state` não verificou: nada aqui diz de
+    // quem é a requisição, e auditar daria a qualquer anônimo uma escrita
+    // ilimitada em `api_audit_log` (append-only, cinco anos de retenção, cota
+    // de disco da VPS) — a mesma regra que o ramo do vínculo, abaixo, já
+    // seguia. O sinal operacional vai para o log estruturado, que gira.
+    logger.warn("agenda.google.callback: state não verificável", { reason: "state_invalido" });
     return voltar("erro=retorno_nao_verificavel");
   }
   const { organizationId, userId } = estado;

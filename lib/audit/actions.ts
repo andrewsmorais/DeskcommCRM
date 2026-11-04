@@ -574,10 +574,12 @@ export const AUDIT_ACTIONS = [
   // rastro nenhum e o relato que chega é "cliquei e não aconteceu nada".
   //
   // `conexao_falhou` carrega o motivo em `metadata.reason`, e ele é o que
-  // separa causas com desfechos opostos: `state_invalido` é retorno que não
-  // dá para verificar, `scope_missing` é a pessoa tendo desmarcado permissão
-  // na tela do Google, `cifra_indisponivel` é a instalação sem chave. As três
-  // aparecem iguais para quem clicou; só a trilha distingue.
+  // separa causas com desfechos opostos: `vinculo_ausente_ou_nao_confere` é
+  // retorno que não dá para verificar, `scope_missing` é a pessoa tendo
+  // desmarcado permissão na tela do Google, `cifra_indisponivel` é a instalação
+  // sem chave. As três aparecem iguais para quem clicou; só a trilha distingue.
+  // (`state_invalido` saiu da trilha: com `state` sem assinatura válida o pedido
+  // é anônimo, e auditá-lo dava escrita ilimitada a qualquer um — vai ao log.)
   //
   // ⚠️ Desistir NÃO é falha e não entra aqui: quem clica "Cancelar" na tela do
   // Google volta pelo callback, e auditar isso encheria a trilha de gente que

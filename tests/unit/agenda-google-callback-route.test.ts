@@ -433,9 +433,19 @@ describe("GET /api/v1/agenda/google/callback", () => {
   it("state inválido dá UM motivo só — distinguir na URL ajudaria um atacante", async () => {
     const res = await chamar({ code: "c", state: "forjado.zzz" });
     expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
-    expect(audit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "agenda.google.conexao_falhou" }),
-    );
+    expect(upsertRecebido).toBeNull();
+  });
+
+  it("state inválido NÃO escreve no audit — a rota é pública e o pedido é anônimo", async () => {
+    // Antes, cada GET anônimo com `state` forjado gravava uma linha permanente em
+    // `api_audit_log` (append-only, cinco anos). O ramo do vínculo já seguia a
+    // regra "só audita depois de um state com assinatura válida"; este passa a
+    // seguir também. O sinal vai para o log estruturado.
+    for (const state of ["forjado.zzz", "", "a.b.c.d"]) {
+      const res = await chamar({ code: "c", state });
+      expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
+    }
+    expect(audit).not.toHaveBeenCalled();
     expect(upsertRecebido).toBeNull();
   });
 
