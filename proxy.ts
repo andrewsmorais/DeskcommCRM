@@ -13,13 +13,21 @@ import {
 const COOKIE_NAME = "sb-deskcomm-auth";
 
 export async function proxy(request: NextRequest) {
-  const response = NextResponse.next({ request: { headers: request.headers } });
+  const { pathname, search } = request.nextUrl;
+  // `x-pathname` é do SERVIDOR: o layout de /app decide o muro da assinatura por
+  // ele. O `NextResponse.next({ request: { headers } })` tira a foto dos
+  // cabeçalhos NA CONSTRUÇÃO — um `request.headers.set` depois não chega ao
+  // destino, e o valor que chegava era o que o CLIENTE mandou. Por isso o
+  // cabeçalho é montado ANTES, numa cópia, sobrescrevendo qualquer valor vindo
+  // de fora (`set` substitui; nunca `append`).
+  const encaminhados = new Headers(request.headers);
+  encaminhados.set("x-pathname", pathname);
+  const response = NextResponse.next({ request: { headers: encaminhados } });
 
   // Inject X-Request-Id for downstream correlation (audit log, error wrappers).
   const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
   response.headers.set("x-request-id", requestId);
 
-  const { pathname, search } = request.nextUrl;
   // Recupera retornos de OAuth social já emitidos antes da landing pública existir.
   // Apenas a navegação é tratada: o vínculo de conta segue protegido pelos guards canônicos.
   // Passa adiante só o SINAL `connected=1` — nunca o `connect_token` nem o valor recebido.
@@ -34,9 +42,9 @@ export async function proxy(request: NextRequest) {
     landing.headers.set("Referrer-Policy", "no-referrer");
     return landing;
   }
-  // Expose pathname to Server Components via header (used by onboarding layout).
+  // Expõe o pathname também na resposta (diagnóstico); o que os Server
+  // Components leem é o cabeçalho de REQUISIÇÃO montado acima.
   response.headers.set("x-pathname", pathname);
-  request.headers.set("x-pathname", pathname);
 
   // EPIC-11: the admin surface is reached by PATH (`/admin/*`) — the self-host kit
   // points `NEXT_PUBLIC_ADMIN_URL` at the same host as the app and maps no `admin.`
