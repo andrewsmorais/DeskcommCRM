@@ -535,6 +535,8 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       apiTokenId: ephemeral.id,
       requestId: run.id,
       supabase: admin,
+      // O contato da conversa do run, lido do banco — nunca dos argumentos.
+      ...(run.contact_id ? { turnContactId: run.contact_id } : {}),
     };
     const handoffSignal: RuntimeHandoffSignal = { triggered: false };
     // "Agente que organiza o CRM sozinho" é do Impulso em diante.

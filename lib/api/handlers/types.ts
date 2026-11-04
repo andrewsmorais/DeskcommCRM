@@ -87,6 +87,12 @@ export interface HandlerCtx {
   idempotencyKey?: string;
   /** Identidade estável do job interno; não usar claim, que muda em cada reclaim. */
   sourceJobId?: string;
+  /**
+   * Contato do turno de IA que motivou a chamada (`McpContext.turnContactId`).
+   * Vem do runtime, nunca do input: o handler da agenda recusa à IA mexer em
+   * compromisso de outro contato.
+   */
+  turnContactId?: string;
   organization_id: string;
   actor: Actor;
   /**

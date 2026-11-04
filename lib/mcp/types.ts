@@ -19,6 +19,13 @@ export interface McpContext {
   idempotencyKey?: string;
   /** Job estável do runtime in-process; nunca vem dos argumentos da tool. */
   sourceJobId?: string;
+  /**
+   * O contato que o turno de IA está atendendo. Só o runtime in-process o
+   * preenche (é o contato da conversa do turno), nunca o cliente MCP nem os
+   * argumentos da tool: é com ele que as tools de agenda prendem a IA ao
+   * compromisso de QUEM está falando.
+   */
+  turnContactId?: string;
   organizationId: string;
   role: Role;
   actor: Actor;
@@ -72,8 +79,5 @@ export interface McpToolDefinition<TInput extends z.ZodRawShape = z.ZodRawShape>
    * transformaria comportamento normal em alarme.
    */
   motivoDoVazio?: (resultado: unknown) => string | null;
-  handler: (
-    input: z.infer<z.ZodObject<TInput>>,
-    ctx: McpContext,
-  ) => Promise<unknown>;
+  handler: (input: z.infer<z.ZodObject<TInput>>, ctx: McpContext) => Promise<unknown>;
 }
