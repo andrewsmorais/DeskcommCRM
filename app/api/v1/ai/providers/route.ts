@@ -30,6 +30,7 @@ import {
 import { PAPEIS, PONTOS_DE_IA, PONTO_POR_ID } from "@/lib/ai/pontos/registro";
 import { PROVEDORES, ehProvedorSuportado } from "@/lib/ai/pontos/provedores";
 import { validarBinding } from "@/lib/ai/pontos/validar-binding";
+import { motivoDaRecusaDeDestino } from "@/lib/automation/destinos-internos-autorizados";
 import { lerAmbiente } from "@/lib/instalacao/ambiente";
 import { modeloDeTranscricaoEmVigor } from "@/lib/messaging/media/transcription";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -257,6 +258,23 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
   const ponto = PONTO_POR_ID.get(corpo.purpose);
   if (!ponto) return fail("ponto_desconhecido", `"${corpo.purpose}" não é um ponto do sistema`, 404);
+
+  // O ENDEREÇO PRÓPRIO É ESCOLHA DA ORGANIZAÇÃO, e passa pela régua de destino
+  // de organização AQUI, onde alguém lê o motivo — `z.string().url()` aceitava
+  // `http://127.0.0.1:6379/v1` e o worker chamava a rede interna do servidor.
+  // O motor confere de novo a cada requisição (o nome pode passar a resolver
+  // para IP interno depois de salvo); esta é a recusa com explicação.
+  if (corpo.base_url) {
+    const recusa = await motivoDaRecusaDeDestino(corpo.base_url, "organizacao");
+    if (recusa) {
+      return fail(
+        "base_url_destino_bloqueado",
+        t("Este endereço não é um destino permitido: use um endereço público (https)."),
+        422,
+        { details: { motivo: recusa } },
+      );
+    }
+  }
 
   const db = await createClient();
 
