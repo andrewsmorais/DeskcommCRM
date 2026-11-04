@@ -14,6 +14,7 @@ import { criarContaDeConvite, lerConfigPublicaDoGoTrue } from "@/lib/auth/convit
 import { modoDeCadastro } from "@/lib/auth/politica-de-cadastro";
 import { audit, hashEmail } from "@/lib/audit";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
+import { origemDeRetorno } from "@/lib/auth/origem-de-retorno";
 import { env } from "@/lib/env";
 
 export type SignUpResult =
@@ -92,7 +93,14 @@ export async function signUp(
   }
 
   const hdrs = await headers();
-  const origin = hdrs.get("origin") ?? env.NEXT_PUBLIC_APP_URL;
+  // A base do link do e-mail é a URL CONFIGURADA, não o cabeçalho Origin: ele
+  // é do cliente, e o link leva o token de acesso da pessoa. Em desenvolvimento
+  // o host local é preservado — mesma régua das rotas de retorno da auth.
+  const origin = origemDeRetorno(
+    hdrs.get("origin") ?? env.NEXT_PUBLIC_APP_URL,
+    env.NEXT_PUBLIC_APP_URL,
+    process.env.NODE_ENV === "development",
+  );
   const requestId = hdrs.get("x-request-id");
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
@@ -163,7 +171,8 @@ export async function signUp(
           // Mesmos motivos do caminho de baixo, para a trilha continuar
           // distinguível sem mapa novo: `conta_ja_existe_com_convite` já é o
           // vocabulário de quem chega com convite na mão.
-          reason: criada.motivo === "conta_ja_existe" ? "conta_ja_existe_com_convite" : criada.motivo,
+          reason:
+            criada.motivo === "conta_ja_existe" ? "conta_ja_existe_com_convite" : criada.motivo,
           detalhe: criada.detalhe ?? null,
           via: "admin_convite",
         },
