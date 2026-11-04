@@ -57,8 +57,9 @@ export const PUBLIC_PATHS: RegExp[] = [
   // 401 antes de a rota existir, e o fluxo NUNCA completa: medido na v1.8.0, em
   // produção, `GET /api/v1/agenda/google/callback` → 401 `unauthenticated`.
   //
-  // A identidade não vem da sessão e sim do `state` assinado (HMAC de
-  // `INTERNAL_SECRET`), com nonce de uso único; no caso do Google, somado a um
+  // A identidade não vem da sessão e sim do `state` assinado (HMAC da chave de
+  // `lib/auth/chave-de-assinatura.ts` — nunca do Bearer de cron, que vai para o
+  // agendador externo), com nonce de uso único; no caso do Google, somado a um
   // cookie de vínculo `SameSite=Lax` (`lib/agenda/google/vinculo.ts`) que prova
   // que o navegador que volta é o que saiu. Mesma natureza de
   // `/api/v1/system/relogio/tick`, logo acima: a auth mora DENTRO da rota.

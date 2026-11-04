@@ -40,19 +40,25 @@ describe("emitirEstado / verificarEstado", () => {
       cargaAberta.replace(DADOS.userId, "88888888-8888-4888-8888-888888888888"),
       "utf8",
     ).toString("base64url");
-    expect(verificarEstado(`${forjada}.${assinatura}`, { segredo: SEGREDO, agora: AGORA })).toBeNull();
+    expect(
+      verificarEstado(`${forjada}.${assinatura}`, { segredo: SEGREDO, agora: AGORA }),
+    ).toBeNull();
   });
 
   it("vence: dez minutos é o tempo de atravessar a tela de consentimento", () => {
     const state = emitirEstado(DADOS, { segredo: SEGREDO, agora: AGORA });
     const quaseLa = new Date(AGORA.getTime() + VALIDADE_DO_ESTADO_MS);
     expect(verificarEstado(state, { segredo: SEGREDO, agora: quaseLa })).not.toBeNull();
-    expect(verificarEstado(state, { segredo: SEGREDO, agora: new Date(quaseLa.getTime() + 1) })).toBeNull();
+    expect(
+      verificarEstado(state, { segredo: SEGREDO, agora: new Date(quaseLa.getTime() + 1) }),
+    ).toBeNull();
   });
 
   it("devolve o nonce, que é o que permite queimá-lo", () => {
     const state = emitirEstado(DADOS, { segredo: SEGREDO, agora: AGORA, nonce: "nonce-de-teste" });
-    expect(verificarEstado(state, { segredo: SEGREDO, agora: AGORA })?.nonce).toBe("nonce-de-teste");
+    expect(verificarEstado(state, { segredo: SEGREDO, agora: AGORA })?.nonce).toBe(
+      "nonce-de-teste",
+    );
   });
 
   // A DÍVIDA DECLARADA AQUI FOI PAGA — em outro arquivo, e é isso que importa.
@@ -90,16 +96,23 @@ describe("emitirEstado / verificarEstado", () => {
     // segredo falta. Numa VPS com mais de uma réplica, o state emitido por um
     // processo não valida no outro — e o sintoma é "conectei e deu erro" de
     // forma intermitente, sem nada no log que aponte a causa.
-    expect(() => emitirEstado(DADOS, { segredo: "", agora: AGORA })).toThrow(/INTERNAL_SECRET/);
-    expect(() => emitirEstado(DADOS, { segredo: "curto", agora: AGORA })).toThrow(/INTERNAL_SECRET/);
+    expect(() => emitirEstado(DADOS, { segredo: "", agora: AGORA })).toThrow(
+      /SUPABASE_SERVICE_ROLE_KEY/,
+    );
+    expect(() => emitirEstado(DADOS, { segredo: "curto", agora: AGORA })).toThrow(
+      /SUPABASE_SERVICE_ROLE_KEY/,
+    );
   });
 
   it("recusa emitir sem a pessoa, ou com id que quebraria o separador", () => {
-    expect(() => emitirEstado({ ...DADOS, userId: "" }, { segredo: SEGREDO, agora: AGORA })).toThrow(
-      /organizationId e userId/,
-    );
     expect(() =>
-      emitirEstado({ ...DADOS, organizationId: "org.com.ponto" }, { segredo: SEGREDO, agora: AGORA }),
+      emitirEstado({ ...DADOS, userId: "" }, { segredo: SEGREDO, agora: AGORA }),
+    ).toThrow(/organizationId e userId/);
+    expect(() =>
+      emitirEstado(
+        { ...DADOS, organizationId: "org.com.ponto" },
+        { segredo: SEGREDO, agora: AGORA },
+      ),
     ).toThrow(/ponto/);
   });
 });

@@ -13,9 +13,10 @@
  * link que expirou, foi adulterado ou nunca existiu devolve a mesma coisa
  * (`null`), para a rota responder 404 sem dizer qual dos três foi.
  *
- * A chave é derivada do segredo interno com um rótulo próprio: se esse segredo
- * for trocado, os links em circulação morrem junto, e isso é o comportamento
- * certo — um novo e-mail os substitui.
+ * A chave é derivada da chave de assinatura da instalação
+ * (`lib/auth/chave-de-assinatura.ts` — nunca um Bearer de agendador) com um
+ * rótulo próprio: se ela for trocada, os links em circulação morrem junto, e
+ * isso é o comportamento certo — um novo e-mail os substitui.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 

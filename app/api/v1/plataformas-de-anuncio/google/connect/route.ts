@@ -20,6 +20,7 @@ import { z } from "zod";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
 import { requireRole } from "@/lib/auth/require-role";
 import { env } from "@/lib/env";
 import { configuracaoDoGoogleAds } from "@/lib/plataformas-de-anuncio/google/config";
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     state = emitirEstado(
       { organizationId: org.orgId, userId: user.id, api },
-      { segredo: env.INTERNAL_SECRET, agora: new Date() },
+      { segredo: chaveDeAssinatura(ROTULOS_DE_ASSINATURA.estadoDeAnuncios), agora: new Date() },
     );
   } catch {
     return voltarComErro("estado_invalido");

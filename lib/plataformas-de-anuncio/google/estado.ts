@@ -40,7 +40,7 @@ function conferirSegredo(segredo: string): string {
   const s = segredo?.trim() ?? "";
   if (s.length < TAMANHO_MINIMO_DO_SEGREDO) {
     throw new Error(
-      "INTERNAL_SECRET ausente ou curto demais: sem ele o retorno do Google não tem como ser verificado",
+      "chave de assinatura ausente ou segredo curto demais (a raiz é LINK_SIGNING_SECRET ou SUPABASE_SERVICE_ROLE_KEY): sem ela o retorno do Google não tem como ser verificado",
     );
   }
   return s;

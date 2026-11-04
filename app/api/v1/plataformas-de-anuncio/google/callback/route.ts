@@ -23,6 +23,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { audit } from "@/lib/audit";
+import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { configuracaoDoGoogleAds } from "@/lib/plataformas-de-anuncio/google/config";
@@ -48,11 +49,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return voltar(base, { erro: "cancelado" });
   }
 
-  // 2. `state` antes do `code`.
-  const estado = verificarEstado(url.searchParams.get("state"), {
-    segredo: env.INTERNAL_SECRET,
-    agora: new Date(),
-  });
+  // 2. `state` antes do `code`. A chave NÃO é `INTERNAL_SECRET` — ele é o
+  // Bearer do agendador externo (ver `lib/auth/chave-de-assinatura.ts`). Sob
+  // `try` porque `verificarEstado` lança com chave curta, e a rota é pública:
+  // um throw seria 500 arrancável por qualquer anônimo.
+  let estado: ReturnType<typeof verificarEstado> = null;
+  try {
+    estado = verificarEstado(url.searchParams.get("state"), {
+      segredo: chaveDeAssinatura(ROTULOS_DE_ASSINATURA.estadoDeAnuncios),
+      agora: new Date(),
+    });
+  } catch {
+    return voltar(base, { erro: "estado_invalido" });
+  }
   if (!estado) return voltar(base, { erro: "estado_invalido" });
 
   const code = url.searchParams.get("code");

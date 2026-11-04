@@ -18,23 +18,37 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { emitirEstado } from "@/lib/agenda/google/estado";
 import { assinarVinculo, NOME_DO_VINCULO } from "@/lib/agenda/google/vinculo";
+import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
 
-vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined), isServiceRoleConfigured: vi.fn(() => true) }));
+vi.mock("@/lib/audit", () => ({
+  audit: vi.fn(async () => undefined),
+  isServiceRoleConfigured: vi.fn(() => true),
+}));
 // `@/lib/auth/server` não é mais mockado: o callback deixou de ler a sessão.
 // Ela nunca chegava — `sameSite: "strict"` não viaja na volta do Google.
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
-vi.mock("@/lib/webhooks/secrets", () => ({ encryptWebhookSecret: vi.fn(async () => "\\xdeadbeef") }));
+vi.mock("@/lib/webhooks/secrets", () => ({
+  encryptWebhookSecret: vi.fn(async () => "\\xdeadbeef"),
+}));
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const ANA = "11111111-1111-4111-8111-111111111111";
-const SEGREDO = "um-segredo-de-instalacao-bem-comprido";
+/**
+ * O Bearer do agendador externo. Fica DEFINIDO de propósito: é o valor que
+ * `autorizaCron` aceita, e um caso abaixo prova que ele não assina retorno
+ * nenhum. Quem assina é a chave derivada (`lib/auth/chave-de-assinatura.ts`).
+ */
+const BEARER_DO_CRON = "um-segredo-de-instalacao-bem-comprido";
+const chaveDoEstado = () => chaveDeAssinatura(ROTULOS_DE_ASSINATURA.estadoDaAgenda);
+const chaveDoVinculo = () => chaveDeAssinatura(ROTULOS_DE_ASSINATURA.vinculoDaAgenda);
 
-process.env.INTERNAL_SECRET = SEGREDO;
+process.env.INTERNAL_SECRET = BEARER_DO_CRON;
 process.env.NEXT_PUBLIC_APP_URL = "https://crm.exemplo";
 process.env.GOOGLE_CALENDAR_CLIENT_ID = "123.apps.googleusercontent.com";
 process.env.GOOGLE_CALENDAR_CLIENT_SECRET = "GOCSPX-segredo";
 
-const ESCOPOS = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
+const ESCOPOS =
+  "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 
 /**
  * O nonce do último `state` emitido. O callback deixou de ler a SESSÃO (que
@@ -48,7 +62,7 @@ function estadoValido(authSessionId?: string): string {
   ultimoNonce = `nonce-de-teste-${noncesGravados.length}-${Math.random().toString(36).slice(2)}`;
   return emitirEstado(
     { organizationId: ORG, userId: ANA, authSessionId },
-    { segredo: SEGREDO, agora: new Date(), nonce: ultimoNonce },
+    { segredo: chaveDoEstado(), agora: new Date(), nonce: ultimoNonce },
   );
 }
 
@@ -65,9 +79,9 @@ function pedido(
   for (const [k, v] of Object.entries(query)) u.searchParams.set(k, v);
   const req = new NextRequest(u);
   if (vinculo === "casa" && ultimoNonce) {
-    req.cookies.set(NOME_DO_VINCULO, assinarVinculo(ultimoNonce, SEGREDO));
+    req.cookies.set(NOME_DO_VINCULO, assinarVinculo(ultimoNonce, chaveDoVinculo()));
   } else if (vinculo === "de-outro") {
-    req.cookies.set(NOME_DO_VINCULO, assinarVinculo("nonce-de-outra-pessoa", SEGREDO));
+    req.cookies.set(NOME_DO_VINCULO, assinarVinculo("nonce-de-outra-pessoa", chaveDoVinculo()));
   }
   return req;
 }
@@ -85,15 +99,27 @@ let opcoesDoUpsert: Record<string, unknown> | null = null;
 let erroDoUpsert: { message: string } | null = null;
 
 function respostaHttp(corpo: unknown, status = 200): Response {
-  return { ok: status >= 200 && status < 300, status, json: async () => corpo } as unknown as Response;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => corpo,
+  } as unknown as Response;
 }
 
 function googleRespondendoBem() {
   vi.mocked(fetch)
     .mockResolvedValueOnce(
-      respostaHttp({ access_token: "ya29.novo", refresh_token: "1//r", expires_in: 3599, scope: ESCOPOS, token_type: "Bearer" }),
+      respostaHttp({
+        access_token: "ya29.novo",
+        refresh_token: "1//r",
+        expires_in: 3599,
+        scope: ESCOPOS,
+        token_type: "Bearer",
+      }),
     )
-    .mockResolvedValueOnce(respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }));
+    .mockResolvedValueOnce(
+      respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }),
+    );
 }
 
 beforeEach(() => {
@@ -187,7 +213,9 @@ describe("GET /api/v1/agenda/google/callback", () => {
       account_email: "ana@clinica.com.br",
       status: "healthy",
     });
-    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: "agenda.google.conexao_concluida" }));
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "agenda.google.conexao_concluida" }),
+    );
   });
 
   it("REGISTRA O CALENDÁRIO PRIMÁRIO — sem ele a conexão existe e não sincroniza nada", async () => {
@@ -271,9 +299,17 @@ describe("GET /api/v1/agenda/google/callback", () => {
     vi.setSystemTime(new Date("2026-08-26T12:00:00.000Z"));
     vi.mocked(fetch)
       .mockResolvedValueOnce(
-        respostaHttp({ access_token: "ya29.novo", refresh_token: "1//r", expires_in: 3599, scope: ESCOPOS, token_type: "Bearer" }),
+        respostaHttp({
+          access_token: "ya29.novo",
+          refresh_token: "1//r",
+          expires_in: 3599,
+          scope: ESCOPOS,
+          token_type: "Bearer",
+        }),
       )
-      .mockResolvedValueOnce(respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }));
+      .mockResolvedValueOnce(
+        respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }),
+      );
     await chamar({ code: "c", state: estadoValido() });
 
     expect(upsertRecebido?.token_expires_at).toBe("2026-08-26T12:59:59.000Z");
@@ -301,9 +337,16 @@ describe("GET /api/v1/agenda/google/callback", () => {
     // longe daqui, como "minha agenda parou de sincronizar".
     vi.mocked(fetch)
       .mockResolvedValueOnce(
-        respostaHttp({ access_token: "ya29.x", expires_in: 3599, scope: ESCOPOS, token_type: "Bearer" }),
+        respostaHttp({
+          access_token: "ya29.x",
+          expires_in: 3599,
+          scope: ESCOPOS,
+          token_type: "Bearer",
+        }),
       )
-      .mockResolvedValueOnce(respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }));
+      .mockResolvedValueOnce(
+        respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }),
+      );
 
     const res = await chamar({ code: "c", state: estadoValido() });
     expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?erro=sem_token_de_renovacao");
@@ -317,16 +360,26 @@ describe("GET /api/v1/agenda/google/callback", () => {
     linhaExistente = { oauth_refresh_token_encrypted: "\\xJAGUARDADO" };
     vi.mocked(fetch)
       .mockResolvedValueOnce(
-        respostaHttp({ access_token: "ya29.x", expires_in: 3599, scope: ESCOPOS, token_type: "Bearer" }),
+        respostaHttp({
+          access_token: "ya29.x",
+          expires_in: 3599,
+          scope: ESCOPOS,
+          token_type: "Bearer",
+        }),
       )
-      .mockResolvedValueOnce(respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }));
+      .mockResolvedValueOnce(
+        respostaHttp({ id: "ana@clinica.com.br", timeZone: "America/Sao_Paulo" }),
+      );
 
     const res = await chamar({ code: "c", state: estadoValido() });
     expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?ok=agenda_conectada");
     expect(upsertRecebido).not.toHaveProperty("oauth_refresh_token_encrypted");
     // Controle positivo: a linha FOI montada, então a ausência acima é omissão
     // deliberada e não objeto vazio.
-    expect(upsertRecebido).toMatchObject({ status: "healthy", account_email: "ana@clinica.com.br" });
+    expect(upsertRecebido).toMatchObject({
+      status: "healthy",
+      account_email: "ana@clinica.com.br",
+    });
   });
 
   it("NENHUM audit carrega token — e o audit é append-only por cinco anos", async () => {
@@ -397,7 +450,9 @@ describe("GET /api/v1/agenda/google/callback", () => {
     expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
     expect(upsertRecebido).toBeNull();
     expect(audit).toHaveBeenCalledWith(
-      expect.objectContaining({ metadata: expect.objectContaining({ reason: "state_reutilizado" }) }),
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: "state_reutilizado" }),
+      }),
     );
   });
 
@@ -430,6 +485,30 @@ describe("GET /api/v1/agenda/google/callback", () => {
     expect(upsertRecebido).toBeNull();
   });
 
+  it("state e vínculo forjados com o BEARER DO CRON não valem — ele vai para o agendador externo", async () => {
+    // Era a chave de assinatura até esta correção: quem tinha a credencial do
+    // relógio (cron-job.org, segredo do GitHub Actions) fabricava o `state` de
+    // qualquer organização e o cookie que casa com ele.
+    googleRespondendoBem();
+    const nonce = "nonce-forjado-pelo-agendador";
+    const forjado = emitirEstado(
+      { organizationId: ORG, userId: ANA },
+      { segredo: BEARER_DO_CRON, agora: new Date(), nonce },
+    );
+    const u = new URL("https://crm.exemplo/api/v1/agenda/google/callback");
+    u.searchParams.set("code", "c");
+    u.searchParams.set("state", forjado);
+    const req = new NextRequest(u);
+    req.cookies.set(NOME_DO_VINCULO, assinarVinculo(nonce, BEARER_DO_CRON));
+    const { GET } = await import("@/app/api/v1/agenda/google/callback/route");
+
+    const res = await GET(req);
+    expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(noncesGravados).toHaveLength(0);
+    expect(upsertRecebido).toBeNull();
+  });
+
   it("state inválido dá UM motivo só — distinguir na URL ajudaria um atacante", async () => {
     const res = await chamar({ code: "c", state: "forjado.zzz" });
     expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
@@ -443,7 +522,9 @@ describe("GET /api/v1/agenda/google/callback", () => {
     // seguir também. O sinal vai para o log estruturado.
     for (const state of ["forjado.zzz", "", "a.b.c.d"]) {
       const res = await chamar({ code: "c", state });
-      expect(await destino(res)).toBe("https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel");
+      expect(await destino(res)).toBe(
+        "https://crm.exemplo/app/agenda?erro=retorno_nao_verificavel",
+      );
     }
     expect(audit).not.toHaveBeenCalled();
     expect(upsertRecebido).toBeNull();
@@ -516,10 +597,17 @@ it("suporte restrito recusa callback antes de trocar código ou gravar conexão"
   expect(upsertRecebido).toBeNull();
 });
 
- it("auditoria recebe ator e sessão do state validado sem cookie JWT", async () => {
+it("auditoria recebe ator e sessão do state validado sem cookie JWT", async () => {
   googleRespondendoBem();
   const session = "33333333-3333-4333-8333-333333333333";
   const { GET } = await import("@/app/api/v1/agenda/google/callback/route");
   await GET(pedido({ state: estadoValido(session), code: "legitimo" }));
-  expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: "agenda.google.conexao_concluida", actorUserId: ANA, actorAuthSessionId: session, organizationId: ORG }));
- });
+  expect(audit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: "agenda.google.conexao_concluida",
+      actorUserId: ANA,
+      actorAuthSessionId: session,
+      organizationId: ORG,
+    }),
+  );
+});

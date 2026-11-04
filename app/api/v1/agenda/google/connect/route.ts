@@ -33,10 +33,19 @@ import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { audit } from "@/lib/audit";
+import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
 import { requireRole } from "@/lib/auth/require-role";
-import { CAMINHO_DO_CALLBACK, configuracaoDoGoogle, origemLocalDosCabecalhos } from "@/lib/agenda/google/config";
+import {
+  CAMINHO_DO_CALLBACK,
+  configuracaoDoGoogle,
+  origemLocalDosCabecalhos,
+} from "@/lib/agenda/google/config";
 import { emitirEstado } from "@/lib/agenda/google/estado";
-import { assinarVinculo, NOME_DO_VINCULO, VALIDADE_DO_VINCULO_S } from "@/lib/agenda/google/vinculo";
+import {
+  assinarVinculo,
+  NOME_DO_VINCULO,
+  VALIDADE_DO_VINCULO_S,
+} from "@/lib/agenda/google/vinculo";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { montarUrlDeConsentimento } from "@/lib/agenda/google/oauth";
 import { env } from "@/lib/env";
@@ -75,7 +84,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     state = emitirEstado(
       { organizationId: org.orgId, userId: user.id, authSessionId: await authenticatedSessionId() },
-      { segredo: env.INTERNAL_SECRET, agora: new Date(), nonce },
+      {
+        segredo: chaveDeAssinatura(ROTULOS_DE_ASSINATURA.estadoDaAgenda),
+        agora: new Date(),
+        nonce,
+      },
     );
   } catch {
     // `emitirEstado` recusa segredo curto de propósito: com chave fraca o
@@ -111,13 +124,17 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // `secure` sai de `cookieSecure()`, NUNCA `true` literal: um self-host servido
   // por `http://` — e essa população existe, está medida — teria o cookie
   // descartado pelo navegador, e o conserto viraria o defeito que ele conserta.
-  resposta.cookies.set(NOME_DO_VINCULO, assinarVinculo(nonce, env.INTERNAL_SECRET), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: cookieSecure(),
-    path: CAMINHO_DO_CALLBACK,
-    maxAge: VALIDADE_DO_VINCULO_S,
-  });
+  resposta.cookies.set(
+    NOME_DO_VINCULO,
+    assinarVinculo(nonce, chaveDeAssinatura(ROTULOS_DE_ASSINATURA.vinculoDaAgenda)),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: cookieSecure(),
+      path: CAMINHO_DO_CALLBACK,
+      maxAge: VALIDADE_DO_VINCULO_S,
+    },
+  );
 
   return resposta;
 }

@@ -47,10 +47,15 @@ import { supportCallbackWriteAllowed } from "@/lib/impersonate/support";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { audit } from "@/lib/audit";
+import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
 import { PROVEDOR_GOOGLE } from "@/lib/agenda/tipos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
-import { CAMINHO_DO_CALLBACK, configuracaoDoGoogle, origemLocalDosCabecalhos } from "@/lib/agenda/google/config";
+import {
+  CAMINHO_DO_CALLBACK,
+  configuracaoDoGoogle,
+  origemLocalDosCabecalhos,
+} from "@/lib/agenda/google/config";
 import { verificarEstado } from "@/lib/agenda/google/estado";
 import { NOME_DO_VINCULO, vinculoConfere } from "@/lib/agenda/google/vinculo";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
@@ -146,13 +151,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // 2. Quem está voltando? Sem isto não há org para auditar.
   // ⚠️ SOB `try`, e a razão mudou com esta rota: ela agora é alcançável sem
-  // sessão (está em `PUBLIC_PATHS`). `verificarEstado` LANÇA quando o
-  // `INTERNAL_SECRET` é curto demais, e um throw aqui viraria 500 com stack no
+  // sessão (está em `PUBLIC_PATHS`). `verificarEstado` LANÇA quando a chave de
+  // assinatura é curta demais, e um throw aqui viraria 500 com stack no
   // log, arrancável por qualquer anônimo em laço. Falha fechada com mensagem,
   // nunca 500 anônimo — é a mesma proteção que a rota de IDA já tinha.
   let estado: ReturnType<typeof verificarEstado> = null;
   try {
-    estado = verificarEstado(stateBruto, { segredo: env.INTERNAL_SECRET, agora: new Date() });
+    // A chave NÃO é `INTERNAL_SECRET`: ele é o Bearer que o agendador externo
+    // recebe, e quem o tivesse forjaria o `state` (ver `chave-de-assinatura.ts`).
+    estado = verificarEstado(stateBruto, {
+      segredo: chaveDeAssinatura(ROTULOS_DE_ASSINATURA.estadoDaAgenda),
+      agora: new Date(),
+    });
   } catch {
     return voltar("erro=retorno_nao_verificavel");
   }
@@ -188,7 +198,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // nenhuma. O que ela prometia — e o que o vínculo entrega no lugar — está
   // escrito no cabeçalho de `vinculo.ts`, inclusive o caso que fica de fora.
   const vinculo = req.cookies.get(NOME_DO_VINCULO)?.value;
-  if (!vinculoConfere(vinculo, estado.nonce, env.INTERNAL_SECRET)) {
+  const chaveDoVinculo = chaveDeAssinatura(ROTULOS_DE_ASSINATURA.vinculoDaAgenda);
+  if (!vinculoConfere(vinculo, estado.nonce, chaveDoVinculo)) {
     // AUDITAR SÓ AQUI, depois de o vínculo falhar por um `state` que ao menos
     // tinha assinatura válida. Auditar antes daria a qualquer anônimo uma
     // escrita ilimitada em `api_audit_log` — tabela append-only, retenção de
@@ -226,7 +237,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // `code` do Google — que é de uso único — antes de descobrir que o `state`
   // era repetido, e quem apresentasse o legítimo receberia "código já usado",
   // um erro que aponta para o Google e não para o replay.
-  if (!(await supportCallbackWriteAllowed(organizationId, userId, estado.authSessionId))) return voltar("erro=retorno_nao_verificavel");
+  if (!(await supportCallbackWriteAllowed(organizationId, userId, estado.authSessionId)))
+    return voltar("erro=retorno_nao_verificavel");
   const admin = createAdminClient();
   const { error: erroDoNonce } = await admin.from("calendar_oauth_nonces").insert({
     nonce: estado.nonce,
@@ -346,7 +358,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const accessCifrado = await encryptWebhookSecret(admin, token.access_token);
-  const refreshCifrado = token.refresh_token ? await encryptWebhookSecret(admin, token.refresh_token) : null;
+  const refreshCifrado = token.refresh_token
+    ? await encryptWebhookSecret(admin, token.refresh_token)
+    : null;
   if (!accessCifrado || (token.refresh_token && !refreshCifrado)) {
     await audit({
       action: "agenda.google.conexao_falhou",
@@ -358,30 +372,32 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   // 7. Grava. `organization_id` e `user_id` vêm do `state` ASSINADO, nunca da
   //    query — service role bypassa RLS, então a fonte confiável é obrigatória.
-  const { data: conexaoGravada, error: erroAoGravar } = await admin.from("calendar_connections").upsert(
-    {
-      organization_id: organizationId,
-      user_id: userId,
-      // A CONSTANTE também aqui, embora o literal estivesse CERTO: enquanto o
-      // único lugar que escreve o valor certo o escreve à mão, o símbolo
-      // canônico segue órfão — e foi a orfandade que deixou três leituras
-      // divergirem sem nada acusar.
-      provider: PROVEDOR_GOOGLE,
-      account_email: conta.conta.email,
-      oauth_access_token_encrypted: accessCifrado,
-      // Quando o Google não reenviou a chave e já havia uma guardada, a coluna
-      // fica FORA do upsert: `on conflict do update` só toca o que recebe, então
-      // omitir preserva. Mandar `null` aqui apagaria a chave que faz a conexão
-      // sobreviver à primeira hora — é a mesma armadilha de `fundirTokens`, um
-      // andar acima.
-      ...(refreshCifrado ? { oauth_refresh_token_encrypted: refreshCifrado } : {}),
-      token_expires_at: token.expira_em,
-      scopes: token.scope,
-      status: "healthy",
-      last_sync_error: null,
-    },
-    { onConflict: "organization_id,user_id,provider,account_email" },
-  )
+  const { data: conexaoGravada, error: erroAoGravar } = await admin
+    .from("calendar_connections")
+    .upsert(
+      {
+        organization_id: organizationId,
+        user_id: userId,
+        // A CONSTANTE também aqui, embora o literal estivesse CERTO: enquanto o
+        // único lugar que escreve o valor certo o escreve à mão, o símbolo
+        // canônico segue órfão — e foi a orfandade que deixou três leituras
+        // divergirem sem nada acusar.
+        provider: PROVEDOR_GOOGLE,
+        account_email: conta.conta.email,
+        oauth_access_token_encrypted: accessCifrado,
+        // Quando o Google não reenviou a chave e já havia uma guardada, a coluna
+        // fica FORA do upsert: `on conflict do update` só toca o que recebe, então
+        // omitir preserva. Mandar `null` aqui apagaria a chave que faz a conexão
+        // sobreviver à primeira hora — é a mesma armadilha de `fundirTokens`, um
+        // andar acima.
+        ...(refreshCifrado ? { oauth_refresh_token_encrypted: refreshCifrado } : {}),
+        token_expires_at: token.expira_em,
+        scopes: token.scope,
+        status: "healthy",
+        last_sync_error: null,
+      },
+      { onConflict: "organization_id,user_id,provider,account_email" },
+    )
     .select("id")
     .single();
 
@@ -430,7 +446,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       await audit({
         action: "agenda.google.conexao_falhou",
         organizationId,
-        metadata: { reason: "calendario_primario_nao_registrado", detalhe: erroDoCalendario.message, user_id: userId },
+        metadata: {
+          reason: "calendario_primario_nao_registrado",
+          detalhe: erroDoCalendario.message,
+          user_id: userId,
+        },
       });
     }
   }

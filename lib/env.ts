@@ -95,6 +95,14 @@ const schema = z.object({
   /** Optional dedicated secret for cron endpoints (S-06.07 onwards). */
   INTERNAL_CRON_SECRET: z.string().optional().default(""),
   /**
+   * Raiz OPCIONAL da chave que assina link de exportação e `state`/vínculo de
+   * OAuth. Vazia (ou com menos de 32 caracteres), a raiz é a
+   * `SUPABASE_SERVICE_ROLE_KEY` — e por isso nenhuma instalação precisa editar o
+   * `.env` para atualizar. NUNCA um dos Bearers de cron acima: quem lê é
+   * `lib/auth/chave-de-assinatura.ts`, e o porquê está lá.
+   */
+  LINK_SIGNING_SECRET: z.string().optional().default(""),
+  /**
    * Segredo do DONO DA INSTALAÇÃO para `POST /api/v1/tenants/provision` (um
    * sistema externo cria organizações). Vazio por padrão = a rota não existe
    * (404); com menos de 32 caracteres também fica desligada.

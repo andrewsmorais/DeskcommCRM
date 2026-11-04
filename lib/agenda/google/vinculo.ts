@@ -44,8 +44,10 @@
  * `Domain=.cliente.com.br` e o mesmo nome, e o servidor passa a receber dois
  * valores sob um nome só. Se o valor esperado fosse o nonce em claro — que
  * viaja na barra de endereços, no histórico e no log do Google — bastaria
- * plantá-lo. Assinado com `INTERNAL_SECRET`, plantar exige o segredo do
- * servidor, e quem o tem já não precisa deste ataque.
+ * plantá-lo. Assinado com a chave de assinatura da instalação
+ * (`lib/auth/chave-de-assinatura.ts`), plantar exige o segredo do servidor, e
+ * quem o tem já não precisa deste ataque. NUNCA `INTERNAL_SECRET`: esse é o
+ * Bearer que o agendador externo recebe, e não pode valer como chave.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 

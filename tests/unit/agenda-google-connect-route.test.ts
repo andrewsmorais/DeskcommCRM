@@ -15,7 +15,10 @@ import { fail } from "@/lib/api/wrappers";
 import type { ActiveOrg, AuthUser } from "@/lib/auth/types";
 
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
-vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined), isServiceRoleConfigured: vi.fn(() => true) }));
+vi.mock("@/lib/audit", () => ({
+  audit: vi.fn(async () => undefined),
+  isServiceRoleConfigured: vi.fn(() => true),
+}));
 // O contrato da rota é testado contra as variáveis passadas ao cenário. Sem
 // dublê, uma credencial salva no banco da máquina de quem roda a suíte vence o
 // ambiente e torna os casos "sem chave" dependentes do estado local.
@@ -71,6 +74,10 @@ const CONFIGURADO = {
   GOOGLE_CALENDAR_CLIENT_SECRET: "GOCSPX-segredo",
   NEXT_PUBLIC_APP_URL: "https://crm.exemplo",
   INTERNAL_SECRET: "um-segredo-de-instalacao-bem-comprido",
+  // A raiz da chave de assinatura (`lib/auth/chave-de-assinatura.ts`). Listada
+  // aqui para cada `rotaComEnv(CONFIGURADO)` restaurá-la depois do caso que a
+  // encurta.
+  SUPABASE_SERVICE_ROLE_KEY: "test-placeholder-service-role-key",
 };
 
 beforeEach(() => {
@@ -91,7 +98,10 @@ describe("GET /api/v1/agenda/google/connect", () => {
     // `select_account` mantém o seletor de contas de pé — sem ele o Google
     // autoriza direto a conta do `login_hint`, e quem tem a agenda num e-mail
     // diferente do login do CRM não tem como conectá-la (issue #929).
-    expect(destino.searchParams.get("prompt")?.split(" ").sort()).toEqual(["consent", "select_account"]);
+    expect(destino.searchParams.get("prompt")?.split(" ").sort()).toEqual([
+      "consent",
+      "select_account",
+    ]);
     expect(destino.searchParams.get("state")).toBeTruthy();
     // Sugerir a conta evita autorizar com a conta pessoal que já estava logada
     // no navegador e ver a agenda errada aparecer no CRM — e sugerir não fecha a
@@ -101,10 +111,15 @@ describe("GET /api/v1/agenda/google/connect", () => {
   });
 
   it("usa localhost como callback quando o navegador abre a instalação local por localhost", async () => {
-    const { GET } = await rotaComEnv({ ...CONFIGURADO, NEXT_PUBLIC_APP_URL: "http://192.168.0.21:3001" });
+    const { GET } = await rotaComEnv({
+      ...CONFIGURADO,
+      NEXT_PUBLIC_APP_URL: "http://192.168.0.21:3001",
+    });
     const res = await GET(pedidoLocal());
     const destino = new URL(res.headers.get("location") ?? "");
-    expect(destino.searchParams.get("redirect_uri")).toBe("http://localhost:3001/api/v1/agenda/google/callback");
+    expect(destino.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:3001/api/v1/agenda/google/callback",
+    );
   });
 
   it("o `state` carrega a PESSOA, não só a organização", async () => {
@@ -116,7 +131,10 @@ describe("GET /api/v1/agenda/google/connect", () => {
     const state = new URL(res.headers.get("location") ?? "").searchParams.get("state") ?? "";
 
     const { verificarEstado } = await import("@/lib/agenda/google/estado");
-    expect(verificarEstado(state, { segredo: CONFIGURADO.INTERNAL_SECRET, agora: new Date() })).toMatchObject({
+    const { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } =
+      await import("@/lib/auth/chave-de-assinatura");
+    const segredo = chaveDeAssinatura(ROTULOS_DE_ASSINATURA.estadoDaAgenda);
+    expect(verificarEstado(state, { segredo, agora: new Date() })).toMatchObject({
       organizationId: ORG,
       userId: ANA,
     });
@@ -126,7 +144,9 @@ describe("GET /api/v1/agenda/google/connect", () => {
     const { GET } = await rotaComEnv({ ...CONFIGURADO, GOOGLE_CALENDAR_CLIENT_ID: "" });
     const res = await GET(pedido());
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe("https://crm.exemplo/app/agenda?erro=google_nao_configurado");
+    expect(res.headers.get("location")).toBe(
+      "https://crm.exemplo/app/agenda?erro=google_nao_configurado",
+    );
   });
 
   it("instalação sem chave NÃO enche o audit log", async () => {
@@ -141,9 +161,12 @@ describe("GET /api/v1/agenda/google/connect", () => {
     // Com chave fraca o retorno do Google não seria verificável, e numa
     // instalação com mais de uma réplica o state de um processo não validaria no
     // outro — o sintoma seria "conectei e deu erro", intermitente e sem rastro.
-    const { GET } = await rotaComEnv({ ...CONFIGURADO, INTERNAL_SECRET: "curto" });
+    // Sem `LINK_SIGNING_SECRET` e com a service role curta, não há raiz utilizável.
+    const { GET } = await rotaComEnv({ ...CONFIGURADO, SUPABASE_SERVICE_ROLE_KEY: "curto" });
     const res = await GET(pedido());
-    expect(res.headers.get("location")).toBe("https://crm.exemplo/app/agenda?erro=segredo_indisponivel");
+    expect(res.headers.get("location")).toBe(
+      "https://crm.exemplo/app/agenda?erro=segredo_indisponivel",
+    );
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "agenda.google.conexao_falhou" }),
     );
@@ -163,13 +186,16 @@ describe("GET /api/v1/agenda/google/connect", () => {
   it("pede `agent`, que é o mesmo piso que a 0177 exige para escrever compromisso", async () => {
     const { GET } = await rotaComEnv(CONFIGURADO);
     await GET(pedido());
-    expect(requireRole).toHaveBeenCalledWith("agent", expect.objectContaining({ resource: "calendar_connections" }));
+    expect(requireRole).toHaveBeenCalledWith(
+      "agent",
+      expect.objectContaining({ resource: "calendar_connections" }),
+    );
   });
 });
 
 // Este teste isola o handler; autoridade de suporte é exercitada na suíte própria.
 vi.mock("@/lib/impersonate/support", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/impersonate/support")>(),
+  ...(await importOriginal<typeof import("@/lib/impersonate/support")>()),
   requireSupportWrite: vi.fn(async () => null),
   authenticatedSessionId: vi.fn(async () => "f2200000-0000-4000-8000-000000000099"),
 }));

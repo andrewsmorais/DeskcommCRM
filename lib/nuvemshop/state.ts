@@ -2,19 +2,25 @@
  * OAuth state token (CSRF defense).
  *
  * Format: base64url(`${orgId}.${nonce}.${expMs}`) + "." + hex(HMAC-SHA256).
- * Verified with `crypto.timingSafeEqual`. Signed with INTERNAL_SECRET (already
- * required in env). Tokens expire 10 minutes after issuance.
+ * Verified with `crypto.timingSafeEqual`. Tokens expire 10 minutes after issuance.
+ *
+ * ⚠️ A chave NÃO é mais `INTERNAL_SECRET`. Ele é o Bearer que `autorizaCron`
+ * aceita e que o operador entrega ao agendador externo; com ele, quem tinha o
+ * relógio forjava o `state` de qualquer organização, e o callback gravava a loja
+ * DELE na integração da vítima. A chave vem de `lib/auth/chave-de-assinatura.ts`.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
+
 const TTL_MS = 10 * 60 * 1000; // 10 min
 
 function key(): string {
-  // Using INTERNAL_SECRET avoids adding yet another env var. If empty (dev with
-  // unset secrets) we fall back to a per-process random key — state still works
-  // within a single dev process; restart invalidates outstanding flows.
-  const secret = process.env.INTERNAL_SECRET || "";
+  // Sem raiz utilizável (dev sem `SUPABASE_SERVICE_ROLE_KEY`) cai numa chave
+  // aleatória por processo — o `state` funciona dentro de um processo de dev, e
+  // reiniciar invalida os fluxos abertos. Em produção a raiz é obrigatória.
+  const secret = chaveDeAssinatura(ROTULOS_DE_ASSINATURA.estadoDaLoja);
   if (secret.length >= 16) return secret;
   // Memoize per-process fallback.
   if (!fallbackKey) fallbackKey = randomBytes(32).toString("hex");
@@ -31,7 +37,10 @@ function b64urlDecode(s: string): string {
   return Buffer.from(s, "base64url").toString("utf8");
 }
 
-export function issueState(orgId: string, actor?: { userId: string; authSessionId: string }): string {
+export function issueState(
+  orgId: string,
+  actor?: { userId: string; authSessionId: string },
+): string {
   const nonce = randomBytes(16).toString("hex");
   const exp = Date.now() + TTL_MS;
   const payload = `${orgId}.${nonce}.${exp}${actor ? `.${actor.userId}.${actor.authSessionId}` : ""}`;
@@ -77,5 +86,5 @@ export function verifyState(token: string | null | undefined): VerifiedState | n
   if (!orgId || !nonce || !Number.isFinite(expMs)) return null;
   if (Date.now() > expMs) return null;
 
-  return { orgId, nonce, expMs, ...(userId && authSessionId ? {userId, authSessionId} : {}) };
+  return { orgId, nonce, expMs, ...(userId && authSessionId ? { userId, authSessionId } : {}) };
 }
