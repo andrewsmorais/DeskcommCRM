@@ -22,6 +22,7 @@ import type { ActionResultDetail } from "@/lib/automation/types";
 import { audit } from "@/lib/audit";
 import { regraDoEvento } from "@/lib/automation/gatilho-de-data-do-funil";
 import { ENTIDADE_ESPERADA_POR_GATILHO } from "@/lib/schemas/webhooks";
+import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
 import { logger } from "@/lib/logger";
 
 export const AUTOMATION_CONSUMER_KEY = "automation-rules";
@@ -36,7 +37,10 @@ interface RuleRow {
 }
 
 /** Hidrata o contexto avaliado pelas condições/ações a partir do entity do evento. */
-export async function buildContext(admin: SupabaseClient, row: EventRow): Promise<Record<string, unknown>> {
+export async function buildContext(
+  admin: SupabaseClient,
+  row: EventRow,
+): Promise<Record<string, unknown>> {
   const context: Record<string, unknown> = { event: row.payload };
   // Admin client bypassa RLS — todo lookup filtra organization_id do evento
   // (doutrina multi-tenant; um FK cross-org corrompido nunca vaza pro contexto).
@@ -158,15 +162,19 @@ export async function runAutomationForEvent(
   const serviceBoundaries = new Map<string, Promise<ServiceBoundary>>();
   const requestId = row.metadata?.request_id;
   const causedByRule =
-    Boolean(row.metadata?.caused_by_rule) || (typeof requestId === "string" && requestId.startsWith("rule:"));
+    Boolean(row.metadata?.caused_by_rule) ||
+    (typeof requestId === "string" && requestId.startsWith("rule:"));
   if (causedByRule) {
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "caused_by_rule" };
   }
 
   const expectedKind = EXPECTED_ENTITY_KIND[row.event_type];
   if (expectedKind && row.entity_kind !== expectedKind) {
-  
-    return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "entity_kind_mismatch" };
+    return {
+      consumer_key: AUTOMATION_CONSUMER_KEY,
+      status: "skipped",
+      detail: "entity_kind_mismatch",
+    };
   }
 
   const { data: rules, error } = await admin
@@ -202,6 +210,31 @@ export async function runAutomationForEvent(
     return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "ok", detail: "no_rules" };
   }
 
+  // ═══ SEM ASSINATURA ATIVA, NENHUMA REGRA RODA ═══
+  //
+  // A mesma régua do turno do agente e do chatbot (`acessoPeloPlanoDaOrganizacao`).
+  // O motor não a consultava: uma regra `message.received → send_ai_message`
+  // criada no teste grátis (ou depois, pela API de regras) seguia escrevendo com
+  // o modelo da chave da PLATAFORMA e respondendo no WhatsApp da organização
+  // que não paga — enquanto o agente, para a mesma organização, já calava.
+  //
+  // Antes de montar o contexto e antes do adiamento: nem leitura nem linha
+  // "adiado" para uma regra que não vai rodar. O motivo fica no `detail` do
+  // `skipped`, que o drain preserva na linha do evento.
+  const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(row.organization_id);
+  if (!acessoPeloPlano.liberado) {
+    logger.info("[automation.engine] organização sem assinatura ativa — regras não rodam", {
+      organization_id: row.organization_id,
+      event_type: row.event_type,
+      motivo: acessoPeloPlano.motivo,
+    });
+    return {
+      consumer_key: AUTOMATION_CONSUMER_KEY,
+      status: "skipped",
+      detail: `assinatura_${acessoPeloPlano.motivo}`,
+    };
+  }
+
   const context = await buildContext(admin, row);
   const applicable = matched.filter((r) => evaluateConditions(r.conditions ?? [], context));
   if (!applicable.length) {
@@ -215,7 +248,16 @@ export async function runAutomationForEvent(
       const executor = getAction(action.type);
       if (!executor?.postponeUntil) continue;
       const until = await executor.postponeUntil(
-        { admin, serviceBoundaries, organizationId: row.organization_id, ruleId: rule.id, ruleName: rule.name, event: row, context, requestId: row.id },
+        {
+          admin,
+          serviceBoundaries,
+          organizationId: row.organization_id,
+          ruleId: rule.id,
+          ruleName: rule.name,
+          event: row,
+          context,
+          requestId: row.id,
+        },
         action.config ?? {},
       );
       if (until) {
@@ -299,7 +341,9 @@ export async function runAutomationForEvent(
     // A ordem importa: falha (+ skip) vence adiamento. Uma regra em que uma
     // ação falhou/pulou e outra ficou esperando é `partial` — quem lê precisa
     // saber que algo quebrou, não que está tudo a caminho.
-    const naoEnviadas = results.filter((r) => r.status === "failed" || r.status === "skipped").length;
+    const naoEnviadas = results.filter(
+      (r) => r.status === "failed" || r.status === "skipped",
+    ).length;
     const adiados = results.filter((r) => r.status === "postponed").length;
     const status =
       naoEnviadas > 0
@@ -335,7 +379,11 @@ export async function runAutomationForEvent(
 
     // run_count sem RPC de increment: read-modify-write é aceitável aqui
     // (contador informativo de UI, não invariante).
-    const { data: cur } = await admin.from("automation_rules").select("run_count").eq("id", rule.id).maybeSingle();
+    const { data: cur } = await admin
+      .from("automation_rules")
+      .select("run_count")
+      .eq("id", rule.id)
+      .maybeSingle();
     await admin
       .from("automation_rules")
       .update({ last_run_at: new Date().toISOString(), run_count: (cur?.run_count ?? 0) + 1 })

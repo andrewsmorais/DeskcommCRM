@@ -7527,6 +7527,10 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Este número está fuera de la lista de prueba del canal, así que el mensaje que redactó la IA no sale por él.",
     },
+  "A assinatura da empresa não está ativa, então a IA não escreveu a mensagem. Confira Configurações → Plano e cobrança.":
+    {
+      es: "La suscripción de la empresa no está activa, así que la IA no redactó el mensaje. Revise Configuración → Plan y facturación.",
+    },
   "Não deu para saber se este número pode receber a mensagem da IA: a consulta falhou na hora (rede ou banco), e não é erro de configuração. Tente de novo em alguns minutos.":
     {
       es: "No se pudo saber si este número puede recibir el mensaje de la IA. La consulta falló en ese momento (por la red o la base de datos), no por un error de configuración. Vuelve a intentarlo en unos minutos.",
@@ -13522,9 +13526,10 @@ export const DICIONARIO: Traducoes = {
   "Sugestões da IA aguardando aprovação": {
     es: "Sugerencias de la IA esperando aprobación",
   },
-  "O agente anotou isto durante o atendimento. Só passa a valer em todas as conversas depois que alguém da equipe aprovar.": {
-    es: "El agente anotó esto durante la atención. Solo vale en todas las conversaciones después de que alguien del equipo lo apruebe.",
-  },
+  "O agente anotou isto durante o atendimento. Só passa a valer em todas as conversas depois que alguém da equipe aprovar.":
+    {
+      es: "El agente anotó esto durante la atención. Solo vale en todas las conversaciones después de que alguien del equipo lo apruebe.",
+    },
   "Sugestão descartada.": {
     es: "Sugerencia descartada.",
   },
