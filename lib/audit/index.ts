@@ -50,37 +50,55 @@ interface AuditEntry {
 
 export async function audit(entry: AuditEntry): Promise<void> {
   try {
-    // Prefer service-role admin (bypasses RLS, works for unauthenticated audit
-    // events like login_failed). Fall back to user-scoped client when service
-    // role is missing in dev — RLS policy `audit_log_insert_tenant_member` has
-    // null qual so authenticated users can insert their own audit rows.
-    const client = isServiceRoleConfigured() ? createAdminClient() : await createClient();
+    // SÓ a service role audita. O caminho pelo login (cliente do usuário) foi
+    // fechado no banco pela migration 0499: a policy que o permitia aceitava
+    // linha atribuída a qualquer ator, e a trilha deixava de provar quem fez o
+    // quê. `SUPABASE_SERVICE_ROLE_KEY` é obrigatória (`lib/env.ts`).
+    const client = createAdminClient();
     let supportMetadata: Record<string, unknown> = {};
     try {
-      if (entry.actorUserId && entry.actorAuthSessionId && entry.organizationId && !entry.actorApiTokenId) {
+      if (
+        entry.actorUserId &&
+        entry.actorAuthSessionId &&
+        entry.organizationId &&
+        !entry.actorApiTokenId
+      ) {
         // Callback SameSite=Strict não traz cookie. O state já autenticou ator/sessão;
         // a cerca do callback já revalidou a autorização antes do efeito.
-        const { data: support } = await createAdminClient().from("platform_support_sessions")
+        const { data: support } = await createAdminClient()
+          .from("platform_support_sessions")
           .select("id, access_mode, auth_session_id, ended_at")
-          .eq("actor_user_id", entry.actorUserId).eq("auth_session_id", entry.actorAuthSessionId)
-          .eq("organization_id", entry.organizationId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-        if (support && !support.ended_at) supportMetadata = {
-          support_session_id: support.id, support_access_mode: support.access_mode,
-          support_auth_session_id: support.auth_session_id,
-        };
+          .eq("actor_user_id", entry.actorUserId)
+          .eq("auth_session_id", entry.actorAuthSessionId)
+          .eq("organization_id", entry.organizationId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (support && !support.ended_at)
+          supportMetadata = {
+            support_session_id: support.id,
+            support_access_mode: support.access_mode,
+            support_auth_session_id: support.auth_session_id,
+          };
       } else if (entry.actorUserId && !entry.actorApiTokenId) {
         const db = await createClient();
-        const { data: { user } } = await db.auth.getUser();
+        const {
+          data: { user },
+        } = await db.auth.getUser();
         if (user?.id === entry.actorUserId) {
           const { readSupportContext } = await import("@/lib/impersonate/support");
           const support = await readSupportContext(db);
-          if (support && support.organization_id === entry.organizationId) supportMetadata = {
-            support_session_id: support.id, support_access_mode: support.access_mode,
-            support_auth_session_id: support.auth_session_id,
-          };
+          if (support && support.organization_id === entry.organizationId)
+            supportMetadata = {
+              support_session_id: support.id,
+              support_access_mode: support.access_mode,
+              support_auth_session_id: support.auth_session_id,
+            };
         }
       }
-    } catch { /* Audit principal segue, inclusive sem request (workers). */ }
+    } catch {
+      /* Audit principal segue, inclusive sem request (workers). */
+    }
     const { error } = await client.from("api_audit_log").insert({
       action: entry.action,
       actor_user_id: entry.actorUserId ?? null,
@@ -93,7 +111,8 @@ export async function audit(entry: AuditEntry): Promise<void> {
       actor_ip: entry.ip ?? null,
       actor_user_agent: entry.userAgent ?? null,
       bypassed_rls: entry.bypassedRls ?? false,
-      acting_as_platform_admin: !!supportMetadata.support_session_id || (entry.actingAsPlatformAdmin ?? false),
+      acting_as_platform_admin:
+        !!supportMetadata.support_session_id || (entry.actingAsPlatformAdmin ?? false),
     });
     if (error) {
       reportAuditFailure(error.message, entry);
@@ -118,7 +137,7 @@ export async function auditForOrganizations(
 ): Promise<void> {
   if (organizationIds.length === 0) return;
   try {
-    const client = isServiceRoleConfigured() ? createAdminClient() : await createClient();
+    const client = createAdminClient(); // só a service role audita (migration 0499)
     const { error } = await client.from("api_audit_log").insert(
       organizationIds.map((organizationId) => ({
         action: entry.action,
