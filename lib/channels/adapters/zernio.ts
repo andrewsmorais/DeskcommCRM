@@ -34,7 +34,11 @@
  *    conviverem.
  */
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { FetchedMedia } from "@/lib/messaging/media/types";
+import {
+  MAX_MEDIA_BYTES,
+  MediaTooLargeError,
+  type FetchedMedia,
+} from "@/lib/messaging/media/types";
 
 import { resolveZernioCreds } from "../zernio/credentials";
 import { zernioTemplateOps } from "../zernio/templates";
@@ -77,6 +81,43 @@ function attachmentFields(env: OutboundEnvelope): Record<string, unknown> {
     default:
       return { ...base, attachmentType: "file" };
   }
+}
+
+/**
+ * Prazo do download de um anexo, cabeçalho e corpo juntos. Sem ele, um host
+ * que segura a conexão prende o worker de mídia, que é compartilhado.
+ */
+const ZERNIO_MEDIA_TIMEOUT_MS = 30_000;
+
+/**
+ * O corpo do anexo, lido aos pedaços com o teto do bucket (`MAX_MEDIA_BYTES`).
+ * `arrayBuffer()` guardava o que viesse — 56 MB passavam inteiros para a
+ * memória e para o upload.
+ */
+async function lerMidiaComTeto(res: Response): Promise<Buffer> {
+  if (Number(res.headers.get("content-length") ?? 0) > MAX_MEDIA_BYTES) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new MediaTooLargeError();
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("zernio_media_failed: corpo vazio");
+  const pedacos: Uint8Array[] = [];
+  let tamanho = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      tamanho += value.byteLength;
+      if (tamanho > MAX_MEDIA_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new MediaTooLargeError();
+      }
+      pedacos.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(pedacos);
 }
 
 export const zernioAdapter: ChannelAdapter = {
@@ -164,7 +205,9 @@ export const zernioAdapter: ChannelAdapter = {
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     if (envelope.kind === "contact") {
-      throw new Error("zernio_contact_not_supported: envio de cartão de contato não suportado neste canal.");
+      throw new Error(
+        "zernio_contact_not_supported: envio de cartão de contato não suportado neste canal.",
+      );
     }
     const admin = createAdminClient();
     const creds = await resolveZernioCreds(admin, {
@@ -225,7 +268,9 @@ export const zernioAdapter: ChannelAdapter = {
       // O `code` do provider entra na mensagem quando existe: é ele que
       // distingue "fora da janela" de "número bloqueado" de "conta suspensa", e
       // sem isso o operador vê só "falhou".
-      const detalhe = json?.code ? `${json.code}: ${json.error ?? ""}` : (json?.error ?? res.statusText);
+      const detalhe = json?.code
+        ? `${json.code}: ${json.error ?? ""}`
+        : (json?.error ?? res.statusText);
       throw new Error(`zernio_send_failed: ${res.status} ${detalhe}`.trim());
     }
 
@@ -248,14 +293,16 @@ export const zernioAdapter: ChannelAdapter = {
    * que a plataforma numera os valores, e mandar um mapa faria o segundo
    * parâmetro virar o primeiro na hora em que alguém renomeasse uma chave.
    */
-  async sendTemplate(input: ChannelTenantScope & {
-    beforeSend?: () => Promise<void>;
-    sessionRef: string;
-    to: string;
-    name: string;
-    language: string;
-    values: Record<string, string>;
-  }): Promise<{ externalId: string | null }> {
+  async sendTemplate(
+    input: ChannelTenantScope & {
+      beforeSend?: () => Promise<void>;
+      sessionRef: string;
+      to: string;
+      name: string;
+      language: string;
+      values: Record<string, string>;
+    },
+  ): Promise<{ externalId: string | null }> {
     const admin = createAdminClient();
     const creds = await resolveZernioCreds(admin, {
       organizationId: input.organizationId,
@@ -299,7 +346,9 @@ export const zernioAdapter: ChannelAdapter = {
     } | null;
 
     if (!res.ok || json?.success === false) {
-      const detalhe = json?.code ? `${json.code}: ${json.error ?? ""}` : (json?.error ?? res.statusText);
+      const detalhe = json?.code
+        ? `${json.code}: ${json.error ?? ""}`
+        : (json?.error ?? res.statusText);
       throw new Error(`zernio_template_failed: ${res.status} ${detalhe}`.trim());
     }
 
@@ -315,11 +364,13 @@ export const zernioAdapter: ChannelAdapter = {
    * que o canal entrou — e ficou sem um único chamador de produção, que é
    * exatamente por que a mídia recebida aqui nunca virou bytes.
    */
-  async fetchInboundMedia(input: ChannelTenantScope & {
-    sessionRef: string;
-    url: string;
-    hintMime?: string | null;
-  }): Promise<FetchedMedia> {
+  async fetchInboundMedia(
+    input: ChannelTenantScope & {
+      sessionRef: string;
+      url: string;
+      hintMime?: string | null;
+    },
+  ): Promise<FetchedMedia> {
     const admin = createAdminClient();
     const creds = await resolveZernioCreds(admin, {
       organizationId: input.organizationId,
@@ -339,20 +390,37 @@ export const zernioAdapter: ChannelAdapter = {
     // graça o que dá (esquema, http em produção, literal IPv6, faixa privada)
     // e o outro paga o DNS e julga o IP resolvido, fechando o rebinding.
     assertSafeOutboundUrl(input.url);
-    await assertDestinoResolvidoSeguro(new URL(input.url).hostname);
+    const url = new URL(input.url);
+    await assertDestinoResolvidoSeguro(url.hostname);
 
-    const res = await fetch(input.url, zernioMediaFetchInit(creds.apiKey));
+    // O guard acima diz que o destino é público — não que é o PROVEDOR. A URL
+    // pode ter sido regravada por um membro (`messages.media_url`), e o fetch
+    // leva a chave do canal (ou a da instalação). Então a chave só vai para a
+    // origem do próprio provedor; outro host baixa sem credencial. Redirect é
+    // recusado (seguir um 3xx levaria o servidor para onde o host mandar, sem
+    // o guard), e o corpo é lido com prazo e teto, como no irmão social
+    // (`lib/channels/social/adapter.ts`).
+    const doProvedor = url.origin === new URL(creds.baseUrl).origin;
+    const res = await fetch(url, {
+      ...(doProvedor ? zernioMediaFetchInit(creds.apiKey) : {}),
+      redirect: "error",
+      signal: AbortSignal.timeout(ZERNIO_MEDIA_TIMEOUT_MS),
+    });
     if (!res.ok) {
       // 400 costuma ser mídia já descartada pela plataforma, e 401 credencial —
       // desfechos diferentes, e o status no erro é o que distingue os dois para
       // quem for investigar depois.
+      await res.body?.cancel().catch(() => undefined);
       throw new Error(`zernio_media_failed: ${res.status} ${res.statusText}`.trim());
     }
 
-    const buffer = Buffer.from(await res.arrayBuffer());
+    const buffer = await lerMidiaComTeto(res);
     // O `content-type` da resposta manda sobre a dica do webhook: é o que o
     // arquivo REALMENTE é, e é ele que vai no `contentType` do upload.
-    const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || input.hintMime || "application/octet-stream";
+    const mime =
+      res.headers.get("content-type")?.split(";")[0]?.trim() ||
+      input.hintMime ||
+      "application/octet-stream";
     return { buffer, mime };
   },
 
@@ -414,9 +482,7 @@ export const zernioAdapter: ChannelAdapter = {
    *                    campo ausente é ausência de informação, não más notícias.
    *   qualquer outro → NÃO sabemos. `reachable: false`, sem status.
    */
-  async checkHealth(
-    input: ChannelTenantScope & { sessionRef: string },
-  ): Promise<ChannelHealth> {
+  async checkHealth(input: ChannelTenantScope & { sessionRef: string }): Promise<ChannelHealth> {
     const admin = createAdminClient();
     const creds = await resolveZernioCreds(admin, {
       organizationId: input.organizationId,
@@ -465,7 +531,9 @@ export const zernioAdapter: ChannelAdapter = {
       const e = elo.metaError;
       // O código da Meta no detalhe, NUNCA a mensagem crua inteira: ela é longa
       // e às vezes carrega identificadores que não têm por que entrar num aviso.
-      const detail = e?.code ? `meta_${e.code}${e.subcode ? `_${e.subcode}` : ""}` : "meta_recusou_o_numero";
+      const detail = e?.code
+        ? `meta_${e.code}${e.subcode ? `_${e.subcode}` : ""}`
+        : "meta_recusou_o_numero";
       return { reachable: true, status: "FAILED", detail };
     }
     if (elo?.status === "unknown") {
