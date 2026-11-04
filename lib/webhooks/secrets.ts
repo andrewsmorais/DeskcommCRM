@@ -43,25 +43,61 @@ export interface RuleActionInput {
   config?: Record<string, unknown>;
 }
 
+/** Os `secret_enc` das ações call_webhook que a regra tem gravadas agora. */
+function storedRuleSecrets(storedActions: unknown): Set<string> {
+  const stored = new Set<string>();
+  if (!Array.isArray(storedActions)) return stored;
+  for (const action of storedActions as Array<{
+    type?: unknown;
+    config?: { secret_enc?: unknown };
+  }>) {
+    const enc = action?.config?.secret_enc;
+    if (action?.type === "call_webhook" && typeof enc === "string" && enc) stored.add(enc);
+  }
+  return stored;
+}
+
 /**
  * Troca `config.secret` (plaintext, input do editor) por `config.secret_enc`
  * (hex cifrado) em ações call_webhook antes de gravar no jsonb da regra.
- * `secret_enc` já presente (round-trip do editor sem re-digitar) passa direto.
  * Retorna null se a cifra estiver indisponível (caller responde 422).
+ *
+ * `secret_enc` que volta do editor (round-trip sem re-digitar) só fica se for
+ * um que ESTA regra já tinha gravado — `storedActions` é o `actions` lido pelo
+ * servidor, nunca do corpo; `[]` numa regra nova. O executor decifra o
+ * `secret_enc` com a service role e a chave única da instalação e o usa como
+ * chave do HMAC de um pedido para a URL que quem salvou escolheu: aceitar
+ * qualquer cifrado do cliente deixava um gerente colar ali o token cifrado de
+ * um canal (que a RLS deixa ler, mas só a service role decifra) e receber, na
+ * assinatura, a prova do texto aberto. Cifrado desconhecido é descartado.
  */
 export async function encryptRuleActionSecrets(
   admin: SupabaseClient,
   actions: RuleActionInput[],
+  storedActions: unknown,
 ): Promise<RuleActionInput[] | null> {
+  const stored = storedRuleSecrets(storedActions);
   const out: RuleActionInput[] = [];
   for (const action of actions) {
-    if (action.type === "call_webhook" && typeof action.config?.secret === "string" && action.config.secret) {
+    if (
+      action.type === "call_webhook" &&
+      typeof action.config?.secret === "string" &&
+      action.config.secret
+    ) {
       const enc = await encryptWebhookSecret(admin, action.config.secret);
       if (enc === null) return null;
       const { secret: _plain, ...restConfig } = action.config;
       out.push({ ...action, config: { ...restConfig, secret_enc: enc.replace(/^\\x/, "") } });
     } else {
       const { secret: _drop, ...restConfig } = action.config ?? {};
+      const enc = restConfig.secret_enc;
+      if (
+        action.type === "call_webhook" &&
+        enc !== undefined &&
+        !(typeof enc === "string" && stored.has(enc))
+      ) {
+        delete restConfig.secret_enc;
+      }
       out.push({ ...action, config: restConfig });
     }
   }

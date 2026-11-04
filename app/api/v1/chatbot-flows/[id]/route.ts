@@ -108,10 +108,11 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 
   // Segredo do passo "WebHook" nunca é gravado em texto: o desenho é lido por
-  // todo membro da organização (lib/chatbot/segredos.ts).
+  // todo membro da organização (lib/chatbot/segredos.ts). O cifrado que volta
+  // do editor só fica se for o que este passo já tinha no desenho gravado.
   let grafo = grafoRecebido;
   if (grafo !== undefined) {
-    const cifrado = await cifrarSegredosDoGrafo(createAdminClient(), grafo);
+    const cifrado = await cifrarSegredosDoGrafo(createAdminClient(), grafo, atual.grafo);
     if (cifrado === null) {
       return fail(
         "encryption_unavailable",
