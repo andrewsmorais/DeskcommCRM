@@ -35,7 +35,7 @@ const DURACAO_DA_RESERVA_MS = 10 * 60 * 1000;
  */
 export async function comReservaDeCota<T>(
   orgId: string,
-  recurso: "atendentes" | "pipelines" | "whatsapp",
+  recurso: "atendentes" | "pipelines" | "whatsapp" | "agentes" | "chatbots",
   operacao: () => Promise<T>,
 ): Promise<T> {
   const chave = `billing:${recurso}`;

@@ -16,7 +16,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { duplicateAgentWithVersion } from "@/lib/ai/agents/duplicate";
-import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
+import { criarDentroDaCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -40,19 +40,27 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
 
   const admin = createAdminClient();
 
-  const cota = await conferirCotaDeAgentes(admin, activeOrg.orgId, {
-    isento: authUser.is_platform_admin || Boolean(authUser.support),
-  });
-  if (!cota.ok) return fail(cota.code, t(cota.message), cota.status, { requestId });
-
   // Implementação compartilhada com o botão "Duplicar" da lista
   // (`duplicateAgentAction`), que fazia cópia rasa e devolvia agente em branco.
-  const result = await duplicateAgentWithVersion(admin, {
-    orgId: activeOrg.orgId,
-    agentId: id,
-    actorUserId: authUser.id,
-    requireVersion: true,
-  });
+  // Contagem da cota e cópia dentro da MESMA reserva (`criarDentroDaCotaDeAgentes`).
+  const criado = await criarDentroDaCotaDeAgentes(
+    admin,
+    activeOrg.orgId,
+    { isento: authUser.is_platform_admin || Boolean(authUser.support) },
+    (cota) => ({ recusa: cota }) as const,
+    async () => ({
+      result: await duplicateAgentWithVersion(admin, {
+        orgId: activeOrg.orgId,
+        agentId: id,
+        actorUserId: authUser.id,
+        requireVersion: true,
+      }),
+    }),
+  );
+  if ("recusa" in criado) {
+    return fail(criado.recusa.code, t(criado.recusa.message), criado.recusa.status, { requestId });
+  }
+  const result = criado.result;
 
   if (!result.ok) {
     if (result.error === "not_found") {

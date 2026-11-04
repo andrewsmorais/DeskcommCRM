@@ -33,6 +33,10 @@ import {
   type FunilEditavel,
 } from "@/lib/pipelines/pipeline-editing";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { canUse, getOrganizationBilling } from "@/lib/billing";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
+import { comReservaDeCota, ErroDaReservaDeCota } from "@/lib/billing/reserva";
 
 import { conflitoDoBanco, corpo, lerDependencias, lerFunis } from "../_funis";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -222,7 +226,9 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
     if (!Number.isFinite(posicao)) {
       return fail(
         "state_conflict",
-        t("Os funis desta lista estão empatados na ordenação. Recarregue a página e mova o funil para outro lugar."),
+        t(
+          "Os funis desta lista estão empatados na ordenação. Recarregue a página e mova o funil para outro lugar.",
+        ),
         409,
         { requestId },
       );
@@ -255,19 +261,75 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // `uniq_crm_pipelines_org_default` é imediato (não deferível): marcar o novo
   // antes de liberar o antigo é 23505 na cara do usuário. Disparar em paralelo
   // desfaz exatamente essa proteção.
-  for (const u of updates) {
-    const { error } = await supabase
-      .from("crm_pipelines")
-      .update(u.patch)
-      .eq("id", u.pipelineId)
-      .eq("organization_id", orgId);
-    if (!error) continue;
+  const nomeDoAlvo = alvo.name;
+  async function aplicar(): Promise<Response | null> {
+    for (const u of updates) {
+      const { error } = await supabase
+        .from("crm_pipelines")
+        .update(u.patch)
+        .eq("id", u.pipelineId)
+        .eq("organization_id", orgId);
+      if (!error) continue;
 
-    const nome = funis.find((f) => f.id === u.pipelineId)?.name ?? alvo.name;
-    const conflito = conflitoDoBanco(error as { code?: string }, nome, requestId);
-    if (conflito) return conflito;
-    return fail("internal_error", error.message, 500, { requestId });
+      const nome = funis.find((f) => f.id === u.pipelineId)?.name ?? nomeDoAlvo;
+      const conflito = conflitoDoBanco(error as { code?: string }, nome, requestId);
+      if (conflito) return conflito;
+      return fail("internal_error", error.message, 500, { requestId });
+    }
+    return null;
   }
+
+  // ⚠️ TIRAR DO ARQUIVO SOMA UM FUNIL ATIVO — e a cota do plano conta funis
+  // ativos. A criação (POST) já conferia; esta porta não, e arquivar + tirar
+  // do arquivo passava do limite do plano. Mesma contagem, mesma reserva
+  // (`comReservaDeCota`) e mesma mensagem do POST.
+  let recusa: Response | null;
+  if (tiraDoArquivo && assinaturaExigida()) {
+    try {
+      recusa = await comReservaDeCota(orgId, "pipelines", async () => {
+        const admin = createAdminClient();
+        const { count, error: erroDaContagem } = await admin
+          .from("crm_pipelines")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .eq("is_archived", false);
+        const leitura =
+          erroDaContagem || count === null ? null : await getOrganizationBilling(orgId);
+        if (!leitura || !leitura.ok || count === null) {
+          return fail(
+            "billing_unavailable",
+            t("Não foi possível conferir a cota de funis. Tente novamente."),
+            503,
+            { requestId },
+          );
+        }
+        const check = canUse(leitura.billing, "pipelines", count);
+        if (!check.ok) {
+          const msg = t(
+            "Seu plano {plano} permite até {limite} {recurso}. Faça upgrade para ampliar.",
+          )
+            .replace("{plano}", leitura.billing?.plan_name || "Gratuito")
+            .replace("{limite}", String(check.limite))
+            .replace("{recurso}", "pipelines");
+          return fail("billing_limit", msg, 403, { requestId });
+        }
+        return aplicar();
+      });
+    } catch (error) {
+      if (error instanceof ErroDaReservaDeCota) {
+        return fail(
+          error.status === 409 ? "conflict" : "billing_unavailable",
+          error.message,
+          error.status,
+          { requestId },
+        );
+      }
+      throw error;
+    }
+  } else {
+    recusa = await aplicar();
+  }
+  if (recusa) return recusa;
 
   if (updates.length > 0) {
     void audit({
@@ -340,7 +402,11 @@ export async function DELETE(req: NextRequest, ctx: RouteCtx): Promise<Response>
   }
 
   const { error } = definitivo
-    ? await supabase.from("crm_pipelines").delete().eq("id", pipelineId).eq("organization_id", orgId)
+    ? await supabase
+        .from("crm_pipelines")
+        .delete()
+        .eq("id", pipelineId)
+        .eq("organization_id", orgId)
     : await supabase
         .from("crm_pipelines")
         .update({ is_archived: true })

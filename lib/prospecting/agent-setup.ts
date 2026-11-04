@@ -3,6 +3,7 @@ import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { audit } from "@/lib/audit";
 import { createMcpAgentDraft } from "@/lib/ai/agents/create-draft";
+import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { publishAgentVersion } from "@/lib/ai/agents/publish";
 import { escolherModeloDoProvedor } from "@/lib/ai/agents/escolher-modelo";
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
@@ -198,7 +199,7 @@ function versionHash(row: Record<string, unknown>) {
 export async function setupProspectingAgent(
   pool: pg.Pool,
   admin: SupabaseClient,
-  context: { orgId: string; userId: string; requestId: string },
+  context: { orgId: string; userId: string; requestId: string; isento?: boolean },
   raw: unknown,
   options: { prepareOnly?: boolean } = {},
 ) {
@@ -296,6 +297,11 @@ export async function setupProspectingAgent(
         );
       }
     } else {
+      // Agente NOVO conta na cota do plano como qualquer outro: a Prospecção é
+      // uma segunda porta de criação e cobrava nada. Retomar o agente desta
+      // mesma campanha (ramo de cima) não cria vaga nova e não confere.
+      const cota = await conferirCotaDeAgentes(admin, context.orgId, { isento: context.isento });
+      if (!cota.ok) throw new AgentSetupError(cota.message, cota.status);
       await preflight(db, context.orgId, input, agentId, options.prepareOnly);
       const model = await resolveSetupModel(db, context.orgId, input.channel_session_id);
       const version = versionCreateSchema.parse({

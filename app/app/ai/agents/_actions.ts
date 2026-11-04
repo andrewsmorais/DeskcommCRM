@@ -18,7 +18,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Role } from "@/lib/auth/types";
 import { duplicateAgentWithVersion } from "@/lib/ai/agents/duplicate";
-import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
+import { criarDentroDaCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -226,23 +226,32 @@ export async function duplicateAgentAction(id: string): Promise<ActionResult<{ n
 
   const admin = createAdminClient();
 
-  const cota = await conferirCotaDeAgentes(admin, activeOrg.orgId, {
-    isento: authUser.is_platform_admin === true || Boolean(authUser.support),
-  });
-  if (!cota.ok) return { ok: false, error: cota.code, message: cota.message };
-
   // Mesma implementação da rota /api/v1/ai/agents/:id/duplicate. Antes daqui a
   // action fazia cópia rasa (só a linha de ai_agents), e para mcp_agent isso
   // devolvia um agente em branco: prompt, ferramentas, credencial, canal,
   // palavras de handoff, budgets e follow-up vivem em ai_agent_versions.
   // `requireVersion: false` porque o botão da lista também duplica rag_bot
   // legado, que não tem versão nenhuma.
-  const result = await duplicateAgentWithVersion(admin, {
-    orgId: activeOrg.orgId,
-    agentId: id,
-    actorUserId: authUser.id,
-    requireVersion: false,
-  });
+  // Contagem da cota e cópia dentro da MESMA reserva (ver
+  // `criarDentroDaCotaDeAgentes`): dois cliques simultâneos não passam do plano.
+  const criado = await criarDentroDaCotaDeAgentes(
+    admin,
+    activeOrg.orgId,
+    { isento: authUser.is_platform_admin === true || Boolean(authUser.support) },
+    (cota) => ({ recusa: cota }) as const,
+    async () => ({
+      result: await duplicateAgentWithVersion(admin, {
+        orgId: activeOrg.orgId,
+        agentId: id,
+        actorUserId: authUser.id,
+        requireVersion: false,
+      }),
+    }),
+  );
+  if ("recusa" in criado) {
+    return { ok: false, error: criado.recusa.code, message: criado.recusa.message };
+  }
+  const result = criado.result;
 
   if (!result.ok) {
     if (result.error === "not_found") return { ok: false, error: "not_found" };

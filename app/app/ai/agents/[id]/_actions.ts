@@ -38,7 +38,7 @@ import {
   podeEditarConfigTecnica,
   travarConfigTecnica,
 } from "@/lib/ai/agents/config-tecnica";
-import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
+import { criarDentroDaCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { VALID_TOOL_IDS } from "@/lib/mcp/tools";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -725,28 +725,38 @@ export async function createMcpAgentAction(
   const requestId = randomUUID();
   const admin = createAdminClient();
 
-  const cota = await conferirCotaDeAgentes(admin, activeOrg.orgId, {
-    isento: authUser.is_platform_admin || Boolean(authUser.support),
-  });
-  if (!cota.ok) return { ok: false, error: cota.code, message: cota.message };
-
   // Cria agent kind='mcp_agent' + v1 draft. Compensa rollback se versão falhar.
-  const { data: agentRow, error: agentErr } = await admin
-    .from("ai_agents")
-    .insert({
-      organization_id: activeOrg.orgId,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      model: v.model,
-      system_prompt: v.system_prompt,
-      kind: "mcp_agent",
-      priority: parsed.data.priority,
-      is_active: false,
-      is_default: false,
-      created_by: authUser.id,
-    })
-    .select("id")
-    .single();
+  // Contagem da cota e INSERT do agente dentro da MESMA reserva
+  // (`criarDentroDaCotaDeAgentes`): dois cliques simultâneos no limite do
+  // plano não criam os dois.
+  const criado = await criarDentroDaCotaDeAgentes(
+    admin,
+    activeOrg.orgId,
+    { isento: authUser.is_platform_admin || Boolean(authUser.support) },
+    (cota) => ({ recusa: cota }) as const,
+    async () => ({
+      linha: await admin
+        .from("ai_agents")
+        .insert({
+          organization_id: activeOrg.orgId,
+          name: parsed.data.name,
+          description: parsed.data.description ?? null,
+          model: v.model,
+          system_prompt: v.system_prompt,
+          kind: "mcp_agent",
+          priority: parsed.data.priority,
+          is_active: false,
+          is_default: false,
+          created_by: authUser.id,
+        })
+        .select("id")
+        .single(),
+    }),
+  );
+  if ("recusa" in criado) {
+    return { ok: false, error: criado.recusa.code, message: criado.recusa.message };
+  }
+  const { data: agentRow, error: agentErr } = criado.linha;
 
   if (agentErr || !agentRow) {
     return { ok: false, error: "internal_error", message: agentErr?.message };

@@ -12,15 +12,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { canUse, getOrganizationBilling } from "@/lib/billing";
 import { assinaturaExigida } from "@/lib/billing/exigencia";
+import { comReservaDeCota, ErroDaReservaDeCota } from "@/lib/billing/reserva";
 
 export type CotaDeAgentes =
   | { ok: true }
   | {
       ok: false;
-      status: 403 | 503;
-      code: "billing_limit" | "billing_unavailable";
+      status: 403 | 409 | 503;
+      code: "billing_limit" | "billing_unavailable" | "conflict";
       message: string;
     };
+
+export type RecusaDaCotaDeAgentes = Exclude<CotaDeAgentes, { ok: true }>;
 
 export function mensagemDaCotaDeAgentes(plano: string | null, limite: number): string {
   if (limite <= 0 || !plano) {
@@ -68,4 +71,38 @@ export async function conferirCotaDeAgentes(
     code: "billing_limit",
     message: mensagemDaCotaDeAgentes(leitura.billing?.plan_name ?? null, check.limite),
   };
+}
+
+/**
+ * Conta E cria dentro da MESMA reserva de cota da organização.
+ *
+ * `conferirCotaDeAgentes` sozinha é "confere-e-depois-age": a contagem e o
+ * INSERT são duas idas ao banco sem nada entre elas, e N pedidos simultâneos
+ * no limite viam todos a mesma contagem e criavam todos — o plano de 1 agente
+ * terminava com N. A reserva (`comReservaDeCota`, a mesma de funis, números e
+ * equipe) serializa a contagem e a criação por organização. Sem venda de
+ * planos, ou para quem é isento, não há cota e não há reserva.
+ */
+export async function criarDentroDaCotaDeAgentes<R, C>(
+  admin: SupabaseClient,
+  orgId: string,
+  opts: { isento?: boolean; ambiente?: Record<string, string | undefined> },
+  recusar: (recusa: RecusaDaCotaDeAgentes) => R,
+  criar: () => Promise<C>,
+): Promise<R | C> {
+  if (opts.isento || !assinaturaExigida(opts.ambiente)) return criar();
+  try {
+    return await comReservaDeCota<R | C>(orgId, "agentes", async () => {
+      const cota = await conferirCotaDeAgentes(admin, orgId, opts);
+      if (!cota.ok) return recusar(cota);
+      return criar();
+    });
+  } catch (erro) {
+    if (!(erro instanceof ErroDaReservaDeCota)) throw erro;
+    return recusar(
+      erro.status === 409
+        ? { ok: false, status: 409, code: "conflict", message: erro.message }
+        : { ok: false, status: 503, code: "billing_unavailable", message: erro.message },
+    );
+  }
 }

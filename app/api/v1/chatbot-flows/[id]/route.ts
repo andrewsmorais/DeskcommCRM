@@ -24,6 +24,8 @@ import { respondeMensagens } from "@/lib/chatbot/motor";
 import { problemasDoGrafo } from "@/lib/chatbot/validar";
 import { cifrarSegredosDoGrafo } from "@/lib/chatbot/segredos";
 import { conferirCotaDeChatbots, conferirPassosDoPlano, disputamNumero } from "@/lib/chatbot/plano";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
+import { comReservaDeCota, ErroDaReservaDeCota } from "@/lib/billing/reserva";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -174,55 +176,84 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 
   // Ligar um chatbot que estava desligado conta no limite do plano. Os que esta
-  // operação vai desligar (mesmo número) liberam a vaga.
-  if (ficaLigado && !atual.is_active) {
-    const cota = await conferirCotaDeChatbots(db, auth.org.orgId, {
-      fluxoId: id,
-      desligando: concorrentes,
-      isento: auth.user.is_platform_admin || Boolean(auth.user.support),
-    });
-    if (!cota.ok) return fail(cota.code, cota.message, cota.status, { requestId });
-  }
-
-  if (concorrentes.length > 0) {
-    const { error: erroDosOutros } = await db
-      .from("chatbot_flows")
-      .update({ is_active: false, status: "draft", updated_at: new Date().toISOString() })
-      .eq("organization_id", auth.org.orgId)
-      .in("id", concorrentes);
-    if (erroDosOutros)
-      return fail("internal_error", "Não foi possível desligar os outros fluxos.", 500, {
-        requestId,
+  // operação vai desligar (mesmo número) liberam a vaga. A contagem e a escrita
+  // vão dentro da MESMA reserva de cota da organização: dois "ligar" simultâneos
+  // no limite viam a mesma contagem e ligavam os dois.
+  // As funções abaixo são declaradas (içadas), e o TypeScript não carrega para
+  // dentro delas o estreitamento de `auth`; por isso a sessão vai em constantes.
+  const sessao = auth;
+  const camposRecebidos = Object.keys(parsed.data);
+  const isento = sessao.user.is_platform_admin || Boolean(sessao.user.support);
+  const ligando = ficaLigado && !atual.is_active;
+  async function gravar(): Promise<Response> {
+    if (ligando) {
+      const cota = await conferirCotaDeChatbots(db, sessao.org.orgId, {
+        fluxoId: id,
+        desligando: concorrentes,
+        isento,
       });
+      if (!cota.ok) return fail(cota.code, cota.message, cota.status, { requestId });
+    }
+    return gravarFluxo();
   }
+  if (ligando && !isento && assinaturaExigida()) {
+    try {
+      return await comReservaDeCota(sessao.org.orgId, "chatbots", gravar);
+    } catch (error) {
+      if (error instanceof ErroDaReservaDeCota) {
+        return fail(
+          error.status === 409 ? "conflict" : "billing_unavailable",
+          error.message,
+          error.status,
+          { requestId },
+        );
+      }
+      throw error;
+    }
+  }
+  return gravar();
 
-  const { data, error } = await db
-    .from("chatbot_flows")
-    .update(update)
-    .eq("id", id)
-    .eq("organization_id", auth.org.orgId)
-    .select(COLUNAS)
-    .maybeSingle();
-  if (error || !data)
-    return fail("internal_error", "Não foi possível salvar o fluxo.", 500, { requestId });
+  async function gravarFluxo(): Promise<Response> {
+    if (concorrentes.length > 0) {
+      const { error: erroDosOutros } = await db
+        .from("chatbot_flows")
+        .update({ is_active: false, status: "draft", updated_at: new Date().toISOString() })
+        .eq("organization_id", sessao.org.orgId)
+        .in("id", concorrentes);
+      if (erroDosOutros)
+        return fail("internal_error", "Não foi possível desligar os outros fluxos.", 500, {
+          requestId,
+        });
+    }
 
-  await audit({
-    action: "chatbot_flow.updated",
-    organizationId: auth.org.orgId,
-    actorUserId: auth.user.id,
-    resourceType: "chatbot_flow",
-    resourceId: id,
-    requestId,
-    ip: req.headers.get("x-forwarded-for") ?? undefined,
-    userAgent: req.headers.get("user-agent"),
-    metadata: {
-      campos: Object.keys(parsed.data),
-      ...(is_active !== undefined ? { ligado: is_active } : {}),
-      ...(grafo !== undefined ? { passos: grafo.nodes.length, revisao: update.revisao } : {}),
-    },
-  });
+    const { data, error } = await db
+      .from("chatbot_flows")
+      .update(update)
+      .eq("id", id)
+      .eq("organization_id", sessao.org.orgId)
+      .select(COLUNAS)
+      .maybeSingle();
+    if (error || !data)
+      return fail("internal_error", "Não foi possível salvar o fluxo.", 500, { requestId });
 
-  return ok(data, { requestId });
+    await audit({
+      action: "chatbot_flow.updated",
+      organizationId: sessao.org.orgId,
+      actorUserId: sessao.user.id,
+      resourceType: "chatbot_flow",
+      resourceId: id,
+      requestId,
+      ip: req.headers.get("x-forwarded-for") ?? undefined,
+      userAgent: req.headers.get("user-agent"),
+      metadata: {
+        campos: camposRecebidos,
+        ...(is_active !== undefined ? { ligado: is_active } : {}),
+        ...(grafo !== undefined ? { passos: grafo.nodes.length, revisao: update.revisao } : {}),
+      },
+    });
+
+    return ok(data, { requestId });
+  }
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {

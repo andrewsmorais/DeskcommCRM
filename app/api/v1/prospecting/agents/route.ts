@@ -30,7 +30,12 @@ export async function POST(req: Request) {
       await setupProspectingAgent(
         getRequestPool(),
         createAdminClient(),
-        { orgId: auth.org.orgId, userId: auth.user.id, requestId },
+        {
+          orgId: auth.org.orgId,
+          userId: auth.user.id,
+          requestId,
+          isento: auth.user.is_platform_admin || Boolean(auth.user.support),
+        },
         input.data,
       ),
       { requestId, headers: { "Cache-Control": "no-store" } },
