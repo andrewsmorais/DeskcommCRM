@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import webpush from "web-push";
 
 import { assertDestinoResolvidoSeguro } from "@/lib/automation/outbound-ip";
@@ -15,23 +16,9 @@ export type PushSubRow = {
   auth: string;
 };
 
-type AdminLike = {
-  from: (table: string) => {
-    select: (cols: string) => {
-      eq: (
-        col: string,
-        val: string,
-      ) => Promise<{ data: PushSubRow[] | null; error: { message: string } | null }>;
-    };
-    delete: () => {
-      eq: (col: string, val: string) => Promise<{ error: { message: string } | null }>;
-    };
-  };
-};
-
-function store(admin: AdminLike) {
-  return admin.from("push_subscriptions");
-}
+type Admin = SupabaseClient;
+type Resultado = { sent: number; gone: number };
+const NADA: Resultado = { sent: 0, gone: 0 };
 
 /**
  * Prazo de cada envio, em ms. O endpoint é escolhido por quem se inscreve
@@ -58,22 +45,74 @@ export async function endpointDePushSeguro(endpoint: string): Promise<boolean> {
   }
 }
 
-export async function enviarPushDaOrg(
-  organizationId: string,
-  payload: PushPayload,
-  admin: AdminLike = createAdminClient() as unknown as AdminLike,
-): Promise<{ sent: number; gone: number }> {
-  if (!vapidPronto()) return { sent: 0, gone: 0 };
+/** Membro ATIVO da organização: vínculo em `user_organizations` sem `revoked_at`. */
+export type MembroAtivo = { user_id: string; role: string };
+export type ConversaVisivel = { assigned_to_user_id: string | null; is_private: boolean | null };
 
-  const { data, error } = await store(admin)
+/**
+ * Quem pode ver a conversa — espelho de `fn_can_view_conversation`, as duas
+ * assinaturas, na ÚLTIMA definição do baseline (é a que o banco instala):
+ *   - leitor, gerente e admin veem; atendente vê a sua, e a dos outros só pelo
+ *     `visibility_mode` da organização (`all`; `own_and_unassigned`, o padrão,
+ *     só as sem responsável);
+ *   - conversa privada (1:1 ou grupo), além disso, só o responsável, gerente e
+ *     admin.
+ * O aviso leva nome do contato e trecho da mensagem: mandá-lo a quem a
+ * Inbox esconde a conversa entrega o que a RLS segura.
+ */
+export function podeVerConversa(
+  membro: MembroAtivo,
+  conversa: ConversaVisivel,
+  visibilityMode: string | null,
+): boolean {
+  const responsavel = conversa.assigned_to_user_id === membro.user_id;
+  let ve: boolean;
+  if (["viewer", "manager", "admin"].includes(membro.role) || responsavel) ve = true;
+  else {
+    const modo = visibilityMode ?? "own_and_unassigned";
+    ve = modo === "all" || (modo === "own_and_unassigned" && conversa.assigned_to_user_id === null);
+  }
+  return ve && (!conversa.is_private || responsavel || ["manager", "admin"].includes(membro.role));
+}
+
+async function membrosAtivos(
+  admin: Admin,
+  organizationId: string,
+  userId?: string,
+): Promise<MembroAtivo[] | null> {
+  let q = admin
+    .from("user_organizations")
+    .select("user_id, role")
+    .eq("organization_id", organizationId)
+    .is("revoked_at", null);
+  if (userId) q = q.eq("user_id", userId);
+  const { data, error } = await q;
+  if (error) {
+    logger.warn("push_membros_list_failed", { detail: error.message });
+    return null;
+  }
+  return (data ?? []) as MembroAtivo[];
+}
+
+/** Envia só às inscrições DESTES usuários nesta organização. */
+async function enviarAosUsuarios(
+  admin: Admin,
+  organizationId: string,
+  userIds: string[],
+  payload: PushPayload,
+): Promise<Resultado> {
+  if (userIds.length === 0) return NADA;
+  const { data, error } = await admin
+    .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
-    .eq("organization_id", organizationId);
+    .eq("organization_id", organizationId)
+    .in("user_id", [...new Set(userIds)]);
   if (error) {
     logger.warn("push_subscriptions_list_failed", { detail: error.message });
-    return { sent: 0, gone: 0 };
+    return NADA;
   }
-  const rows = data ?? [];
-  if (rows.length === 0) return { sent: 0, gone: 0 };
+  const rows = (data ?? []) as PushSubRow[];
+  if (rows.length === 0) return NADA;
 
   webpush.setVapidDetails(await vapidSubject(), vapidPublica()!, env.VAPID_PRIVATE_KEY.trim());
 
@@ -98,7 +137,11 @@ export async function enviarPushDaOrg(
         const status = (err as { statusCode?: number }).statusCode;
         if (status === 404 || status === 410) {
           gone += 1;
-          await store(admin).delete().eq("id", row.id);
+          await admin
+            .from("push_subscriptions")
+            .delete()
+            .eq("organization_id", organizationId)
+            .eq("id", row.id);
           return;
         }
         logger.warn("web_push_send_failed", { status: status ?? 0 });
@@ -109,33 +152,89 @@ export async function enviarPushDaOrg(
   return { sent, gone };
 }
 
+/**
+ * Aviso que não é de uma conversa (ex.: aviso da Central sem conversa): vai a
+ * todo membro ATIVO. A inscrição de quem foi revogado fica de fora mesmo que a
+ * linha ainda exista.
+ */
+export async function enviarPushDaOrg(
+  organizationId: string,
+  payload: PushPayload,
+  admin: Admin = createAdminClient(),
+): Promise<Resultado> {
+  if (!vapidPronto()) return NADA;
+  const membros = await membrosAtivos(admin, organizationId);
+  if (!membros) return NADA;
+  return enviarAosUsuarios(
+    admin,
+    organizationId,
+    membros.map((m) => m.user_id),
+    payload,
+  );
+}
+
+/** Aviso de uma conversa: só a quem pode vê-la (`podeVerConversa`). */
+export async function enviarPushDaConversa(
+  organizationId: string,
+  conversationId: string,
+  payload: PushPayload,
+  admin: Admin = createAdminClient(),
+): Promise<Resultado> {
+  if (!vapidPronto()) return NADA;
+  const { data: conversa } = await admin
+    .from("conversations")
+    .select("assigned_to_user_id, is_private")
+    .eq("organization_id", organizationId)
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (!conversa) return NADA;
+  const { data: org } = await admin
+    .from("organizations")
+    .select("settings")
+    .eq("id", organizationId)
+    .maybeSingle();
+  const modo = (org as { settings?: { visibility_mode?: unknown } | null } | null)?.settings
+    ?.visibility_mode;
+  const membros = await membrosAtivos(admin, organizationId);
+  if (!membros) return NADA;
+  const quemVe = membros.filter((m) =>
+    podeVerConversa(m, conversa as ConversaVisivel, typeof modo === "string" ? modo : null),
+  );
+  return enviarAosUsuarios(
+    admin,
+    organizationId,
+    quemVe.map((m) => m.user_id),
+    payload,
+  );
+}
+
+/** Aviso dirigido a uma pessoa — só se ela ainda for membro ativo. */
 export async function enviarPushAoUsuario(
   organizationId: string,
   userId: string,
   payload: PushPayload,
-): Promise<{ sent: number; gone: number }> {
-  if (!vapidPronto()) return { sent: 0, gone: 0 };
-  const admin = createAdminClient();
-  const { data, error } = await admin
+  admin: Admin = createAdminClient(),
+): Promise<Resultado> {
+  if (!vapidPronto()) return NADA;
+  const membro = await membrosAtivos(admin, organizationId, userId);
+  if (!membro?.length) return NADA;
+  return enviarAosUsuarios(admin, organizationId, [userId], payload);
+}
+
+/**
+ * Apaga as inscrições de um membro nesta organização — chamada ao revogá-lo.
+ * Depois de revogado ele não alcança mais a linha pela RLS, e o aviso que a
+ * inscrição recebe aparece na tela de bloqueio do aparelho dele.
+ */
+export async function removerPushDoMembro(
+  organizationId: string,
+  userId: string,
+  admin: Admin = createAdminClient(),
+): Promise<void> {
+  const { error } = await admin
     .from("push_subscriptions")
-    .select("id, endpoint, p256dh, auth")
+    .delete()
     .eq("organization_id", organizationId)
     .eq("user_id", userId);
-  if (error) {
-    logger.warn("push_subscriptions_user_list_failed", { detail: error.message });
-    return { sent: 0, gone: 0 };
-  }
-  return enviarPushDaOrg(organizationId, payload, {
-    from: (table: string) => ({
-      select: () => ({
-        eq: async () => ({ data: (data ?? []) as PushSubRow[], error: null }),
-      }),
-      delete: () => ({
-        eq: async (col: string, val: string) => {
-          const { error: delErr } = await admin.from(table).delete().eq(col, val);
-          return { error: delErr };
-        },
-      }),
-    }),
-  });
+  if (error) logger.warn("push_subscriptions_revoke_cleanup_failed", { detail: error.message });
 }

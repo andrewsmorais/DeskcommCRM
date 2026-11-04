@@ -2,7 +2,7 @@ import type { EventHandler, EventRow, HandlerResult } from "@/lib/event-log/disp
 import { marcaDaSaida } from "@/lib/branding/saida";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { montarPayloadDeInbound, truncar } from "./push_payload";
-import { enviarPushAoUsuario, enviarPushDaOrg } from "./web_push";
+import { enviarPushAoUsuario, enviarPushDaConversa, enviarPushDaOrg } from "./web_push";
 import { vapidPronto } from "./vapid";
 import { pushDoAvisoDaCentral } from "./push-dos-avisos";
 import type { PushPayload } from "./push_payload";
@@ -91,7 +91,22 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
       return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `privada:sent:${sent}` };
     }
   }
-  const { sent } = await enviarPushDaOrg(row.organization_id, payload);
+  return enviarAQuemVe(row, conversationId, payload);
+}
+
+/**
+ * O aviso de uma conversa vai só a quem pode vê-la na Inbox — a mesma regra
+ * de `fn_can_view_conversation` (`podeVerConversa`, em web_push.ts). Sem
+ * conversa não há como saber quem vê: ninguém recebe.
+ */
+async function enviarAQuemVe(
+  row: EventRow,
+  conversationId: string | null,
+  payload: PushPayload,
+): Promise<HandlerResult> {
+  if (!conversationId)
+    return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_conversa" };
+  const { sent } = await enviarPushDaConversa(row.organization_id, conversationId, payload);
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
 }
 
@@ -118,21 +133,34 @@ async function handleGroupInbound(row: EventRow): Promise<HandlerResult> {
     tag: conversationId ? `msg:${conversationId}` : "msg",
     href: conversationId ? `/app/inbox?id=${conversationId}` : "/app/inbox",
   };
-  const { sent } = await enviarPushDaOrg(row.organization_id, payload);
-  return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
+  // Grupo privado é do responsável e da gestão, como o 1:1 privado.
+  return enviarAQuemVe(row, conversationId, payload);
 }
 
 /** Os avisos da Central que pedem gente — ver `./push-dos-avisos.ts`. */
 async function handleAvisoQuePedeGente(row: EventRow): Promise<HandlerResult> {
   const id = typeof row.payload.item_id === "string" ? row.payload.item_id : row.entity_id;
   if (!id) return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_alvo" };
-  const payload = await pushDoAvisoDaCentral(createAdminClient(), row.organization_id, id);
+  const admin = createAdminClient();
+  const payload = await pushDoAvisoDaCentral(admin, row.organization_id, id);
   if (payload === null) {
     return {
       consumer_key: WEB_PUSH_INBOUND_KEY,
       status: "skipped",
       detail: "aviso_fora_do_celular",
     };
+  }
+  // Aviso sobre uma conversa segue a visibilidade dela; os outros vão a todo
+  // membro ativo.
+  const { data: ref } = await admin
+    .from("agent_inbox_items")
+    .select("ref_kind, ref_id")
+    .eq("organization_id", row.organization_id)
+    .eq("id", id)
+    .maybeSingle();
+  const alvo = ref as { ref_kind?: string | null; ref_id?: string | null } | null;
+  if (alvo?.ref_kind === "conversation" && alvo.ref_id) {
+    return enviarAQuemVe(row, alvo.ref_id, payload);
   }
   const { sent } = await enviarPushDaOrg(row.organization_id, payload);
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };

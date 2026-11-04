@@ -33,17 +33,32 @@ vi.mock("node:dns/promises", async (orig) => {
 
 import { enviarPushDaOrg } from "./web_push";
 
-const inscricoes = (endpoints: string[]) => ({
-  from: () => ({
-    select: () => ({
-      eq: async () => ({
-        data: endpoints.map((endpoint, i) => ({ id: `s${i}`, endpoint, p256dh: "p", auth: "a" })),
-        error: null,
-      }),
-    }),
-    delete: () => ({ eq: async () => ({ error: null }) }),
-  }),
-});
+/** Um membro ativo por endpoint, cada um com a sua inscrição. */
+const inscricoes = (endpoints: string[]) => {
+  const tabelas: Record<string, Array<Record<string, unknown>>> = {
+    user_organizations: endpoints.map((_, i) => ({ user_id: `u${i}`, role: "admin" })),
+    push_subscriptions: endpoints.map((endpoint, i) => ({
+      id: `s${i}`,
+      user_id: `u${i}`,
+      endpoint,
+      p256dh: "p",
+      auth: "a",
+    })),
+  };
+  return {
+    from: (tabela: string) => {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        is: () => q,
+        in: () => q,
+        delete: () => q,
+        then: (ok: (r: unknown) => unknown) => ok({ data: tabelas[tabela] ?? [], error: null }),
+      };
+      return q;
+    },
+  } as never;
+};
 
 const AVISO = { title: "t", body: "b", tag: "x", href: "/app/inbox" };
 

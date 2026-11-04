@@ -14,6 +14,12 @@ const enviarPushDaOrgMock = vi.fn(async (_organizationId: string, _payload: Push
   sent: 1,
   gone: 0,
 }));
+const enviarPushDaConversaMock = vi.fn(
+  async (_organizationId: string, _conversationId: string, _payload: PushPayload) => ({
+    sent: 1,
+    gone: 0,
+  }),
+);
 const enviarPushAoUsuarioMock = vi.fn(
   async (_organizationId: string, _userId: string | null, _payload: PushPayload) => ({
     sent: 0,
@@ -29,6 +35,8 @@ vi.mock("./web_push", () => ({
   // `tests/unit/media-persist-worker.test.ts`.
   enviarPushDaOrg: (organizationId: string, payload: PushPayload) =>
     enviarPushDaOrgMock(organizationId, payload),
+  enviarPushDaConversa: (organizationId: string, conversationId: string, payload: PushPayload) =>
+    enviarPushDaConversaMock(organizationId, conversationId, payload),
   enviarPushAoUsuario: (organizationId: string, userId: string | null, payload: PushPayload) =>
     enviarPushAoUsuarioMock(organizationId, userId, payload),
 }));
@@ -67,6 +75,7 @@ describe("webPushInboundHandler", () => {
   beforeEach(() => {
     state.vapidPronto = false;
     enviarPushDaOrgMock.mockClear();
+    enviarPushDaConversaMock.mockClear();
     enviarPushAoUsuarioMock.mockClear();
     createAdminClientMock.mockClear();
   });
@@ -92,21 +101,25 @@ describe("webPushInboundHandler", () => {
       state.vapidPronto = true;
     });
 
-    it("título é a cópia de grupo, href aponta pra conversa, envia pela ORG (não por usuário)", async () => {
+    it("título é a cópia de grupo, href aponta pra conversa, envia a quem vê a conversa", async () => {
       const result = await webPushInboundHandler.handle(grupoRow());
 
       expect(result.status).toBe("ok");
-      expect(enviarPushDaOrgMock).toHaveBeenCalledTimes(1);
-      const [orgId, payload] = enviarPushDaOrgMock.mock.calls[0]!;
+      // Nem a organização inteira (grupo privado é do responsável e da gestão)
+      // nem um usuário só: quem pode ver a conversa (web_push.ts).
+      expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+      expect(enviarPushDaConversaMock).toHaveBeenCalledTimes(1);
+      const [orgId, conversa, payload] = enviarPushDaConversaMock.mock.calls[0]!;
       expect(orgId).toBe("org1");
+      expect(conversa).toBe("conv-1");
       expect(payload).toMatchObject({
         title: "Nova mensagem no grupo",
         href: "/app/inbox?id=conv-1",
       });
       // Nunca o desfecho do 1:1 ("Nova mensagem" quando não há nome de contato).
       expect(payload.title).not.toBe("Nova mensagem");
-      // Recipiente é a ORG inteira — nunca `enviarPushAoUsuario` (que é o
-      // caminho de lead.assigned/user.mentioned, dirigido a UM usuário).
+      // Nunca `enviarPushAoUsuario` (o caminho de lead.assigned/user.mentioned,
+      // dirigido a UM usuário).
       expect(enviarPushAoUsuarioMock).not.toHaveBeenCalled();
     });
 
@@ -115,10 +128,11 @@ describe("webPushInboundHandler", () => {
       expect(createAdminClientMock).not.toHaveBeenCalled();
     });
 
-    it("sem conversation_id: href cai para /app/inbox (mesma forma do 1:1 sem conversa)", async () => {
-      await webPushInboundHandler.handle(grupoRow({ conversation_id: undefined }));
-      const [, payload] = enviarPushDaOrgMock.mock.calls[0]!;
-      expect(payload).toMatchObject({ title: "Nova mensagem no grupo", href: "/app/inbox" });
+    it("sem conversation_id: não há como saber quem vê, então ninguém recebe", async () => {
+      const r = await webPushInboundHandler.handle(grupoRow({ conversation_id: undefined }));
+      expect(r).toMatchObject({ status: "skipped", detail: "sem_conversa" });
+      expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+      expect(enviarPushDaConversaMock).not.toHaveBeenCalled();
     });
   });
 });
@@ -148,6 +162,7 @@ describe("1:1 em conversa privada (migration 0495)", () => {
   beforeEach(() => {
     state.vapidPronto = true;
     enviarPushDaOrgMock.mockClear();
+    enviarPushDaConversaMock.mockClear();
     enviarPushAoUsuarioMock.mockClear();
   });
 
@@ -169,11 +184,12 @@ describe("1:1 em conversa privada (migration 0495)", () => {
     expect(enviarPushAoUsuarioMock).not.toHaveBeenCalled();
   });
 
-  it("livre: segue indo para a organização", async () => {
+  it("livre: vai a quem pode ver a conversa, não à organização inteira", async () => {
     createAdminClientMock.mockImplementation(
       () => adminCom({ is_private: false, assigned_to_user_id: "dono" }) as unknown,
     );
     await webPushInboundHandler.handle(linha as never);
-    expect(enviarPushDaOrgMock).toHaveBeenCalledTimes(1);
+    expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+    expect(enviarPushDaConversaMock).toHaveBeenCalledTimes(1);
   });
 });
