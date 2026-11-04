@@ -88,6 +88,12 @@ export interface UserOrgMembership {
    * então quem usa passa por `fusoValido` e cai em `FUSO_PADRAO`.
    */
   timezone?: string | null;
+  /**
+   * `organizations.status` (`active` | `suspended` | …). Vem no mesmo embed por
+   * ser lido em TODA rota: a suspensão da plataforma é decidida em `requireRole`,
+   * e uma ida a mais ao banco por requisição só para isso não se paga.
+   */
+  organization_status?: string | null;
 }
 
 export interface AuthUser {

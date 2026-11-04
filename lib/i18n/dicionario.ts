@@ -13531,6 +13531,9 @@ export const DICIONARIO: Traducoes = {
   "Aprendizado aprovado.": {
     es: "Aprendizaje aprobado.",
   },
+  "Esta organização está suspensa. Fale com o suporte da plataforma.": {
+    es: "Esta organización está suspendida. Habla con el soporte de la plataforma.",
+  },
   "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.": {
     es: "La marca propia forma parte de un plan superior al tuyo. Revisa Configuración › Plan y facturación.",
   },
