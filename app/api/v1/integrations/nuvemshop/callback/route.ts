@@ -13,6 +13,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { audit } from "@/lib/audit";
+import { integracaoDaLoja } from "@/lib/nuvemshop/integracao-da-loja";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getConfig, SUBSCRIBED_EVENTS, eventToSlug } from "@/lib/nuvemshop/config";
 import { exchangeCodeForToken } from "@/lib/nuvemshop/oauth";
@@ -54,7 +55,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return redirectTo(`/app/integrations/nuvemshop?error=missing_code`);
   }
 
-  if (!(await supportCallbackWriteAllowed(state.orgId, state.userId, state.authSessionId))) return redirectTo("/app/integrations/nuvemshop?error=invalid_state");
+  if (!(await supportCallbackWriteAllowed(state.orgId, state.userId, state.authSessionId)))
+    return redirectTo("/app/integrations/nuvemshop?error=invalid_state");
 
   // Exchange code for access token.
   const tokenRes = await exchangeCodeForToken(code, cfg);
@@ -84,8 +86,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     });
     return redirectTo(`/app/integrations/nuvemshop?error=encrypt_failed`);
   }
+  // ⚠️ O `client_secret` do app NÃO vai mais para a linha do tenant: ele é da
+  // instalação, os webhooks conferem contra o `.env`, e a cópia na linha era
+  // legível por membros e virava segredo em claro por outra porta (ver
+  // `lib/nuvemshop/integracao-da-loja.ts`). A coluna é NOT NULL e recebe um
+  // valor aleatório que nada confere.
   const webhookSecretEnc = await admin.rpc("fn_encrypt_oauth", {
-    plaintext: cfg.clientSecret,
+    plaintext: randomBytes(32).toString("hex"),
   });
   if (webhookSecretEnc.error || !webhookSecretEnc.data) {
     await audit({
@@ -97,6 +104,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       },
     });
     return redirectTo(`/app/integrations/nuvemshop?error=encrypt_failed`);
+  }
+
+  // Uma loja, uma organização. O `store_id` decide de quem é cada webhook, e
+  // a mesma loja em duas organizações deixava as duas sem webhook nenhum.
+  const dona = await integracaoDaLoja(admin, storeId);
+  if (
+    dona.tipo === "erro" ||
+    dona.tipo === "ambigua" ||
+    (dona.tipo === "achada" && dona.integracao.organization_id !== state.orgId)
+  ) {
+    await audit({
+      action: "nuvemshop.oauth_failed",
+      organizationId: state.orgId,
+      metadata: { reason: "store_already_linked", store_id: storeId },
+    });
+    return redirectTo(`/app/integrations/nuvemshop?error=store_already_linked`);
   }
 
   const webhookPathToken = randomBytes(24).toString("hex");
@@ -119,7 +142,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         last_sync_at: new Date().toISOString(),
       },
       { onConflict: "organization_id,provider" },
-    ).select("id").single();
+    )
+    .select("id")
+    .single();
 
   if (upsertErr) {
     await audit({

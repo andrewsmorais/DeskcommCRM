@@ -21,6 +21,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { integracaoDaLoja, segredoDoApp } from "@/lib/nuvemshop/integracao-da-loja";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createLgpdRequest, findContactByExternalId } from "@/lib/lgpd/repository";
 
@@ -96,40 +98,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 3. Resolve organization from tenant_integrations
   //    organization_id is resolved from a trusted source (the store_id lookup on DB),
   //    never from the request body.
-  const { data: integration, error: lookupErr } = await admin
-    .from("tenant_integrations")
-    .select("id, organization_id, webhook_secret_encrypted")
-    .eq("provider", "nuvemshop")
-    .eq("store_metadata->>store_id", storeId)
-    .maybeSingle();
-
-  if (lookupErr || !integration) {
-    console.warn(`[lgpd-customer-redact] tenant not found for store_id=${storeId}`);
+  // Organização pela loja; segredo do APP pelo ambiente (ver
+  // `lib/nuvemshop/integracao-da-loja.ts` — os dois porquês estão lá).
+  const busca = await integracaoDaLoja(admin, storeId);
+  if (busca.tipo === "ambigua" || busca.tipo === "erro") {
+    logger.error("[lgpd-customer-redact] loja sem dono único", {
+      store_id: storeId,
+      motivo: busca.tipo,
+    });
+    return fail("internal_error", "ambiguous_store_binding", 500);
+  }
+  if (busca.tipo === "nenhuma") {
     // Intentional 404 — this is a LGPD endpoint; fail-open would be wrong.
     return fail("not_found", "integration_not_found", 404);
   }
 
-  const orgId: string = integration.organization_id;
+  const orgId: string = busca.integracao.organization_id;
 
-  // 4. Decrypt webhook secret and verify HMAC
-  const dec = await admin.rpc("fn_decrypt_oauth", {
-    ciphertext: integration.webhook_secret_encrypted,
-  });
-
-  if (dec.error || !dec.data) {
-    console.error(`[lgpd-customer-redact] decrypt failed for org=${orgId}: ${dec.error?.message}`);
-    await audit({
-      action: "webhook.hmac_invalid",
-      organizationId: orgId,
-      metadata: { reason: "decrypt_failed", event: "customer/redact", store_id: storeId },
-    });
-    return fail("internal_error", "decrypt_failed", 500);
-  }
-
-  const clientSecret = dec.data as string;
+  // 4. Verify HMAC with the installation's app secret
+  const clientSecret = segredoDoApp();
+  if (!clientSecret) return fail("not_found", "integration_not_configured", 404);
   const sigHeader =
-    req.headers.get("x-linkedstore-hmac-sha256") ??
-    req.headers.get("X-Linkedstore-Hmac-Sha256");
+    req.headers.get("x-linkedstore-hmac-sha256") ?? req.headers.get("X-Linkedstore-Hmac-Sha256");
 
   if (!verifyHmacSha256(rawBody, sigHeader, clientSecret)) {
     await audit({
@@ -182,17 +172,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if ((logInsertErr as { code?: string }).code === "23505") {
       return ok({ received: true, idempotent: true });
     }
-    console.error(`[lgpd-customer-redact] webhook_events_log insert error: ${logInsertErr.message}`);
+    console.error(
+      `[lgpd-customer-redact] webhook_events_log insert error: ${logInsertErr.message}`,
+    );
     // Continue — don't block LGPD receipt on log failure
   }
 
   const webhookLogId: string | null = logInserted?.id ?? null;
 
   // 6. Resolve internal contact (L-03: null is valid if contact not in CRM)
-  const customerId =
-    body.customer?.id !== undefined ? String(body.customer.id) : null;
-  const customerEmail =
-    typeof body.customer?.email === "string" ? body.customer.email : null;
+  const customerId = body.customer?.id !== undefined ? String(body.customer.id) : null;
+  const customerEmail = typeof body.customer?.email === "string" ? body.customer.email : null;
 
   let contactId: string | null = null;
   if (customerId) {

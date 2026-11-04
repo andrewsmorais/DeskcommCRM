@@ -13537,6 +13537,9 @@ export const DICIONARIO: Traducoes = {
   "Saia do acompanhamento para criar tokens de API.": {
     es: "Sal del acompañamiento para crear tokens de API.",
   },
+  "Esta loja já está conectada a outra organização nesta instalação. Desconecte lá antes de conectar aqui.": {
+    es: "Esta tienda ya está conectada a otra organización en esta instalación. Desconéctala allí antes de conectarla aquí.",
+  },
   "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.": {
     es: "La marca propia forma parte de un plan superior al tuyo. Revisa Configuración › Plan y facturación.",
   },

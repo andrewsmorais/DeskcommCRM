@@ -4,8 +4,9 @@
  * Catch-all receiver for the 8 mandatory Nuvemshop webhooks. Behavior:
  *  1. Read raw body (for HMAC verification — must NOT be re-stringified).
  *  2. Parse JSON, look up tenant_integrations by store_id (in store_metadata).
- *  3. Verify HMAC SHA256 using the per-tenant webhook_secret_encrypted (=
- *     app client_secret at connect time).
+ *  3. Verify HMAC SHA256 using the installation's app client_secret, read
+ *     from the environment (never from a tenant row — see
+ *     `lib/nuvemshop/integracao-da-loja.ts`).
  *  4. Insert webhook_events_log; rely on the partial unique constraint to
  *     deduplicate (provider, organization_id, external_id) for idempotency.
  *  5. Emit a row in event_log via the `emit_event` SQL function. Workers
@@ -16,6 +17,8 @@
 import type { NextRequest, NextResponse } from "next/server";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { integracaoDaLoja, segredoDoApp } from "@/lib/nuvemshop/integracao-da-loja";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { slugToEvent } from "@/lib/nuvemshop/config";
 import { verifyHmac } from "@/lib/nuvemshop/oauth";
@@ -62,37 +65,28 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
 
   const admin = createAdminClient();
 
-  // Look up the tenant integration by store_id stored in store_metadata.
-  const { data: integration, error: lookupErr } = await admin
-    .from("tenant_integrations")
-    .select("id, organization_id, webhook_secret_encrypted")
-    .eq("provider", "nuvemshop")
-    .eq("store_metadata->>store_id", storeId)
-    .maybeSingle();
-
-  if (lookupErr || !integration) {
+  // Organização pela loja; segredo do APP pelo ambiente (ver
+  // `lib/nuvemshop/integracao-da-loja.ts` — os dois porquês estão lá).
+  const busca = await integracaoDaLoja(admin, storeId);
+  if (busca.tipo === "ambigua" || busca.tipo === "erro") {
+    logger.error("[nuvemshop] loja sem dono único", {
+      store_id: storeId,
+      motivo: busca.tipo,
+      event,
+    });
+    return fail("internal_error", "ambiguous_store_binding", 500);
+  }
+  if (busca.tipo === "nenhuma") {
     // No tenant matches — could be a stale subscription or test ping. We
     // intentionally return 200 so Nuvemshop stops retrying, but log silently.
     return ok({ accepted: false, reason: "tenant_not_found" });
   }
-
-  // Decrypt webhook secret (= app client_secret at connect time).
-  const dec = await admin.rpc("fn_decrypt_oauth", {
-    ciphertext: integration.webhook_secret_encrypted,
-  });
-  if (dec.error || !dec.data) {
-    await audit({
-      action: "nuvemshop.webhook_invalid_signature",
-      organizationId: integration.organization_id,
-      metadata: { reason: "decrypt_failed", event },
-    });
-    return fail("internal_error", "decrypt_failed", 500);
-  }
-  const clientSecret = dec.data as string;
+  const integration = busca.integracao;
+  const clientSecret = segredoDoApp();
+  if (!clientSecret) return ok({ accepted: false, reason: "integration_not_configured" });
 
   const sigHeader =
-    req.headers.get("x-linkedstore-hmac-sha256") ??
-    req.headers.get("X-Linkedstore-Hmac-Sha256");
+    req.headers.get("x-linkedstore-hmac-sha256") ?? req.headers.get("X-Linkedstore-Hmac-Sha256");
   const valid = verifyHmac(rawBody, sigHeader, clientSecret);
   if (!valid) {
     await audit({

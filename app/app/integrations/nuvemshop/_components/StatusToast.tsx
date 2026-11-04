@@ -14,6 +14,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   network_error: "Falha de rede ao contatar a Nuvemshop.",
   encrypt_failed: "Falha ao criptografar o token. Verifique NUVEMSHOP_OAUTH_ENCRYPTION_KEY.",
   db_upsert_failed: "Falha ao gravar a integração no banco.",
+  store_already_linked:
+    "Esta loja já está conectada a outra organização nesta instalação. Desconecte lá antes de conectar aqui.",
 };
 
 export function StatusToast() {

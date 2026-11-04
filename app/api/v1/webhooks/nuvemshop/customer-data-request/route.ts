@@ -21,6 +21,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { integracaoDaLoja, segredoDoApp } from "@/lib/nuvemshop/integracao-da-loja";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createLgpdRequest, findContactByExternalId } from "@/lib/lgpd/repository";
 
@@ -101,45 +103,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 3. Resolve organization from tenant_integrations
   //    organization_id is resolved from a trusted source (the store_id lookup on DB),
   //    never from the request body.
-  const { data: integration, error: lookupErr } = await admin
-    .from("tenant_integrations")
-    .select("id, organization_id, webhook_secret_encrypted")
-    .eq("provider", "nuvemshop")
-    .eq("store_metadata->>store_id", storeId)
-    .maybeSingle();
-
-  if (lookupErr || !integration) {
-    console.warn(`[lgpd-customer-data-request] tenant not found for store_id=${storeId}`);
+  // Organização pela loja; segredo do APP pelo ambiente (ver
+  // `lib/nuvemshop/integracao-da-loja.ts` — os dois porquês estão lá).
+  const busca = await integracaoDaLoja(admin, storeId);
+  if (busca.tipo === "ambigua" || busca.tipo === "erro") {
+    logger.error("[lgpd-customer-data-request] loja sem dono único", {
+      store_id: storeId,
+      motivo: busca.tipo,
+    });
+    return fail("internal_error", "ambiguous_store_binding", 500);
+  }
+  if (busca.tipo === "nenhuma") {
+    // Intentional 404 — this is a LGPD endpoint; fail-open would be wrong.
     return fail("not_found", "integration_not_found", 404);
   }
 
-  const orgId: string = integration.organization_id;
+  const orgId: string = busca.integracao.organization_id;
 
-  // 4. Decrypt webhook secret and verify HMAC
-  const dec = await admin.rpc("fn_decrypt_oauth", {
-    ciphertext: integration.webhook_secret_encrypted,
-  });
-
-  if (dec.error || !dec.data) {
-    console.error(
-      `[lgpd-customer-data-request] decrypt failed for org=${orgId}: ${dec.error?.message}`,
-    );
-    await audit({
-      action: "webhook.hmac_invalid",
-      organizationId: orgId,
-      metadata: {
-        reason: "decrypt_failed",
-        event: "customer/data_request",
-        store_id: storeId,
-      },
-    });
-    return fail("internal_error", "decrypt_failed", 500);
-  }
-
-  const clientSecret = dec.data as string;
+  // 4. Verify HMAC with the installation's app secret
+  const clientSecret = segredoDoApp();
+  if (!clientSecret) return fail("not_found", "integration_not_configured", 404);
   const sigHeader =
-    req.headers.get("x-linkedstore-hmac-sha256") ??
-    req.headers.get("X-Linkedstore-Hmac-Sha256");
+    req.headers.get("x-linkedstore-hmac-sha256") ?? req.headers.get("X-Linkedstore-Hmac-Sha256");
 
   if (!verifyHmacSha256(rawBody, sigHeader, clientSecret)) {
     await audit({
@@ -147,9 +132,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       organizationId: orgId,
       metadata: { event: "customer/data_request", store_id: storeId },
     });
-    console.warn(
-      `[lgpd-customer-data-request] HMAC invalid for org=${orgId} store_id=${storeId}`,
-    );
+    console.warn(`[lgpd-customer-data-request] HMAC invalid for org=${orgId} store_id=${storeId}`);
     return fail("unauthenticated", "invalid_signature", 401);
   }
 
@@ -203,10 +186,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const webhookLogId: string | null = logInserted?.id ?? null;
 
   // 6. Resolve internal contact (L-03: null is valid if contact not in CRM)
-  const customerId =
-    body.customer?.id !== undefined ? String(body.customer.id) : null;
-  const customerEmail =
-    typeof body.customer?.email === "string" ? body.customer.email : null;
+  const customerId = body.customer?.id !== undefined ? String(body.customer.id) : null;
+  const customerEmail = typeof body.customer?.email === "string" ? body.customer.email : null;
 
   let contactId: string | null = null;
   if (customerId) {
@@ -217,9 +198,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 7. Build delivery object (method=email; address from payload; null if absent)
   //    Operator resolves via UI if null.
   const delivery: DeliveryInfo | null =
-    customerEmail !== null
-      ? { method: "email", address: customerEmail }
-      : null;
+    customerEmail !== null ? { method: "email", address: customerEmail } : null;
 
   // 8. Insert lgpd_requests (SLA = 7 BR business days — LGPD Art. 19, L-02)
   const now = new Date();
@@ -273,9 +252,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
 
   if (emitErr) {
-    console.error(
-      `[lgpd-customer-data-request] emit_event failed: ${emitErr.message}`,
-    );
+    console.error(`[lgpd-customer-data-request] emit_event failed: ${emitErr.message}`);
     // Non-blocking — worker can be re-triggered via cron recovery
   }
 
