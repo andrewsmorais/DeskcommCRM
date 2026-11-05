@@ -58,7 +58,7 @@ import {
 } from "@/lib/agenda/google/config";
 import { verificarEstado } from "@/lib/agenda/google/estado";
 import { NOME_DO_VINCULO, vinculoConfere } from "@/lib/agenda/google/vinculo";
-import { cookieSecure } from "@/lib/supabase/cookie-secure";
+import { opcoesDoVinculo } from "@/lib/auth/cookie-de-vinculo";
 import { escoposFaltando } from "@/lib/agenda/google/oauth";
 import { trocarCodigoPorToken } from "@/lib/agenda/google/token";
 import { contaDaAgendaPrimaria } from "@/lib/agenda/google/calendarios";
@@ -130,13 +130,7 @@ function voltar(parametro: string): NextResponse {
   // por esta função — sucesso e erro —, então o cookie morre com o fluxo.
   //
   // `Set-Cookie` funciona igual num 200: a limpeza não dependia do redirect.
-  resposta.cookies.set(NOME_DO_VINCULO, "", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: cookieSecure(),
-    path: CAMINHO_DO_CALLBACK,
-    maxAge: 0,
-  });
+  resposta.cookies.set(NOME_DO_VINCULO, "", opcoesDoVinculo(CAMINHO_DO_CALLBACK, 0));
   return resposta;
 }
 

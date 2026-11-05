@@ -12,8 +12,8 @@
  * A carga é só `organizationId` — a conexão de Ads é da ORGANIZAÇÃO, não da
  * pessoa (mesmo desenho de `ad_platform_connections`): duas pessoas admin da
  * mesma organização reconectando não criam duas linhas, sobrescrevem a mesma.
- * `userId` ainda entra, mas só para o audit log saber quem autorizou — não
- * para achar a linha certa no callback.
+ * `userId` ainda entra para o audit log saber quem autorizou e para a queima do
+ * nonce — não para achar a linha certa no callback.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -21,6 +21,13 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { ApiDeConversaoGoogle } from "../types";
 
 export const VALIDADE_DO_ESTADO_MS = 10 * 60 * 1000;
+
+/**
+ * O cookie de vínculo deste retorno (mecanismo em `lib/auth/vinculo-oauth.ts`).
+ * Nome próprio, e não o da Agenda: o `path` já os separa, mas dois cookies com
+ * o mesmo nome dependeriam disso para não se confundirem.
+ */
+export const NOME_DO_VINCULO_DE_ANUNCIOS = "crm_oauth_bind_ads";
 
 const TAMANHO_MINIMO_DO_SEGREDO = 16;
 

@@ -41,12 +41,8 @@ import {
   origemLocalDosCabecalhos,
 } from "@/lib/agenda/google/config";
 import { emitirEstado } from "@/lib/agenda/google/estado";
-import {
-  assinarVinculo,
-  NOME_DO_VINCULO,
-  VALIDADE_DO_VINCULO_S,
-} from "@/lib/agenda/google/vinculo";
-import { cookieSecure } from "@/lib/supabase/cookie-secure";
+import { assinarVinculo, NOME_DO_VINCULO } from "@/lib/agenda/google/vinculo";
+import { opcoesDoVinculo } from "@/lib/auth/cookie-de-vinculo";
 import { montarUrlDeConsentimento } from "@/lib/agenda/google/oauth";
 import { env } from "@/lib/env";
 
@@ -116,24 +112,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const resposta = NextResponse.redirect(url);
 
-  // ⚠️ `sameSite: "lax"` É O PONTO DESTE COOKIE, e trocá-lo por "strict" volta a
-  // quebrar o fluxo inteiro. Lax é enviado em navegação top-level GET vinda de
-  // outro site — que é exatamente a volta do consentimento. Strict não é, e foi
-  // por isso que a sessão nunca chegou ao callback (ver `vinculo.ts`).
-  //
-  // `secure` sai de `cookieSecure()`, NUNCA `true` literal: um self-host servido
-  // por `http://` — e essa população existe, está medida — teria o cookie
-  // descartado pelo navegador, e o conserto viraria o defeito que ele conserta.
+  // ⚠️ `sameSite: "lax"` É O PONTO DESTE COOKIE, e `secure` nunca é `true`
+  // literal — os dois motivos estão em `opcoesDoVinculo`, que os três retornos
+  // de OAuth (Agenda, Google Ads, loja) usam na ida e na volta.
   resposta.cookies.set(
     NOME_DO_VINCULO,
     assinarVinculo(nonce, chaveDeAssinatura(ROTULOS_DE_ASSINATURA.vinculoDaAgenda)),
-    {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: cookieSecure(),
-      path: CAMINHO_DO_CALLBACK,
-      maxAge: VALIDADE_DO_VINCULO_S,
-    },
+    opcoesDoVinculo(CAMINHO_DO_CALLBACK),
   );
 
   return resposta;

@@ -1,8 +1,18 @@
 /**
  * OAuth state token (CSRF defense).
  *
- * Format: base64url(`${orgId}.${nonce}.${expMs}`) + "." + hex(HMAC-SHA256).
- * Verified with `crypto.timingSafeEqual`. Tokens expire 10 minutes after issuance.
+ * Format: base64url(`${orgId}.${nonce}.${expMs}.${userId}.${authSessionId}`) +
+ * "." + hex(HMAC-SHA256). Verified with `crypto.timingSafeEqual`. Tokens expire
+ * 10 minutes after issuance.
+ *
+ * ⚠️ O `state` SEM ATOR (três segmentos) não é mais aceito. Ele não dizia quem
+ * pediu a conexão, então a volta não tinha de quem queimar o nonce nem a quem
+ * atribuir a escrita — e era o formato que um `state` forjado escolhia. Quem
+ * emite (`connectNuvemshop`) sempre manda o ator.
+ *
+ * O `state` sozinho prova que o servidor o emitiu, não QUEM o apresenta: a
+ * volta também exige o cookie de vínculo (`NOME_DO_VINCULO_DA_LOJA`, assinado
+ * sobre o nonce, ver `lib/auth/vinculo-oauth.ts`) e queima o nonce.
  *
  * ⚠️ A chave NÃO é mais `INTERNAL_SECRET`. Ele é o Bearer que `autorizaCron`
  * aceita e que o operador entrega ao agendador externo; com ele, quem tinha o
@@ -15,6 +25,16 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
 
 const TTL_MS = 10 * 60 * 1000; // 10 min
+
+/** O caminho da volta — o `path` do cookie de vínculo, para ele não viajar para mais nada. */
+export const CAMINHO_DO_CALLBACK_DA_LOJA = "/api/v1/integrations/nuvemshop/callback";
+
+/**
+ * Nome próprio, e não o `crm_oauth_bind` da Agenda: o `path` já os separa, mas
+ * dois cookies com o mesmo nome dependeriam disso para não se confundirem.
+ * Não cita o provedor nem a marca (`lint:channels`, `branding.test.ts`).
+ */
+export const NOME_DO_VINCULO_DA_LOJA = "crm_oauth_bind_loja";
 
 function key(): string {
   // Sem raiz utilizável (dev sem `SUPABASE_SERVICE_ROLE_KEY`) cai numa chave
@@ -37,19 +57,27 @@ function b64urlDecode(s: string): string {
   return Buffer.from(s, "base64url").toString("utf8");
 }
 
+/**
+ * @param nonce passado por quem emite quando ele precisa conhecê-lo — é o caso
+ * de `connectNuvemshop`, que assina o cookie de vínculo sobre ele. Sem ponto:
+ * o ponto é o separador da carga.
+ */
 export function issueState(
   orgId: string,
-  actor?: { userId: string; authSessionId: string },
+  actor: { userId: string; authSessionId: string },
+  nonce: string = randomBytes(16).toString("hex"),
 ): string {
-  const nonce = randomBytes(16).toString("hex");
+  if (!actor.userId || !nonce || nonce.includes(".")) {
+    throw new Error("state da loja precisa do ator e de um nonce sem ponto");
+  }
   const exp = Date.now() + TTL_MS;
-  const payload = `${orgId}.${nonce}.${exp}${actor ? `.${actor.userId}.${actor.authSessionId}` : ""}`;
+  const payload = `${orgId}.${nonce}.${exp}.${actor.userId}.${actor.authSessionId}`;
   const sig = createHmac("sha256", key()).update(payload, "utf8").digest("hex");
   return `${b64urlEncode(payload)}.${sig}`;
 }
 
 export interface VerifiedState {
-  userId?: string;
+  userId: string;
   authSessionId?: string;
   orgId: string;
   nonce: string;
@@ -80,11 +108,12 @@ export function verifyState(token: string | null | undefined): VerifiedState | n
   if (!timingSafeEqual(receivedSig, expectedSig)) return null;
 
   const segments = payload.split(".");
-  if (segments.length !== 3 && segments.length !== 5) return null;
+  // Só o formato COM ator: o de três segmentos não dizia quem pediu.
+  if (segments.length !== 5) return null;
   const [orgId, nonce, expStr, userId, authSessionId] = segments;
   const expMs = Number(expStr);
-  if (!orgId || !nonce || !Number.isFinite(expMs)) return null;
+  if (!orgId || !nonce || !userId || !Number.isFinite(expMs)) return null;
   if (Date.now() > expMs) return null;
 
-  return { orgId, nonce, expMs, ...(userId && authSessionId ? { userId, authSessionId } : {}) };
+  return { orgId, nonce, expMs, userId, ...(authSessionId ? { authSessionId } : {}) };
 }
