@@ -224,6 +224,13 @@ async function pedacosDeDocumento(fonte: FonteRow): Promise<Pedaco[]> {
   };
   const blobPath = meta.blob_path;
   if (!blobPath) throw new ErroDeExtracao("a fonte não aponta para nenhum arquivo");
+  // O arquivo tem de ser DA organização da fonte: o download é com a service
+  // role, e `source_metadata` é gravável por gerente pela REST — sem esta
+  // conferência, uma fonte apontada para `<outra-org>/…` indexaria o material
+  // de outra organização no acervo desta (cobertura da auditoria de 04/11/2026).
+  if (!blobPath.startsWith(`${fonte.organization_id}/`) || blobPath.split("/").includes("..")) {
+    throw new ErroDeExtracao("o arquivo da fonte não pertence a esta organização");
+  }
 
   const { texto, extensao } = await extrairTextoDoArquivo(blobPath, meta.ext);
   return chunkText(texto, { maxChars: 1600, overlapChars: 200 }).map((c) => ({

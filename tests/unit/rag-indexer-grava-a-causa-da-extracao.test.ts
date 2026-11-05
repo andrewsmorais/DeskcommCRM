@@ -66,11 +66,13 @@ const EVENTO = {
   created_at: new Date().toISOString(),
 };
 
+let fonteAtual: typeof FONTE = FONTE;
 let carimbos: Array<Record<string, unknown>> = [];
 let avisos: Array<Record<string, unknown>> = [];
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  fonteAtual = FONTE;
   carimbos = [];
   avisos = [];
 
@@ -80,7 +82,7 @@ beforeEach(async () => {
         const leitura = {
           select: () => leitura,
           eq: () => leitura,
-          maybeSingle: () => Promise.resolve({ data: FONTE, error: null }),
+          maybeSingle: () => Promise.resolve({ data: fonteAtual, error: null }),
         };
         return {
           ...leitura,
@@ -135,5 +137,20 @@ describe("rag-indexer — falha de extração guarda a causa", () => {
 
     expect(avisos).toHaveLength(1);
     expect(String(avisos[0]!["body"])).toContain("Object not found: org-1/tabela.pdf");
+  });
+});
+
+describe("rag-indexer — o arquivo tem de ser da organização da fonte", () => {
+  it("fonte apontada para o caminho de outra organização não é baixada (auditoria 04/11/2026)", async () => {
+    fonteAtual = {
+      ...FONTE,
+      source_metadata: { blob_path: "org-2/tabela.pdf", filename: "tabela.pdf", ext: "pdf" },
+    };
+    const resultado = await processRagIndexer(EVENTO as never);
+
+    expect(resultado.status).toBe("error");
+    expect(vi.mocked(extrairTextoDoArquivo)).not.toHaveBeenCalled();
+    const falha = carimbos.find((c) => c["last_index_status"] === "failed");
+    expect(String(falha?.["last_index_error"])).toContain("não pertence a esta organização");
   });
 });
