@@ -467,6 +467,59 @@ describe("PATCH /api/v1/ai/followup-flows/:id", () => {
     );
   });
 
+  describe("gatilho automático exige o Follow-up automático (auditoria 04/11/2026)", () => {
+    afterEach(() => {
+      planoDoFollowup.inclui = true;
+    });
+
+    it("sem o recurso, trocar manual → silêncio num fluxo publicado é 403 e nada muda", async () => {
+      planoDoFollowup.inclui = false;
+      const db = makeDb([pointerRow({ status: "active" })], []);
+      session("manager", db);
+      const { PATCH } = await import("@/app/api/v1/ai/followup-flows/[id]/route");
+      const res = await PATCH(
+        req("PATCH", { trigger_config: { kind: "silence", params: { threshold_minutes: 30 } } }),
+        ctx("33333333-3333-4333-8333-333333333333"),
+      );
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+        "billing_feature",
+      );
+    });
+
+    it("sem o recurso, voltar silêncio → manual também é 403 (soltaria o que a varredura inscreveu)", async () => {
+      planoDoFollowup.inclui = false;
+      const db = makeDb(
+        [
+          pointerRow({
+            status: "active",
+            trigger_config: { kind: "silence", params: { threshold_minutes: 30 } },
+          }),
+        ],
+        [],
+      );
+      session("manager", db);
+      const { PATCH } = await import("@/app/api/v1/ai/followup-flows/[id]/route");
+      const res = await PATCH(
+        req("PATCH", { trigger_config: { kind: "manual" } }),
+        ctx("33333333-3333-4333-8333-333333333333"),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("controle: sem o recurso, manual → manual (e renomear) segue 200", async () => {
+      planoDoFollowup.inclui = false;
+      const db = makeDb([pointerRow()], []);
+      session("manager", db);
+      const { PATCH } = await import("@/app/api/v1/ai/followup-flows/[id]/route");
+      const res = await PATCH(
+        req("PATCH", { name: "Outro", trigger_config: { kind: "manual" } }),
+        ctx("33333333-3333-4333-8333-333333333333"),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
   it("pointer inexistente na org → 404", async () => {
     const db = makeDb([], []);
     session("manager", db);

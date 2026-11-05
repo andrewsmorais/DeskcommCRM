@@ -15,6 +15,7 @@ import type { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { createClient } from "@/lib/supabase/server";
 import { patchFollowupFlowSchema } from "@/lib/followup/api-schemas";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -116,7 +117,7 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const supabase = await createClient();
   const { data: existing, error: fetchErr } = await supabase
     .from("followup_flow_pointers")
-    .select("id")
+    .select("id, trigger_config")
     .eq("id", id)
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
@@ -124,6 +125,31 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   if (!existing) return fail("not_found", t("Fluxo não encontrado."), 404, { requestId });
 
   const patch = parsed.data;
+
+  // Gatilho automático é o "Follow-up automático" (Impulso). A publicação já
+  // conferia o plano, mas esta rota trocava o gatilho de um fluxo PUBLICADO sem
+  // conferir: no Essencial, um gerente publicava um fluxo de chatbot, trocava o
+  // gatilho para silêncio, deixava a varredura inscrever e voltava para manual
+  // (auditoria de 04/11/2026). Sem o recurso, o gatilho só pode ficar manual —
+  // nem sair de manual, nem voltar para manual vindo de um automático.
+  if (patch.trigger_config) {
+    const atual = (existing as { trigger_config?: { kind?: unknown } | null }).trigger_config?.kind;
+    const mexeNoAutomatico =
+      patch.trigger_config.kind !== "manual" || (typeof atual === "string" && atual !== "manual");
+    const plano = mexeNoAutomatico
+      ? await verificarRecursoDoPlano(activeOrg.orgId, "follow_up")
+      : null;
+    if (plano && !plano.ok && plano.code === "billing_feature") {
+      return fail(
+        "billing_feature",
+        t(
+          "No seu plano, o follow-up começa só pelo chatbot. Gatilho automático é do plano Impulso.",
+        ),
+        403,
+        { requestId },
+      );
+    }
+  }
   if (Object.keys(patch).length === 0) {
     const { data: unchanged, error: reloadErr } = await supabase
       .from("followup_flow_pointers")
@@ -156,7 +182,9 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
     if (updErr?.code === "23514") {
       return fail(
         "validation_failed",
-        t("Roteiro de atendimento começa por palavra-gatilho ou pelo roteador, não por gatilho de follow-up."),
+        t(
+          "Roteiro de atendimento começa por palavra-gatilho ou pelo roteador, não por gatilho de follow-up.",
+        ),
         422,
         { requestId },
       );

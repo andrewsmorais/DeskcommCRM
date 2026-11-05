@@ -12298,6 +12298,9 @@ export const DICIONARIO: Traducoes = {
   "Falha ao salvar o teto diário.": { es: "No se pudo guardar el tope diario." },
   "Faltam nome, idioma ou conteúdo.": { es: "Faltan nombre, idioma o contenido." },
   "Fluxo não encontrado.": { es: "Flujo no encontrado." },
+  "No seu plano, o follow-up começa só pelo chatbot. Gatilho automático é do plano Impulso.": {
+    es: "En su plan, el seguimiento empieza solo por el chatbot. El disparador automático es del plan Impulso.",
+  },
   "Roteiro de atendimento começa por palavra-gatilho ou pelo roteador, não por gatilho de follow-up.":
     {
       es: "El guion de atención empieza por palabra clave o por el enrutador, no por un disparador de seguimiento.",
@@ -13522,9 +13525,10 @@ export const DICIONARIO: Traducoes = {
   "Sugestões da IA aguardando aprovação": {
     es: "Sugerencias de la IA esperando aprobación",
   },
-  "O agente anotou isto durante o atendimento. Só passa a valer em todas as conversas depois que alguém da equipe aprovar.": {
-    es: "El agente anotó esto durante la atención. Solo vale en todas las conversaciones después de que alguien del equipo lo apruebe.",
-  },
+  "O agente anotou isto durante o atendimento. Só passa a valer em todas as conversas depois que alguém da equipe aprovar.":
+    {
+      es: "El agente anotó esto durante la atención. Solo vale en todas las conversaciones después de que alguien del equipo lo apruebe.",
+    },
   "Sugestão descartada.": {
     es: "Sugerencia descartada.",
   },
@@ -13537,9 +13541,10 @@ export const DICIONARIO: Traducoes = {
   "Saia do acompanhamento para criar tokens de API.": {
     es: "Sal del acompañamiento para crear tokens de API.",
   },
-  "Esta loja já está conectada a outra organização nesta instalação. Desconecte lá antes de conectar aqui.": {
-    es: "Esta tienda ya está conectada a otra organización en esta instalación. Desconéctala allí antes de conectarla aquí.",
-  },
+  "Esta loja já está conectada a outra organização nesta instalação. Desconecte lá antes de conectar aqui.":
+    {
+      es: "Esta tienda ya está conectada a otra organización en esta instalación. Desconéctala allí antes de conectarla aquí.",
+    },
   "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.": {
     es: "La marca propia forma parte de un plan superior al tuyo. Revisa Configuración › Plan y facturación.",
   },

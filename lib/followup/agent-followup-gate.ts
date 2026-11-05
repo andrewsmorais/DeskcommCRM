@@ -21,6 +21,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+
 /**
  * OS GATILHOS QUE MORREM SEM AGENTE — a lista, com o produtor de cada um ao lado.
  *
@@ -73,7 +75,9 @@ export function fluxoPedeAgente(graph: { nodes: ReadonlyArray<NoDoGrafo> }): boo
   return graph.nodes.some((n) => {
     if (n.type === "ai_classify") return true;
     const mode = n.config?.mode;
-    return (n.type === "wait" && mode === "smart") || (n.type === "action" && mode === "ai_message");
+    return (
+      (n.type === "wait" && mode === "smart") || (n.type === "action" && mode === "ai_message")
+    );
   });
 }
 
@@ -102,6 +106,15 @@ export async function decidirAgenteDoEnrollmentAutomatico(
   pointerId: string,
   pedeAgente: boolean,
 ): Promise<{ agentId: string | null; barrado: boolean }> {
+  // Inscrição AUTOMÁTICA (silêncio, etapa, negócio criado, caso, retorno) é o
+  // "Follow-up automático" do plano Impulso. Sem ele, só o chatbot inscreve —
+  // a mesma trava de `enroll.ts` para origem que não é o chatbot. Antes desta
+  // guarda, a varredura de silêncio inscrevia sem ler o plano, e o motor
+  // soltava os envios quando o gatilho do ponteiro voltava a "manual"
+  // (auditoria de 04/11/2026). Só `billing_feature` barra: plano ilegível não
+  // é motivo novo de parar.
+  const plano = await verificarRecursoDoPlano(orgId, "follow_up");
+  if (!plano.ok && plano.code === "billing_feature") return { agentId: null, barrado: true };
   const agentId = await resolveAgentForAutomaticTrigger(db, orgId, pointerId);
   return agenteDoGatilhoAutomatico(agentId, pedeAgente);
 }
@@ -171,7 +184,10 @@ export function createSupabaseFollowupGateDb(admin: SupabaseClient): FollowupGat
       // Um agente tem no máximo 1 versão publicada; ainda assim agrego por
       // agent_id (defensivo) unindo os pointers habilitados.
       const byAgent = new Map<string, Set<string>>();
-      for (const row of (data ?? []) as Array<{ agent_id: string; followup: FollowupColumnShape | null }>) {
+      for (const row of (data ?? []) as Array<{
+        agent_id: string;
+        followup: FollowupColumnShape | null;
+      }>) {
         const f = row.followup;
         if (!f || f.enabled !== true || !Array.isArray(f.flow_pointer_ids)) continue;
         const set = byAgent.get(row.agent_id) ?? new Set<string>();
