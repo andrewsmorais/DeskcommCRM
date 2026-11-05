@@ -125,11 +125,16 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 
   // Ligar exige um desenho que o motor consiga rodar: o que vai ser gravado
-  // agora, ou o que já está gravado.
-  if (is_active === true) {
+  // agora, ou o que já está gravado. E gravar desenho num fluxo JÁ LIGADO
+  // também: o salvar (e o Ctrl+S) manda só `{name, grafo}`, e a mudança vale
+  // na hora para os clientes — antes, mensagem vazia, menu sem pergunta ou
+  // WebHook sem endereço iam direto para o WhatsApp (auditoria funcional f01).
+  const ligadoDepois = is_active ?? Boolean(atual.is_active);
+  if (is_active === true || (ligadoDepois && grafo !== undefined)) {
     const problemas = problemasDoGrafo(grafoSchema.parse(grafo ?? atual.grafo));
     if (problemas.length > 0) {
-      return fail("validation_failed", `Antes de ligar: ${problemas[0]}`, 422, {
+      const prefixo = is_active === true ? "Antes de ligar" : "O fluxo está ligado. Para salvar";
+      return fail("validation_failed", `${prefixo}: ${problemas[0]}`, 422, {
         requestId,
         details: { problemas },
       });
@@ -147,10 +152,18 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 
   // Passo avançado (webhook, condições, aguardar, outro fluxo...) só a partir
-  // do Impulso. Barrado ao gravar; o que já estava gravado continua rodando.
+  // do Impulso. Barrado ao gravar E ao ligar: um rascunho montado no Impulso
+  // ligava no Essencial com `{is_active: true}` sozinho, que não conferia nada
+  // (auditoria funcional f01). O que já estava ligado continua rodando.
   if (grafoRecebido !== undefined) {
     const passos = await conferirPassosDoPlano(auth.org.orgId, grafoRecebido);
     if (!passos.ok) return fail(passos.code, passos.message, passos.status, { requestId });
+  } else if (is_active === true && !atual.is_active) {
+    const gravado = grafoSchema.safeParse(atual.grafo);
+    if (gravado.success) {
+      const passos = await conferirPassosDoPlano(auth.org.orgId, gravado.data);
+      if (!passos.ok) return fail(passos.code, passos.message, passos.status, { requestId });
+    }
   }
 
   // Um chatbot de entrada POR NÚMERO. Ligar (ou passar a responder mensagens)

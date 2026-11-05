@@ -126,7 +126,10 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
       case "webhook": {
         const c = lerConfig("webhook", no.data);
         if (!c.url) problemas.push(`escreva o endereço do passo "${nome}".`);
-        else if (!/^https?:\/\/[^\s/]+/i.test(c.url))
+        // Só https, e o servidor sem `{{variável}}`: em produção a chamada recusa
+        // `http:` (assertSafeOutboundUrl), e um fluxo que liga com `http://` cai
+        // em "Falhou" em todo disparo, sem chamar nada (auditoria funcional f01).
+        else if (!/^https:\/\/[^\s/{}?#]+(?:[/?#]|$)/i.test(c.url))
           problemas.push(`o endereço do passo "${nome}" precisa começar com https://.`);
         break;
       }
