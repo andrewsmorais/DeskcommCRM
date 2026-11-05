@@ -18,7 +18,16 @@
  *    erro que as rotas tratavam como "loja de ninguém" — 200 para o evento (a
  *    Nuvemshop para de reenviar) e 404 para a LGPD. Agora duas linhas viram
  *    `ambigua`, que as rotas respondem com 500 (a Nuvemshop reenvia) e log de
- *    erro para o operador. Linha desconectada não conta.
+ *    erro para o operador.
+ *
+ * 3. A BUSCA NÃO OLHA O STATUS. Desconectar no CRM só muda o `status` e guarda
+ *    o `store_metadata`: os clientes daquela loja continuam nesta organização,
+ *    e `customer/redact`, `customer/data_request` e `store/redact` têm de
+ *    chegar a ela. Filtrar por status transformaria o pedido de LGPD de uma
+ *    loja desconectada no mesmo 404 silencioso que esta busca existe para
+ *    evitar (verificação independente da auditoria). Pela mesma razão o
+ *    callback recusa ligar uma loja que outra organização já tem, em QUALQUER
+ *    status.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -39,7 +48,6 @@ export async function integracaoDaLoja(
     .select("id, organization_id")
     .eq("provider", "nuvemshop")
     .eq("store_metadata->>store_id", storeId)
-    .neq("status", "disconnected")
     .limit(2);
   if (error) return { tipo: "erro", mensagem: error.message };
   const linhas = (data ?? []) as { id: string; organization_id: string }[];

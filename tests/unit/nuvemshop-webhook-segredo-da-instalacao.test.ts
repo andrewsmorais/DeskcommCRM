@@ -21,6 +21,7 @@ import { NextRequest } from "next/server";
 const estado = vi.hoisted(() => ({
   linhas: [] as { id: string; organization_id: string }[],
   pedidos: [] as unknown[],
+  filtros: [] as string[],
 }));
 
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
@@ -36,8 +37,14 @@ vi.mock("@/lib/supabase/admin", () => ({
       if (tabela === "tenant_integrations") {
         const q = {
           select: () => q,
-          eq: () => q,
-          neq: () => q,
+          eq: (coluna: string) => {
+            estado.filtros.push(coluna);
+            return q;
+          },
+          neq: (coluna: string) => {
+            estado.filtros.push(coluna);
+            return q;
+          },
           limit: async () => ({ data: estado.linhas, error: null }),
         };
         return q;
@@ -78,6 +85,7 @@ beforeEach(() => {
   process.env.NUVEMSHOP_CLIENT_SECRET = SEGREDO_DA_INSTALACAO;
   estado.linhas = [{ id: "i1", organization_id: ORG_V }];
   estado.pedidos = [];
+  estado.filtros = [];
 });
 
 describe("store/redact da Nuvemshop", () => {
@@ -102,5 +110,13 @@ describe("store/redact da Nuvemshop", () => {
     expect(res.status).toBeLessThan(300);
     expect(estado.pedidos).toHaveLength(1);
     expect(estado.pedidos[0]).toMatchObject({ organizationId: ORG_V });
+  });
+});
+
+describe("store/redact de loja desconectada no CRM", () => {
+  it("a busca não filtra status: desconectar guarda os clientes, e o pedido de LGPD tem de chegar", async () => {
+    const res = await POST(pedido(SEGREDO_DA_INSTALACAO));
+    expect(res.status).toBeLessThan(300);
+    expect(estado.filtros).not.toContain("status");
   });
 });
