@@ -42994,6 +42994,323 @@ revoke execute on function public.fn_can_view_conversation(uuid, uuid, boolean) 
 grant execute on function public.fn_can_view_conversation(uuid, uuid, boolean)
   to authenticated, service_role;
 
+-- ---- funções do endurecimento pós-auditoria (migrations 0499, 0500 e 0501) ----
+-- As DEFINIÇÕES de função das migrations 0499 a 0501 moram aqui, ACIMA da
+-- varredura de anon, porque o ALTER DEFAULT PRIVILEGES do corpo do baseline faz
+-- toda função nova nascer com EXECUTE para anon em quem atualiza, e só o que
+-- vem ANTES da varredura é curado (tests/unit/varredura-anon-e-o-ultimo-bloco).
+-- Políticas, gatilhos e revogações ficam nos blocos rotulados de cada
+-- migration, no fim do arquivo. Nenhuma destas definições é seguida por outra
+-- da mesma função: são as que o banco instala.
+
+-- (0499) emit_event: tipos de comando reservados ao servidor.
+CREATE OR REPLACE FUNCTION public.emit_event(p_event_type text, p_entity_kind text, p_entity_id uuid, p_payload jsonb DEFAULT '{}'::jsonb, p_metadata jsonb DEFAULT '{}'::jsonb, p_organization_id uuid DEFAULT NULL::uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_org_id uuid;
+  v_event_id uuid;
+  v_contact uuid;
+  v_origin jsonb;
+begin
+  -- message.received nasce somente do INSERT inbound interno. Um chamador
+  -- público não pode reapresentar uma mensagem existente como evento novo.
+  -- `ai.case_opened`/`ai.case_closed` entram pela mesma razão (0279): o caso é
+  -- do motor, e um evento de caso forjado por login move o funil e acorda o
+  -- agente em nome de uma decisão que ninguém tomou.
+  if auth.uid() is not null and p_event_type in (
+    'message.received','appointment.outcome_confirmed',
+    'ai.case_opened','ai.case_closed'
+  ) then
+    raise exception 'reserved_message_received' using errcode='42501';
+  end if;
+  -- Eventos de COMANDO são do servidor (0499). Os drenos tratam toda linha
+  -- pendente destes tipos como ordem autorizada — despachar o agente, iniciar
+  -- ou retomar chatbot, buscar mídia, notificar menção — e quem os produz de
+  -- verdade é sempre a service role. Vindos de login (até um leitor), eram
+  -- uma porta para acordar o agente, puxar mídia de URL escolhida e travar o
+  -- dreno compartilhado.
+  if auth.uid() is not null and (
+    p_event_type like '%\_requested' escape '\'
+    or p_event_type = 'user.mentioned'
+  ) then
+    raise exception 'reserved_command_event' using errcode='42501';
+  end if;
+  -- Estes campos autorizam efeitos operacionais; não são payload público.
+  if auth.uid() is not null and (
+    coalesce(p_payload,'{}'::jsonb) ?| array['service_origin','service_boundary']
+    or coalesce(p_metadata,'{}'::jsonb) ?| array['service_origin','service_boundary']
+  ) then raise exception 'reserved_service_origin' using errcode='42501'; end if;
+  v_org_id := coalesce(p_organization_id, (public.fn_support_context()->>'organization_id')::uuid);
+  if v_org_id is null then
+    select organization_id into v_org_id
+      from public.user_organizations
+      where user_id = auth.uid() and revoked_at is null
+      limit 1;
+  end if;
+  if v_org_id is null then
+    raise exception 'emit_event: organization_id obrigatorio';
+  end if;
+
+  if auth.uid() is not null
+     and not public.fn_role_at_least(v_org_id, 'viewer') then
+    raise exception 'caller_not_authorized_for_org'
+      using hint = 'emit_event: caller must be an active member of the organization';
+  end if;
+
+  if not public.fn_support_write_allowed(v_org_id) then raise exception 'support_readonly' using errcode='42501'; end if;
+
+  -- A ORIGEM E RESERVADA AO SERVIDOR — ENTAO O SERVIDOR TEM DE ESCREVE-LA.
+  --
+  -- O bloco acima recusa `service_origin` vindo de chamador autenticado (42501,
+  -- e com razao: e o campo que AUTORIZA efeito operacional, nao payload
+  -- publico). So que ninguem o escrevia no lugar dele. Efeito medido: quem move
+  -- o negocio pela IA carimba a origem no servidor (`agent-stage-sync`,
+  -- `appointment-stage-move`, `handoff-stage-move`) e o follow-up nasce; quem
+  -- move PELO QUADRO — o operador, pela rota HTTP autenticada — emitia um
+  -- evento SEM origem, `fn_service_event_origin` caia no `service_stale` final
+  -- (40001), `serviceForEvent` engolia como `stale_origin` e o follow-up nunca
+  -- nascia. Sem erro em lugar nenhum: o gatilho de etapa era inalcancavel pelo
+  -- caminho que o produto oferece na tela.
+  --
+  -- O retrato e tirado AQUI, no instante da emissao, que e exatamente a
+  -- semantica de procedencia que a 0223 quer: "quando este evento nasceu, o
+  -- atendimento estava assim". A resolucao do contato repete a mesma regra de
+  -- `fn_service_event_origin` — se ela nao souber resolver o tipo, nao ha o que
+  -- carimbar e o evento segue sem origem, como antes.
+  if not (coalesce(p_payload,'{}'::jsonb) ? 'service_origin')
+     and not (coalesce(p_metadata,'{}'::jsonb) ? 'service_origin') then
+    if p_event_type in ('lead.created','lead.stage_changed','lead.tag_added') and p_entity_kind='crm_lead' then
+      select contact_id into v_contact from public.crm_leads where organization_id=v_org_id and id=p_entity_id;
+    elsif p_event_type='contact.tag_added' and p_entity_kind='contact' then
+      select id into v_contact from public.contacts where organization_id=v_org_id and id=p_entity_id;
+    end if;
+    if v_contact is not null
+       and exists(select 1 from public.contacts
+                   where organization_id=v_org_id and id=v_contact
+                     and not is_anonymized and is_merged_into is null) then
+      v_origin := jsonb_build_object('kind','command',
+        'observed', public.fn_service_observe_command(v_org_id, v_contact));
+    end if;
+  end if;
+
+  insert into public.event_log
+    (organization_id, event_type, entity_kind, entity_id, payload, metadata)
+  values
+    (v_org_id, p_event_type, p_entity_kind, p_entity_id,
+     coalesce(p_payload, '{}'::jsonb)
+       || case when v_origin is null then '{}'::jsonb else jsonb_build_object('service_origin', v_origin) end,
+     coalesce(p_metadata, '{}'::jsonb)
+       || jsonb_build_object('emitted_at', extract(epoch from now())))
+  returning id into v_event_id;
+
+  return v_event_id;
+end $function$;
+
+-- (0499) fn_conversation_assign: atribuir exige poder ver a conversa.
+CREATE OR REPLACE FUNCTION public.fn_conversation_assign(p_organization_id uuid, p_conversation_id uuid, p_to_user_id uuid, p_reason text, p_expected_assignee uuid DEFAULT NULL::uuid, p_enforce_expected boolean DEFAULT false)
+ RETURNS SETOF conversations
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_from uuid;
+  v_private boolean;
+  v_conv public.conversations%rowtype;
+begin
+  if not public.fn_support_write_allowed(p_organization_id) then raise exception 'support_readonly' using errcode='42501'; end if;
+  if auth.uid() is not null
+     and not public.fn_role_at_least(p_organization_id, 'agent') then
+    raise exception 'caller_not_authorized_for_org'
+      using hint = 'caller must be an active agent+ member of the organization';
+  end if;
+
+  if p_to_user_id is not null then
+    if coalesce(public.fn_member_role_in_org(p_to_user_id, p_organization_id), 'none')
+         not in ('agent','manager','admin') then
+      raise exception 'assignee_not_eligible_member'
+        using hint = 'target must be an active agent+ member of the organization';
+    end if;
+  end if;
+
+  select assigned_to_user_id, is_private into v_from, v_private
+    from public.conversations
+   where id = p_conversation_id
+     and organization_id = p_organization_id
+   for no key update;
+
+  if not found then
+    return;
+  end if;
+
+  -- QUEM NÃO VÊ A CONVERSA NÃO A TOMA PARA SI (0499). A atribuição desbloqueia
+  -- a leitura (o novo dono passa a ver tudo), então autorizar só pelo papel
+  -- deixava um atendente "assumir" uma conversa privada ou fora do seu escopo
+  -- e lê-la em seguida. Para o chamador logado vale a MESMA régua do SELECT
+  -- (`fn_can_view_conversation`); o roteamento do servidor (sem auth.uid())
+  -- segue igual. Sem linha devolvida, as rotas respondem como "não encontrada".
+  if auth.uid() is not null
+     and not public.fn_can_view_conversation(p_organization_id, v_from, coalesce(v_private, false)) then
+    return;
+  end if;
+
+  if p_enforce_expected and v_from is distinct from p_expected_assignee then
+    return;
+  end if;
+
+  update public.conversations
+     set assigned_to_user_id = p_to_user_id,
+         -- Desnormalizado JUNTO com o dono, na mesma transação: nunca existe
+         -- uma janela em que id e nome discordam. NULL junto com o id quando
+         -- a atribuição é removida (release) — nunca sobra um nome órfão de
+         -- dono nenhum. Lido de auth.users porque quem chama esta função
+         -- (RPC) não necessariamente tem acesso ao Admin API — a definer
+         -- resolve por dentro.
+         assigned_to_user_name = case
+           when p_to_user_id is null then null
+           else (select raw_user_meta_data ->> 'full_name' from auth.users where id = p_to_user_id)
+         end,
+         assigned_at = case when p_to_user_id is null then null else now() end,
+         assignee_kind = case when p_to_user_id is null then null else 'user' end,
+         status = case when p_to_user_id is null then 'open' else 'claimed' end,
+         status_changed_at = now(),
+         unread_count_for_assignee = 0,
+         bot_silenced_until = case
+           when p_reason = 'routing'  then bot_silenced_until
+           when p_to_user_id is null  then (case when last_handoff_at is null
+                                                 then null
+                                                 else bot_silenced_until end)
+           else 'infinity'::timestamptz
+         end,
+         updated_at = now()
+   where id = p_conversation_id
+   returning * into v_conv;
+
+  insert into public.conversation_assignment_events
+    (organization_id, conversation_id, from_user_id, to_user_id, changed_by, reason)
+  values
+    (p_organization_id, p_conversation_id, v_from, p_to_user_id, auth.uid(), p_reason);
+
+  return next v_conv;
+end;
+$function$;
+
+-- (0499) item de comanda é da mesma organização da comanda.
+create or replace function public.fn_sale_item_mesma_org()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1 from public.sales s
+     where s.id = new.sale_id and s.organization_id = new.organization_id
+  ) then
+    raise exception 'sale_item_org_mismatch'
+      using errcode = '23514',
+            hint = 'O item tem de ser da mesma organização da comanda.';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_sale_item_mesma_org() from public, anon;
+grant execute on function public.fn_sale_item_mesma_org() to authenticated, service_role;
+
+-- (0499) ponteiro de mídia de messages só pelo servidor.
+create or replace function public.fn_messages_midia_so_pelo_servidor()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_user in ('authenticated', 'anon')
+     and (new.media_url is distinct from old.media_url
+          or new.media_storage_path is distinct from old.media_storage_path) then
+    raise exception 'media_pointer_server_only' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_messages_midia_so_pelo_servidor() from public, anon;
+grant execute on function public.fn_messages_midia_so_pelo_servidor() to authenticated, service_role;
+
+-- (0500) a casca que as políticas mfa_write_* chamam.
+create or replace function public.fn_rls_mfa_provada()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.fn_session_mfa_proven();
+$$;
+revoke execute on function public.fn_rls_mfa_provada() from public, anon;
+grant execute on function public.fn_rls_mfa_provada() to authenticated, service_role;
+
+-- (0500) o instalador das travas passa a instalar também mfa_write_*.
+create or replace function public.fn_aplicar_travas_de_suporte()
+returns void
+language plpgsql
+set search_path = public
+as $f$
+declare r record; v_col text;
+begin
+ for r in select c.oid,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+ where n.nspname='public' and c.relkind='r' and c.relrowsecurity
+ and (exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attname='organization_id' and not a.attisdropped) or c.relname='organizations')
+ loop
+ v_col:=case when r.relname='organizations' then 'id' else 'organization_id' end;
+ if not (has_table_privilege('authenticated',r.oid,'insert') or has_table_privilege('authenticated',r.oid,'update') or has_table_privilege('authenticated',r.oid,'delete')) then
+   execute format('drop policy if exists support_write_insert on public.%I',r.relname);
+   execute format('drop policy if exists support_write_update on public.%I',r.relname);
+   execute format('drop policy if exists support_write_delete on public.%I',r.relname);
+   execute format('drop policy if exists mfa_write_insert on public.%I',r.relname);
+   execute format('drop policy if exists mfa_write_update on public.%I',r.relname);
+   execute format('drop policy if exists mfa_write_delete on public.%I',r.relname);
+   continue; -- tabela server-only mantém ZERO policies, contrato mais restritivo
+ end if;
+ execute format('drop policy if exists support_write_insert on public.%I',r.relname);
+ execute format('create policy support_write_insert on public.%I as restrictive for insert to authenticated with check (public.fn_support_write_allowed(%I))',r.relname,v_col);
+ execute format('drop policy if exists support_write_update on public.%I',r.relname);
+ execute format('create policy support_write_update on public.%I as restrictive for update to authenticated using (public.fn_support_write_allowed(%I)) with check (public.fn_support_write_allowed(%I))',r.relname,v_col,v_col);
+ execute format('drop policy if exists support_write_delete on public.%I',r.relname);
+ execute format('create policy support_write_delete on public.%I as restrictive for delete to authenticated using (public.fn_support_write_allowed(%I))',r.relname,v_col);
+ -- (0500) A MFA PROVADA vale para a escrita DIRETA também, não só para as rotas.
+ -- `(select ...)` é avaliado uma vez por comando, não por linha.
+ execute format('drop policy if exists mfa_write_insert on public.%I',r.relname);
+ execute format('create policy mfa_write_insert on public.%I as restrictive for insert to authenticated with check ((select public.fn_rls_mfa_provada()))',r.relname);
+ execute format('drop policy if exists mfa_write_update on public.%I',r.relname);
+ execute format('create policy mfa_write_update on public.%I as restrictive for update to authenticated using ((select public.fn_rls_mfa_provada())) with check ((select public.fn_rls_mfa_provada()))',r.relname);
+ execute format('drop policy if exists mfa_write_delete on public.%I',r.relname);
+ execute format('create policy mfa_write_delete on public.%I as restrictive for delete to authenticated using ((select public.fn_rls_mfa_provada()))',r.relname);
+ end loop;
+end $f$;
+
+revoke execute on function public.fn_aplicar_travas_de_suporte() from public, anon, authenticated, service_role;
+
+-- (0501) o ramo de plataforma só escreve com escopo full e a MFA da política.
+create or replace function public.fn_support_write_allowed(p_org uuid)
+returns boolean language sql stable security definer set search_path = public as $f$
+ select coalesce((select case when (s->>'organization_id')::uuid is distinct from p_org then true
+ else s->>'status'='active' and s->>'access_mode'='full' end
+ from (select public.fn_support_context() s) c where s is not null),true)
+ -- (0501) O ramo de plataforma das políticas (`or fn_is_platform_admin()`) só
+ -- escreve numa organização de que a pessoa NÃO é membro quando o escopo é
+ -- 'full' e a sessão cumpre a MFA que `platform_admins.mfa_required` pede.
+ and not exists (
+  select 1 from public.platform_admins p
+   where p.user_id = auth.uid() and p.revoked_at is null
+     and (p.scope <> 'full' or (p.mfa_required and coalesce(auth.jwt()->>'aal','aal1') <> 'aal2'))
+     and not exists (select 1 from public.user_organizations u
+                      where u.user_id = auth.uid() and u.organization_id = p_org and u.revoked_at is null))
+ -- (0501) Organização SUSPENSA pela plataforma fica só-leitura para o login
+ -- (a REST também, não só a tela e as rotas). O servidor (sem auth.uid())
+ -- segue: a ingestão não pode perder mensagem por causa da suspensão. Leitura
+ -- não muda — é por ela que o titular e o admin seguem vendo os próprios dados.
+ and not (auth.uid() is not null
+          and exists (select 1 from public.organizations o where o.id = p_org and o.status = 'suspended')
+          and not public.fn_is_platform_admin());
+$f$;
+revoke all on function public.fn_support_write_allowed(uuid) from public, anon;
+grant execute on function public.fn_support_write_allowed(uuid) to authenticated, service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria
@@ -44741,204 +45058,11 @@ begin
 end $$;
 
 -- ── 3. emit_event: eventos de comando são do servidor ───────────────────────
--- Corpo DERIVADO da última definição vigente; a única mudança é a reserva
--- dos tipos de comando para chamador logado.
-CREATE OR REPLACE FUNCTION public.emit_event(p_event_type text, p_entity_kind text, p_entity_id uuid, p_payload jsonb DEFAULT '{}'::jsonb, p_metadata jsonb DEFAULT '{}'::jsonb, p_organization_id uuid DEFAULT NULL::uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  v_org_id uuid;
-  v_event_id uuid;
-  v_contact uuid;
-  v_origin jsonb;
-begin
-  -- message.received nasce somente do INSERT inbound interno. Um chamador
-  -- público não pode reapresentar uma mensagem existente como evento novo.
-  -- `ai.case_opened`/`ai.case_closed` entram pela mesma razão (0279): o caso é
-  -- do motor, e um evento de caso forjado por login move o funil e acorda o
-  -- agente em nome de uma decisão que ninguém tomou.
-  if auth.uid() is not null and p_event_type in (
-    'message.received','appointment.outcome_confirmed',
-    'ai.case_opened','ai.case_closed'
-  ) then
-    raise exception 'reserved_message_received' using errcode='42501';
-  end if;
-  -- Eventos de COMANDO são do servidor (0499). Os drenos tratam toda linha
-  -- pendente destes tipos como ordem autorizada — despachar o agente, iniciar
-  -- ou retomar chatbot, buscar mídia, notificar menção — e quem os produz de
-  -- verdade é sempre a service role. Vindos de login (até um leitor), eram
-  -- uma porta para acordar o agente, puxar mídia de URL escolhida e travar o
-  -- dreno compartilhado.
-  if auth.uid() is not null and (
-    p_event_type like '%\_requested' escape '\'
-    or p_event_type = 'user.mentioned'
-  ) then
-    raise exception 'reserved_command_event' using errcode='42501';
-  end if;
-  -- Estes campos autorizam efeitos operacionais; não são payload público.
-  if auth.uid() is not null and (
-    coalesce(p_payload,'{}'::jsonb) ?| array['service_origin','service_boundary']
-    or coalesce(p_metadata,'{}'::jsonb) ?| array['service_origin','service_boundary']
-  ) then raise exception 'reserved_service_origin' using errcode='42501'; end if;
-  v_org_id := coalesce(p_organization_id, (public.fn_support_context()->>'organization_id')::uuid);
-  if v_org_id is null then
-    select organization_id into v_org_id
-      from public.user_organizations
-      where user_id = auth.uid() and revoked_at is null
-      limit 1;
-  end if;
-  if v_org_id is null then
-    raise exception 'emit_event: organization_id obrigatorio';
-  end if;
-
-  if auth.uid() is not null
-     and not public.fn_role_at_least(v_org_id, 'viewer') then
-    raise exception 'caller_not_authorized_for_org'
-      using hint = 'emit_event: caller must be an active member of the organization';
-  end if;
-
-  if not public.fn_support_write_allowed(v_org_id) then raise exception 'support_readonly' using errcode='42501'; end if;
-
-  -- A ORIGEM E RESERVADA AO SERVIDOR — ENTAO O SERVIDOR TEM DE ESCREVE-LA.
-  --
-  -- O bloco acima recusa `service_origin` vindo de chamador autenticado (42501,
-  -- e com razao: e o campo que AUTORIZA efeito operacional, nao payload
-  -- publico). So que ninguem o escrevia no lugar dele. Efeito medido: quem move
-  -- o negocio pela IA carimba a origem no servidor (`agent-stage-sync`,
-  -- `appointment-stage-move`, `handoff-stage-move`) e o follow-up nasce; quem
-  -- move PELO QUADRO — o operador, pela rota HTTP autenticada — emitia um
-  -- evento SEM origem, `fn_service_event_origin` caia no `service_stale` final
-  -- (40001), `serviceForEvent` engolia como `stale_origin` e o follow-up nunca
-  -- nascia. Sem erro em lugar nenhum: o gatilho de etapa era inalcancavel pelo
-  -- caminho que o produto oferece na tela.
-  --
-  -- O retrato e tirado AQUI, no instante da emissao, que e exatamente a
-  -- semantica de procedencia que a 0223 quer: "quando este evento nasceu, o
-  -- atendimento estava assim". A resolucao do contato repete a mesma regra de
-  -- `fn_service_event_origin` — se ela nao souber resolver o tipo, nao ha o que
-  -- carimbar e o evento segue sem origem, como antes.
-  if not (coalesce(p_payload,'{}'::jsonb) ? 'service_origin')
-     and not (coalesce(p_metadata,'{}'::jsonb) ? 'service_origin') then
-    if p_event_type in ('lead.created','lead.stage_changed','lead.tag_added') and p_entity_kind='crm_lead' then
-      select contact_id into v_contact from public.crm_leads where organization_id=v_org_id and id=p_entity_id;
-    elsif p_event_type='contact.tag_added' and p_entity_kind='contact' then
-      select id into v_contact from public.contacts where organization_id=v_org_id and id=p_entity_id;
-    end if;
-    if v_contact is not null
-       and exists(select 1 from public.contacts
-                   where organization_id=v_org_id and id=v_contact
-                     and not is_anonymized and is_merged_into is null) then
-      v_origin := jsonb_build_object('kind','command',
-        'observed', public.fn_service_observe_command(v_org_id, v_contact));
-    end if;
-  end if;
-
-  insert into public.event_log
-    (organization_id, event_type, entity_kind, entity_id, payload, metadata)
-  values
-    (v_org_id, p_event_type, p_entity_kind, p_entity_id,
-     coalesce(p_payload, '{}'::jsonb)
-       || case when v_origin is null then '{}'::jsonb else jsonb_build_object('service_origin', v_origin) end,
-     coalesce(p_metadata, '{}'::jsonb)
-       || jsonb_build_object('emitted_at', extract(epoch from now())))
-  returning id into v_event_id;
-
-  return v_event_id;
-end $function$;
+-- (A função está ACIMA da varredura de anon, no bloco "funções do
+-- endurecimento pós-auditoria (migrations 0499 e 0500)".)
 
 -- ── 4. fn_conversation_assign respeita a visibilidade da conversa ───────────
--- Corpo DERIVADO da última definição vigente; a única mudança é o ramo de
--- visibilidade para chamador logado.
-CREATE OR REPLACE FUNCTION public.fn_conversation_assign(p_organization_id uuid, p_conversation_id uuid, p_to_user_id uuid, p_reason text, p_expected_assignee uuid DEFAULT NULL::uuid, p_enforce_expected boolean DEFAULT false)
- RETURNS SETOF conversations
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  v_from uuid;
-  v_private boolean;
-  v_conv public.conversations%rowtype;
-begin
-  if not public.fn_support_write_allowed(p_organization_id) then raise exception 'support_readonly' using errcode='42501'; end if;
-  if auth.uid() is not null
-     and not public.fn_role_at_least(p_organization_id, 'agent') then
-    raise exception 'caller_not_authorized_for_org'
-      using hint = 'caller must be an active agent+ member of the organization';
-  end if;
-
-  if p_to_user_id is not null then
-    if coalesce(public.fn_member_role_in_org(p_to_user_id, p_organization_id), 'none')
-         not in ('agent','manager','admin') then
-      raise exception 'assignee_not_eligible_member'
-        using hint = 'target must be an active agent+ member of the organization';
-    end if;
-  end if;
-
-  select assigned_to_user_id, is_private into v_from, v_private
-    from public.conversations
-   where id = p_conversation_id
-     and organization_id = p_organization_id
-   for no key update;
-
-  if not found then
-    return;
-  end if;
-
-  -- QUEM NÃO VÊ A CONVERSA NÃO A TOMA PARA SI (0499). A atribuição desbloqueia
-  -- a leitura (o novo dono passa a ver tudo), então autorizar só pelo papel
-  -- deixava um atendente "assumir" uma conversa privada ou fora do seu escopo
-  -- e lê-la em seguida. Para o chamador logado vale a MESMA régua do SELECT
-  -- (`fn_can_view_conversation`); o roteamento do servidor (sem auth.uid())
-  -- segue igual. Sem linha devolvida, as rotas respondem como "não encontrada".
-  if auth.uid() is not null
-     and not public.fn_can_view_conversation(p_organization_id, v_from, coalesce(v_private, false)) then
-    return;
-  end if;
-
-  if p_enforce_expected and v_from is distinct from p_expected_assignee then
-    return;
-  end if;
-
-  update public.conversations
-     set assigned_to_user_id = p_to_user_id,
-         -- Desnormalizado JUNTO com o dono, na mesma transação: nunca existe
-         -- uma janela em que id e nome discordam. NULL junto com o id quando
-         -- a atribuição é removida (release) — nunca sobra um nome órfão de
-         -- dono nenhum. Lido de auth.users porque quem chama esta função
-         -- (RPC) não necessariamente tem acesso ao Admin API — a definer
-         -- resolve por dentro.
-         assigned_to_user_name = case
-           when p_to_user_id is null then null
-           else (select raw_user_meta_data ->> 'full_name' from auth.users where id = p_to_user_id)
-         end,
-         assigned_at = case when p_to_user_id is null then null else now() end,
-         assignee_kind = case when p_to_user_id is null then null else 'user' end,
-         status = case when p_to_user_id is null then 'open' else 'claimed' end,
-         status_changed_at = now(),
-         unread_count_for_assignee = 0,
-         bot_silenced_until = case
-           when p_reason = 'routing'  then bot_silenced_until
-           when p_to_user_id is null  then (case when last_handoff_at is null
-                                                 then null
-                                                 else bot_silenced_until end)
-           else 'infinity'::timestamptz
-         end,
-         updated_at = now()
-   where id = p_conversation_id
-   returning * into v_conv;
-
-  insert into public.conversation_assignment_events
-    (organization_id, conversation_id, from_user_id, to_user_id, changed_by, reason)
-  values
-    (p_organization_id, p_conversation_id, v_from, p_to_user_id, auth.uid(), p_reason);
-
-  return next v_conv;
-end;
-$function$;
+-- (A função está ACIMA da varredura de anon, no mesmo bloco de funções.)
 
 -- ── 5. item de comanda é da mesma organização da comanda ────────────────────
 -- A rota buscava a comanda por qualquer org do usuário e gravava o item com a
@@ -44949,24 +45073,7 @@ $function$;
 -- em sale_id/organization_id). SECURITY INVOKER de propósito: quem insere pelo
 -- login enxerga as comandas das próprias orgs, e é só isso que a comparação
 -- precisa; uma comanda que ele nem vê também é recusada.
-create or replace function public.fn_sale_item_mesma_org()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
-begin
-  if not exists (
-    select 1 from public.sales s
-     where s.id = new.sale_id and s.organization_id = new.organization_id
-  ) then
-    raise exception 'sale_item_org_mismatch'
-      using errcode = '23514',
-            hint = 'O item tem de ser da mesma organização da comanda.';
-  end if;
-  return new;
-end $$;
-revoke execute on function public.fn_sale_item_mesma_org() from public, anon;
-grant execute on function public.fn_sale_item_mesma_org() to authenticated, service_role;
+-- (A função do gatilho está ACIMA da varredura de anon, no bloco de funções.)
 drop trigger if exists trg_sale_item_mesma_org on public.sale_items;
 create trigger trg_sale_item_mesma_org
   before insert or update of sale_id, organization_id on public.sale_items
@@ -45037,27 +45144,82 @@ revoke all on table public.tenant_integrations from anon, authenticated;
 -- Um membro reescrevia `media_url` pela REST e o worker de mídia buscava a URL
 -- escolhida com a credencial do canal (e seguia redirecionamento para a rede
 -- interna). Quem grava estes campos é a ingestão e o envio, pela service role.
-create or replace function public.fn_messages_midia_so_pelo_servidor()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
-begin
-  if current_user in ('authenticated', 'anon')
-     and (new.media_url is distinct from old.media_url
-          or new.media_storage_path is distinct from old.media_storage_path) then
-    raise exception 'media_pointer_server_only' using errcode = '42501';
-  end if;
-  return new;
-end $$;
-revoke execute on function public.fn_messages_midia_so_pelo_servidor() from public, anon;
-grant execute on function public.fn_messages_midia_so_pelo_servidor() to authenticated, service_role;
+-- (A função do gatilho está ACIMA da varredura de anon, no bloco de funções.)
 drop trigger if exists trg_messages_midia_so_pelo_servidor on public.messages;
 create trigger trg_messages_midia_so_pelo_servidor
   before update of media_url, media_storage_path on public.messages
   for each row execute function public.fn_messages_midia_so_pelo_servidor();
 
 -- ── travas do suporte depois de toda mudança de privilégio ──────────────────
+do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
+
+notify pgrst, 'reload schema';
+
+-- ---- a MFA provada vale também para a escrita direta (migration 0500) ----
+-- A casca `fn_rls_mfa_provada` e a nova definição de `fn_aplicar_travas_de_suporte`
+-- estão ACIMA da varredura de anon, no bloco "funções do endurecimento
+-- pós-auditoria (migrations 0499 e 0500)". Aqui só a reaplicação, depois de
+-- toda tabela do apêndice.
+do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
+
+notify pgrst, 'reload schema';
+
+-- ---- fila do motor e fila de exclusão só pelo servidor; plataforma com escopo e MFA (migration 0501) ----
+-- ── 1. tabelas do motor: membro lê, só o servidor escreve ──────────────────
+-- `job_queue`, `cron_jobs`, `llm_calls`, `pacing_ledger`, `send_ledger`,
+-- `outbound_copies`, `storage_redaction_queue` e o texto de retomada
+-- (`reentry_template_versions`/`_pointers`) recebiam a política genérica
+-- "é da sua organização" FOR ALL, e `authenticated` mantinha INSERT/UPDATE/
+-- DELETE. A auditoria de 04/11/2026 reproduziu, com o JWT de um LEITOR:
+--   - uma linha em `cron_jobs` que o worker copiou para a fila e mandou pelo
+--     WhatsApp da empresa, ao contato escolhido, o texto escolhido;
+--   - jobs com prioridade -32768 passando à frente de outras organizações;
+--   - apagar `llm_calls` (zerava o gasto que o teto de IA mede) e
+--     `pacing_ledger` (zerava o ritmo anti-banimento);
+--   - uma linha em `storage_redaction_queue` que fez o dreno (service role)
+--     apagar o logo da instalação e a mídia de OUTRA organização.
+-- Nenhum escritor legítimo usa o login: o motor grava pelo pool, as rotas e
+-- crons com a service role, e as funções do banco que alimentam as filas são
+-- SECURITY DEFINER. A única rota que gravava com a sessão
+-- (`leads/[id]/reactivation`) passa a gravar pelo servidor neste mesmo PR.
+-- `fn_proteger_tabelas_de_organizacao` só age em tabela com RLS desligada,
+-- então não devolve a política FOR ALL; e `fn_aplicar_travas_de_suporte`,
+-- chamada no fim, tira as restritivas de escrita, que ficam sem objeto.
+do $$
+declare t text; p record;
+begin
+  foreach t in array array['job_queue','cron_jobs','llm_calls','pacing_ledger',
+                           'send_ledger','outbound_copies','storage_redaction_queue',
+                           'reentry_template_versions','reentry_template_pointers'] loop
+    if to_regclass('public.' || t) is null then continue; end if;
+    for p in select policyname from pg_policies
+              where schemaname = 'public' and tablename = t
+                and permissive = 'PERMISSIVE' and cmd in ('ALL','INSERT','UPDATE','DELETE') loop
+      execute format('drop policy if exists %I on public.%I', p.policyname, t);
+    end loop;
+    execute format('drop policy if exists %I on public.%I', t || '_leitura', t);
+    execute format(
+      'create policy %I on public.%I for select to authenticated '
+      'using (organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin())',
+      t || '_leitura', t);
+    execute format('revoke insert, update, delete, truncate on public.%I from anon, authenticated', t);
+  end loop;
+end $$;
+
+-- ── 2. o ramo de plataforma respeita escopo e MFA ───────────────────────────
+-- `fn_is_platform_admin()` é verdade para qualquer linha não revogada de
+-- `platform_admins` e entra com OR em 65 políticas de escrita. Um admin de
+-- plataforma de escopo 'support_readonly' — sem sessão de suporte, que é onde o
+-- escopo era respeitado — se fez admin de uma organização alheia, emitiu token
+-- de API para ela e rebaixou o dono, pela REST; e a sessão aal1 de um admin com
+-- `mfa_required` fazia o mesmo. Em vez de reescrever as 65 políticas, a regra
+-- entra em `fn_support_write_allowed`, que as restritivas `support_write_*` já
+-- aplicam a TODA tabela de organização (e que as RPCs de escrita já chamam):
+-- fora das organizações de que é membro, quem não é 'full' (ou não provou a MFA
+-- exigida) não escreve. Leitura não muda. A mesma função passa a deixar
+-- só-leitura, para o login, a organização que a plataforma SUSPENDEU (a
+-- suspensão era cobrada só na tela do /app). (A função está ACIMA da varredura
+-- de anon, no bloco de funções do endurecimento.)
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
 
 notify pgrst, 'reload schema';

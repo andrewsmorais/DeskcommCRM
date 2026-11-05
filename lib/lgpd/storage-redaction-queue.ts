@@ -29,6 +29,29 @@ const MAX_ATTEMPTS = 3;
 const DEFAULT_BATCH = 50;
 
 /**
+ * Os ÚNICOS buckets que a fila alcança — os de quem a alimenta: a cascata de
+ * LGPD, a retenção de mídia e o cron das fotos de contato (`whatsapp-media`) e
+ * a redação de propostas (`propostas`). Nenhum produtor grava fora disto.
+ */
+const BUCKETS_DA_FILA = new Set(["whatsapp-media", "propostas"]);
+
+/**
+ * O objeto tem de ser DA organização da linha: todo produtor grava sob
+ * `<organization_id>/…`. A fila era gravável por qualquer membro pela REST
+ * (auditoria de 04/11/2026), e este dreno apaga com a service role — sem esta
+ * conferência, uma linha plantada apagava o logo da instalação ou a mídia de
+ * outra organização. A migration 0501 fechou a escrita; esta guarda fica para
+ * linha que já estava na fila e para o próximo produtor que errar o caminho.
+ */
+export function alvoDaFilaValido(
+  row: Pick<QueueRow, "organization_id" | "bucket" | "object_path">,
+): boolean {
+  if (!BUCKETS_DA_FILA.has(row.bucket)) return false;
+  if (!row.object_path.startsWith(`${row.organization_id}/`)) return false;
+  return !row.object_path.split("/").some((parte) => parte === ".." || parte === ".");
+}
+
+/**
  * Pull up to `limit` pending rows and process them sequentially.
  *
  * Caller responsibility: throttle invocation via cron. The function returns
@@ -62,10 +85,27 @@ export async function drainStorageRedactionQueue(
     stats.attempted++;
     const nextAttempts = row.attempts + 1;
 
+    if (!alvoDaFilaValido(row)) {
+      await admin
+        .from("storage_redaction_queue")
+        .update({
+          status: "failed",
+          attempts: nextAttempts,
+          processed_at: new Date().toISOString(),
+          error_message: "target_outside_tenant",
+        })
+        .eq("id", row.id);
+      stats.failed++;
+      logger.error("[lgpd-redact-worker] alvo fora da organização da linha — não apagado", {
+        queue_id: row.id,
+        organization_id: row.organization_id,
+        bucket: row.bucket,
+      });
+      continue;
+    }
+
     try {
-      const { error: removeErr } = await admin.storage
-        .from(row.bucket)
-        .remove([row.object_path]);
+      const { error: removeErr } = await admin.storage.from(row.bucket).remove([row.object_path]);
 
       if (removeErr) {
         // Treat "not found" as deleted (idempotent / object already gone).

@@ -25,6 +25,9 @@ import { requireRole } from "@/lib/auth/require-role";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
+import { logger } from "@/lib/logger";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -91,7 +94,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
       return fail(
         "reactivation_not_pending",
         `${t("Esta sugestão já foi")} ${
-          (existe as { status: string }).status === "expired" ? t("encerrada pelo prazo") : t("decidida")
+          (existe as { status: string }).status === "expired"
+            ? t("encerrada pelo prazo")
+            : t("decidida")
         }.`,
         409,
         { requestId },
@@ -104,6 +109,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     .from("crm_leads")
     .select("contact_id")
     .eq("id", leadId)
+    .eq("organization_id", orgId)
     .maybeSingle();
   const contactId = (lead as { contact_id: string | null } | null)?.contact_id ?? null;
 
@@ -133,23 +139,51 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
       .gt("next_run_at", new Date().toISOString())
       .maybeSingle();
     if (!pendente) {
-      const { error: cronErr } = await supabase.from("cron_jobs").insert({
-        organization_id: orgId,
-        contact_id: contactId,
-        kind: "at",
-        job_kind: "followup_turn",
-        // Agora: a pessoa acabou de autorizar. Adiar seria transformar uma
-        // decisão em promessa, que é o que a wave inteira combate.
-        next_run_at: new Date().toISOString(),
-        payload: {
-          reason: "Retomada de contato autorizada por um humano",
-          promise: null,
-          promised_at: null,
-          source: "reactivation",
-          proposal_id,
-        },
-      });
-      envioAgendado = !cronErr;
+      // `cron_jobs` é fila do MOTOR: desde a migration 0501 o login não escreve
+      // nela (um leitor agendava pela REST o envio que quisesse). Quem grava é o
+      // servidor, depois do `requireRole("agent")` acima, com a organização da
+      // sessão e o contato lido sob a RLS dela.
+      //
+      // A fronteira do atendimento vem de `beginServiceAtOrigin`, como em
+      // `lib/followup/retorno-crm.ts`: sem `service_boundary` no payload o
+      // worker cancelava o job como fronteira vencida, e a retomada aceita
+      // nunca saía (achado funcional da mesma auditoria).
+      const admin = createAdminClient();
+      try {
+        const boundary = await beginServiceAtOrigin(admin, orgId, contactId);
+        const { error: cronErr } = await admin.from("cron_jobs").insert({
+          organization_id: orgId,
+          contact_id: contactId,
+          kind: "at",
+          job_kind: "followup_turn",
+          // Agora: a pessoa acabou de autorizar. Adiar seria transformar uma
+          // decisão em promessa, que é o que a wave inteira combate.
+          next_run_at: new Date().toISOString(),
+          payload: {
+            reason: "Retomada de contato autorizada por um humano",
+            promise: null,
+            promised_at: null,
+            source: "reactivation",
+            proposal_id,
+            conversation_id: boundary.conversation_id,
+            service_boundary: boundary,
+          },
+        });
+        envioAgendado = !cronErr;
+        if (cronErr) {
+          logger.error("reactivation: agendamento do envio falhou", {
+            organization_id: orgId,
+            lead_id: leadId,
+            error_message: cronErr.message,
+          });
+        }
+      } catch (err) {
+        logger.error("reactivation: atendimento não abriu para o envio", {
+          organization_id: orgId,
+          lead_id: leadId,
+          error_message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
