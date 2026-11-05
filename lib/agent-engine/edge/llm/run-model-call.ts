@@ -21,6 +21,7 @@ import type pg from 'pg';
 import { z } from 'zod';
 
 import { PONTO_POR_ID } from '@/lib/ai/pontos/registro';
+import { configTecnicaDaPlataforma } from '@/lib/ai/agents/config-tecnica';
 import { scrubMessage } from '@/lib/sentry/scrub';
 
 import type { Logger } from '../../obs/logger';
@@ -521,7 +522,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   // só um rótulo de custo e virar decisão. Sem binding configurado, `decisao`
   // reproduz exatamente o comportamento anterior — a origem volta como
   // 'variavel_de_ambiente' ou 'padrao_da_organizacao'.
-  const decisao = await decidirParaOSeam(db, {
+  let decisao = await decidirParaOSeam(db, {
     organizationId: input.tenantId,
     purpose,
     modeloDoCallSite: input.model,
@@ -552,12 +553,56 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
     decisao.provider !== padrao.provider ||
     (decisao.credentialId !== null && decisao.credentialId !== credencialJaCarregada);
 
-  const config = precisaOutraCredencial
+  let config = precisaOutraCredencial
     ? await resolveOrgLlmConfig(db, cfg, input.tenantId, {
         provider: decisao.provider,
         credentialId: decisao.credentialId,
       })
     : padrao;
+
+  // ═══ NA CHAVE DA PLATAFORMA, QUEM ESCOLHE O MODELO É A PLATAFORMA ═══
+  //
+  // O binding do ponto e o padrão da organização são escritos por quem
+  // administra a ORGANIZAÇÃO. Com credencial própria, a escolha é dela e ela
+  // paga. Sem credencial, a escada cai na chave da instalação — e o modelo
+  // escolhido pela empresa (qualquer id, até fora do catálogo e sem preço, que
+  // o gasto do mês conta como zero) rodava na conta do dono da plataforma. A
+  // trava de `config-tecnica.ts` cobria só a versão do agente.
+  //
+  // Então, nesse par, a decisão inteira é descartada e vale a da plataforma
+  // (`configTecnicaDaPlataforma`): provedor, modelo e chave do MESMO lugar, re-
+  // resolvidos juntos — trocar só o id do modelo mandaria um id de um provedor
+  // para o endpoint de outro (a lição do PR #151). Endereço próprio fica de
+  // fora: a chave da instalação com endereço da empresa já tem a recusa dela,
+  // logo abaixo.
+  const plataforma = configTecnicaDaPlataforma();
+  if (
+    config.origemDaChave === 'chave_da_instalacao' &&
+    !decisao.baseUrl &&
+    (decisao.origem === 'binding' || decisao.origem === 'padrao_da_organizacao') &&
+    // A escolha que já É a da plataforma segue como está, com a origem dela.
+    (decisao.provider !== plataforma.provider || decisao.modelId !== plataforma.model)
+  ) {
+    deps.log?.warn('llm: escolha da organização ignorada na chave da instalação — vale a da plataforma', {
+      tenant_id: input.tenantId,
+      purpose,
+      origem_descartada: decisao.origem,
+      modelo_descartado: decisao.modelId,
+      modelo_da_plataforma: plataforma.model,
+    });
+    decisao = {
+      ...decisao,
+      provider: plataforma.provider,
+      modelId: plataforma.model,
+      credentialId: null,
+      baseUrl: null,
+      origem: 'variavel_de_ambiente',
+    };
+    config = await resolveOrgLlmConfig(db, cfg, input.tenantId, {
+      provider: plataforma.provider,
+      credentialId: null,
+    });
+  }
 
   const model = decisao.modelId;
   if (model === null || model === undefined) {

@@ -10,6 +10,7 @@ import type pg from "pg";
 import { extractPdfText } from "@/lib/ai/rag/extractors/pdf";
 import { visaoEmVigor } from "@/lib/ai/pontos/capacidade-em-vigor";
 import { resolveOrgLlmConfig, type LlmEdgeConfig } from "@/lib/agent-engine/edge/llm/credentials";
+import { configTecnicaDaPlataforma } from "@/lib/ai/agents/config-tecnica";
 import { createDefaultRegistry } from "@/lib/agent-engine/edge/llm/providers";
 import { createPool } from "@/lib/agent-engine/db/pool";
 import { env } from "@/lib/env";
@@ -197,6 +198,21 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
 
     if (!llm) {
       llm = await resolveOrgLlmConfig(derivePool(), llmCfg, row.organization_id);
+    }
+
+    // Na chave da INSTALAÇÃO, quem escolhe o modelo é a plataforma — a mesma
+    // régua do seam (`run-model-call.ts`). O modelo do binding de visão e o
+    // padrão da organização são escritos por quem administra a ORGANIZAÇÃO;
+    // sem credencial própria, o que ela escolhesse rodava na conta do dono.
+    // Provedor e modelo vêm juntos da plataforma. Endereço próprio fica com a
+    // recusa de sempre (chave da instalação não vai para endereço da empresa).
+    if (llm.origemDaChave === "chave_da_instalacao" && !baseUrlDaVisao) {
+      const plataforma = configTecnicaDaPlataforma();
+      const daPlataforma = await resolveOrgLlmConfig(derivePool(), llmCfg, row.organization_id, {
+        provider: plataforma.provider,
+        credentialId: null,
+      });
+      llm = { ...daPlataforma, defaultModel: plataforma.model };
     }
 
     // A transcrição é SEMPRE do Whisper (api.openai.com), então precisa de uma

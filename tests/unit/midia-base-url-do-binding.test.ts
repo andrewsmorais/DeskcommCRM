@@ -305,6 +305,27 @@ describe("worker de mídia: base_url do binding de visão (#855)", () => {
     expect(factoryMock).toHaveBeenCalledWith("chave-do-binding", "acme/visao-1", undefined);
   });
 
+  it("na chave da INSTALAÇÃO, o modelo do binding da empresa é trocado pelo da plataforma", async () => {
+    // Achado da auditoria: o admin da empresa escolhia o modelo da visão (até
+    // fora do catálogo) e ele rodava na chave que o dono paga. Provedor e
+    // modelo passam a vir JUNTOS da plataforma (`configTecnicaDaPlataforma`).
+    vi.stubEnv("PLATAFORMA_IA_PROVEDOR", "openai");
+    vi.stubEnv("PLATAFORMA_IA_MODELO", "modelo-da-plataforma");
+    bindingDaVez = BINDING_SEM_ENDPOINT;
+    credencial.origemDaChave = "chave_da_instalacao";
+    const { resolveOrgLlmConfig } = await import("@/lib/agent-engine/edge/llm/credentials");
+
+    await deriveMessageMedia(eventRow());
+    await depsDaChamada().describeImage(Buffer.from("jpeg"), "image/jpeg");
+
+    expect(vi.mocked(resolveOrgLlmConfig)).toHaveBeenCalledWith(expect.anything(), expect.anything(), "org1", {
+      provider: "openai",
+      credentialId: null,
+    });
+    expect(factoryMock).toHaveBeenCalledWith(expect.any(String), "modelo-da-plataforma", undefined);
+    expect(factoryMock).not.toHaveBeenCalledWith(expect.anything(), "acme/visao-1", expect.anything());
+  });
+
   it("usa o serviço de transcrição do .env, quando ele está configurado", async () => {
     comTranscricaoNoEnv({
       apiKey: "chave-do-servico",
