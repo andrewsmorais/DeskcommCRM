@@ -240,6 +240,27 @@ async function exigeDonoDoCompromisso(
   throw new ApiError(403, "appointment_do_colega", undefined, ctx.requestId, RECUSA_DO_COLEGA);
 }
 
+/**
+ * A IA num turno de conversa só mexe no compromisso de QUEM está falando.
+ *
+ * O `appointment_id` vem do modelo, e a listagem da agenda devolvia os ids de
+ * todo cliente: o contato A, conversando, levava a IA a cancelar, remarcar ou
+ * confirmar o compromisso do contato B — com a identidade da organização, numa
+ * ação que A não tem como fazer por conta própria. O contato do turno vem do
+ * runtime (`McpContext.turnContactId`), nunca dos argumentos da tool.
+ */
+function exigeContatoDoTurno(ctx: HandlerCtx, atual: Record<string, unknown>): void {
+  if (ctx.actor.type !== "ai_agent" || !ctx.turnContactId) return;
+  if (atual.contact_id === ctx.turnContactId) return;
+  throw new ApiError(
+    403,
+    "appointment_de_outro_contato",
+    undefined,
+    ctx.requestId,
+    "Este compromisso é de outro cliente; não é possível alterá-lo nesta conversa.",
+  );
+}
+
 const ENDPOINT_IDEMPOTENCIA_AGENDA = "/api/v1/agenda/agendamentos";
 
 /**
@@ -526,6 +547,7 @@ export async function alterarAgendamentoHandler(
     "time_zone",
   ]);
 
+  exigeContatoDoTurno(ctx, atual);
   await exigeDonoDoCompromisso(supabase, ctx, atual);
 
   if (input.revision !== undefined && input.revision !== Number(atual.revision))
@@ -741,6 +763,7 @@ export async function cancelarAgendamentoHandler(
     "time_zone",
   ]);
 
+  exigeContatoDoTurno(ctx, atual);
   await exigeDonoDoCompromisso(supabase, ctx, atual);
 
   // Idempotente: cancelar o que já está cancelado devolve o estado, não erro —

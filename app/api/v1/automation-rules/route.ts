@@ -59,11 +59,14 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   // Secrets de call_webhook nunca ficam em claro no jsonb (migration 0041).
-  const safeActions = await encryptRuleActionSecrets(createAdminClient(), parsed.data.actions);
+  // Regra nova não tem segredo gravado: secret_enc vindo do corpo é descartado.
+  const safeActions = await encryptRuleActionSecrets(createAdminClient(), parsed.data.actions, []);
   if (safeActions === null) {
     return fail(
       "encryption_unavailable",
-      t("Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave. Enquanto isso, você pode criar a ação sem segredo."),
+      t(
+        "Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave. Enquanto isso, você pode criar a ação sem segredo.",
+      ),
       422,
       { requestId },
     );
@@ -87,7 +90,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select("*")
     .single();
   if (insErr || !created) {
-    return fail("internal_error", insErr?.message ?? "automation_rule_insert_failed", 500, { requestId });
+    return fail("internal_error", insErr?.message ?? "automation_rule_insert_failed", 500, {
+      requestId,
+    });
   }
 
   void audit({

@@ -21,7 +21,12 @@ import {
   type ResultadoClassificacaoInicial,
 } from "@/lib/leads/classificacao-inicial";
 import type { CreateLeadInput } from "@/lib/schemas";
-import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
+import {
+  cabecalhosParaOArquivo,
+  mapInboundPayload,
+  verifyInboundSignature,
+  type FieldMap,
+} from "@/lib/webhooks/inbound";
 import { encontrarContatoPorTelefoneComNome } from "@/lib/channels/contato-por-telefone";
 import {
   buildContactConsentGrant,
@@ -190,12 +195,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     return fail("unauthenticated", "invalid_signature", 401, { requestId });
   }
 
-  const headersJson: Record<string, string> = {};
-  req.headers.forEach((value, key) => {
-    const k = key.toLowerCase();
-    if (k.startsWith("authorization") || k === "cookie") return;
-    headersJson[key] = value;
-  });
+  // O cabeçalho que prova a origem (o hottok da Hotmart é o próprio segredo da
+  // fonte) não fica no arquivo, que todo membro lê (lib/webhooks/inbound.ts).
+  const headersJson = cabecalhosParaOArquivo(req.headers, sourceSecret);
   await admin.from("webhook_events_log").insert({
     organization_id: source.organization_id,
     provider: "generic",
@@ -203,8 +205,12 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     http_method: "POST",
     headers: headersJson,
     // O `secret` que a Cakto manda no corpo é o segredo da fonte: não fica no log.
-    raw_body: typeof payload.secret === "string" ? JSON.stringify({ ...payload, secret: "[removido]" }) : rawBody,
-    payload_parsed: typeof payload.secret === "string" ? { ...payload, secret: "[removido]" } : payload,
+    raw_body:
+      typeof payload.secret === "string"
+        ? JSON.stringify({ ...payload, secret: "[removido]" })
+        : rawBody,
+    payload_parsed:
+      typeof payload.secret === "string" ? { ...payload, secret: "[removido]" } : payload,
     signature_header: sigHeader ?? null,
     // hmacSkipped (decrypt indisponível) conta como "não validado mas aceito",
     // igual ao webhook WAHA — o feed da UI não pinta de vermelho.
@@ -341,7 +347,10 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         .update({ external_id: externalId })
         .eq("organization_id", source.organization_id)
         .eq("id", carrinho.id);
-      deduped = { id: carrinho.id as string, contactId: (carrinho.contact_id as string | null) ?? null };
+      deduped = {
+        id: carrinho.id as string,
+        contactId: (carrinho.contact_id as string | null) ?? null,
+      };
     }
   }
 
@@ -353,7 +362,11 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       { organizationId: source.organization_id, webhookSourceId: source.id, requestId },
       deduped.id,
       vendaMapped,
-      await etapasDoFunil(admin, source.organization_id, source.default_pipeline_id as string | null),
+      await etapasDoFunil(
+        admin,
+        source.organization_id,
+        source.default_pipeline_id as string | null,
+      ),
     );
     await registrarCaptacao(admin, {
       ...fonteDaCaptacao,
@@ -615,7 +628,11 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     stage_id: vendaMapped
       ? (etapaDoEvento(
           vendaMapped.evento,
-          await etapasDoFunil(admin, source.organization_id, source.default_pipeline_id as string | null),
+          await etapasDoFunil(
+            admin,
+            source.organization_id,
+            source.default_pipeline_id as string | null,
+          ),
         ) ?? source.default_stage_id)
       : source.default_stage_id,
     title: respondiMapped

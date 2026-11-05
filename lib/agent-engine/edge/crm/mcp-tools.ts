@@ -121,6 +121,8 @@ export async function buildMcpTurnTools(
     apiTokenId: ephemeral.id,
     requestId: ids.jobId,
     supabase: cfg.supabase,
+    // O contato da conversa do turno, do fecho confiável — nunca dos argumentos.
+    ...(ids.contactId ? { turnContactId: ids.contactId } : {}),
   };
   const auth: McpAuthResult = {
     organizationId: ids.organizationId,

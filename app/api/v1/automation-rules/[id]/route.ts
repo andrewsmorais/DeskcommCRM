@@ -50,7 +50,7 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const supabase = await createClient();
   const { data: existing, error: fetchErr } = await supabase
     .from("automation_rules")
-    .select("id")
+    .select("id, actions")
     .eq("id", id)
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
@@ -58,7 +58,8 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   if (!existing) return fail("not_found", t("Regra não encontrada."), 404, { requestId });
 
   // Secrets de call_webhook nunca ficam em claro no jsonb (migration 0041);
-  // secret_enc existente (round-trip do editor) passa intacto.
+  // secret_enc do round-trip do editor só passa se for um que esta regra já
+  // tinha gravado (lib/webhooks/secrets.ts).
   // A autoria vai junto de TODA escrita, pelo mesmo helper que o agente usa: uma
   // regra ligada é o estado mais perigoso do sistema, e a tela precisa dizer
   // quem a ligou (migration 0101).
@@ -68,11 +69,17 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
     ...autoriaDaMudanca({ type: "user", id: user.id, role: activeOrg.role }),
   };
   if (parsed.data.actions !== undefined) {
-    const safeActions = await encryptRuleActionSecrets(createAdminClient(), parsed.data.actions);
+    const safeActions = await encryptRuleActionSecrets(
+      createAdminClient(),
+      parsed.data.actions,
+      existing.actions,
+    );
     if (safeActions === null) {
       return fail(
         "encryption_unavailable",
-        t("Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave."),
+        t(
+          "Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave.",
+        ),
         422,
         { requestId },
       );
@@ -97,7 +104,10 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
     resourceId: id,
     requestId,
     // actions fora do audit: config de call_webhook carrega secret plaintext no input.
-    metadata: { ...auditableRule, ...(parsed.data.actions !== undefined ? { actions_changed: true } : {}) },
+    metadata: {
+      ...auditableRule,
+      ...(parsed.data.actions !== undefined ? { actions_changed: true } : {}),
+    },
   });
 
   return ok(updated, { requestId });

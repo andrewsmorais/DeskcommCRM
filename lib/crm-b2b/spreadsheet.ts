@@ -28,6 +28,15 @@ export const IMPORT_MAX_DATA_ROWS = 2_000;
  * megabytes de memória no servidor.
  */
 const XLSX_MAX_XML_BYTES = 40 * 1024 * 1024;
+/**
+ * Teto da SOMA de tudo que o leitor descompacta, em todas as passadas. O teto
+ * por arquivo sozinho não segura: um zip de 2 MB cabe ~50 entradas de quase
+ * 40 MB cada (XML repetido comprime ~1000x), e o `unzipSync` guarda todas na
+ * memória ao mesmo tempo — ~2 GB num contêiner de 768 MB que atende todas as
+ * organizações. O fflate infla cada entrada num buffer do tamanho DECLARADO e
+ * não passa dele, então somar o declarado limita a memória de verdade.
+ */
+const XLSX_MAX_TOTAL_XML_BYTES = 48 * 1024 * 1024;
 
 type Leitura = { ok: true; sheet: SheetMatrix } | { ok: false; error: string };
 
@@ -78,7 +87,8 @@ const ENTIDADES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"
 function decodificarXml(texto: string): string {
   return texto.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (inteira, e: string) => {
     if (e[0] === "#") {
-      const codigo = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      const codigo =
+        e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return Number.isFinite(codigo) ? String.fromCodePoint(codigo) : inteira;
     }
     return ENTIDADES[e.toLowerCase()] ?? inteira;
@@ -88,7 +98,8 @@ function decodificarXml(texto: string): string {
 /** O texto de um `<si>` ou `<is>`: todos os `<t>`, inclusive os de texto rico (`<r><t>`). */
 function textoDosRuns(xml: string): string {
   let out = "";
-  for (const m of xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)) out += decodificarXml(m[1] ?? "");
+  for (const m of xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g))
+    out += decodificarXml(m[1] ?? "");
   return out;
 }
 
@@ -113,47 +124,71 @@ function valorDaCelula(attrs: string, corpo: string, compartilhados: string[]): 
   return Number.isFinite(n) ? String(n) : v;
 }
 
-function parseXlsx(bytes: ArrayBuffer): Leitura {
-  let arquivos: Record<string, Uint8Array>;
-  let grandeDemais = false;
-  try {
-    arquivos = unzipSync(new Uint8Array(bytes), {
-      filter: (f) => {
-        const util =
-          f.name === "xl/workbook.xml" ||
-          f.name === "xl/_rels/workbook.xml.rels" ||
-          f.name === "xl/sharedStrings.xml" ||
-          /^xl\/worksheets\/[^/]+\.xml$/.test(f.name);
-        if (util && f.originalSize > XLSX_MAX_XML_BYTES) grandeDemais = true;
-        return util && !grandeDemais;
-      },
-    });
-  } catch {
-    return { ok: false, error: "Não consegui ler o arquivo XLSX." };
-  }
-  if (grandeDemais) return { ok: false, error: "Planilha grande demais para importar de uma vez." };
+const ERRO_DE_LEITURA: Leitura = { ok: false, error: "Não consegui ler o arquivo XLSX." };
+const ERRO_DE_TAMANHO: Leitura = {
+  ok: false,
+  error: "Planilha grande demais para importar de uma vez.",
+};
 
-  const texto = (nome: string) => {
+/**
+ * Descompacta SÓ o que é lido, em duas passadas: primeiro o `workbook.xml` e os
+ * vínculos dele (para achar a primeira aba), depois essa aba e os textos
+ * compartilhados. As outras abas nunca são infladas. O teto por arquivo e o da
+ * soma valem nas duas passadas juntas, como no pacote de skills
+ * (`lib/ai/skills/package.ts`).
+ */
+function parseXlsx(bytes: ArrayBuffer): Leitura {
+  const zip = new Uint8Array(bytes);
+  let declarado = 0;
+  let grandeDemais = false;
+  const abrir = (quer: (nome: string) => boolean): Record<string, Uint8Array> | null => {
+    try {
+      return unzipSync(zip, {
+        filter: (f) => {
+          if (grandeDemais || !quer(f.name)) return false;
+          declarado += f.originalSize;
+          if (f.originalSize > XLSX_MAX_XML_BYTES || declarado > XLSX_MAX_TOTAL_XML_BYTES) {
+            grandeDemais = true;
+            return false;
+          }
+          return true;
+        },
+      });
+    } catch {
+      return null;
+    }
+  };
+  const texto = (arquivos: Record<string, Uint8Array>, nome: string) => {
     const a = arquivos[nome];
     return a ? strFromU8(a) : null;
   };
-  const workbook = texto("xl/workbook.xml");
-  if (workbook === null) return { ok: false, error: "Não consegui ler o arquivo XLSX." };
+
+  const meta = abrir((n) => n === "xl/workbook.xml" || n === "xl/_rels/workbook.xml.rels");
+  if (meta === null) return ERRO_DE_LEITURA;
+  if (grandeDemais) return ERRO_DE_TAMANHO;
+  const workbook = texto(meta, "xl/workbook.xml");
+  if (workbook === null) return ERRO_DE_LEITURA;
 
   // A PRIMEIRA aba na ordem das abas, que não é necessariamente `sheet1.xml`.
   const rid = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(workbook)?.[1];
-  const rels = texto("xl/_rels/workbook.xml.rels") ?? "";
+  const rels = texto(meta, "xl/_rels/workbook.xml.rels") ?? "";
   let alvo: string | undefined;
   for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) {
     if (m[0].includes(`Id="${rid}"`)) alvo = /Target="([^"]+)"/.exec(m[0])?.[1];
   }
-  const caminho = alvo ? `xl/${alvo.replace(/^\/?xl\//, "").replace(/^\//, "")}` : "xl/worksheets/sheet1.xml";
-  const aba = texto(caminho);
+  const caminho = alvo
+    ? `xl/${alvo.replace(/^\/?xl\//, "").replace(/^\//, "")}`
+    : "xl/worksheets/sheet1.xml";
+  const ehAba = /^xl\/worksheets\/[^/]+\.xml$/.test(caminho);
+  const dados = abrir((n) => (ehAba && n === caminho) || n === "xl/sharedStrings.xml");
+  if (dados === null) return ERRO_DE_LEITURA;
+  if (grandeDemais) return ERRO_DE_TAMANHO;
+  const aba = ehAba ? texto(dados, caminho) : null;
   if (aba === null) return { ok: false, error: "Planilha vazia." };
 
-  const compartilhados = [...(texto("xl/sharedStrings.xml") ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) =>
-    textoDosRuns(m[1] ?? ""),
-  );
+  const compartilhados = [
+    ...(texto(dados, "xl/sharedStrings.xml") ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g),
+  ].map((m) => textoDosRuns(m[1] ?? ""));
 
   const matriz: string[][] = [];
   for (const linha of aba.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {

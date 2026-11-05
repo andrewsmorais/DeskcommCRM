@@ -90,8 +90,25 @@ const RAIZES = ["app", "lib", "workers"] as const;
 
 /** Métodos do PostgREST cujo primeiro argumento restringe a consulta. */
 const FILTROS = new Set([
-  "eq", "neq", "gt", "gte", "lt", "lte", "like", "ilike", "is", "in", "contains",
-  "containedBy", "overlaps", "or", "and", "filter", "match", "not", "textSearch",
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "like",
+  "ilike",
+  "is",
+  "in",
+  "contains",
+  "containedBy",
+  "overlaps",
+  "or",
+  "and",
+  "filter",
+  "match",
+  "not",
+  "textSearch",
 ]);
 
 const CRIAM_LINHA = new Set(["insert", "upsert"]);
@@ -133,15 +150,6 @@ const SEM_FILTRO_LIBERADO: readonly { arquivo: string; tabela: string; motivo: s
       "⚠️ A dispensa VENCE se a tela passar a mostrar QUAIS empresas: aí o `select` " +
       "carrega `organization_id` e volta a ser leitura de dado de inquilino, que " +
       "precisa de decisão própria sobre o que o dono da instalação pode ver.",
-  },
-  {
-    arquivo: "lib/notifications/web_push.ts",
-    tabela: "push_subscriptions",
-    motivo:
-      "`store(admin)` devolve o BUILDER (`admin.from(\"push_subscriptions\")`); quem " +
-      "filtra é cada chamador — `enviarPushDaOrg`/`removerPush` filtram por " +
-      "`organization_id` e, na remoção, por `endpoint`. A cadeia sem filtro não " +
-      "consulta nada: ela não foi aguardada.",
   },
 ];
 
@@ -276,7 +284,8 @@ function analisar(caminho: string, doTenant: ReadonlySet<string>): Cadeia[] {
         // O que o autor ESCREVEU na cadeia: payload inline, `onConflict` e o
         // argumento de cada filtro. Uma variável de payload não aparece aqui —
         // é o caso que `textoDaDeclaracao` cobre.
-        const ultima = passos.length > 0 ? (passos[passos.length - 1] as { chamada: ts.CallExpression }) : null;
+        const ultima =
+          passos.length > 0 ? (passos[passos.length - 1] as { chamada: ts.CallExpression }) : null;
         const fim = ultima === null ? no.getEnd() : ultima.chamada.getEnd();
         const textoDaCadeia = fonte.text.slice(no.getStart(), fim);
 
@@ -316,7 +325,8 @@ const DO_TENANT = tabelasTenantAware();
 const ARQUIVOS = arquivosDeCodigo(RAIZES);
 const CADEIAS = ARQUIVOS.flatMap((a) => analisar(a, DO_TENANT));
 
-const emPlataforma = (c: Cadeia): boolean => PLATAFORMA.some((p) => c.arquivo.startsWith(p.caminho));
+const emPlataforma = (c: Cadeia): boolean =>
+  PLATAFORMA.some((p) => c.arquivo.startsWith(p.caminho));
 
 /** Uma linha por achado, para a falha dizer ONDE — e não só QUANTOS. */
 const descreverCadeia = (c: Cadeia): string => `${c.arquivo}:${c.linha} ${c.tabela}`;
@@ -324,7 +334,9 @@ const descreverCadeia = (c: Cadeia): string => `${c.arquivo}:${c.linha} ${c.tabe
 const escritasSemTenant = CADEIAS.filter((c) => c.criaLinha && !c.carregaOTenant);
 const semFiltroNenhum = CADEIAS.filter((c) => !c.criaLinha && !c.filtra && !c.carregaOTenant)
   .filter((c) => !emPlataforma(c))
-  .filter((c) => !SEM_FILTRO_LIBERADO.some((e) => e.arquivo === c.arquivo && e.tabela === c.tabela));
+  .filter(
+    (c) => !SEM_FILTRO_LIBERADO.some((e) => e.arquivo === c.arquivo && e.tabela === c.tabela),
+  );
 
 describe("o cliente de serviço também responde ao tenant", () => {
   it("a varredura enxerga o schema e os arquivos (guarda de vacuidade)", () => {
@@ -339,10 +351,15 @@ describe("o cliente de serviço também responde ao tenant", () => {
 
   it("a varredura enxerga quem pega o cliente de serviço (controle positivo)", () => {
     const comAdmin = ARQUIVOS.filter(
-      (a) => nomesDoClienteAdmin(ts.createSourceFile(a, readFileSync(a, "utf8"), ts.ScriptTarget.Latest, true)).size > 0,
+      (a) =>
+        nomesDoClienteAdmin(
+          ts.createSourceFile(a, readFileSync(a, "utf8"), ts.ScriptTarget.Latest, true),
+        ).size > 0,
     );
     expect(comAdmin.length).toBeGreaterThan(100);
-    expect(CADEIAS.length, "nenhuma cadeia de service role medida — a régua cegou").toBeGreaterThan(80);
+    expect(CADEIAS.length, "nenhuma cadeia de service role medida — a régua cegou").toBeGreaterThan(
+      80,
+    );
   });
 
   it("a varredura reconhece o payload que carrega o tenant (controle positivo)", () => {
@@ -350,9 +367,13 @@ describe("o cliente de serviço também responde ao tenant", () => {
     // (`insertRow`) com `organization_id` e só depois insere. Se ele aparecer
     // como achado, a régua está lendo a cadeia e não a declaração.
     const gemeo = CADEIAS.find(
-      (c) => c.arquivo === "workers/ai-response-worker.ts" && c.tabela === "messages" && c.criaLinha,
+      (c) =>
+        c.arquivo === "workers/ai-response-worker.ts" && c.tabela === "messages" && c.criaLinha,
     );
-    expect(gemeo, "a inserção da mensagem no worker sumiu — a régua perdeu a referência").toBeDefined();
+    expect(
+      gemeo,
+      "a inserção da mensagem no worker sumiu — a régua perdeu a referência",
+    ).toBeDefined();
     expect(gemeo?.carregaOTenant).toBe(true);
   });
 
@@ -383,10 +404,14 @@ describe("o cliente de serviço também responde ao tenant", () => {
         alcancadas.length,
         `\`${p.caminho}\` está declarada como superfície de plataforma e não tem mais cadeia nenhuma — remova a declaração`,
       ).toBeGreaterThan(0);
-      expect(p.motivo.trim().length, `declaração sem razão escrita: ${p.caminho}`).toBeGreaterThan(20);
+      expect(p.motivo.trim().length, `declaração sem razão escrita: ${p.caminho}`).toBeGreaterThan(
+        20,
+      );
     }
     for (const e of SEM_FILTRO_LIBERADO) {
-      const achado = CADEIAS.find((c) => c.arquivo === e.arquivo && c.tabela === e.tabela && !c.filtra);
+      const achado = CADEIAS.find(
+        (c) => c.arquivo === e.arquivo && c.tabela === e.tabela && !c.filtra,
+      );
       expect(
         achado,
         `exceção órfã: \`${e.arquivo}\` já não alcança \`${e.tabela}\` sem filtro — remova de SEM_FILTRO_LIBERADO`,

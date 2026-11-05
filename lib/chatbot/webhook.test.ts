@@ -61,23 +61,46 @@ describe("WebHook no motor", () => {
 
   it("falha: segue por 'Falhou'; sem essa ligação, o fluxo termina sem mensagem vazia", () => {
     const parado = iniciarFluxo(rastreio, "ini", ctx("oi")).sessao;
-    expect(textos(continuarAposWebhook(rastreio, parado, { ok: false, status: 500, corpo: null }, ctx(null)).efeitos)).toEqual([
-      "Não consegui consultar agora.",
-    ]);
-    const semFalha: Grafo = { ...rastreio, edges: rastreio.edges.filter((e) => e.sourceHandle !== "falha") };
-    const r = continuarAposWebhook(semFalha, parado, { ok: false, status: null, corpo: null }, ctx(null));
+    expect(
+      textos(
+        continuarAposWebhook(rastreio, parado, { ok: false, status: 500, corpo: null }, ctx(null))
+          .efeitos,
+      ),
+    ).toEqual(["Não consegui consultar agora."]);
+    const semFalha: Grafo = {
+      ...rastreio,
+      edges: rastreio.edges.filter((e) => e.sourceHandle !== "falha"),
+    };
+    const r = continuarAposWebhook(
+      semFalha,
+      parado,
+      { ok: false, status: null, corpo: null },
+      ctx(null),
+    );
     expect(r.efeitos).toEqual([]);
     expect(r.sessao.status).toBe("completed");
   });
 
   it("'Deu certo' sem ligação nunca cai na ligação de 'Falhou'", () => {
-    const g: Grafo = { ...rastreio, edges: rastreio.edges.filter((e) => e.sourceHandle !== "proximo" || e.source !== "hook") };
+    const g: Grafo = {
+      ...rastreio,
+      edges: rastreio.edges.filter((e) => e.sourceHandle !== "proximo" || e.source !== "hook"),
+    };
     const parado = iniciarFluxo(g, "ini", ctx("oi")).sessao;
-    expect(textos(continuarAposWebhook(g, parado, { ok: true, status: 200, corpo: {} }, ctx(null)).efeitos)).toEqual([]);
+    expect(
+      textos(
+        continuarAposWebhook(g, parado, { ok: true, status: 200, corpo: {} }, ctx(null)).efeitos,
+      ),
+    ).toEqual([]);
   });
 
   it("lê caminhos com lista e ignora objeto inteiro", () => {
-    const corpo = { itens: [{ nome: "Camiseta" }], total: 99.9, pago: true, cliente: { nome: "Ana" } };
+    const corpo = {
+      itens: [{ nome: "Camiseta" }],
+      total: 99.9,
+      pago: true,
+      cliente: { nome: "Ana" },
+    };
     expect(valorNoCaminho(corpo, "itens.0.nome")).toBe("Camiseta");
     expect(valorNoCaminho(corpo, "total")).toBe("99.9");
     expect(valorNoCaminho(corpo, "pago")).toBe("true");
@@ -91,7 +114,9 @@ describe("WebHook no motor", () => {
       edges: [liga("ini", "h")],
     });
     expect(problemasDoGrafo(g(""))).toContain('escreva o endereço do passo "WebHook".');
-    expect(problemasDoGrafo(g("loja.com/api"))).toContain('o endereço do passo "WebHook" precisa começar com https://.');
+    expect(problemasDoGrafo(g("loja.com/api"))).toContain(
+      'o endereço do passo "WebHook" precisa começar com https://.',
+    );
     expect(problemasDoGrafo(g("https://n8n.exemplo.com/webhook/abc"))).toEqual([]);
   });
 });
@@ -113,18 +138,25 @@ describe("a chamada", () => {
     }) as unknown as typeof fetch;
 
   it("resposta do contato entra codificada na URL", () => {
-    expect(urlComVariaveis("https://x.com/p/{{pedido}}", envio.respostas)).toBe("https://x.com/p/12%2034%2Fx");
+    expect(urlComVariaveis("https://x.com/p/{{pedido}}", envio.respostas)).toBe(
+      "https://x.com/p/12%2034%2Fx",
+    );
   });
 
   it("POST assinado: corpo é a projeção fixa e a assinatura confere", async () => {
     const chamadas: Chamada[] = [];
     const c = lerConfig("webhook", { url: "https://n8n.exemplo.com/hook", metodo: "POST" });
     const agora = new Date("2026-10-22T13:30:00Z");
-    const r = await chamarWebhookDoChatbot(c, envio, { segredo: "s3gr3do", autorizacao: "Bearer abc" }, {
-      fetch: falso(200, '{"ok":true}', chamadas),
-      agora,
-      pularChecagemDeRede: true,
-    });
+    const r = await chamarWebhookDoChatbot(
+      c,
+      envio,
+      { segredo: "s3gr3do", autorizacao: "Bearer abc" },
+      {
+        fetch: falso(200, '{"ok":true}', chamadas),
+        agora,
+        pularChecagemDeRede: true,
+      },
+    );
     expect(r).toMatchObject({ ok: true, status: 200, corpo: { ok: true } });
     const h = chamadas[0]!.init.headers as Record<string, string>;
     const corpo = chamadas[0]!.init.body as string;
@@ -138,7 +170,9 @@ describe("a chamada", () => {
       respostas: { pedido: "12 34/x" },
     });
     const ts = h["X-Webhook-Timestamp"];
-    const v1 = createHmac("sha256", "s3gr3do").update(`${ts}.${h["X-Webhook-Delivery"]}.${corpo}`).digest("hex");
+    const v1 = createHmac("sha256", "s3gr3do")
+      .update(`${ts}.${h["X-Webhook-Delivery"]}.${corpo}`)
+      .digest("hex");
     expect(h["X-Webhook-Signature"]).toBe(`t=${ts},v1=${v1}`);
     expect(h.Authorization).toBe("Bearer abc");
     expect(chamadas[0]!.init.redirect).toBe("manual");
@@ -147,10 +181,15 @@ describe("a chamada", () => {
   it("GET não manda corpo; não-2xx e resposta que não é JSON contam certo", async () => {
     const chamadas: Chamada[] = [];
     const c = lerConfig("webhook", { url: "https://x.com/p/{{pedido}}", metodo: "GET" });
-    const r = await chamarWebhookDoChatbot(c, envio, { segredo: null, autorizacao: null }, {
-      fetch: falso(404, "não achei", chamadas),
-      pularChecagemDeRede: true,
-    });
+    const r = await chamarWebhookDoChatbot(
+      c,
+      envio,
+      { segredo: null, autorizacao: null },
+      {
+        fetch: falso(404, "não achei", chamadas),
+        pularChecagemDeRede: true,
+      },
+    );
     expect(r).toMatchObject({ ok: false, status: 404, corpo: null, erro: "http_404" });
     expect(chamadas[0]!.init.body).toBeUndefined();
     expect(chamadas[0]!.url).toBe("https://x.com/p/12%2034%2Fx");
@@ -158,10 +197,20 @@ describe("a chamada", () => {
 
   it("endereço interno é recusado antes de qualquer chamada", async () => {
     const chamadas: Chamada[] = [];
-    for (const url of ["http://localhost:3000/x", "https://127.0.0.1/x", "https://10.0.0.5/x", "file:///etc/passwd"]) {
-      const r = await chamarWebhookDoChatbot(lerConfig("webhook", { url }), envio, { segredo: null, autorizacao: null }, {
-        fetch: falso(200, "{}", chamadas),
-      });
+    for (const url of [
+      "http://localhost:3000/x",
+      "https://127.0.0.1/x",
+      "https://10.0.0.5/x",
+      "file:///etc/passwd",
+    ]) {
+      const r = await chamarWebhookDoChatbot(
+        lerConfig("webhook", { url }),
+        envio,
+        { segredo: null, autorizacao: null },
+        {
+          fetch: falso(200, "{}", chamadas),
+        },
+      );
       expect(r.ok).toBe(false);
       expect(r.erro).toMatch(/^unsafe_url/);
     }
@@ -184,13 +233,23 @@ describe("a chamada", () => {
 
 describe("segredos do desenho", () => {
   const admin = {
-    rpc: async (_fn: string, args: { plaintext: string }) => ({ data: `\\xenc(${args.plaintext})`, error: null }),
+    rpc: async (_fn: string, args: { plaintext: string }) => ({
+      data: `\\xenc(${args.plaintext})`,
+      error: null,
+    }),
   } as never;
   const semCifra = { rpc: async () => ({ data: null, error: { message: "sem chave" } }) } as never;
-  const grafo = (data: Record<string, unknown>): Grafo => ({ nodes: [no("h", "webhook", data)], edges: [] });
+  const grafo = (data: Record<string, unknown>): Grafo => ({
+    nodes: [no("h", "webhook", data)],
+    edges: [],
+  });
 
   it("troca o texto aberto pela versão cifrada e nunca grava o aberto", async () => {
-    const r = await cifrarSegredosDoGrafo(admin, grafo({ url: "https://x.com", segredo: "abc", autorizacao: "Bearer z" }));
+    const r = await cifrarSegredosDoGrafo(
+      admin,
+      grafo({ url: "https://x.com", segredo: "abc", autorizacao: "Bearer z" }),
+      null,
+    );
     expect(r!.nodes[0]!.data).toEqual({
       url: "https://x.com",
       segredo_enc: "\\xenc(abc)",
@@ -198,12 +257,49 @@ describe("segredos do desenho", () => {
     });
   });
 
-  it("o já cifrado passa direto; vazio remove", async () => {
-    const r = await cifrarSegredosDoGrafo(admin, grafo({ segredo_enc: "\\xantigo", autorizacao: "", autorizacao_enc: "" }));
+  it("o cifrado que este passo já tinha gravado passa direto; vazio remove", async () => {
+    const gravado = grafo({ segredo_enc: "\\xantigo", autorizacao_enc: "\\xauth" });
+    const r = await cifrarSegredosDoGrafo(
+      admin,
+      grafo({ segredo_enc: "\\xantigo", autorizacao: "", autorizacao_enc: "" }),
+      gravado,
+    );
     expect(r!.nodes[0]!.data).toEqual({ segredo_enc: "\\xantigo", autorizacao_enc: null });
   });
 
+  it("cifrado colado pelo cliente que não é o deste passo é descartado (não vira oráculo de decifra)", async () => {
+    // O token cifrado de um canal, lido pela RLS, colado no passo: o executor o
+    // decifraria com a service role e mandaria no Authorization para fora.
+    const tokenDoCanal = "\\xc0ffee";
+    const semNada = await cifrarSegredosDoGrafo(
+      admin,
+      grafo({ autorizacao_enc: tokenDoCanal }),
+      null,
+    );
+    expect(semNada!.nodes[0]!.data).toEqual({ autorizacao_enc: null });
+
+    const gravado = grafo({ segredo_enc: "\\xdeste" });
+    const trocado = await cifrarSegredosDoGrafo(
+      admin,
+      grafo({ segredo_enc: tokenDoCanal, autorizacao_enc: tokenDoCanal }),
+      gravado,
+    );
+    expect(trocado!.nodes[0]!.data).toEqual({ segredo_enc: null, autorizacao_enc: null });
+
+    // O cifrado de OUTRO passo do mesmo fluxo também não muda de dono.
+    const outroPasso: Grafo = {
+      nodes: [no("outro", "webhook", { segredo_enc: "\\xdooutro" })],
+      edges: [],
+    };
+    const movido = await cifrarSegredosDoGrafo(
+      admin,
+      grafo({ segredo_enc: "\\xdooutro" }),
+      outroPasso,
+    );
+    expect(movido!.nodes[0]!.data).toEqual({ segredo_enc: null });
+  });
+
   it("sem cifra na instalação, recusa em vez de gravar aberto", async () => {
-    expect(await cifrarSegredosDoGrafo(semCifra, grafo({ segredo: "abc" }))).toBeNull();
+    expect(await cifrarSegredosDoGrafo(semCifra, grafo({ segredo: "abc" }), null)).toBeNull();
   });
 });

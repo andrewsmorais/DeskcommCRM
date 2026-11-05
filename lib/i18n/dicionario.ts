@@ -12502,6 +12502,9 @@ export const DICIONARIO: Traducoes = {
   "Web Push não configurado nesta instalação.": {
     es: "Web Push no configurado en esta instalación.",
   },
+  "Endereço de notificação não permitido.": {
+    es: "Dirección de notificación no permitida.",
+  },
   // ─── Merge da main 1.8.0 — textos que a reescrita trouxe ───
   //
   // Não são telas novas: são as MESMAS telas que este ramo já traduzia, cujo

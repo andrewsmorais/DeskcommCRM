@@ -41,7 +41,10 @@ export function normalizePhoneBR(raw: unknown): string | null {
   return e164 ? canonicalPhoneBR(e164) : null;
 }
 
-function firstMatch(payload: Record<string, unknown>, aliases: string[]): { key: string; value: string } | null {
+function firstMatch(
+  payload: Record<string, unknown>,
+  aliases: string[],
+): { key: string; value: string } | null {
   const lowered = new Map(Object.keys(payload).map((k) => [k.toLowerCase(), k]));
   for (const alias of aliases) {
     const key = lowered.get(alias.toLowerCase());
@@ -73,7 +76,11 @@ export function mapInboundPayload(
   for (const [key, value] of Object.entries(payload)) {
     if (consumed.has(key)) continue;
     const str =
-      typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : null;
+      typeof value === "string"
+        ? value
+        : typeof value === "number" || typeof value === "boolean"
+          ? String(value)
+          : null;
     if (str === null) continue; // objetos/arrays aninhados: descartados no v1
     if (key.toLowerCase().startsWith("utm_")) source_metadata[key.toLowerCase()] = str;
     else custom_fields[key] = str;
@@ -89,11 +96,50 @@ export function mapInboundPayload(
 }
 
 /** HMAC SHA-256 hex do raw body. Header: X-ChatAI-Signature. */
-export function verifyInboundSignature(rawBody: string, header: string | null, secret: string): boolean {
+export function verifyInboundSignature(
+  rawBody: string,
+  header: string | null,
+  secret: string,
+): boolean {
   if (!header) return false;
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(header, "utf8");
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+/**
+ * Cabeçalhos com prova de identidade que nunca vão para o arquivo de eventos,
+ * pelo nome. O `X-HOTMART-HOTTOK` é o token da conta Hotmart e é o próprio
+ * segredo da fonte (plataformas-de-venda.ts) — mesmo numa fonte sem segredo
+ * cadastrado, ele continua sendo a credencial da conta.
+ */
+const CABECALHOS_DE_PROVA = new Set(["x-hotmart-hottok"]);
+
+/**
+ * Os cabeçalhos do pedido como vão para `webhook_events_log.headers`.
+ *
+ * O arquivo é lido por todo membro da organização, até o leitor, enquanto o
+ * segredo da fonte é escrita-só e de gerente: com ele e o path token (que vai
+ * na mesma linha), quem lê forja venda "autêntica". Então sai do log, além de
+ * `authorization*` e `cookie`, todo cabeçalho de prova pelo nome e todo
+ * cabeçalho cujo valor carrega o segredo resolvido da fonte — o nome fica, com
+ * "[removido]", para quem investiga ver que ele chegou.
+ */
+export function cabecalhosParaOArquivo(
+  headers: Headers,
+  segredoDaFonte: string | null,
+): Record<string, string> {
+  const segredo = segredoDaFonte?.trim() || null;
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    const k = key.toLowerCase();
+    if (k.startsWith("authorization") || k === "cookie") return;
+    const carregaOSegredo =
+      segredo !== null &&
+      (value.trim() === segredo || (segredo.length >= 8 && value.includes(segredo)));
+    out[key] = CABECALHOS_DE_PROVA.has(k) || carregaOSegredo ? "[removido]" : value;
+  });
+  return out;
 }
