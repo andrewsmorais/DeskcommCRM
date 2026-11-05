@@ -35,7 +35,9 @@ const DURACAO_DA_RESERVA_MS = 10 * 60 * 1000;
  */
 export async function comReservaDeCota<T>(
   orgId: string,
-  recurso: "atendentes" | "pipelines" | "whatsapp" | "agentes" | "chatbots",
+  // `ajuda`: o teto diário do assistente de ajuda (lib/ajuda/registro.ts), que
+  // não é recurso do plano mas é cota contada no banco — a mesma corrida.
+  recurso: "atendentes" | "pipelines" | "whatsapp" | "agentes" | "chatbots" | "ajuda",
   operacao: () => Promise<T>,
 ): Promise<T> {
   const chave = `billing:${recurso}`;
