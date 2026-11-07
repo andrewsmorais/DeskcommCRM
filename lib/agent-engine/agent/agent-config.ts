@@ -100,6 +100,13 @@ export interface PublishedAgentConfig {
   vozEnabled: boolean;
   /** `'nunca' | 'espelhar' | 'sempre'` — decidido em `voz-do-turno.ts`. */
   vozQuando: 'nunca' | 'espelhar' | 'sempre';
+  /**
+   * A voz PRÓPRIA deste agente (`ai_agents.config.voz_voice_id`, #4228), em
+   * `voice_id` do ElevenLabs. `null` = herda a voz da organização — mesma
+   * resolução de antes desta fatia. Opcional porque nasce depois das fixtures
+   * que montam este tipo à mão; quem consome lê com `?? null`.
+   */
+  vozVoiceId?: string | null;
 }
 
 interface Row {
@@ -171,10 +178,21 @@ const SELECT_AGENT_CONFIG_COLUMNS = `a.operation_mode,a.paused_at,a.operation_re
             v.created_by as version_created_by,
             a.created_by as agent_created_by`;
 
+/** `config.voz_voice_id` como o turno precisa: string não vazia, ou `null` (= herda). */
+function lerVozDoAgente(bruto: unknown): string | null {
+  if (typeof bruto !== 'string') return null;
+  const limpo = bruto.trim();
+  return limpo === '' ? null : limpo;
+}
+
 /** Mapeamento Row (snake_case do banco) → PublishedAgentConfig, compartilhado
  * pelas duas variantes de loader (por channel_session e por agent id). */
 function mapAgentConfigRow(r: Row): PublishedAgentConfig {
-  const cfg = (r.config ?? {}) as { rag_top_k?: unknown; rag_similarity_threshold?: unknown };
+  const cfg = (r.config ?? {}) as {
+    rag_top_k?: unknown;
+    rag_similarity_threshold?: unknown;
+    voz_voice_id?: unknown;
+  };
   const ragTopK =
     typeof cfg.rag_top_k === 'number' &&
     Number.isInteger(cfg.rag_top_k) &&
@@ -248,6 +266,9 @@ function mapAgentConfigRow(r: Row): PublishedAgentConfig {
     // cegamente num texto livre) cai no mesmo default seguro.
     vozQuando:
       r.voz_quando === 'nunca' || r.voz_quando === 'sempre' ? r.voz_quando : 'espelhar',
+    // Leitura defensiva: jsonb livre. Texto vazio/espaço, número ou objeto ⇒
+    // `null` (herda a voz da organização), nunca um id torto indo à ElevenLabs.
+    vozVoiceId: lerVozDoAgente(cfg.voz_voice_id),
   };
 }
 
