@@ -4031,19 +4031,11 @@ ALTER TABLE "public"."api_audit_log" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."api_tokens" ENABLE ROW LEVEL SECURITY;
 
 
-DO $baseline_guard$ BEGIN
-IF NOT EXISTS (SELECT 1 FROM pg_policy
-                WHERE polname = 'api_tokens_admin_only' AND polrelid = '"public"."api_tokens"'::regclass) THEN
-CREATE POLICY "api_tokens_admin_only" ON "public"."api_tokens" USING (("public"."fn_role_at_least"("organization_id", 'admin'::"text") OR "public"."fn_is_platform_admin"())) WITH CHECK (("public"."fn_role_at_least"("organization_id", 'admin'::"text") OR "public"."fn_is_platform_admin"()));
-END IF; END $baseline_guard$;
+-- policy "api_tokens_admin_only" não nasce aqui: a migration 0499 a substitui (bloco no apêndice).
 
 
 
-DO $baseline_guard$ BEGIN
-IF NOT EXISTS (SELECT 1 FROM pg_policy
-                WHERE polname = 'audit_log_insert_tenant_member' AND polrelid = '"public"."api_audit_log"'::regclass) THEN
-CREATE POLICY "audit_log_insert_tenant_member" ON "public"."api_audit_log" FOR INSERT TO "authenticated" WITH CHECK ((("organization_id" IS NULL) OR ("organization_id" IN ( SELECT "public"."fn_user_org_ids"() AS "fn_user_org_ids")) OR "public"."fn_is_platform_admin"()));
-END IF; END $baseline_guard$;
+-- policy "audit_log_insert_tenant_member" não nasce aqui: a migration 0499 a substitui (bloco no apêndice).
 
 
 
@@ -4775,40 +4767,13 @@ values (
 on conflict (id) do nothing;
 
 drop policy if exists "tenant_read_ai_policy" on storage.objects;
-create policy "tenant_read_ai_policy" on storage.objects for select
-  using (
-    bucket_id = 'ai-policy'
-    and exists (
-      select 1 from public.user_organizations uo
-      where uo.user_id = auth.uid()
-        and uo.revoked_at is null
-        and uo.organization_id = (split_part(name, '/', 1))::uuid
-    )
-  );
+-- (sem create: a migration 0503 deixa o bucket só do servidor)
 
 drop policy if exists "tenant_write_ai_policy" on storage.objects;
-create policy "tenant_write_ai_policy" on storage.objects for insert
-  with check (
-    bucket_id = 'ai-policy'
-    and exists (
-      select 1 from public.user_organizations uo
-      where uo.user_id = auth.uid()
-        and uo.revoked_at is null
-        and uo.organization_id = (split_part(name, '/', 1))::uuid
-    )
-  );
+-- (sem create: a migration 0503 deixa o bucket só do servidor)
 
 drop policy if exists "tenant_delete_ai_policy" on storage.objects;
-create policy "tenant_delete_ai_policy" on storage.objects for delete
-  using (
-    bucket_id = 'ai-policy'
-    and exists (
-      select 1 from public.user_organizations uo
-      where uo.user_id = auth.uid()
-        and uo.revoked_at is null
-        and uo.organization_id = (split_part(name, '/', 1))::uuid
-    )
-  );
+-- (sem create: a migration 0503 deixa o bucket só do servidor)
 
 -- ---- storage: bucket lgpd-exports + policy (migration 0017) ----
 
@@ -4823,16 +4788,7 @@ values (
 on conflict (id) do nothing;
 
 drop policy if exists "tenant_read_lgpd_exports" on storage.objects;
-create policy "tenant_read_lgpd_exports" on storage.objects for select
-  using (
-    bucket_id = 'lgpd-exports'
-    and exists (
-      select 1 from public.user_organizations uo
-      where uo.user_id = auth.uid()
-        and uo.revoked_at is null
-        and uo.organization_id = (split_part(name, '/', 1))::uuid
-    )
-  );
+-- (sem create: a migration 0503 deixa o bucket só do servidor)
 
 -- ---- bucket de assets de skills (migration 0068) ----
 insert into storage.buckets (id, name, public, file_size_limit)
@@ -12544,14 +12500,7 @@ create policy tenant_isolation_ai_purpose_bindings_select on public.ai_purpose_b
   for select using (organization_id in (select public.fn_user_org_ids()));
 
 drop policy if exists tenant_isolation_ai_purpose_bindings_write on public.ai_purpose_bindings;
-create policy tenant_isolation_ai_purpose_bindings_write on public.ai_purpose_bindings
-  for all using (
-    organization_id in (select public.fn_user_org_ids())
-      and public.fn_role_at_least(organization_id, 'admin')
-  ) with check (
-    organization_id in (select public.fn_user_org_ids())
-      and public.fn_role_at_least(organization_id, 'admin')
-  );
+-- (a policy de escrita é criada só na forma final, no bloco da migration 0499)
 
 -- ---- credenciais de provedor de IA: remover a superfície, não negociá-la ----
 --
