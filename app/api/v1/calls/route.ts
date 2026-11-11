@@ -34,6 +34,7 @@ import { createCallSchema, listCallsQuerySchema } from "@/lib/schemas/calls";
 import { validateRequest } from "@/lib/schemas/_validate";
 import { createClient } from "@/lib/supabase/server";
 import { originateCall } from "@/lib/voip/ariClient";
+import { troncoDaInstalacaoLiberado } from "@/lib/voip/tronco-da-instalacao";
 
 export const dynamic = "force-dynamic";
 
@@ -157,8 +158,9 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const supabase = await createClient();
 
-  // Trunk da organização (Configurações > Trunk SIP) — fallback pro env pra
-  // quem ainda não cadastrou nada na tela.
+  // Trunk da organização (Configurações > Trunk SIP). O do env (o da
+  // instalação) só vale quando a instalação é de uma organização só, ou o
+  // operador ligou VOIP_TRUNK_COMPARTILHADO (lib/voip/tronco-da-instalacao.ts).
   const { data: trunkConfig } = await supabase
     .from("voip_trunk_settings")
     .select("endpoint_name, is_active")
@@ -172,7 +174,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       ? trunkConfig.endpoint_name.includes("/")
         ? trunkConfig.endpoint_name
         : `PJSIP/${trunkConfig.endpoint_name}`
-      : process.env.VOIP_TRUNK_ENDPOINT;
+      : (await troncoDaInstalacaoLiberado())
+        ? process.env.VOIP_TRUNK_ENDPOINT
+        : undefined;
   if (!trunkEndpoint) {
     return fail(
       "trunk_not_configured",

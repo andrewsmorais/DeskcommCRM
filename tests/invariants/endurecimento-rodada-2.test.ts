@@ -11,6 +11,7 @@ import {
   GOV_AGENT_B,
   GOV_CONTACT_1,
   GOV_CONTACT_2,
+  GOV_CONTACT_3,
   GOV_CONV_AGENT_B,
   GOV_LEAD,
   GOV_MANAGER,
@@ -241,6 +242,34 @@ describe("0509 — revisão de cobertura: voz, chatbot, funil, saúde do número
     expect(escreveComo(GOV_AGENT_A, decisao(GOV_AGENT_A))).toBe(1);
   });
 
+  it("linha do tempo: leitor não registra atividade nenhuma; atendente registra", () => {
+    const nota = `insert into public.crm_lead_activities (organization_id, lead_id, type, source_module, actor_kind, performed_by_user_id, reason, payload)
+         values ('${GOV_ORG}','${GOV_LEAD}','note_added','crm','user','${GOV_VIEWER}','Cliente já pagou','{}')`;
+    expect(recusado(GOV_VIEWER, nota)).toBe(true);
+    expect(escreveComo(GOV_AGENT_A, nota.replace(GOV_VIEWER, GOV_AGENT_A))).toBe(1);
+  });
+
+  it("demanda e vínculo de demanda: só o servidor escreve; o membro lê", () => {
+    // `returning` imprime o id e depois "INSERT 0 1": o id é a primeira linha.
+    const id = sql(`insert into public.demandas (organization_id, contact_id, aberta_em, origem, estado, dono_kind)
+             values ('${GOV_ORG}','${GOV_CONTACT_1}', now(), 'inbound', 'aberta', 'ia') returning id;`)
+      .trim()
+      .split("\n")[0]!
+      .trim();
+    expect(
+      recusado(GOV_AGENT_A, `update public.demandas set desfecho = 'perdida', fechada_em = now() where id = '${id}'`),
+    ).toBe(true);
+    expect(
+      recusado(
+        GOV_MANAGER,
+        `insert into public.demandas (organization_id, contact_id, aberta_em, origem, estado, dono_kind)
+           values ('${GOV_ORG}','${GOV_CONTACT_1}', now(), 'inbound', 'aberta', 'ia')`,
+      ),
+    ).toBe(true);
+    expect(recusado(GOV_MANAGER, `delete from public.demanda_conversas where organization_id = '${GOV_ORG}'`)).toBe(true);
+    expect(countAs(GOV_AGENT_A, `select count(*) from public.demandas where id = '${id}';`)).toBe(1);
+  });
+
   it("trocar o texto da próxima ação muda a identidade dela (next_action_seq)", () => {
     const out = sql(`
       insert into public.lead_state (organization_id, contact_id, next_action, next_action_seq)
@@ -286,6 +315,114 @@ describe("0509 — mensagens: leitor não escreve; ninguém grava em nome da IA 
   });
   it("CONTROLE: atendente insere a própria mensagem", () => {
     expect(escreveComo(GOV_AGENT_B, nova("user"))).toBe(1);
+  });
+
+  it("pelo UPDATE também não: atendente não troca a origem, não devolve à fila nem reescreve a automática na fila", () => {
+    sql(`insert into public.messages (organization_id, conversation_id, channel_session_id, contact_id, type, direction, status, sent_via, body)
+           values ('${GOV_ORG}','${GOV_CONV_AGENT_B}','${GOV_SESSION}','${GOV_CONTACT_2}','text','outbound','queued','ai','r2-ia-na-fila'),
+                  ('${GOV_ORG}','${GOV_CONV_AGENT_B}','${GOV_SESSION}','${GOV_CONTACT_2}','text','outbound','sent','user','r2-humana-enviada');`);
+    const tenta = (dml: string) =>
+      expect(() =>
+        sql(`
+          set role authenticated;
+          select set_config('request.jwt.claims', '{"sub":"${GOV_AGENT_B}"}', false);
+          ${dml};`),
+      ).toThrow(/colunas_de_envio_da_mensagem/);
+    tenta(`update public.messages set sent_via = 'ai', status = 'queued' where body = 'r2-humana-enviada'`);
+    tenta(`update public.messages set status = 'queued' where body = 'r2-humana-enviada'`);
+    tenta(`update public.messages set body = 'texto do atendente' where body = 'r2-ia-na-fila'`);
+    tenta(`update public.messages set channel_session_id = gen_random_uuid() where body = 'r2-humana-enviada'`);
+    expect(
+      sql(`select count(*) from public.messages where body in ('r2-ia-na-fila','r2-humana-enviada') and sent_via in ('ai','user');`).trim(),
+    ).toBe("2");
+  });
+
+  it("CONTROLE: atendente edita a mensagem enviada e registra o desfecho do envio humano", () => {
+    expect(
+      escreveComo(
+        GOV_AGENT_B,
+        `update public.messages set body = 'r2-humana-editada', edited_at = now() where body = 'r2-humana-enviada'`,
+      ),
+    ).toBe(1);
+    expect(
+      escreveComo(
+        GOV_AGENT_B,
+        `update public.messages set status = 'failed', error_code = 'missing_phone_number' where body = 'texto do leitor' and sent_via = 'user'`,
+      ),
+    ).toBe(1);
+  });
+});
+
+describe("0509 — contato: colunas de controle e piso de atendente", () => {
+  it("leitor não edita contato; atendente edita a ficha", () => {
+    expect(
+      recusado(GOV_VIEWER, `update public.contacts set email = 'leitor@x.test' where id = '${GOV_CONTACT_3}'`),
+    ).toBe(true);
+    expect(
+      escreveComo(GOV_AGENT_A, `update public.contacts set email = 'atendente@x.test' where id = '${GOV_CONTACT_3}'`),
+    ).toBe(1);
+  });
+
+  it("atendente não reabre opt-out, não anonimiza nem funde contato pelo login", () => {
+    sql(`update public.contacts set is_blocked = true, blocked_reason = 'stop_keyword', blocked_at = now()
+           where id = '${GOV_CONTACT_3}';`);
+    const tenta = (set: string) =>
+      expect(() =>
+        sql(`
+          set role authenticated;
+          select set_config('request.jwt.claims', '{"sub":"${GOV_AGENT_A}"}', false);
+          update public.contacts set ${set} where id = '${GOV_CONTACT_3}';`),
+      ).toThrow(/colunas_de_controle_do_contato/);
+    tenta("is_blocked = false, blocked_reason = null, blocked_at = null");
+    tenta("is_anonymized = true, anonymized_at = now()");
+    tenta(`is_merged_into = '${GOV_CONTACT_1}', merged_at = now()`);
+    // CONTROLE: o servidor (rota de desbloqueio, pela service role) reabre.
+    expect(
+      lastLine(
+        sql(`set role service_role;
+             with w as (update public.contacts set is_blocked = false, blocked_reason = null, blocked_at = null
+                         where id = '${GOV_CONTACT_3}' returning 1) select count(*) from w;`),
+      ),
+    ).toBe("1");
+  });
+
+  it("CONTROLE: a retomada (atendente) solta o \"só humano\" do contato", () => {
+    sql(`update public.contacts set force_human = true where id = '${GOV_CONTACT_3}';`);
+    expect(
+      escreveComo(GOV_AGENT_A, `update public.contacts set force_human = false where id = '${GOV_CONTACT_3}'`),
+    ).toBe(1);
+  });
+});
+
+describe("0509 — barramento de eventos e recibos de idempotência", () => {
+  it("prévia de mensagem no event_log: atendente não lê; gerente lê", () => {
+    sql(`insert into public.event_log (organization_id, event_type, entity_kind, entity_id, payload)
+           values ('${GOV_ORG}','message.outbound','message',gen_random_uuid(),'{"body_preview":"segredo r2"}');`);
+    const q = "select count(*) from public.event_log where payload->>'body_preview' = 'segredo r2';";
+    expect(countAs(GOV_AGENT_A, q)).toBe(0);
+    expect(countAs(GOV_MANAGER, q)).toBe(1);
+  });
+
+  it("recibo de idempotência é de quem o criou", () => {
+    expect(
+      escreveComo(
+        GOV_AGENT_A,
+        `insert into public.idempotency_keys (organization_id, key, endpoint, request_hash, status_code, response_body)
+           values ('${GOV_ORG}','r2-chave','/api/v1/messages','\\x00'::bytea, 201, '{"body":"oi"}')`,
+      ),
+    ).toBe(1);
+    const q = "select count(*) from public.idempotency_keys where key = 'r2-chave';";
+    expect(countAs(GOV_AGENT_A, q)).toBe(1);
+    expect(countAs(GOV_AGENT_B, q)).toBe(0);
+  });
+
+  it("recibo da service role (token de servidor) não aparece para login nenhum", () => {
+    sql(`insert into public.idempotency_keys (organization_id, key, endpoint, request_hash, status_code, response_body)
+           values ('${GOV_ORG}','r2-chave-token','/api/v1/messages','\\x00'::bytea, 201, '{"body":"do token"}');`);
+    const q = "select count(*) from public.idempotency_keys where key = 'r2-chave-token';";
+    expect(countAs(GOV_MANAGER, q)).toBe(0);
+    expect(countAs(GOV_AGENT_A, q)).toBe(0);
+    expect(sql(q).trim()).toBe("1");
   });
 });
 

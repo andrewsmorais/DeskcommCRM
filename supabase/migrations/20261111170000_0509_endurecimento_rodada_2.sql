@@ -390,4 +390,159 @@ create policy messages_delete_de_atendente on public.messages
   as restrictive for delete to authenticated
   using (public.fn_role_at_least(organization_id, 'agent'));
 
+-- Colunas de CONTROLE do contato: bloqueio por opt-out (só o admin reabre, pela
+-- rota auditada), anonimização (só pela RPC de LGPD), fusão (só pela RPC de
+-- mesclar); `wa_identity`/`wa_lid` são colunas geradas e ninguém as escreve. O
+-- login (PostgREST) não as
+-- muda; as RPCs `security definer` e a service role passam, porque nelas o
+-- `current_user` não é `authenticated`.
+create or replace function public.fn_contato_colunas_de_controle()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    if coalesce(new.is_anonymized, false) or new.is_merged_into is not null then
+      raise exception 'colunas_de_controle_do_contato' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+  if old.is_blocked is distinct from new.is_blocked
+     or old.blocked_reason is distinct from new.blocked_reason
+     or old.blocked_at is distinct from new.blocked_at
+     or old.is_anonymized is distinct from new.is_anonymized
+     or old.anonymized_at is distinct from new.anonymized_at
+     or old.is_merged_into is distinct from new.is_merged_into
+     or old.merged_at is distinct from new.merged_at then
+    raise exception 'colunas_de_controle_do_contato' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_contato_colunas_de_controle() from public, anon, authenticated;
+
+-- ---- colunas de envio da mensagem (migration 0509) ----
+-- O resgate da fila (session-reconciler) reenvia direto ao WhatsApp, sem a
+-- cadeia de envio, toda linha `queued` de origem IA/automação/sistema. O
+-- insert pelo login já não cria linha dessas origens; esta guarda fecha o
+-- mesmo caminho pelo UPDATE: o login não troca a origem, a direção, o contato,
+-- a conversa nem o número de uma mensagem, não a devolve para `queued` e não
+-- reescreve o texto de uma mensagem automática ainda na fila. Editar (body +
+-- edited_at), apagar (revoked_at), ocultar (metadata) e os desfechos do envio
+-- humano (sent/failed) seguem com o atendente.
+create or replace function public.fn_mensagem_colunas_de_envio()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if old.sent_via is distinct from new.sent_via
+     or old.direction is distinct from new.direction
+     or old.contact_id is distinct from new.contact_id
+     or old.conversation_id is distinct from new.conversation_id
+     or old.channel_session_id is distinct from new.channel_session_id
+     or (new.status = 'queued' and old.status is distinct from 'queued')
+     or (old.sent_via in ('ai', 'automation', 'system') and old.status = 'queued'
+         and (old.body is distinct from new.body
+              or old.media_url is distinct from new.media_url
+              or old.media_storage_path is distinct from new.media_storage_path)) then
+    raise exception 'colunas_de_envio_da_mensagem' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_mensagem_colunas_de_envio() from public, anon, authenticated;
+
+-- Contatos: pelo login, só atendente para cima cria, edita ou apaga (o leitor
+-- reabria contato que pediu para sair, devolvia à IA conversa presa a humano e
+-- trocava a base legal). As colunas de controle ficam com as rotas e RPCs donas
+-- delas (gatilho abaixo; função antes da varredura de anon).
+drop policy if exists contacts_insert_de_atendente on public.contacts;
+create policy contacts_insert_de_atendente on public.contacts
+  as restrictive for insert to authenticated
+  with check (public.fn_role_at_least(organization_id, 'agent'));
+drop policy if exists contacts_update_de_atendente on public.contacts;
+create policy contacts_update_de_atendente on public.contacts
+  as restrictive for update to authenticated
+  using (public.fn_role_at_least(organization_id, 'agent'))
+  with check (public.fn_role_at_least(organization_id, 'agent'));
+drop policy if exists contacts_delete_de_atendente on public.contacts;
+create policy contacts_delete_de_atendente on public.contacts
+  as restrictive for delete to authenticated
+  using (public.fn_role_at_least(organization_id, 'agent'));
+drop trigger if exists trg_contato_colunas_de_controle on public.contacts;
+create trigger trg_contato_colunas_de_controle
+  before insert or update on public.contacts
+  for each row execute function public.fn_contato_colunas_de_controle();
+drop trigger if exists trg_mensagem_colunas_de_envio on public.messages;
+create trigger trg_mensagem_colunas_de_envio
+  before update on public.messages
+  for each row execute function public.fn_mensagem_colunas_de_envio();
+
+-- Barramento de eventos: a prévia de toda mensagem (até 280 caracteres) mora
+-- no payload, e a leitura era de qualquer membro — inclusive da conversa que
+-- ele não pode abrir. Quem lê pelo login (uso de IA, reenvio de automação) é
+-- gerente, e o gerente vê toda conversa.
+drop policy if exists event_log_leitura_de_gerente on public.event_log;
+create policy event_log_leitura_de_gerente on public.event_log
+  as restrictive for select to authenticated
+  using (public.fn_role_at_least(organization_id, 'manager'));
+
+-- Recibos de idempotência guardam a resposta da rota (o corpo da mensagem
+-- enviada, por exemplo): cada um passa a ser de quem o criou. Recibo da service
+-- role (token de servidor, MCP) não tem autor e não aparece para login nenhum
+-- — a service role ignora RLS e segue lendo o seu. Recibo anterior a esta
+-- versão também fica sem autor: reusar a chave dele nas 24h seguintes responde
+-- "em curso" (nunca executa em dobro) até ele vencer.
+alter table public.idempotency_keys add column if not exists created_by uuid default auth.uid();
+drop policy if exists idempotency_do_proprio_autor on public.idempotency_keys;
+create policy idempotency_do_proprio_autor on public.idempotency_keys
+  as restrictive for all to authenticated
+  using (created_by = (select auth.uid()))
+  with check (created_by = (select auth.uid()));
+
+
+-- Linha do tempo do lead e demandas: o leitor registrava atividade (nota,
+-- mudança de etapa, ligação) que a equipe e o agente leem como fato, e
+-- escrevia o desfecho da demanda que o agente recebe como "histórico
+-- encerrado". Atividade pelo login passa a ser de atendente para cima (toda
+-- rota que a emite já exige atendente); demanda e vínculo de demanda são
+-- escritos só pelo servidor (rotas com service role e funções security
+-- definer) — o membro segue lendo. Policy restritiva em vez de revoke: a
+-- recusa continua sendo da RLS, que é o que demandas-rls.test.ts mede.
+drop policy if exists crm_lead_activities_insert_de_atendente on public.crm_lead_activities;
+create policy crm_lead_activities_insert_de_atendente on public.crm_lead_activities
+  as restrictive for insert to authenticated
+  with check (public.fn_role_at_least(organization_id, 'agent'));
+drop policy if exists demandas_insert_so_servidor on public.demandas;
+create policy demandas_insert_so_servidor on public.demandas
+  as restrictive for insert to anon, authenticated
+  with check (false);
+drop policy if exists demandas_update_so_servidor on public.demandas;
+create policy demandas_update_so_servidor on public.demandas
+  as restrictive for update to anon, authenticated
+  using (false);
+drop policy if exists demandas_delete_so_servidor on public.demandas;
+create policy demandas_delete_so_servidor on public.demandas
+  as restrictive for delete to anon, authenticated
+  using (false);
+revoke truncate on public.demandas from anon, authenticated;
+drop policy if exists demanda_conversas_insert_so_servidor on public.demanda_conversas;
+create policy demanda_conversas_insert_so_servidor on public.demanda_conversas
+  as restrictive for insert to anon, authenticated
+  with check (false);
+drop policy if exists demanda_conversas_update_so_servidor on public.demanda_conversas;
+create policy demanda_conversas_update_so_servidor on public.demanda_conversas
+  as restrictive for update to anon, authenticated
+  using (false);
+drop policy if exists demanda_conversas_delete_so_servidor on public.demanda_conversas;
+create policy demanda_conversas_delete_so_servidor on public.demanda_conversas
+  as restrictive for delete to anon, authenticated
+  using (false);
+revoke truncate on public.demanda_conversas from anon, authenticated;
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;

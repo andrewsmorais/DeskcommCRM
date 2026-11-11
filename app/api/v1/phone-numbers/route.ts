@@ -5,6 +5,11 @@
  * não admin), audit no create. `trunk_endpoint` nunca vem do body — é infra
  * compartilhada (mesmo Asterisk pra toda a plataforma hoje), não escolha da
  * organização; grava o valor de VOIP_TRUNK_ENDPOINT.
+ *
+ * Cadastrar um número no tronco da INSTALAÇÃO é reivindicar as ligações que
+ * chegam nele: com mais de uma organização, só vale se o operador liberou o
+ * tronco (lib/voip/tronco-da-instalacao.ts) — senão a primeira empresa a
+ * cadastrar o número do servidor passaria a atender as ligações dele.
  */
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
@@ -17,6 +22,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createPhoneNumberSchema } from "@/lib/schemas/phone-numbers";
 import { validateRequest } from "@/lib/schemas/_validate";
 import { createClient } from "@/lib/supabase/server";
+import { troncoDaInstalacaoLiberado } from "@/lib/voip/tronco-da-instalacao";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +84,14 @@ export async function POST(req: NextRequest): Promise<Response> {
   const trunkEndpoint = process.env.VOIP_TRUNK_ENDPOINT;
   if (!trunkEndpoint) {
     return fail("voip_nao_configurado", "Troncal de voz não configurado no servidor.", 500, { requestId });
+  }
+  if (!(await troncoDaInstalacaoLiberado())) {
+    return fail(
+      "tronco_nao_compartilhado",
+      "O troncal de voz do servidor não está liberado para esta organização. Configure o trunk próprio em Configurações › Telefonia.",
+      422,
+      { requestId },
+    );
   }
 
   const supabase = await createClient();

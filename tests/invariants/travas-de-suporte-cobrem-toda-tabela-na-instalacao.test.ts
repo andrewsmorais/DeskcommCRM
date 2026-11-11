@@ -245,8 +245,28 @@ set local role authenticated;`;
       expect(tabela()).toMatch(/^public\./);
     });
 
+    /**
+     * Policy RESTRITIVA de papel na cobaia (restritivas se somam por AND) também
+     * recusaria o 'viewer' do support_readonly, e o caso mediria a recusa
+     * errada. Dentro da transação do caso (que termina em rollback), elas saem
+     * para que a trava seja a única que pode recusar. (Achado com a 0509, que
+     * pôs o piso de atendente em contacts — a única cobaia que o catálogo acha.)
+     */
+    const isolarATrava = () => `
+do $$ declare r record; begin
+  for r in select p.polname from pg_policy p
+            where p.polrelid = '${tabela()}'::regclass and not p.polpermissive and p.polcmd in ('a', '*')
+              and p.polname not like 'support_write\\_%'
+              and coalesce(pg_get_expr(p.polwithcheck, p.polrelid), pg_get_expr(p.polqual, p.polrelid), '')
+                  like '%fn_role_at_least(%'
+  loop
+    execute format('drop policy %I on %s', r.polname, '${tabela()}');
+  end loop;
+end $$;`;
+
     it("modo somente leitura: insert é recusado pela trava", () =>
-      provar(`${entrar("support_readonly")}
+      provar(`${isolarATrava()}
+${entrar("support_readonly")}
 do $$ begin
   begin
     insert into ${tabela()}(organization_id) values ('${orgB}');
