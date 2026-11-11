@@ -169,6 +169,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // O nome salvo pela tela não traz a tecnologia ("org-<uuid>-trunk-endpoint"),
   // e o originate precisa de "PJSIP/<endpoint>": sem o prefixo a ligação saía
   // como "org-…/<número>@undefined" e falhava sempre.
+  const usaTroncoProprio = Boolean(trunkConfig && trunkConfig.is_active);
   const trunkEndpoint =
     trunkConfig && trunkConfig.is_active
       ? trunkConfig.endpoint_name.includes("/")
@@ -218,7 +219,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const channel = await originateCall({
       toNumber: input.toNumber,
-      fromNumber: process.env.VOIP_DEFAULT_CALLER_ID,
+      // O número de saída do .env é o da INSTALAÇÃO: só acompanha o tronco
+      // dela. No tronco próprio, quem identifica a chamada é o provedor da
+      // empresa (o bloco gerado em Configurações › Telefonia).
+      fromNumber: usaTroncoProprio ? undefined : process.env.VOIP_DEFAULT_CALLER_ID,
       trunkEndpoint,
       callerLabel: input.mode,
       channelId,

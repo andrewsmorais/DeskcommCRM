@@ -118,7 +118,11 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     );
   }
 
-  const atividade = await emitLeadActivity(supabase, {
+  // O registro da decisão é só desta rota (0509): pelo login a policy recusa
+  // `next_action_approved/dismissed`, para que nenhuma aprovação exista sem a
+  // conferência do `next_action_seq` acima. A org e o contato vêm do lead que a
+  // RLS do caller deixou ler; o autor é quem está logado.
+  const atividade = await emitLeadActivity(createAdminClient(), {
     organizationId: row.organization_id,
     leadId: row.id,
     contactId: row.contact_id,

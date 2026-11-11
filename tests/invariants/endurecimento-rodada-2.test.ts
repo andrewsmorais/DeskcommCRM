@@ -131,6 +131,30 @@ describe("0509 — follow-up, botões do número e telefones: gerente escreve", 
       ),
     ).toBe(1);
   });
+
+  it("número de telefone: cadastro só pela rota; pelo login nem o gerente insere nem troca número/tronco", () => {
+    expect(
+      recusado(
+        GOV_MANAGER,
+        `insert into public.phone_numbers (organization_id, number, trunk_endpoint, routing_mode, is_active) values ('${GOV_ORG}','5511999990002','PJSIP/trunk-endpoint','human',true)`,
+      ),
+    ).toBe(true);
+    sql(`insert into public.phone_numbers (organization_id, number, trunk_endpoint, routing_mode, is_active)
+           values ('${GOV_ORG}','5511999990003','PJSIP/trunk-endpoint','ai',true);`);
+    const tenta = (set: string) =>
+      expect(() =>
+        sql(`
+          set role authenticated;
+          select set_config('request.jwt.claims', '{"sub":"${GOV_MANAGER}"}', false);
+          update public.phone_numbers set ${set} where number = '5511999990003';`),
+      ).toThrow(/colunas_do_tronco_do_numero/);
+    tenta("number = '551140000000'");
+    tenta("trunk_endpoint = 'PJSIP/outro'");
+    // CONTROLE: rótulo e liga/desliga seguem com o gerente.
+    expect(
+      escreveComo(GOV_MANAGER, `update public.phone_numbers set label = 'recepção', is_active = false where number = '5511999990003'`),
+    ).toBe(1);
+  });
 });
 
 describe("0509 — memória do agente e cópias derivadas", () => {
@@ -233,13 +257,37 @@ describe("0509 — revisão de cobertura: voz, chatbot, funil, saúde do número
     ).toBe(true);
   });
 
-  it("aprovar a proposta da IA: leitor não registra; atendente só em nome de si mesmo", () => {
+  it("aprovar a proposta da IA: só a rota registra (pelo login, ninguém — nem em nome de si mesmo)", () => {
     const decisao = (quem: string) =>
       `insert into public.crm_lead_activities (organization_id, lead_id, type, source_module, actor_kind, performed_by_user_id, reason, payload)
-         values ('${GOV_ORG}','${GOV_LEAD}','next_action_approved','crm','user','${quem}','Aprovou: x','{}')`;
+         values ('${GOV_ORG}','${GOV_LEAD}','next_action_approved','crm','user','${quem}','Aprovou: texto que a IA nunca propôs','{}')`;
     expect(recusado(GOV_VIEWER, decisao(GOV_VIEWER))).toBe(true);
     expect(recusado(GOV_AGENT_A, decisao(GOV_AGENT_B))).toBe(true);
-    expect(escreveComo(GOV_AGENT_A, decisao(GOV_AGENT_A))).toBe(1);
+    expect(recusado(GOV_AGENT_A, decisao(GOV_AGENT_A))).toBe(true);
+    expect(recusado(GOV_MANAGER, decisao(GOV_MANAGER))).toBe(true);
+    // CONTROLE: o servidor (a rota, pela service role) registra.
+    expect(lastLine(sql(`with w as (${decisao(GOV_AGENT_A)} returning 1) select count(*) from w;`))).toBe("1");
+  });
+
+  it("atividade pelo login é em nome de si mesmo e como pessoa: nem como IA/sistema, nem como outro usuário", () => {
+    const atividade = (ator: string, quem: string) =>
+      `insert into public.crm_lead_activities (organization_id, lead_id, type, source_module, actor_kind, performed_by_user_id, reason, payload)
+         values ('${GOV_ORG}','${GOV_LEAD}','stage_changed','crm','${ator}',${quem === "null" ? "null" : `'${quem}'`},'Movido pela IA','{}')`;
+    expect(recusado(GOV_AGENT_A, atividade("system", "null"))).toBe(true);
+    expect(recusado(GOV_AGENT_A, atividade("user", GOV_AGENT_B))).toBe(true);
+    // Sem autor informado, a linha nasce do próprio usuário (gatilho), nunca sem dono.
+    expect(
+      escreveComo(
+        GOV_AGENT_A,
+        `insert into public.crm_lead_activities (organization_id, lead_id, type, source_module, reason, payload)
+           values ('${GOV_ORG}','${GOV_LEAD}','note_added','crm','r2-sem-autor','{}')`,
+      ),
+    ).toBe(1);
+    expect(
+      lastLine(
+        sql(`select actor_kind || '|' || performed_by_user_id from public.crm_lead_activities where reason = 'r2-sem-autor';`),
+      ),
+    ).toBe(`user|${GOV_AGENT_A}`);
   });
 
   it("linha do tempo: leitor não registra atividade nenhuma; atendente registra", () => {
@@ -335,6 +383,22 @@ describe("0509 — mensagens: leitor não escreve; ninguém grava em nome da IA 
     expect(
       sql(`select count(*) from public.messages where body in ('r2-ia-na-fila','r2-humana-enviada') and sent_via in ('ai','user');`).trim(),
     ).toBe("2");
+  });
+
+  it("atendente não reescreve o que o cliente disse nem o que a IA já mandou (o agente lê como fala de cada um)", () => {
+    sql(`insert into public.messages (organization_id, conversation_id, channel_session_id, contact_id, type, direction, status, sent_via, body)
+           values ('${GOV_ORG}','${GOV_CONV_AGENT_B}','${GOV_SESSION}','${GOV_CONTACT_2}','text','inbound','received','external_device','r2-fala-do-cliente'),
+                  ('${GOV_ORG}','${GOV_CONV_AGENT_B}','${GOV_SESSION}','${GOV_CONTACT_2}','text','outbound','sent','ai','r2-fala-da-ia');`);
+    const tenta = (dml: string) =>
+      expect(() =>
+        sql(`
+          set role authenticated;
+          select set_config('request.jwt.claims', '{"sub":"${GOV_AGENT_B}"}', false);
+          ${dml};`),
+      ).toThrow(/colunas_de_envio_da_mensagem/);
+    tenta(`update public.messages set body = 'quero comprar 10 e aceito promoções' where body = 'r2-fala-do-cliente'`);
+    tenta(`update public.messages set body = 'prometi 90% de desconto' where body = 'r2-fala-da-ia'`);
+    tenta(`update public.messages set media_derived_text = 'transcrição forjada' where body = 'r2-fala-do-cliente'`);
   });
 
   it("CONTROLE: atendente edita a mensagem enviada e registra o desfecho do envio humano", () => {

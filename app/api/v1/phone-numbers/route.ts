@@ -1,15 +1,15 @@
 /**
  * GET/POST /api/v1/phone-numbers — números/DID de voz da org ativa.
  *
- * Espelha app/api/v1/calls/route.ts: `manager`+, RLS-scoped (createClient,
- * não admin), audit no create. `trunk_endpoint` nunca vem do body — é infra
- * compartilhada (mesmo Asterisk pra toda a plataforma hoje), não escolha da
- * organização; grava o valor de VOIP_TRUNK_ENDPOINT.
+ * `manager`+, leitura pela RLS (createClient), audit no create.
+ * `trunk_endpoint` nunca vem do body — é decidido aqui, abaixo.
  *
- * Cadastrar um número no tronco da INSTALAÇÃO é reivindicar as ligações que
- * chegam nele: com mais de uma organização, só vale se o operador liberou o
- * tronco (lib/voip/tronco-da-instalacao.ts) — senão a primeira empresa a
- * cadastrar o número do servidor passaria a atender as ligações dele.
+ * Cadastrar um número é reivindicar as ligações que chegam nele. O tronco do
+ * cadastro é o PRÓPRIO da organização, quando ativo; senão o da INSTALAÇÃO,
+ * que com mais de uma organização só vale se o operador o liberou
+ * (lib/voip/tronco-da-instalacao.ts) — senão a primeira empresa a cadastrar o
+ * número do servidor passaria a atender as ligações dele. A gravação é pela
+ * service role depois dessas conferências (pelo login o insert é recusado).
  */
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
@@ -21,6 +21,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createPhoneNumberSchema } from "@/lib/schemas/phone-numbers";
 import { validateRequest } from "@/lib/schemas/_validate";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { troncoDaInstalacaoLiberado } from "@/lib/voip/tronco-da-instalacao";
 
@@ -81,21 +82,54 @@ export async function POST(req: NextRequest): Promise<Response> {
     throw err;
   }
 
-  const trunkEndpoint = process.env.VOIP_TRUNK_ENDPOINT;
-  if (!trunkEndpoint) {
+  const supabase = await createClient();
+
+  // O tronco do cadastro decide por onde as ligações deste número podem chegar
+  // (lib/voip/tronco-de-chegada.ts): o tronco PRÓPRIO da organização, quando
+  // ativo; senão o da instalação, só quando liberado para ela.
+  const { data: troncoProprio, error: troncoErr } = await supabase
+    .from("voip_trunk_settings")
+    .select("endpoint_name, is_active")
+    .eq("organization_id", activeOrg.orgId)
+    .maybeSingle();
+  if (troncoErr) return fail("internal_error", troncoErr.message, 500, { requestId });
+
+  let trunkEndpoint: string;
+  if (troncoProprio?.is_active) {
+    trunkEndpoint = troncoProprio.endpoint_name.includes("/")
+      ? troncoProprio.endpoint_name
+      : `PJSIP/${troncoProprio.endpoint_name}`;
+  } else if (!process.env.VOIP_TRUNK_ENDPOINT) {
     return fail("voip_nao_configurado", "Troncal de voz não configurado no servidor.", 500, { requestId });
-  }
-  if (!(await troncoDaInstalacaoLiberado())) {
+  } else if (!(await troncoDaInstalacaoLiberado())) {
     return fail(
       "tronco_nao_compartilhado",
       "O troncal de voz do servidor não está liberado para esta organização. Configure o trunk próprio em Configurações › Telefonia.",
       422,
       { requestId },
     );
+  } else {
+    trunkEndpoint = process.env.VOIP_TRUNK_ENDPOINT;
   }
 
-  const supabase = await createClient();
-  const { data: row, error } = await supabase
+  // O agente padrão tem de ser da organização: a gravação abaixo é pela
+  // service role, e a chave estrangeira não olha organização.
+  if (input.default_ai_agent_id) {
+    const { data: agente } = await supabase
+      .from("ai_agents")
+      .select("id")
+      .eq("id", input.default_ai_agent_id)
+      .eq("organization_id", activeOrg.orgId)
+      .maybeSingle();
+    if (!agente) {
+      return fail("validation_failed", "Agente de IA não encontrado nesta organização.", 422, { requestId });
+    }
+  }
+
+  // Cadastro só pela rota (0509): pelo login a policy recusa o insert, para que
+  // nenhum número entre sem a conferência do tronco acima. A organização vem da
+  // sessão, nunca do corpo.
+  const { data: row, error } = await createAdminClient()
     .from("phone_numbers")
     .insert({
       organization_id: activeOrg.orgId,

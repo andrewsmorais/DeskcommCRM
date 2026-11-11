@@ -43293,10 +43293,13 @@ revoke execute on function public.fn_contato_colunas_de_controle() from public, 
 -- cadeia de envio, toda linha `queued` de origem IA/automação/sistema. O
 -- insert pelo login já não cria linha dessas origens; esta guarda fecha o
 -- mesmo caminho pelo UPDATE: o login não troca a origem, a direção, o contato,
--- a conversa nem o número de uma mensagem, não a devolve para `queued` e não
--- reescreve o texto de uma mensagem automática ainda na fila. Editar (body +
--- edited_at), apagar (revoked_at), ocultar (metadata) e os desfechos do envio
--- humano (sent/failed) seguem com o atendente.
+-- a conversa nem o número de uma mensagem e não a devolve para `queued`. O
+-- texto (e a mídia, e a transcrição) só muda pelo login na mensagem que a
+-- própria equipe enviou: o que o cliente escreveu e o que a IA ou a automação
+-- mandou é o histórico que o agente lê como fala de cada um. Editar a própria
+-- (body + edited_at), apagar (revoked_at), ocultar (metadata) e os desfechos do
+-- envio humano (sent/failed) seguem com o atendente; a anonimização (LGPD)
+-- roda como dona e passa.
 create or replace function public.fn_mensagem_colunas_de_envio()
 returns trigger
 language plpgsql
@@ -43312,15 +43315,60 @@ begin
      or old.conversation_id is distinct from new.conversation_id
      or old.channel_session_id is distinct from new.channel_session_id
      or (new.status = 'queued' and old.status is distinct from 'queued')
-     or (old.sent_via in ('ai', 'automation', 'system') and old.status = 'queued'
-         and (old.body is distinct from new.body
-              or old.media_url is distinct from new.media_url
-              or old.media_storage_path is distinct from new.media_storage_path)) then
+     or ((old.body is distinct from new.body
+          or old.media_url is distinct from new.media_url
+          or old.media_storage_path is distinct from new.media_storage_path
+          or old.media_derived_text is distinct from new.media_derived_text)
+         and not (old.direction = 'outbound' and old.sent_via in ('user', 'crm'))) then
     raise exception 'colunas_de_envio_da_mensagem' using errcode = '42501';
   end if;
   return new;
 end $$;
 revoke execute on function public.fn_mensagem_colunas_de_envio() from public, anon, authenticated;
+
+-- ---- colunas do tronco do número (migration 0509) ----
+-- Cadastrar número é reivindicar as ligações que chegam nele, e o tronco do
+-- cadastro decide por onde elas podem chegar (lib/voip/tronco-de-chegada.ts).
+-- O cadastro é da rota (que confere o tronco da organização e o da
+-- instalação); pelo login não se troca o número, o tronco nem a organização
+-- de uma linha. Rótulo, modo de atendimento e ligar/desligar seguem com o
+-- gerente.
+create or replace function public.fn_numero_colunas_do_tronco()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if old.number is distinct from new.number
+     or old.trunk_endpoint is distinct from new.trunk_endpoint
+     or old.organization_id is distinct from new.organization_id then
+    raise exception 'colunas_do_tronco_do_numero' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_numero_colunas_do_tronco() from public, anon, authenticated;
+
+-- ---- autor da atividade gravada pelo login (migration 0509) ----
+-- Atividade da linha do tempo gravada pelo login é de uma pessoa e em nome
+-- dela (policy crm_lead_activities_insert_de_atendente). Quem não informa o
+-- autor recebe o próprio usuário, em vez de uma linha sem dono; quem informa
+-- outro é recusado pela policy, que roda depois deste gatilho.
+create or replace function public.fn_atividade_do_login_tem_autor()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user in ('authenticated', 'anon') then
+    new.actor_kind := coalesce(new.actor_kind, 'user');
+    new.performed_by_user_id := coalesce(new.performed_by_user_id, auth.uid());
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_atividade_do_login_tem_autor() from public, anon, authenticated;
 
 -- ---- função da anonimização dos derivados (migration 0509) ----
 -- Antes da varredura de anon de propósito: função criada depois dela nasceria
@@ -45818,16 +45866,15 @@ create trigger trg_lead_state_seq_acompanha_texto before update on public.lead_s
   for each row execute function public.fn_lead_state_seq_acompanha_texto();
 
 -- Decisão humana sobre a proposta da IA (aprovar/descartar) vira contexto do
--- agente ("o vendedor JÁ APROVOU"): só atendente para cima a registra, e só em
--- nome de si mesmo. As outras atividades seguem a policy de inserção de sempre.
+-- agente ("o vendedor JÁ APROVOU"), e só vale atada à proposta que a pessoa
+-- viu (`next_action_seq`, conferido na rota). Por isso o registro é só da rota
+-- (`/api/v1/leads/[id]/next-action`, service role, depois da conferência):
+-- pelo login, nem o atendente grava aprovação de um texto que a IA nunca
+-- propôs.
 drop policy if exists crm_lead_activities_decisao_humana on public.crm_lead_activities;
 create policy crm_lead_activities_decisao_humana on public.crm_lead_activities
   as restrictive for insert to authenticated
-  with check (
-    type not in ('next_action_approved', 'next_action_dismissed')
-    or (public.fn_role_at_least(organization_id, 'agent')
-        and performed_by_user_id = (select auth.uid()))
-  );
+  with check (type not in ('next_action_approved', 'next_action_dismissed'));
 
 -- Mensagens: quem escreve pelo login é atendente para cima (o leitor não
 -- envia nada pela tela), e o login nunca grava linha em nome da IA, da
@@ -45902,15 +45949,25 @@ create policy idempotency_do_proprio_autor on public.idempotency_keys
 -- Linha do tempo do lead e demandas: o leitor registrava atividade (nota,
 -- mudança de etapa, ligação) que a equipe e o agente leem como fato, e
 -- escrevia o desfecho da demanda que o agente recebe como "histórico
--- encerrado". Atividade pelo login passa a ser de atendente para cima (toda
--- rota que a emite já exige atendente); demanda e vínculo de demanda são
+-- encerrado". Atividade pelo login passa a ser de atendente para cima e em
+-- nome de si mesmo (toda rota que a emite pelo login já exige atendente e
+-- grava o próprio usuário; IA, sistema e automação gravam pela service role);
+-- demanda e vínculo de demanda são
 -- escritos só pelo servidor (rotas com service role e funções security
 -- definer) — o membro segue lendo. Policy restritiva em vez de revoke: a
 -- recusa continua sendo da RLS, que é o que demandas-rls.test.ts mede.
 drop policy if exists crm_lead_activities_insert_de_atendente on public.crm_lead_activities;
 create policy crm_lead_activities_insert_de_atendente on public.crm_lead_activities
   as restrictive for insert to authenticated
-  with check (public.fn_role_at_least(organization_id, 'agent'));
+  with check (
+    public.fn_role_at_least(organization_id, 'agent')
+    and actor_kind = 'user'
+    and performed_by_user_id = (select auth.uid())
+  );
+drop trigger if exists trg_atividade_do_login_tem_autor on public.crm_lead_activities;
+create trigger trg_atividade_do_login_tem_autor
+  before insert on public.crm_lead_activities
+  for each row execute function public.fn_atividade_do_login_tem_autor();
 drop policy if exists demandas_insert_so_servidor on public.demandas;
 create policy demandas_insert_so_servidor on public.demandas
   as restrictive for insert to anon, authenticated
@@ -45937,4 +45994,19 @@ create policy demanda_conversas_delete_so_servidor on public.demanda_conversas
   as restrictive for delete to anon, authenticated
   using (false);
 revoke truncate on public.demanda_conversas from anon, authenticated;
+-- Número de telefone: o cadastro é só da rota (service role), que confere o
+-- tronco próprio da organização ou o da instalação liberado; pelo login, nem
+-- inserir nem trocar número/tronco/organização (gatilho acima).
+do $f$ begin
+  if to_regclass('public.phone_numbers') is not null then
+    drop policy if exists phone_numbers_insert_so_servidor on public.phone_numbers;
+    create policy phone_numbers_insert_so_servidor on public.phone_numbers
+      as restrictive for insert to anon, authenticated
+      with check (false);
+    drop trigger if exists trg_numero_colunas_do_tronco on public.phone_numbers;
+    create trigger trg_numero_colunas_do_tronco
+      before update on public.phone_numbers
+      for each row execute function public.fn_numero_colunas_do_tronco();
+  end if;
+end $f$;
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;

@@ -55,6 +55,7 @@ import { resolveOrCreateCallerContact } from "@/lib/voip/resolve-caller";
 import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
 import { buscarConhecimento, resolverAcervoDoAgente } from "@/lib/ai/knowledge/busca";
 import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
+import { recusaPeloTroncoDeChegada } from "@/lib/voip/tronco-de-chegada";
 
 const supabaseAdmin = createAdminClient();
 
@@ -76,13 +77,12 @@ async function handleStasisStart(event: AriEvent) {
   }
 
   // O número discado é do CHAMADOR (Request-URI); quem diz de onde a chamada
-  // veio é o endpoint de chegada. Uma chamada que chegou pelo tronco de uma
-  // organização só pode cair num número DELA — senão o tronco de A atendia
-  // (e criava contato e lead) no lugar de B. O tronco global da instalação
-  // (`trunk-endpoint`) segue valendo para qualquer número cadastrado.
-  const doTronco = /^PJSIP\/org-([0-9a-f-]{36})-trunk-endpoint-/i.exec(channel.name ?? "");
-  if (doTronco?.[1] && doTronco[1].toLowerCase() !== routing.organization_id.toLowerCase()) {
-    console.error(`[voice-agent] chamada pelo tronco de outra organização para ${dialedNumber} — recusada`);
+  // veio é o endpoint de chegada. Pelo tronco de uma organização, só número
+  // DELA; pelo tronco da instalação, só número cadastrado no tronco da
+  // instalação (lib/voip/tronco-de-chegada.ts).
+  const recusa = recusaPeloTroncoDeChegada(channel.name, routing);
+  if (recusa) {
+    console.error(`[voice-agent] chamada para ${dialedNumber} recusada pelo tronco de chegada (${recusa})`);
     await hangupChannel(channel.id, "normal");
     return;
   }
@@ -174,6 +174,7 @@ type RoteamentoInbound = {
   routing_mode: "ai" | "human" | "ai_then_human";
   default_ai_agent_id: string | null;
   fallback_user_id: string | null;
+  trunk_endpoint: string | null;
 };
 
 async function resolveInboundNumber(dialedNumber: string): Promise<RoteamentoInbound | null> {
@@ -186,7 +187,7 @@ async function resolveInboundNumber(dialedNumber: string): Promise<RoteamentoInb
   if (dialedNumber === "s") {
     const { data, error } = await supabaseAdmin
       .from("phone_numbers")
-      .select("organization_id, routing_mode, default_ai_agent_id, fallback_user_id")
+      .select("organization_id, routing_mode, default_ai_agent_id, fallback_user_id, trunk_endpoint")
       .eq("is_active", true)
       .limit(2);
     if (error || !data || data.length !== 1) {
@@ -198,9 +199,15 @@ async function resolveInboundNumber(dialedNumber: string): Promise<RoteamentoInb
     return data[0] as RoteamentoInbound;
   }
 
+  // Mesma regra de `fn_resolve_inbound_number` (número ativo, um só), lida
+  // direto pela service role para trazer também o tronco do cadastro.
   const { data, error } = await supabaseAdmin
-    .rpc("fn_resolve_inbound_number", { p_number: dialedNumber })
-    .single();
+    .from("phone_numbers")
+    .select("organization_id, routing_mode, default_ai_agent_id, fallback_user_id, trunk_endpoint")
+    .eq("number", dialedNumber)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
   if (error || !data) return null;
   return data as RoteamentoInbound;
 }
