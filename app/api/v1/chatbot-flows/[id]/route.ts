@@ -136,10 +136,15 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const gravados = [atual.grafo, atual.rascunho].flatMap(
       (g) => ((g as { nodes?: unknown[] } | null)?.nodes ?? []) as unknown[],
     );
-    const cifrado = await cifrarSegredosDoGrafo(createAdminClient(), grafo, { nodes: gravados }, {
-      organizationId: auth.org.orgId,
-      flowId: id,
-    });
+    const cifrado = await cifrarSegredosDoGrafo(
+      createAdminClient(),
+      grafo,
+      { nodes: gravados },
+      {
+        organizationId: auth.org.orgId,
+        flowId: id,
+      },
+    );
     if (cifrado === null) {
       return fail(
         "encryption_unavailable",
@@ -160,12 +165,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const ativoAgora = Boolean(atual.is_active);
   const ligadoDepois = is_active ?? ativoAgora;
   const rascunhoGravado = grafoSchema.safeParse(atual.rascunho);
-  const vaiParaORascunho =
-    grafo !== undefined && ativoAgora && ligadoDepois && publicar !== true;
+  const vaiParaORascunho = grafo !== undefined && ativoAgora && ligadoDepois && publicar !== true;
   const publicadoNovo: typeof grafo | undefined = vaiParaORascunho
     ? undefined
-    : (grafo ??
-      (publicar === true && rascunhoGravado.success ? rascunhoGravado.data : undefined));
+    : (grafo ?? (publicar === true && rascunhoGravado.success ? rascunhoGravado.data : undefined));
 
   // Ligar, ou publicar num fluxo que fica ligado, exige um desenho que o motor
   // consiga rodar.
@@ -251,6 +254,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const camposRecebidos = Object.keys(parsed.data);
   const isento = sessao.user.is_platform_admin || Boolean(sessao.user.support);
   const ligando = ficaLigado && !atual.is_active;
+  // A revisão que esta gravação viu; as funções abaixo não herdam o estreitamento de `atual`.
+  const revisaoLida = atual.revisao ?? 0;
   async function gravar(): Promise<Response> {
     if (ligando) {
       const cota = await conferirCotaDeChatbots(db, sessao.org.orgId, {
@@ -299,7 +304,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       .update(update)
       .eq("id", id)
       .eq("organization_id", sessao.org.orgId)
-      .eq("revisao", atual.revisao ?? 0)
+      .eq("revisao", revisaoLida)
       .select(COLUNAS)
       .maybeSingle();
     if (error)

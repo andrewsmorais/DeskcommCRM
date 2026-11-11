@@ -1843,7 +1843,7 @@ async function executarTurnoDoAgente(
   // agente (POST versions/:vid/test) chegavam ao modelo da chave da plataforma
   // para quem não paga. Na prévia não há turno a ignorar: o motivo vira
   // impedimento, que é o que o rascunho grava em `error_code` e o teste mostra.
-  const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(tenantId);
+  const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(tenantId, pool);
   if (!acessoPeloPlano.liberado) {
     runLog.info('turno ignorado — organização sem assinatura ativa', {
       motivo: acessoPeloPlano.motivo,
@@ -4735,7 +4735,7 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
     // abaixo gera o rascunho e devolve sem nunca passar por `runAgentTurn`.
     // Os dois gastavam a chave da plataforma para quem não paga. A régua é a
     // mesma (leitura indisponível libera); o automático a reencontra no turno.
-    const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(job.organization_id);
+    const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(job.organization_id, pool);
     if (!acessoPeloPlano.liberado) {
       deps.log.info('turno ignorado — organização sem assinatura ativa', {
         job_id: job.id,

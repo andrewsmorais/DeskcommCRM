@@ -80,6 +80,22 @@ describe("suspensão no motor", () => {
     });
   });
 
+  it("o motor consulta pelo próprio pool (a prévia do agente não faz HTTP)", async () => {
+    vi.stubEnv("EXIGIR_ASSINATURA", "false");
+    estado.status = "active"; // a REST diria ativa; quem decide é o pool
+    const query = vi.fn(async () => ({ rows: [{ status: "suspended" }] }));
+    expect(await acessoPeloPlanoDaOrganizacao(ORG, { query } as never)).toEqual({
+      liberado: false,
+      motivo: "suspensa",
+    });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("from public.organizations"), [ORG]);
+    query.mockRejectedValueOnce(new Error("pool fora"));
+    expect(await acessoPeloPlanoDaOrganizacao(ORG, { query } as never)).toEqual({
+      liberado: true,
+      motivo: "nao_exigido",
+    });
+  });
+
   it("controle: organização ativa segue a régua de sempre", async () => {
     vi.stubEnv("EXIGIR_ASSINATURA", "false");
     expect(await acessoPeloPlanoDaOrganizacao(ORG)).toEqual({

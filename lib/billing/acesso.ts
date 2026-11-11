@@ -1,3 +1,5 @@
+import type pg from "pg";
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrganizationBilling } from "@/lib/billing";
 import {
@@ -27,12 +29,16 @@ import { PLANOS_COMERCIAIS, RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano 
  * Sem `EXIGIR_ASSINATURA` nada é lido: instalação que não vende planos não paga
  * uma consulta ao banco por evento (a decisão seria `nao_exigido` de todo jeito).
  */
-export async function acessoPeloPlanoDaOrganizacao(orgId: string): Promise<AcessoPeloPlano> {
+export async function acessoPeloPlanoDaOrganizacao(
+  orgId: string,
+  /** O motor passa o pool que já tem: a prévia do agente não faz HTTP nenhum. */
+  db?: Pick<pg.Pool, "query">,
+): Promise<AcessoPeloPlano> {
   // Suspensão vem ANTES do plano e vale com ou sem EXIGIR_ASSINATURA: é ato da
   // plataforma (Admin › Organizações), não da camada comercial. Como na Umbler
   // Talk, conta suspensa não atende — a IA, o chatbot e as automações param
   // juntos; as mensagens que chegam continuam sendo gravadas.
-  if (await organizacaoSuspensa(orgId)) return { liberado: false, motivo: "suspensa" };
+  if (await organizacaoSuspensa(orgId, db)) return { liberado: false, motivo: "suspensa" };
   if (!assinaturaExigida()) return { liberado: true, motivo: "nao_exigido" };
   return decidirAcessoPeloPlano(await getOrganizationBilling(orgId));
 }
@@ -41,8 +47,18 @@ export async function acessoPeloPlanoDaOrganizacao(orgId: string): Promise<Acess
  * A organização foi suspensa pela plataforma? Leitura indisponível NÃO suspende
  * (mesma régua da leitura do plano): um soluço do banco não cala quem paga.
  */
-export async function organizacaoSuspensa(orgId: string): Promise<boolean> {
+export async function organizacaoSuspensa(
+  orgId: string,
+  db?: Pick<pg.Pool, "query">,
+): Promise<boolean> {
   try {
+    if (db) {
+      const { rows } = await db.query<{ status: string | null }>(
+        "select status from public.organizations where id = $1",
+        [orgId],
+      );
+      return rows[0]?.status === "suspended";
+    }
     const { data, error } = await createAdminClient()
       .from("organizations")
       .select("status")

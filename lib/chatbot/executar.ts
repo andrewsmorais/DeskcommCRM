@@ -347,7 +347,7 @@ export async function atenderPeloChatbot(
   if (!sessaoAnterior && !inicio) return "nao_atende";
 
   // Organização suspensa ou sem assinatura ativa: o chatbot também para (mesma régua da IA).
-  const acesso = await acessoPeloPlanoDaOrganizacao(e.organizationId);
+  const acesso = await acessoPeloPlanoDaOrganizacao(e.organizationId, pool);
   if (!acesso.liberado) {
     log.info("chatbot: organização sem assinatura ativa — não responde", { motivo: acesso.motivo });
     return "atendeu";
@@ -1458,7 +1458,7 @@ export async function iniciarChatbotPorAutomacao(
   )
     return "descartado";
 
-  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId);
+  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId, pool);
   if (!acesso.liberado) return "descartado";
 
   const abre = await adiarAteAJanelaAbrir(admin, organizationId, pedido.channel_session_id);
@@ -1608,7 +1608,7 @@ export async function retomarChatbotPeloRelogio(
     return "descartado";
   }
 
-  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId);
+  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId, pool);
   if (!acesso.liberado) {
     log.info("chatbot: retomada sem assinatura ativa — fluxo encerrado", { motivo: acesso.motivo });
     await encerrarSessao(pool, organizationId, sessao.id, "completed");
@@ -1707,7 +1707,7 @@ async function mandarMensagemDeEspera(
     return desarmar();
   }
 
-  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId);
+  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId, pool);
   if (!acesso.liberado) return desarmar();
 
   if (pedido.channel_session_id) {
