@@ -28,6 +28,7 @@ import { inviteMemberSchema, validateRequest } from "@/lib/schemas";
 import { ErroDaCotaDeEquipe } from "@/lib/billing/equipe";
 import { ErroDaReservaDeCota } from "@/lib/billing/reserva";
 import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,20 @@ export async function POST(req: NextRequest): Promise<Response> {
   const authz = await requireRole("admin", { requestId, resource: "team" });
   if (!authz.ok) return authz.response;
   const { user: authUser, org: activeOrg } = authz;
+
+  // Acompanhamento de suporte não cria membro (decisão de 11/11/2026, como no
+  // suporte das ferramentas do mercado): um convite emitido dentro dele virava
+  // um administrador PERMANENTE, que sobrevivia ao fim do acompanhamento e à
+  // revogação de quem o abriu. Mesma régua dos tokens de API. O banco recusa
+  // também (migration 0506), pela REST.
+  if (authUser.support) {
+    return fail(
+      "forbidden",
+      traduzir("Saia do acompanhamento para convidar pessoas para a equipe.", authUser.idioma),
+      403,
+      { requestId },
+    );
+  }
 
   let input;
   try {

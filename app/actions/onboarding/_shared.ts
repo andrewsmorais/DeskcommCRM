@@ -28,6 +28,8 @@ export interface OnboardingCtx {
   role: string;
   fullName: string | null;
   email: string;
+  /** Sessão dentro de um acompanhamento de suporte (a plataforma operando a conta). */
+  emAcompanhamento: boolean;
 }
 
 export async function requireOnboardingCtx(): Promise<OnboardingCtx> {
@@ -66,6 +68,7 @@ export async function requireOnboardingCtx(): Promise<OnboardingCtx> {
     role: activeOrg.role,
     fullName: user.full_name,
     email: user.email,
+    emAcompanhamento: Boolean(user.support),
   };
 }
 

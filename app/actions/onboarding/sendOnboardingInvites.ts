@@ -32,7 +32,7 @@ export type SendInvitesResult =
     }
   | {
       ok: false;
-      error: "auth_required" | "no_active_org" | "invalid_input";
+      error: "auth_required" | "no_active_org" | "invalid_input" | "forbidden";
       message?: string;
       details?: unknown;
     };
@@ -51,6 +51,18 @@ export async function sendOnboardingInvites(payload: InvitePayload): Promise<Sen
   } catch (err) {
     if (err instanceof OnboardingError) return { ok: false, error: err.code as never };
     throw err;
+  }
+
+  // Acompanhamento de suporte não cria membro (decisão de 11/11/2026, como no
+  // suporte das ferramentas do mercado): o acesso da plataforma é temporário,
+  // e um convite emitido dentro dele virava um administrador PERMANENTE que
+  // sobrevivia ao fim do acompanhamento e à revogação de quem o abriu.
+  if (ctx.emAcompanhamento && !payload.skip) {
+    return {
+      ok: false,
+      error: "forbidden",
+      message: "Saia do acompanhamento para convidar pessoas para a equipe.",
+    };
   }
 
   if (payload.skip) {
