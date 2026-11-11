@@ -44,10 +44,15 @@
  * `Domain=.cliente.com.br` e o mesmo nome, e o servidor passa a receber dois
  * valores sob um nome só. Se o valor esperado fosse o nonce em claro — que
  * viaja na barra de endereços, no histórico e no log do Google — bastaria
- * plantá-lo. Assinado com `INTERNAL_SECRET`, plantar exige o segredo do
- * servidor, e quem o tem já não precisa deste ataque.
+ * plantá-lo. Assinado com a chave de assinatura da instalação
+ * (`lib/auth/chave-de-assinatura.ts`), plantar exige o segredo do servidor, e
+ * quem o tem já não precisa deste ataque. NUNCA `INTERNAL_SECRET`: esse é o
+ * Bearer que o agendador externo recebe, e não pode valer como chave.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+// O mecanismo (assinar, conferir, opções do cookie) mora em
+// `lib/auth/vinculo-oauth.ts` desde que o Google Ads e a loja ganharam o mesmo
+// vínculo; o reexport mantém este endereço para quem já importa daqui.
+export { assinarVinculo, VALIDADE_DO_VINCULO_S, vinculoConfere } from "@/lib/auth/vinculo-oauth";
 
 /**
  * O nome não cita o provedor NEM o produto, e as duas restrições são de gates
@@ -64,36 +69,3 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * a saída certa era renomear, não pedir exceção.
  */
 export const NOME_DO_VINCULO = "crm_oauth_bind";
-
-/** O mesmo teto do `state` (`VALIDADE_DO_ESTADO_MS`). Um não pode durar mais que o outro. */
-export const VALIDADE_DO_VINCULO_S = 10 * 60;
-
-/**
- * Assina o nonce do `state`. O segredo é o do servidor, nunca algo derivável do
- * que trafega.
- */
-export function assinarVinculo(nonce: string, segredo: string): string {
-  return createHmac("sha256", segredo).update(nonce, "utf8").digest("base64url");
-}
-
-/**
- * O cookie casa com o `state`?
- *
- * Compara em tempo constante e **não distingue os motivos da recusa** — ausente,
- * malformado e não-casando devolvem o mesmo `false`. Distinguir contaria a quem
- * ataca se o `state` que ele tem pertence a alguém que passou por aqui.
- */
-export function vinculoConfere(
-  valorDoCookie: string | undefined,
-  nonce: string,
-  segredo: string,
-): boolean {
-  if (!valorDoCookie || !nonce || !segredo) return false;
-  const esperado = assinarVinculo(nonce, segredo);
-  const a = Buffer.from(valorDoCookie, "utf8");
-  const b = Buffer.from(esperado, "utf8");
-  // `timingSafeEqual` lança quando os tamanhos diferem — por isso a checagem
-  // vem antes, e não é um atalho de otimização.
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
