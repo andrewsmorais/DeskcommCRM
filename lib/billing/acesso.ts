@@ -34,13 +34,17 @@ export async function acessoPeloPlanoDaOrganizacao(
   /** O motor passa o pool que já tem: a prévia do agente não faz HTTP nenhum. */
   db?: Pick<pg.Pool, "query">,
 ): Promise<AcessoPeloPlano> {
-  // Suspensão vem ANTES do plano e vale com ou sem EXIGIR_ASSINATURA: é ato da
-  // plataforma (Admin › Organizações), não da camada comercial. Como na Umbler
-  // Talk, conta suspensa não atende — a IA, o chatbot e as automações param
-  // juntos; as mensagens que chegam continuam sendo gravadas.
+  // Plano vencido já barra sem tocar no banco do motor (o turno nem abre o
+  // pool: tests/unit/ia-sem-assinatura-no-motor.test.ts).
+  const exigida = assinaturaExigida();
+  const peloPlano = exigida ? decidirAcessoPeloPlano(await getOrganizationBilling(orgId)) : null;
+  if (peloPlano && !peloPlano.liberado) return peloPlano;
+  // A suspensão vale com ou sem EXIGIR_ASSINATURA: é ato da plataforma
+  // (Admin › Organizações), não da camada comercial. Como na Umbler Talk, conta
+  // suspensa não atende — a IA, o chatbot e as automações param juntos; as
+  // mensagens que chegam continuam sendo gravadas.
   if (await organizacaoSuspensa(orgId, db)) return { liberado: false, motivo: "suspensa" };
-  if (!assinaturaExigida()) return { liberado: true, motivo: "nao_exigido" };
-  return decidirAcessoPeloPlano(await getOrganizationBilling(orgId));
+  return peloPlano ?? { liberado: true, motivo: "nao_exigido" };
 }
 
 /**
