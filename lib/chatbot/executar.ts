@@ -17,9 +17,7 @@
 import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getOrganizationBilling } from "@/lib/billing";
-import { decidirAcessoPeloPlano } from "@/lib/billing/exigencia";
-import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { acessoPeloPlanoDaOrganizacao, verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { espacarEnvio } from "@/lib/automation/throttle";
 import { parseServiceBoundary, type ServiceBoundary } from "@/lib/atendimento/fronteira";
@@ -325,8 +323,8 @@ export async function atenderPeloChatbot(
     : pontoDePartida(grafo, { channelSessionId: e.channelSessionId, mensagem: texto });
   if (!sessaoAnterior && !inicio) return "nao_atende";
 
-  // Organização sem assinatura ativa: o chatbot também para (mesma regra da IA).
-  const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(e.organizationId));
+  // Organização suspensa ou sem assinatura ativa: o chatbot também para (mesma régua da IA).
+  const acesso = await acessoPeloPlanoDaOrganizacao(e.organizationId);
   if (!acesso.liberado) {
     log.info("chatbot: organização sem assinatura ativa — não responde", { motivo: acesso.motivo });
     return "atendeu";
@@ -1341,7 +1339,7 @@ export async function iniciarChatbotPorAutomacao(
   )
     return "descartado";
 
-  const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
+  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId);
   if (!acesso.liberado) return "descartado";
 
   const abre = await adiarAteAJanelaAbrir(admin, organizationId, pedido.channel_session_id);
@@ -1491,7 +1489,7 @@ export async function retomarChatbotPeloRelogio(
     return "descartado";
   }
 
-  const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
+  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId);
   if (!acesso.liberado) {
     log.info("chatbot: retomada sem assinatura ativa — fluxo encerrado", { motivo: acesso.motivo });
     await encerrarSessao(pool, organizationId, sessao.id, "completed");
@@ -1590,7 +1588,7 @@ async function mandarMensagemDeEspera(
     return desarmar();
   }
 
-  const acesso = decidirAcessoPeloPlano(await getOrganizationBilling(organizationId));
+  const acesso = await acessoPeloPlanoDaOrganizacao(organizationId);
   if (!acesso.liberado) return desarmar();
 
   if (pedido.channel_session_id) {

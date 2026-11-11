@@ -1,3 +1,4 @@
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrganizationBilling } from "@/lib/billing";
 import {
   assinaturaExigida,
@@ -27,8 +28,31 @@ import { PLANOS_COMERCIAIS, RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano 
  * uma consulta ao banco por evento (a decisão seria `nao_exigido` de todo jeito).
  */
 export async function acessoPeloPlanoDaOrganizacao(orgId: string): Promise<AcessoPeloPlano> {
+  // Suspensão vem ANTES do plano e vale com ou sem EXIGIR_ASSINATURA: é ato da
+  // plataforma (Admin › Organizações), não da camada comercial. Como na Umbler
+  // Talk, conta suspensa não atende — a IA, o chatbot e as automações param
+  // juntos; as mensagens que chegam continuam sendo gravadas.
+  if (await organizacaoSuspensa(orgId)) return { liberado: false, motivo: "suspensa" };
   if (!assinaturaExigida()) return { liberado: true, motivo: "nao_exigido" };
   return decidirAcessoPeloPlano(await getOrganizationBilling(orgId));
+}
+
+/**
+ * A organização foi suspensa pela plataforma? Leitura indisponível NÃO suspende
+ * (mesma régua da leitura do plano): um soluço do banco não cala quem paga.
+ */
+export async function organizacaoSuspensa(orgId: string): Promise<boolean> {
+  try {
+    const { data, error } = await createAdminClient()
+      .from("organizations")
+      .select("status")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) return false;
+    return data?.status === "suspended";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -45,6 +69,13 @@ export async function exigirAssinaturaAtiva(
 ): Promise<Response | null> {
   const acesso = await acessoPeloPlanoDaOrganizacao(orgId);
   if (acesso.liberado) return null;
+  if (acesso.motivo === "suspensa")
+    return fail(
+      "org_suspended",
+      "Esta organização está suspensa. Fale com o suporte da plataforma.",
+      403,
+      opts,
+    );
   return acesso.motivo === "sem_plano"
     ? fail(
         "billing_required",

@@ -22,7 +22,7 @@ import type { BillingReadResult } from "@/lib/billing";
 
 export type AcessoPeloPlano =
   | { liberado: true; motivo: "ativo" | "nao_exigido" | "isento" | "leitura_indisponivel" }
-  | { liberado: false; motivo: "sem_plano" | "vencido" };
+  | { liberado: false; motivo: "sem_plano" | "vencido" | "suspensa" };
 
 export function assinaturaExigida(
   ambiente: Record<string, string | undefined> = process.env,
