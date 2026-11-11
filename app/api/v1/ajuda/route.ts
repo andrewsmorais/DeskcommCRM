@@ -6,9 +6,10 @@
  * POST → uma pergunta ao assistente (Claude, chave própria da ajuda).
  *
  * A organização e o papel vêm da sessão (`requireRole`), nunca do corpo. O
- * corpo traz só a conversa, validada por `pedidoDeAjudaSchema`. Cada mensagem
- * respondida vira uma linha em `ajuda_mensagens` (limite diário, painel do
- * dono, custo) e um audit `ajuda.pergunta`.
+ * corpo traz só a conversa, validada por `pedidoDeAjudaSchema`. Cada pergunta
+ * que vai ao assistente RESERVA antes a sua linha em `ajuda_mensagens` (limite
+ * diário, painel do dono, custo) — completada com a resposta depois — e gera um
+ * audit `ajuda.pergunta`.
  */
 import { randomUUID } from "node:crypto";
 
@@ -24,6 +25,8 @@ import {
 import { contatosDeSuporte, contextoDoCliente } from "@/lib/ajuda/contexto";
 import { parteDoCliente, parteFixa } from "@/lib/ajuda/prompt";
 import { LIMITE_DE_MENSAGENS_POR_DIA, criarRegistroDaAjuda } from "@/lib/ajuda/registro";
+import { checkRateLimit } from "@/lib/ai/dispatcher/rate-limit";
+import { ErroDaReservaDeCota } from "@/lib/billing/reserva";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { valorDaInstalacao } from "@/lib/instalacao/config";
 import { logger } from "@/lib/logger";
@@ -31,6 +34,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** Perguntas por PESSOA por minuto. Cada uma é uma chamada paga na chave da ajuda. */
+const TETO_POR_USUARIO = 6;
+/** Perguntas por EMPRESA por minuto — sem ele, 10 pessoas somam 60 por minuto. */
+const TETO_POR_ORGANIZACAO = 20;
+const JANELA_SEGUNDOS = 60;
 
 async function chaveDaAjuda(): Promise<string | null> {
   const { valor } = await valorDaInstalacao("AJUDA_ANTHROPIC_API_KEY");
@@ -84,10 +93,63 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
+  // Rajada por pessoa e por empresa, antes de tocar no banco — o mesmo par de
+  // tetos da consulta paga do caso (`ai/cases/[id]/chat`). O teto do DIA é o
+  // da reserva logo abaixo; este só impede que uma rajada o consuma de uma vez.
+  const porUsuario = await checkRateLimit(`ajuda:${user.id}`, TETO_POR_USUARIO, JANELA_SEGUNDOS);
+  const porOrganizacao = await checkRateLimit(
+    `ajuda-org:${org.orgId}`,
+    TETO_POR_ORGANIZACAO,
+    JANELA_SEGUNDOS,
+  );
+  if (!porUsuario.allowed || !porOrganizacao.allowed) {
+    const teto = porUsuario.allowed ? porOrganizacao : porUsuario;
+    return fail("rate_limited", "Muitas perguntas seguidas. Tente de novo em um minuto.", 429, {
+      requestId,
+      headers: {
+        "Retry-After": String(JANELA_SEGUNDOS),
+        "X-RateLimit-Limit": String(teto.limit),
+        "X-RateLimit-Remaining": String(Math.max(0, teto.limit - teto.count)),
+      },
+    });
+  }
+
   const admin = createAdminClient();
   const registro = criarRegistroDaAjuda(admin);
-  const usadas = await registro.usadasNasUltimas24h(org.orgId);
-  if (usadas >= LIMITE_DE_MENSAGENS_POR_DIA) {
+
+  // A VAGA É TOMADA ANTES DA CHAMADA PAGA, dentro da reserva da organização
+  // (`registro.reservar`). Contar antes e gravar depois deixava N pedidos
+  // simultâneos passarem todos pelo teto; e a gravação que falhava depois era
+  // engolida. Agora qualquer falha aqui recusa SEM chamar o modelo.
+  let reserva: { id: string; usadas: number } | null;
+  try {
+    reserva = await registro.reservar({
+      organizationId: org.orgId,
+      userId: user.id,
+      pergunta: pedido.mensagem,
+      tela: pedido.tela ?? null,
+    });
+  } catch (err) {
+    if (err instanceof ErroDaReservaDeCota && err.status === 409) {
+      return fail(
+        "rate_limited",
+        "Outra pergunta da sua empresa está sendo registrada agora. Tente de novo em instantes.",
+        429,
+        { requestId, headers: { "Retry-After": "2" } },
+      );
+    }
+    logger.warn("[ajuda] não foi possível reservar a mensagem — recusada sem chamar o assistente", {
+      organization_id: org.orgId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return fail(
+      "ajuda_indisponivel",
+      "O chat de ajuda não conseguiu registrar a pergunta agora. Tente de novo em instantes.",
+      503,
+      { requestId },
+    );
+  }
+  if (!reserva) {
     return fail(
       "rate_limited",
       "Sua empresa usou as mensagens de hoje do chat de ajuda. Fale com a equipe pelo WhatsApp ou pelo e-mail.",
@@ -127,23 +189,20 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const id = await registro
-    .registrar({
-      organizationId: org.orgId,
-      userId: user.id,
-      pergunta: pedido.mensagem,
+  // A vaga já foi contada na reserva; aqui só se completa a linha. Falhar isto
+  // não esconde a resposta de quem perguntou — e não devolve vaga nenhuma.
+  const id = reserva.id;
+  await registro
+    .concluir(org.orgId, id, {
       resposta: resposta.texto,
       escalou: resposta.escalou,
-      tela: pedido.tela ?? null,
       uso: resposta.uso,
     })
     .catch((err: unknown) => {
-      // A resposta já existe: falhar o registro não pode esconder dela.
-      logger.warn("[ajuda] registro falhou", {
+      logger.warn("[ajuda] registro da resposta falhou", {
         organization_id: org.orgId,
         error: err instanceof Error ? err.message : String(err),
       });
-      return null;
     });
 
   void audit({
@@ -160,7 +219,7 @@ export async function POST(request: Request): Promise<Response> {
     {
       resposta: resposta.texto,
       escalou: resposta.escalou,
-      restantes: Math.max(0, LIMITE_DE_MENSAGENS_POR_DIA - usadas - 1),
+      restantes: Math.max(0, LIMITE_DE_MENSAGENS_POR_DIA - reserva.usadas),
     },
     { requestId },
   );

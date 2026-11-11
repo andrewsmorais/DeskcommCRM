@@ -1,7 +1,64 @@
 import { getOrganizationBilling } from "@/lib/billing";
-import { assinaturaExigida } from "@/lib/billing/exigencia";
+import {
+  assinaturaExigida,
+  decidirAcessoPeloPlano,
+  type AcessoPeloPlano,
+} from "@/lib/billing/exigencia";
 import { fail } from "@/lib/api/wrappers";
 import { PLANOS_COMERCIAIS, RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "./catalogo";
+
+/**
+ * SEM ASSINATURA ATIVA, SEM IA — a régua do turno do agente, para quem não é o
+ * turno do agente.
+ *
+ * É a MESMA decisão que `inbound-turn.ts` e `lib/chatbot/executar.ts` aplicam
+ * (`decidirAcessoPeloPlano` sobre `getOrganizationBilling`), e não
+ * `verificarRecursoDoPlano`: aquela cobra um RECURSO e fecha quando a leitura do
+ * plano falha; esta só pergunta "a organização tem assinatura ativa?" e LIBERA
+ * quando a leitura falha — um soluço do banco não pode calar quem paga
+ * (`lib/billing/exigencia.ts`).
+ *
+ * Existe porque a regra estava escrita em dois caminhos e faltava nos outros:
+ * as regras de automação, o rascunho do modo assistido, o teste do agente e as
+ * consultas à IA pela tela chamavam o modelo da chave da plataforma para quem
+ * nunca pagou.
+ *
+ * Sem `EXIGIR_ASSINATURA` nada é lido: instalação que não vende planos não paga
+ * uma consulta ao banco por evento (a decisão seria `nao_exigido` de todo jeito).
+ */
+export async function acessoPeloPlanoDaOrganizacao(orgId: string): Promise<AcessoPeloPlano> {
+  if (!assinaturaExigida()) return { liberado: true, motivo: "nao_exigido" };
+  return decidirAcessoPeloPlano(await getOrganizationBilling(orgId));
+}
+
+/**
+ * A mesma régua, na forma de rota: `null` libera; senão, o 403 pronto.
+ *
+ * Para toda rota que chama modelo pela tela (rascunho, teste do agente,
+ * consulta à IA). Fica DEPOIS da autenticação — a organização vem do
+ * `requireRole`, nunca do corpo — e ANTES de qualquer escrita ou chamada paga.
+ * Os códigos são os de `verificarRecursoDoPlano`, que a tela já sabe ler.
+ */
+export async function exigirAssinaturaAtiva(
+  orgId: string,
+  opts: { requestId?: string } = {},
+): Promise<Response | null> {
+  const acesso = await acessoPeloPlanoDaOrganizacao(orgId);
+  if (acesso.liberado) return null;
+  return acesso.motivo === "sem_plano"
+    ? fail(
+        "billing_required",
+        "Vincule um plano em Configurações → Plano e cobrança para usar a inteligência artificial.",
+        403,
+        opts,
+      )
+    : fail(
+        "billing_inactive",
+        "A assinatura não está ativa. Confira Configurações → Plano e cobrança. Seus dados foram preservados.",
+        403,
+        opts,
+      );
+}
 
 export type AcessoAoRecurso =
   | { ok: true }

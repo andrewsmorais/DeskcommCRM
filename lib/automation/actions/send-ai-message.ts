@@ -32,17 +32,24 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { decidirPreGoLiveDoCanalViaSupabase } from "@/lib/ai/elegibilidade/consulta-pre-go-live";
+import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
 
 const TIPO = "send_ai_message";
 
-async function postponeUntil(ctx: ActionCtx, config: Record<string, unknown>): Promise<string | null> {
+async function postponeUntil(
+  ctx: ActionCtx,
+  config: Record<string, unknown>,
+): Promise<string | null> {
   const contato = checarGuardasDeContato(ctx);
   if (contato.ok) {
-    const protection = (await protecaoAgendaSupabase(ctx.admin, ctx.organizationId, [contato.contact.id])).get(contato.contact.id)!;
+    const protection = (
+      await protecaoAgendaSupabase(ctx.admin, ctx.organizationId, [contato.contact.id])
+    ).get(contato.contact.id)!;
     if (protection.motivo === "leitura_indisponivel") throw new Error("agenda_read_failed");
     if (protection.adiar) return protection.reavaliar_em;
   }
-  const sessionId = typeof config.channel_session_id === "string" ? config.channel_session_id : null;
+  const sessionId =
+    typeof config.channel_session_id === "string" ? config.channel_session_id : null;
   if (!sessionId) return null;
   const foraDaJanela = await adiarAteAJanelaAbrir(ctx.admin, ctx.organizationId, sessionId);
   if (foraDaJanela) return foraDaJanela;
@@ -50,8 +57,12 @@ async function postponeUntil(ctx: ActionCtx, config: Record<string, unknown>): P
   return daily.allowed ? null : (daily.retry_at ?? null);
 }
 
-async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise<ActionResultDetail> {
-  const sessionId = typeof config.channel_session_id === "string" ? config.channel_session_id : null;
+async function execute(
+  ctx: ActionCtx,
+  config: Record<string, unknown>,
+): Promise<ActionResultDetail> {
+  const sessionId =
+    typeof config.channel_session_id === "string" ? config.channel_session_id : null;
   const agentId = typeof config.agent_id === "string" ? config.agent_id : null;
   const instrucao = typeof config.instruction === "string" ? config.instruction.trim() : "";
   if (!sessionId || !agentId || !instrucao) {
@@ -97,17 +108,44 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
   } catch {
     // `SUPABASE_DB_URL` ausente. É config da instalação, não erro deste lead —
     // a frase precisa dizer isso para quem lê a aba Atividade.
-    return { type: TIPO, status: "failed", error: "ia_indisponivel", detail: { reason: "ia_indisponivel" } };
+    return {
+      type: TIPO,
+      status: "failed",
+      error: "ia_indisponivel",
+      detail: { reason: "ia_indisponivel" },
+    };
   }
 
   const { dados, origem, origemDaAbordagem } = await dadosDoFormularioDoContexto(ctx);
 
   let boundary: ServiceBoundary;
-  try { boundary = await serviceForAutomation(ctx, contact.id, sessionId); }
-  catch (error) { return { type: TIPO, status: "failed", error: error instanceof Error ? error.message : String(error) }; }
+  try {
+    boundary = await serviceForAutomation(ctx, contact.id, sessionId);
+  } catch (error) {
+    return {
+      type: TIPO,
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
   let texto: string;
   try {
-    await assertAgendaEffectSupabase(ctx.admin, { organizationId: ctx.organizationId, contactId: contact.id });
+    await assertAgendaEffectSupabase(ctx.admin, {
+      organizationId: ctx.organizationId,
+      contactId: contact.id,
+    });
+    // SEM ASSINATURA ATIVA, A IA NÃO ESCREVE — conferido de novo aqui, colado na
+    // chamada paga. O motor (`engine.ts`) já pula as regras da organização sem
+    // plano; esta é a defesa da AÇÃO, que não pode depender de quem a chamou
+    // lembrar da régua: o texto sai da chave da plataforma.
+    const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(ctx.organizationId);
+    if (!acessoPeloPlano.liberado) {
+      return {
+        type: TIPO,
+        status: "skipped",
+        detail: { reason: "assinatura_inativa", motivo: acessoPeloPlano.motivo },
+      };
+    }
     const gerado = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
       tenantId: ctx.organizationId,
       agentId,
@@ -118,7 +156,12 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
       origemDaAbordagem,
     });
     if (!gerado.ok) {
-      return { type: TIPO, status: "failed", error: gerado.reason, detail: { reason: gerado.reason } };
+      return {
+        type: TIPO,
+        status: "failed",
+        error: gerado.reason,
+        detail: { reason: gerado.reason },
+      };
     }
     texto = gerado.texto;
   } catch (err) {

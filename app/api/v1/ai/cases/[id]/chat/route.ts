@@ -67,6 +67,7 @@ import { motivoDaConversaDoCaso } from "@/lib/ai/conversa-do-caso/motivo";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { conversasVisiveisDosCasos } from "@/lib/escalacao/chamados";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -126,7 +127,10 @@ interface ContextoDaRota {
  * Devolve `{ response }` quando algo barrou — o chamador repassa, e não inventa
  * uma segunda frase para a mesma recusa.
  */
-async function contexto(ctx: Ctx, requestId: string): Promise<{ response: Response } | ContextoDaRota> {
+async function contexto(
+  ctx: Ctx,
+  requestId: string,
+): Promise<{ response: Response } | ContextoDaRota> {
   const authz = await requireRole("agent", { requestId, resource: "agent_cases" });
   if (!authz.ok) return { response: authz.response };
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
@@ -170,7 +174,11 @@ async function personaDeAgora(
   return resolverPersona(leitorNoPool(pool, orgId), agentId);
 }
 
-function personaParaTela(p: PersonaDaConversa): { fonte: string; nome: string | null; motivo: string | null } {
+function personaParaTela(p: PersonaDaConversa): {
+  fonte: string;
+  nome: string | null;
+  motivo: string | null;
+} {
   return p.fonte === "agente_do_caso"
     ? { fonte: p.fonte, nome: p.nome, motivo: null }
     : { fonte: p.fonte, nome: null, motivo: p.motivo };
@@ -296,6 +304,11 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const c = await contexto(ctx, requestId);
   if ("response" in c) return c.response;
 
+  // Cada pergunta é uma chamada paga ao modelo: sem assinatura ativa, não há
+  // pergunta — nem a linha dela.
+  const semAssinatura = await exigirAssinaturaAtiva(c.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
+
   let bruto: unknown;
   try {
     bruto = await req.json();
@@ -311,7 +324,11 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   }
   const { turn_id: turnId, pergunta } = parsed.data;
 
-  const porUsuario = await checkRateLimit(`caso-chat:${c.userId}`, TETO_POR_USUARIO, JANELA_SEGUNDOS);
+  const porUsuario = await checkRateLimit(
+    `caso-chat:${c.userId}`,
+    TETO_POR_USUARIO,
+    JANELA_SEGUNDOS,
+  );
   const porOrganizacao = await checkRateLimit(
     `caso-chat-org:${c.orgId}`,
     TETO_POR_ORGANIZACAO,
@@ -410,8 +427,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const persona = await personaDeAgora(pool, c.orgId, caso.agent_id);
   const fronteira = parseServiceBoundary(caso.context_snapshot?.service_boundary);
   const obsoleto = await casoEstaObsoleto(pool, c.orgId, caso.context_snapshot);
-  const janela =
-    persona.fonte === "agente_do_caso" ? persona.agente.historyMessageWindow : 20;
+  const janela = persona.fonte === "agente_do_caso" ? persona.agente.historyMessageWindow : 20;
 
   const [eventos, conversa, memoria, decisoes, orgMemory, historicoBruto] = await Promise.all([
     lerEventosDoCaso(pool, c.orgId, c.caseId),

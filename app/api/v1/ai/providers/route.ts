@@ -30,6 +30,8 @@ import {
 import { PAPEIS, PONTOS_DE_IA, PONTO_POR_ID } from "@/lib/ai/pontos/registro";
 import { PROVEDORES, ehProvedorSuportado } from "@/lib/ai/pontos/provedores";
 import { validarBinding } from "@/lib/ai/pontos/validar-binding";
+import { podeEditarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
+import { motivoDaRecusaDeDestino } from "@/lib/automation/destinos-internos-autorizados";
 import { lerAmbiente } from "@/lib/instalacao/ambiente";
 import { modeloDeTranscricaoEmVigor } from "@/lib/messaging/media/transcription";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -258,6 +260,40 @@ export async function PUT(req: NextRequest): Promise<Response> {
   const ponto = PONTO_POR_ID.get(corpo.purpose);
   if (!ponto) return fail("ponto_desconhecido", `"${corpo.purpose}" não é um ponto do sistema`, 404);
 
+  // NA CHAVE DA PLATAFORMA, PROVEDOR E MODELO SÃO DA PLATAFORMA. Sem
+  // `credential_id` o ponto roda na chave da instalação, que o dono paga; a
+  // trava de `config-tecnica.ts` cobria só a versão do agente, e por aqui o
+  // admin da empresa escolhia qualquer modelo (até fora do catálogo, sem preço)
+  // para rodar na conta dele. Desligar um ponto continua livre. O motor confere
+  // de novo (`run-model-call.ts`): esta é a recusa com explicação.
+  const naChaveDaPlataforma = !corpo.credential_id && (corpo.is_enabled ?? true);
+  if (naChaveDaPlataforma && !podeEditarConfigTecnica(user)) {
+    return fail(
+      "config_tecnica_da_plataforma",
+      t(
+        "Provedor e modelo da chave da plataforma são definidos pela plataforma. Para escolher, cadastre a chave da sua empresa e selecione-a aqui.",
+      ),
+      403,
+    );
+  }
+
+  // O ENDEREÇO PRÓPRIO É ESCOLHA DA ORGANIZAÇÃO, e passa pela régua de destino
+  // de organização AQUI, onde alguém lê o motivo — `z.string().url()` aceitava
+  // `http://127.0.0.1:6379/v1` e o worker chamava a rede interna do servidor.
+  // O motor confere de novo a cada requisição (o nome pode passar a resolver
+  // para IP interno depois de salvo); esta é a recusa com explicação.
+  if (corpo.base_url) {
+    const recusa = await motivoDaRecusaDeDestino(corpo.base_url, "organizacao");
+    if (recusa) {
+      return fail(
+        "base_url_destino_bloqueado",
+        t("Este endereço não é um destino permitido: use um endereço público (https)."),
+        422,
+        { details: { motivo: recusa } },
+      );
+    }
+  }
+
   const db = await createClient();
 
   // A capacidade vem do catálogo (o que o FABRICANTE declara), nunca de
@@ -296,11 +332,24 @@ export async function PUT(req: NextRequest): Promise<Response> {
   if (corpo.credential_id) {
     const { data: cred } = await db
       .from("ai_provider_credentials")
-      .select("id, provider")
+      .select("id, provider, is_active, validated_at")
       .eq("id", corpo.credential_id)
       .eq("organization_id", org.orgId)
       .maybeSingle();
     if (!cred) return fail("credencial_invalida", t("chave não encontrada nesta organização"), 422);
+    // Chave revogada ou nunca validada não é usada pelo motor: ele cai na da
+    // INSTALAÇÃO — e aí vale a mesma recusa de quando não há chave nenhuma.
+    if (
+      (cred.is_active !== true || !cred.validated_at) &&
+      (corpo.is_enabled ?? true) &&
+      !podeEditarConfigTecnica(user)
+    ) {
+      return fail(
+        "config_tecnica_da_plataforma",
+        t("Esta chave não está ativa e validada; sem ela o ponto rodaria na chave da plataforma."),
+        403,
+      );
+    }
     if (cred.provider !== corpo.provider) {
       return fail(
         "credencial_de_outro_provedor",
@@ -398,6 +447,31 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const corpo = parsed.data;
 
   const db = await createClient();
+
+  // O PADRÃO DA EMPRESA VALE EM TODO PONTO SEM BINDING — e, sem chave própria
+  // do provedor escolhido, ele roda na chave da INSTALAÇÃO. Aí provedor e
+  // modelo são da plataforma (a mesma regra do PUT). A conta é a do motor
+  // (`resolveOrgLlmConfig`): credencial ativa e validada do provedor.
+  if (!podeEditarConfigTecnica(user)) {
+    const { data: chavePropria } = await db
+      .from("ai_provider_credentials")
+      .select("id")
+      .eq("organization_id", org.orgId)
+      .eq("provider", corpo.provider)
+      .eq("is_active", true)
+      .not("validated_at", "is", null)
+      .limit(1)
+      .maybeSingle();
+    if (!chavePropria) {
+      return fail(
+        "config_tecnica_da_plataforma",
+        t(
+          "O padrão de IA na chave da plataforma é definido pela plataforma. Para escolher, cadastre e valide a chave da sua empresa para este provedor.",
+        ),
+        403,
+      );
+    }
+  }
 
   // O modelo tem de existir no catálogo DAQUELE provedor. Sem esta conferência,
   // um erro de digitação vira padrão da organização e derruba todo ponto

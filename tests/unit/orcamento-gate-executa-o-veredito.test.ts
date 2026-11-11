@@ -24,7 +24,7 @@
  * enforcement vivo nunca teve um teste, e uma mudança de semântica atravessava
  * `verify`, `invariants`, `build-and-size` e `e2e` verdes.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { decidirOrcamento } from "@/lib/agent-engine/edge/llm/orcamento";
 import {
@@ -32,6 +32,19 @@ import {
   LlmBudgetExceededError,
   normalizarErro,
 } from "@/lib/agent-engine/edge/llm/run-model-call";
+
+// NA CHAVE DA INSTALAÇÃO QUEM ESCOLHE O MODELO É A PLATAFORMA
+// (`run-model-call.ts`, `configTecnicaDaPlataforma`). Este arquivo usa o padrão
+// da organização como linha de base, então a plataforma é declarada igual a ele
+// — o que se mede aqui é outra coisa.
+beforeEach(() => {
+  vi.stubEnv("PLATAFORMA_IA_PROVEDOR", "anthropic");
+  vi.stubEnv("PLATAFORMA_IA_MODELO", "claude-padrao");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 
 const ORG = "33333333-3333-4333-8333-333333333333";
 

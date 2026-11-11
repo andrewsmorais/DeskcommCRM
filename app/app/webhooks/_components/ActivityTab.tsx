@@ -48,7 +48,10 @@ function statusBadgeVariant(
   return "warning";
 }
 
-function statusBadgeLabel(status: AutomationRuleRunRow["status"], t: (texto: string) => string): string {
+function statusBadgeLabel(
+  status: AutomationRuleRunRow["status"],
+  t: (texto: string) => string,
+): string {
   if (status === "success") return t("Sucesso");
   if (status === "failed") return t("Falhou");
   // "Aguardando envio", e não "Aguardando horário": desde que o agregador passou
@@ -98,21 +101,28 @@ const MOTIVO_DA_PARADA: Record<string, string> = {
     "A pessoa escolhida como responsável não pode atender — o papel dela é só de visualização. Escolha um atendente.",
   missing_input:
     "A ação não recebeu o que precisava (o lead do evento ou a pessoa configurada). Abra a automação e revise.",
-  no_tags: "Esta ação não tem nenhuma etiqueta escolhida. Abra a automação e escolha pelo menos uma.",
+  no_tags:
+    "Esta ação não tem nenhuma etiqueta escolhida. Abra a automação e escolha pelo menos uma.",
   no_target: "O evento que disparou a regra não trouxe um lead nem um contato para etiquetar.",
   no_lead_or_contact: "O evento que disparou a regra não trouxe um lead para criar ou mover.",
-  cross_pipeline_move_not_allowed: "Mover um lead para outro funil está desligado nesta organização.",
+  cross_pipeline_move_not_allowed:
+    "Mover um lead para outro funil está desligado nesta organização.",
   flow_not_active:
     "O funil escolhido não está ativo, então a inscrição não foi feita. Ative o funil ou escolha outro na automação.",
-  live_enrollment_exists: "O contato já está em um funil ativo — esta ação não inscreve duas vezes.",
-  chatbot_flow_not_found: "O chatbot escolhido nesta automação não existe mais. Abra a automação e escolha outro.",
-  chatbot_flow_off: "O chatbot escolhido nesta automação está desligado. Ligue o chatbot ou escolha outro.",
+  live_enrollment_exists:
+    "O contato já está em um funil ativo — esta ação não inscreve duas vezes.",
+  chatbot_flow_not_found:
+    "O chatbot escolhido nesta automação não existe mais. Abra a automação e escolha outro.",
+  chatbot_flow_off:
+    "O chatbot escolhido nesta automação está desligado. Ligue o chatbot ou escolha outro.",
   consent_declined: "O contato não autorizou o recebimento de mensagens de marketing.",
   fora_do_pre_go_live:
     "O número deste canal ainda não entrou no pré-go-live, então a mensagem escrita pela IA não sai por ele.",
   numero_de_teste: "Este número está marcado como número de teste do canal.",
   fora_da_lista_de_teste:
     "Este número está fora da lista de teste do canal, então a mensagem escrita pela IA não sai por ele.",
+  assinatura_inativa:
+    "A assinatura da empresa não está ativa, então a IA não escreveu a mensagem. Confira Configurações → Plano e cobrança.",
   elegibilidade_indeterminada:
     "Não deu para saber se este número pode receber a mensagem da IA: a consulta falhou na hora (rede ou banco), e não é erro de configuração. Tente de novo em alguns minutos.",
   missing_url: "Esta ação de webhook não tem endereço configurado. Abra a automação e preencha.",
@@ -195,7 +205,13 @@ function horarioDeRetorno(action: AutomationRuleRunActionResult, idioma: string)
   return quando.toLocaleString(idioma, { dateStyle: "short", timeStyle: "short" });
 }
 
-function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; run: AutomationRuleRunRow }) {
+function ActionLine({
+  action,
+  run,
+}: {
+  action: AutomationRuleRunActionResult;
+  run: AutomationRuleRunRow;
+}) {
   const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const resend = useResendAutomationRun();
@@ -232,7 +248,7 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
         // comprido empurre o botão "Reenviar" pra fora da tela.
         <div className="ml-6 flex flex-wrap items-center justify-between gap-2 rounded-sm bg-muted px-2 py-1.5">
           <div className="min-w-0 space-y-0.5">
-            <p className="break-words text-xs text-muted-foreground">
+            <p className="text-xs break-words text-muted-foreground">
               {/* A frase ANTES do código cru. `action.error` já é texto de gente
                   nas falhas de envio (desfechoDoEnvio traduz), mas nas falhas da
                   IA ele é o código (`sem_agente_publicado`) — e é para esses que
@@ -243,7 +259,7 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
             {detalheTecnico ? (
               // Subordinado à frase, e não no lugar dela: ver a decisão escrita
               // em `detalheTecnicoDe`.
-              <p className="break-words text-[11px] text-muted-foreground">
+              <p className="text-[11px] break-words text-muted-foreground">
                 {t("Detalhe técnico:")} {detalheTecnico}
               </p>
             ) : null}
@@ -269,12 +285,12 @@ function ActionLine({ action, run }: { action: AutomationRuleRunActionResult; ru
         // Pular e adiar também precisam de razão visível: o ícone sozinho fazia
         // "não fiz nada" parecer "fiz e deu certo, só sem alarde".
         <div className="ml-6 rounded-sm bg-muted px-2 py-1.5">
-          <p className="break-words text-xs text-muted-foreground">
+          <p className="text-xs break-words text-muted-foreground">
             {explicacao}
             {retorno ? ` ${t("Nova tentativa em")} ${retorno}.` : null}
           </p>
           {detalheTecnico ? (
-            <p className="break-words text-[11px] text-muted-foreground">
+            <p className="text-[11px] break-words text-muted-foreground">
               {t("Detalhe técnico:")} {detalheTecnico}
             </p>
           ) : null}
@@ -328,9 +344,13 @@ export function ActivityTab() {
                   <CardTitle className="truncate text-sm">
                     {run.automation_rules?.name ?? t("Automação removida")}
                   </CardTitle>
-                  <Badge variant={statusBadgeVariant(run.status)}>{statusBadgeLabel(run.status, t)}</Badge>
+                  <Badge variant={statusBadgeVariant(run.status)}>
+                    {statusBadgeLabel(run.status, t)}
+                  </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">{relativeCreatedAt(run.created_at, localeDaData)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {relativeCreatedAt(run.created_at, localeDaData)}
+                </p>
               </CardHeader>
               <CardContent className="space-y-2">
                 {run.actions_result.map((action, idx) => (

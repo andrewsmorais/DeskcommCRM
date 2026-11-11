@@ -130,7 +130,11 @@ function autorizadoComoAdmin() {
     email: "dono@example.com",
     full_name: null,
     avatar_url: null,
-    is_platform_admin: false,
+    // O super-admin da plataforma: na chave da plataforma o padrão é dele (o
+    // admin da empresa sem chave própria recebe 403 — provado em
+    // tests/unit/modelo-na-chave-da-plataforma.test.ts). O que este arquivo
+    // mede é a gravação em si.
+    is_platform_admin: true,
     idioma: "pt-BR" as const,
   } as AuthUser;
   vi.mocked(requireRole).mockResolvedValue({

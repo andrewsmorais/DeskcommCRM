@@ -71,6 +71,13 @@ vi.mock("@/lib/automation/throttle", () => ({
   espacarEnvio: (...args: unknown[]) => espacarEnvio(...args),
   checkDailyLimit: vi.fn(async () => ({ allowed: true })),
 }));
+// A leitura do plano é o único dublê da régua da assinatura: a DECISÃO
+// (`decidirAcessoPeloPlano`) roda de verdade sobre o que esta leitura devolve.
+const leituraDoPlano = vi.fn();
+vi.mock("@/lib/billing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing")>()),
+  getOrganizationBilling: (...args: unknown[]) => leituraDoPlano(...args),
+}));
 
 import { getAction } from "@/lib/automation/actions";
 // Importa a ação pela porta do efeito colateral, igual `register-all.ts`.
@@ -81,9 +88,14 @@ const CANAL = "22222222-2222-4222-8222-222222222222";
 const NUMERO_DE_TESTE = "+5511999998888";
 const EVENTO = "33333333-3333-4333-8333-333333333333";
 const FRONTEIRA = {
-  organization_id: ORG, contact_id: "contato-1", conversation_id: "conversa-1",
-  service_revision: 1, demanda_id: null, demanda_revision: null,
-  status: "open", demanda_fechada_em: null,
+  organization_id: ORG,
+  contact_id: "contato-1",
+  conversation_id: "conversa-1",
+  service_revision: 1,
+  demanda_id: null,
+  demanda_revision: null,
+  status: "open",
+  demanda_fechada_em: null,
 };
 
 interface EscritaNoBanco {
@@ -105,7 +117,12 @@ function canalEmTeste(numeros: string[]): Record<string, unknown> {
  * Dublê do cliente admin. Registra toda ida ao banco para o teste poder afirmar
  * o que NÃO foi escrito — que é o que a guarda promete.
  */
-function bancoFalso(canal: { metadata?: unknown; existe?: boolean; erro?: string; origemObsoleta?: boolean }) {
+function bancoFalso(canal: {
+  metadata?: unknown;
+  existe?: boolean;
+  erro?: string;
+  origemObsoleta?: boolean;
+}) {
   const idas: EscritaNoBanco[] = [];
   const from = (tabela: string) => {
     let operacao: "select" | "update" = "select";
@@ -127,7 +144,8 @@ function bancoFalso(canal: { metadata?: unknown; existe?: boolean; erro?: string
     };
     encadeavel.single = encadeavel.maybeSingle;
     encadeavel.then = (resolve: (value: unknown) => unknown) => {
-      if (tabela !== "calendar_appointments") throw new Error(`Leitura em lista não prevista: ${tabela}`);
+      if (tabela !== "calendar_appointments")
+        throw new Error(`Leitura em lista não prevista: ${tabela}`);
       idas.push({ tabela, operacao });
       return Promise.resolve({ data: [], error: null }).then(resolve);
     };
@@ -137,12 +155,20 @@ function bancoFalso(canal: { metadata?: unknown; existe?: boolean; erro?: string
   const rpc = vi.fn(async (name: string, args: Record<string, unknown>) => {
     expect(args.p_org).toBe(ORG);
     if (name === "fn_service_event_origin") {
-      expect(args).toEqual({ p_org: ORG, p_event: EVENTO, p_contact: "contato-1", p_session: CANAL });
+      expect(args).toEqual({
+        p_org: ORG,
+        p_event: EVENTO,
+        p_contact: "contato-1",
+        p_session: CANAL,
+      });
       return { data: FRONTEIRA, error: null };
     }
     if (name === "fn_service_boundary") {
       expect(args.p_conversation).toBe(FRONTEIRA.conversation_id);
-      return { data: { ...FRONTEIRA, service_revision: canal.origemObsoleta ? 2 : 1 }, error: null };
+      return {
+        data: { ...FRONTEIRA, service_revision: canal.origemObsoleta ? 2 : 1 },
+        error: null,
+      };
     }
     throw new Error(`RPC não prevista: ${name}`);
   });
@@ -172,7 +198,12 @@ function executar(admin: ActionCtx["admin"], telefone: string): Promise<ActionRe
 
 beforeEach(() => {
   vi.clearAllMocks();
-  gerarAbordagemDeFormulario.mockResolvedValue({ ok: true, texto: "Oi! Em que bairro você procura?" });
+  vi.unstubAllEnvs();
+  leituraDoPlano.mockResolvedValue({ ok: true, billing: null });
+  gerarAbordagemDeFormulario.mockResolvedValue({
+    ok: true,
+    texto: "Oi! Em que bairro você procura?",
+  });
   ensureConversation.mockResolvedValue("conversa-1");
   sendMessageHandler.mockResolvedValue({ id: "mensagem-1", status: "sent" });
   espacarEnvio.mockResolvedValue(undefined);
@@ -274,5 +305,70 @@ describe("send_ai_message — indeterminado é PARAR, nunca seguir", () => {
     expect(r.detail?.reason).toBe("elegibilidade_indeterminada");
     expect(gerarAbordagemDeFormulario).not.toHaveBeenCalled();
     expect(sendMessageHandler).not.toHaveBeenCalled();
+  });
+});
+
+describe("send_ai_message — sem assinatura ativa a IA não escreve", () => {
+  // Achado da auditoria de segurança: a regra de automação seguia chamando o
+  // modelo da chave da PLATAFORMA para a organização que não paga, enquanto o
+  // turno do agente, para a mesma organização, já calava. A ação confere a
+  // mesma régua colada na chamada paga — o motor confere antes, mas a ação não
+  // pode depender de quem a chamou.
+  it("assinatura vencida: skipped com o motivo, sem gastar o modelo e sem enviar", async () => {
+    vi.stubEnv("EXIGIR_ASSINATURA", "true");
+    leituraDoPlano.mockResolvedValue({
+      ok: true,
+      billing: { is_active: false, plan_slug: "essencial", status: "past_due" },
+    });
+    const { cliente, idas } = bancoFalso({ metadata: { ai_gate: "open" } });
+
+    const r = await executar(cliente, NUMERO_DE_TESTE);
+
+    expect(r).toEqual({
+      type: "send_ai_message",
+      status: "skipped",
+      detail: { reason: "assinatura_inativa", motivo: "vencido" },
+    });
+    expect(leituraDoPlano).toHaveBeenCalledWith(ORG);
+    expect(gerarAbordagemDeFormulario).not.toHaveBeenCalled();
+    expect(sendMessageHandler).not.toHaveBeenCalled();
+    expect(idas.filter((i) => i.tabela === "contacts" && i.operacao === "update")).toEqual([]);
+  });
+
+  it("organização sem plano nenhum também não escreve", async () => {
+    vi.stubEnv("EXIGIR_ASSINATURA", "true");
+    leituraDoPlano.mockResolvedValue({ ok: true, billing: null });
+    const { cliente } = bancoFalso({ metadata: { ai_gate: "open" } });
+
+    const r = await executar(cliente, NUMERO_DE_TESTE);
+
+    expect(r.detail).toEqual({ reason: "assinatura_inativa", motivo: "sem_plano" });
+    expect(gerarAbordagemDeFormulario).not.toHaveBeenCalled();
+  });
+
+  it("anti-vacuidade: assinatura ativa escreve e envia", async () => {
+    vi.stubEnv("EXIGIR_ASSINATURA", "true");
+    leituraDoPlano.mockResolvedValue({
+      ok: true,
+      billing: { is_active: true, plan_slug: "essencial", status: "active" },
+    });
+    const { cliente } = bancoFalso({ metadata: { ai_gate: "open" } });
+
+    const r = await executar(cliente, NUMERO_DE_TESTE);
+
+    expect(r.status).toBe("success");
+    expect(gerarAbordagemDeFormulario).toHaveBeenCalledTimes(1);
+    expect(sendMessageHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("leitura do plano indisponível LIBERA — a mesma régua do turno do agente", async () => {
+    vi.stubEnv("EXIGIR_ASSINATURA", "true");
+    leituraDoPlano.mockResolvedValue({ ok: false, reason: "consulta_indisponivel" });
+    const { cliente } = bancoFalso({ metadata: { ai_gate: "open" } });
+
+    const r = await executar(cliente, NUMERO_DE_TESTE);
+
+    expect(r.status).toBe("success");
+    expect(gerarAbordagemDeFormulario).toHaveBeenCalledTimes(1);
   });
 });

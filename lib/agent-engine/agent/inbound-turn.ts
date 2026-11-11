@@ -1,6 +1,4 @@
-import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
-import { getOrganizationBilling } from "@/lib/billing";
-import { decidirAcessoPeloPlano } from "@/lib/billing/exigencia";
+import { acessoPeloPlanoDaOrganizacao, verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import { prospectingConversationContext } from "@/lib/prospecting/context";
 import { setExecutionAgentOperation } from '@/lib/atendimento/fronteira-server';
 import { TIPOS_DE_CASO, TIPOS_DE_CASO_PARA_A_IA } from "@/lib/ai/case-copy";
@@ -1838,15 +1836,24 @@ async function executarTurnoDoAgente(
   // organização que nunca pagou ou cujo teste venceu faria o dono pagar a conta.
   // Fica ANTES de tudo que chama modelo, inclusive o roteador mais abaixo. Leitura
   // do plano indisponível libera (mesma regra da tela, lib/billing/exigencia.ts).
-  // O preview da tela não passa aqui: a própria tela já está fechada sem plano.
-  if (!preview) {
-    const acessoPeloPlano = decidirAcessoPeloPlano(await getOrganizationBilling(tenantId));
-    if (!acessoPeloPlano.liberado) {
-      runLog.info('turno ignorado — organização sem assinatura ativa', {
-        motivo: acessoPeloPlano.motivo,
-      });
-      return;
-    }
+  //
+  // A PRÉVIA TAMBÉM PASSA AQUI. Ela ficava de fora com o argumento de que "a
+  // própria tela já está fechada sem plano" — e a tela fechada não fecha a API:
+  // o rascunho do modo assistido (no worker e em POST draft-reply) e o teste do
+  // agente (POST versions/:vid/test) chegavam ao modelo da chave da plataforma
+  // para quem não paga. Na prévia não há turno a ignorar: o motivo vira
+  // impedimento, que é o que o rascunho grava em `error_code` e o teste mostra.
+  const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(tenantId);
+  if (!acessoPeloPlano.liberado) {
+    runLog.info('turno ignorado — organização sem assinatura ativa', {
+      motivo: acessoPeloPlano.motivo,
+      preview: preview?.kind ?? null,
+    });
+    preview?.result.impediments.push({
+      code: 'assinatura_inativa',
+      message: 'A assinatura da empresa não está ativa — a IA não responde sem plano ativo.',
+    });
+    return;
   }
 
   // AS DUAS CAMADAS QUE CUSTAM DINHEIRO, resolvidas UMA vez por turno.
@@ -4721,6 +4728,21 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
         job_id: job.id,
         error: (err instanceof Error ? err.message : String(err)).slice(0, 160),
       });
+    }
+    // SEM ASSINATURA ATIVA, NADA AQUI CHAMA MODELO — e daqui para baixo dois
+    // caminhos chamam ANTES da régua de `executarTurnoDoAgente`: escolher o
+    // agente pode perguntar ao classificador de intenção, e o ramo assistido
+    // abaixo gera o rascunho e devolve sem nunca passar por `runAgentTurn`.
+    // Os dois gastavam a chave da plataforma para quem não paga. A régua é a
+    // mesma (leitura indisponível libera); o automático a reencontra no turno.
+    const acessoPeloPlano = await acessoPeloPlanoDaOrganizacao(job.organization_id);
+    if (!acessoPeloPlano.liberado) {
+      deps.log.info('turno ignorado — organização sem assinatura ativa', {
+        job_id: job.id,
+        conversation_id: payload.conversation_id,
+        motivo: acessoPeloPlano.motivo,
+      });
+      return;
     }
     const resolvedAgent = await resolveConversationTurn(pool, deps.llmCfg, {
       tenantId: job.organization_id,

@@ -541,6 +541,12 @@ function instanciar(
   modelId: string,
   baseUrl: string | null,
 ): LanguageModel | null {
+  // Endereço próprio é escolha da ORGANIZAÇÃO (o binding do ponto): cada
+  // requisição passa pela régua de destino de organização, sem seguir
+  // redirect — a mesma do provedor personalizado e do registry do motor. Sem
+  // ela, OpenRouter, DeepSeek e Requesty mandavam a chamada (e a chave) para
+  // loopback, rede privada ou serviço interno do compose que a empresa nomeasse.
+  const fetchDoDestino = baseUrl ? fetchParaDestinoDaOrganizacao() : undefined;
   switch (provider) {
     case "anthropic":
       return createAnthropic({ apiKey })(modelId);
@@ -549,21 +555,21 @@ function instanciar(
     case "google":
       return createGoogleGenerativeAI({ apiKey })(modelId);
     case "openrouter":
-      return createOpenAI({ apiKey, baseURL: baseUrl ?? OPENROUTER_BASE_URL }).chat(modelId); // ver providers.ts
+      return createOpenAI({ apiKey, baseURL: baseUrl ?? OPENROUTER_BASE_URL, fetch: fetchDoDestino }).chat(modelId); // ver providers.ts
     // A DeepSeek fala a API da OpenAI. Sem este caso, uma organização em
     // DeepSeek cairia no `default` (null) e a pilha antiga seguiria para o
     // padrão com aviso — a tela ofereceria um provedor que estes workers ignoram.
     case "deepseek":
-      return createOpenAI({ apiKey, baseURL: baseUrl ?? DEEPSEEK_ENDPOINT })(modelId);
+      return createOpenAI({ apiKey, baseURL: baseUrl ?? DEEPSEEK_ENDPOINT, fetch: fetchDoDestino })(modelId);
     case "requesty":
-      return createOpenAI({ apiKey, baseURL: baseUrl ?? REQUESTY_ENDPOINT }).chat(modelId); // ver providers.ts
+      return createOpenAI({ apiKey, baseURL: baseUrl ?? REQUESTY_ENDPOINT, fetch: fetchDoDestino }).chat(modelId); // ver providers.ts
     // Provedor personalizado (#1642): endpoint do operador. Sem `baseUrl` não
     // há onde ir — `null` deixa o chamador cair no padrão COM AVISO, que é o
     // contrato deste switch; inventar um endpoint seria mandar a chave do
     // gateway para outro lugar.
     case "custom":
       return baseUrl
-        ? createOpenAI({ apiKey, baseURL: baseUrl, fetch: fetchParaDestinoDaOrganizacao() }).chat(modelId)
+        ? createOpenAI({ apiKey, baseURL: baseUrl, fetch: fetchDoDestino }).chat(modelId)
         : null;
     default:
       return null;
