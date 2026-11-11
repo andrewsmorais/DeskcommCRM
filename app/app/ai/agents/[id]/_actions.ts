@@ -566,6 +566,8 @@ export async function revertToVersionAction(
     knowledge_source_ids: string[];
     split_messages: boolean;
     split_max_chars: number;
+    voz_enabled: boolean;
+    voz_quando: "nunca" | "espelhar" | "sempre" | "quando_pede";
   };
   const src = source as unknown as SourceRow;
 
