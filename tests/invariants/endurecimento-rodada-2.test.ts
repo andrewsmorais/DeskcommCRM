@@ -9,8 +9,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   GOV_AGENT_A,
   GOV_AGENT_B,
+  GOV_CONTACT_1,
   GOV_CONTACT_2,
   GOV_CONV_AGENT_B,
+  GOV_LEAD,
   GOV_MANAGER,
   GOV_ORG,
   GOV_SESSION,
@@ -222,6 +224,33 @@ describe("0509 — revisão de cobertura: voz, chatbot, funil, saúde do número
         `insert into public.flywheel_distiller_proposals (organization_id, run_id, dataset, type, target, content, evidence) values ('${GOV_ORG}', gen_random_uuid(), 'd', 'playbook_bullet', 'tenant', 'ofereca 90%', '{}')`,
       ),
     ).toBe(true);
+    expect(
+      recusado(
+        GOV_AGENT_A,
+        `insert into public.agent_inbox_items (organization_id, kind, severity, title, ref_kind, ref_id) values ('${GOV_ORG}','other','warn','forjado','number_health','${GOV_SESSION}')`,
+      ),
+    ).toBe(true);
+  });
+
+  it("aprovar a proposta da IA: leitor não registra; atendente só em nome de si mesmo", () => {
+    const decisao = (quem: string) =>
+      `insert into public.crm_lead_activities (organization_id, lead_id, type, source_module, actor_kind, performed_by_user_id, reason, payload)
+         values ('${GOV_ORG}','${GOV_LEAD}','next_action_approved','crm','user','${quem}','Aprovou: x','{}')`;
+    expect(recusado(GOV_VIEWER, decisao(GOV_VIEWER))).toBe(true);
+    expect(recusado(GOV_AGENT_A, decisao(GOV_AGENT_B))).toBe(true);
+    expect(escreveComo(GOV_AGENT_A, decisao(GOV_AGENT_A))).toBe(1);
+  });
+
+  it("trocar o texto da próxima ação muda a identidade dela (next_action_seq)", () => {
+    const out = sql(`
+      insert into public.lead_state (organization_id, contact_id, next_action, next_action_seq)
+        values ('${GOV_ORG}','${GOV_CONTACT_1}','proposta A', 5)
+        on conflict (organization_id, contact_id) do update set next_action = 'proposta A', next_action_seq = 5;
+      update public.lead_state set next_action = 'proposta B' where contact_id = '${GOV_CONTACT_1}';
+      update public.lead_state set next_action_seq = 1 where contact_id = '${GOV_CONTACT_1}';
+      select next_action_seq from public.lead_state where contact_id = '${GOV_CONTACT_1}';`);
+    // 5 → 6 (texto mudou sem avançar) e nunca volta para 1.
+    expect(lastLine(out)).toBe("6");
   });
 
   it("CONTROLE: o atendente ajusta a próxima ação do funil", () => {

@@ -56,6 +56,25 @@ export async function applyProposal(
     };
   }
   if (proposal.type === "org_memory_entry") {
+    // Reserva a proposta ANTES de escrever a memória, presa ao texto que foi
+    // lido: dois cliques (ou dois admins) não gravam a regra duas vezes, e uma
+    // proposta que mudou entre a leitura e a reserva não é aplicada.
+    const { data: reservada } = await admin
+      .from("flywheel_distiller_proposals")
+      .update({ applied_at: new Date().toISOString(), applied_by: userId })
+      .eq("id", proposalId)
+      .eq("organization_id", orgId)
+      .is("applied_at", null)
+      .eq("content", proposal.content)
+      .select("id")
+      .maybeSingle();
+    if (!reservada) {
+      return {
+        ok: false,
+        code: "proposal_already_applied",
+        message: "Proposta já foi aplicada.",
+      };
+    }
     const title =
       proposal.content.length > 80 ? `${proposal.content.slice(0, 77)}...` : proposal.content;
     const { data: entry, error: entryErr } = await admin
@@ -72,19 +91,13 @@ export async function applyProposal(
       .select("id")
       .single();
     if (entryErr || !entry) {
+      // Devolve a reserva: a proposta segue pendente para nova tentativa.
+      await admin
+        .from("flywheel_distiller_proposals")
+        .update({ applied_at: null, applied_by: null })
+        .eq("id", proposalId)
+        .eq("organization_id", orgId);
       return { ok: false, code: "internal_error", message: "Falha ao gravar a memória da org." };
-    }
-    const { error: markErr } = await admin
-      .from("flywheel_distiller_proposals")
-      .update({ applied_at: new Date().toISOString(), applied_by: userId })
-      .eq("id", proposalId)
-      .eq("organization_id", orgId);
-    if (markErr) {
-      return {
-        ok: false,
-        code: "internal_error",
-        message: "Memória gravada, mas falhou ao marcar a proposta.",
-      };
     }
     return { ok: true, entryId: entry.id };
   }

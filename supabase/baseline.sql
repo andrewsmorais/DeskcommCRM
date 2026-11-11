@@ -43232,6 +43232,27 @@ $f$;
 revoke all on function public.fn_support_write_allowed(uuid) from public, anon;
 grant execute on function public.fn_support_write_allowed(uuid) to authenticated, service_role;
 
+-- ---- identidade da próxima ação (migration 0509) ----
+-- A identidade da proposta de próxima ação (next_action_seq) acompanha o
+-- TEXTO: trocar o texto sem avançar o número faria a aprovação de quem leu a
+-- proposta A ser gravada como aprovação da B. Nunca anda para trás.
+create or replace function public.fn_lead_state_seq_acompanha_texto()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if new.next_action_seq < old.next_action_seq then
+    new.next_action_seq := old.next_action_seq;
+  end if;
+  if new.next_action is distinct from old.next_action
+     and new.next_action_seq <= old.next_action_seq then
+    new.next_action_seq := old.next_action_seq + 1;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_lead_state_seq_acompanha_texto() from public, anon, authenticated;
+
 -- ---- função da anonimização dos derivados (migration 0509) ----
 -- Antes da varredura de anon de propósito: função criada depois dela nasceria
 -- com EXECUTE para anon (tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts).
@@ -45686,7 +45707,8 @@ end $$;
 -- de cada mudança de etapa, a saúde do número (quarentena anti-banimento) e as
 -- propostas de melhoria do destilador são escritos só pelo servidor — um
 -- leitor soltava a quarentena do número ou forjava uma proposta que o admin
--- aplicaria no prompt achando que veio da IA.
+-- aplicaria no prompt achando que veio da IA. Os avisos da Central
+-- também: o circuito de saúde lê item aberto como decisão humana.
 do $$
 declare t text;
 begin
@@ -45706,7 +45728,8 @@ begin
       t, t);
     execute format('revoke all on public.%I from anon', t);
   end loop;
-  foreach t in array array['lead_state_transitions', 'channel_session_health', 'flywheel_distiller_proposals'] loop
+  foreach t in array array['lead_state_transitions', 'channel_session_health', 'flywheel_distiller_proposals',
+                           'agent_inbox_items'] loop
     if to_regclass('public.' || t) is null then continue; end if;
     execute format('drop policy if exists tenant_isolation_%s_all on public.%I', t, t);
     execute format('drop policy if exists %s_leitura on public.%I', t, t);
@@ -45717,5 +45740,23 @@ begin
     execute format('revoke insert, update, delete, truncate on public.%I from anon, authenticated', t);
   end loop;
 end $$;
+
+
+-- Próxima ação: identidade presa ao texto (função antes da varredura de anon).
+drop trigger if exists trg_lead_state_seq_acompanha_texto on public.lead_state;
+create trigger trg_lead_state_seq_acompanha_texto before update on public.lead_state
+  for each row execute function public.fn_lead_state_seq_acompanha_texto();
+
+-- Decisão humana sobre a proposta da IA (aprovar/descartar) vira contexto do
+-- agente ("o vendedor JÁ APROVOU"): só atendente para cima a registra, e só em
+-- nome de si mesmo. As outras atividades seguem a policy de inserção de sempre.
+drop policy if exists crm_lead_activities_decisao_humana on public.crm_lead_activities;
+create policy crm_lead_activities_decisao_humana on public.crm_lead_activities
+  as restrictive for insert to authenticated
+  with check (
+    type not in ('next_action_approved', 'next_action_dismissed')
+    or (public.fn_role_at_least(organization_id, 'agent')
+        and performed_by_user_id = (select auth.uid()))
+  );
 
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;

@@ -181,6 +181,7 @@ describe("0150 — o segredo cifrado some da superfície do browser", () => {
 const DIVIDA_RBAC_CONHECIDA = new Set([
   // Saíram na 0509 (rodada 2 da auditoria): channel_knobs, channel_session_health,
   // contact_field_proposals, disclosure_template_*, flywheel_distiller_proposals,
+  // agent_inbox_items,
   // followup_*, lead_checkpoints, lead_notes, lead_state, lead_state_transitions,
   // phone_numbers, playbook_*, promise_table_* e skill_* — prova em
   // endurecimento-rodada-2.test.ts.
@@ -188,7 +189,7 @@ const DIVIDA_RBAC_CONHECIDA = new Set([
   // llm_calls, outbound_copies, pacing_ledger, send_ledger,
   // storage_redaction_queue e reentry_template_* — prova em
   // fila-do-motor-so-pelo-servidor.test.ts.
-  "agent_cases", "agent_inbox_items", "ai_agent_runs",
+  "agent_cases", "ai_agent_runs",
   "ai_invocations", "ai_router_decisions",
   "before_send_traces", "channel_session_warmup",
   "contacts", "crm_lead_reactivations", "crm_lead_risk_states",

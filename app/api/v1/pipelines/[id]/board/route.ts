@@ -26,6 +26,7 @@ import {
 import type { LeadCandidate } from "@/lib/leads/active-lead";
 import { anexarDadosDoContato, type LinhaDoContatoNoQuadro } from "@/lib/kanban/dados-do-contato";
 import { buscaEmLotes } from "@/lib/supabase/em-lotes";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { BoardData, Pipeline, Stage } from "@/lib/kanban/types";
 import type { Lead } from "@/lib/types/leads";
@@ -169,7 +170,10 @@ async function avisaAmbiguas(
     }));
   if (novos.length === 0) return;
 
-  await supabase.from("agent_inbox_items").insert(novos);
+  // Os avisos da Central são escritos só pelo servidor (0509: um membro
+  // forjava item de saúde do número que o circuito lia como decisão humana).
+  // A organização vem do requireRole da rota, nunca do corpo.
+  await createAdminClient().from("agent_inbox_items").insert(novos);
 }
 
 /**
