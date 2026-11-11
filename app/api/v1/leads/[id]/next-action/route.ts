@@ -18,6 +18,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
@@ -137,11 +138,16 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   // Decidida é decidida: a proposta sai de cena nos dois casos, senão o card
   // continuaria pedindo a mesma decisão que a pessoa acabou de tomar. O que
   // ficou registrado foi a DECISÃO, na timeline.
-  const { error: limpaErr } = await supabase
+  //
+  // `lead_state` é memória do motor e só o servidor escreve (0509). A org e o
+  // contato vêm do lead que a RLS do caller deixou ler, e a limpeza só alcança
+  // a MESMA proposta decidida (o número que a pessoa viu).
+  const { error: limpaErr } = await createAdminClient()
     .from("lead_state")
     .update({ next_action: null })
     .eq("organization_id", row.organization_id)
-    .eq("contact_id", row.contact_id);
+    .eq("contact_id", row.contact_id)
+    .eq("next_action_seq", approved_seq);
   if (limpaErr) return fail("internal_error", limpaErr.message, 500, { requestId });
 
   return ok({ lead_id: row.id, decision, next_action: atual }, { requestId });

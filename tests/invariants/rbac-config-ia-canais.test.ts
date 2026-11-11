@@ -215,8 +215,8 @@ describe("0150 — a dívida de RBAC não cresce", () => {
       // 0509: follow-up, botões do número e números de telefone — gerente escreve.
       "followup_flow_versions", "followup_flow_pointers", "followup_enrollments",
       "followup_enrollment_events", "channel_knobs", "phone_numbers",
-      // 0509 (revisão de cobertura): atendente escreve pela tela.
-      "lead_state", "contact_field_proposals",
+      // 0509 (revisão de cobertura): atendente confirma/recusa pela tela.
+      "contact_field_proposals",
     ];
     const semRole = sql(`
       select coalesce(string_agg(distinct tablename, ','), '') from pg_policies

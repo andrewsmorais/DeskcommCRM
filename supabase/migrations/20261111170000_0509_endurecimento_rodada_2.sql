@@ -292,9 +292,9 @@ begin
   end if;
 end $$;
 
--- Estado do funil do agente, propostas de dado do contato: o atendente ajusta
--- pela tela (próxima ação, confirmar/recusar proposta); leitor só lê. O motivo
--- de cada mudança de etapa, a saúde do número (quarentena anti-banimento) e as
+-- Propostas de dado do contato: o atendente confirma ou recusa pela tela;
+-- leitor só lê. O estado do funil do agente (a rota de decidir a próxima ação
+-- limpa pela service role), o motivo de cada mudança de etapa, a saúde do número (quarentena anti-banimento) e as
 -- propostas de melhoria do destilador são escritos só pelo servidor — um
 -- leitor soltava a quarentena do número ou forjava uma proposta que o admin
 -- aplicaria no prompt achando que veio da IA. Os avisos da Central
@@ -302,7 +302,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['lead_state', 'contact_field_proposals'] loop
+  foreach t in array array['contact_field_proposals'] loop
     if to_regclass('public.' || t) is null then continue; end if;
     execute format('drop policy if exists tenant_isolation_%s_all on public.%I', t, t);
     execute format('drop policy if exists %s_leitura on public.%I', t, t);
@@ -318,9 +318,10 @@ begin
       t, t);
     execute format('revoke all on public.%I from anon', t);
   end loop;
-  foreach t in array array['lead_state_transitions', 'channel_session_health', 'flywheel_distiller_proposals',
-                           'agent_inbox_items'] loop
+  foreach t in array array['lead_state', 'lead_state_transitions', 'channel_session_health',
+                           'flywheel_distiller_proposals', 'agent_inbox_items'] loop
     if to_regclass('public.' || t) is null then continue; end if;
+    execute format('drop policy if exists %s_escrita on public.%I', t, t);
     execute format('drop policy if exists tenant_isolation_%s_all on public.%I', t, t);
     execute format('drop policy if exists %s_leitura on public.%I', t, t);
     execute format(
@@ -367,5 +368,26 @@ create policy crm_lead_activities_decisao_humana on public.crm_lead_activities
     or (public.fn_role_at_least(organization_id, 'agent')
         and performed_by_user_id = (select auth.uid()))
   );
+
+-- Mensagens: quem escreve pelo login é atendente para cima (o leitor não
+-- envia nada pela tela), e o login nunca grava linha em nome da IA, da
+-- automação ou do sistema — o resgate da fila (session-reconciler) reenvia
+-- linha `queued` dessas origens direto ao WhatsApp, sem a cadeia de envio.
+drop policy if exists messages_insert_de_atendente on public.messages;
+create policy messages_insert_de_atendente on public.messages
+  as restrictive for insert to authenticated
+  with check (
+    public.fn_role_at_least(organization_id, 'agent')
+    and sent_via not in ('ai', 'automation', 'system')
+  );
+drop policy if exists messages_update_de_atendente on public.messages;
+create policy messages_update_de_atendente on public.messages
+  as restrictive for update to authenticated
+  using (public.fn_role_at_least(organization_id, 'agent'))
+  with check (public.fn_role_at_least(organization_id, 'agent'));
+drop policy if exists messages_delete_de_atendente on public.messages;
+create policy messages_delete_de_atendente on public.messages
+  as restrictive for delete to authenticated
+  using (public.fn_role_at_least(organization_id, 'agent'));
 
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;

@@ -253,17 +253,39 @@ describe("0509 — revisão de cobertura: voz, chatbot, funil, saúde do número
     expect(lastLine(out)).toBe("6");
   });
 
-  it("CONTROLE: o atendente ajusta a próxima ação do funil", () => {
+  it("estado do funil do agente: nem o atendente escreve pelo login; o membro lê", () => {
     sql(`
       insert into public.lead_state (organization_id, contact_id, next_action)
         values ('${GOV_ORG}','${GOV_CONTACT_2}','ligar amanhã')
         on conflict (organization_id, contact_id) do update set next_action = excluded.next_action;`);
     expect(
-      escreveComo(
+      recusado(
         GOV_AGENT_B,
         `update public.lead_state set next_action = null where contact_id = '${GOV_CONTACT_2}'`,
       ),
+    ).toBe(true);
+    expect(
+      countAs(GOV_VIEWER, `select count(*) from public.lead_state where contact_id = '${GOV_CONTACT_2}';`),
     ).toBe(1);
+  });
+});
+
+describe("0509 — mensagens: leitor não escreve; ninguém grava em nome da IA pelo login", () => {
+  const nova = (via: string) =>
+    `insert into public.messages (organization_id, conversation_id, channel_session_id, contact_id, type, direction, status, sent_via, body)
+       values ('${GOV_ORG}','${GOV_CONV_AGENT_B}','${GOV_SESSION}','${GOV_CONTACT_2}','text','outbound','queued','${via}','texto do leitor')`;
+  it("leitor não insere nem altera mensagem", () => {
+    expect(recusado(GOV_VIEWER, nova("user"))).toBe(true);
+    expect(
+      recusado(GOV_VIEWER, `update public.messages set body = 'trocado' where conversation_id = '${GOV_CONV_AGENT_B}'`),
+    ).toBe(true);
+  });
+  it("atendente não grava linha `queued` em nome da IA (o resgate da fila a reenviaria)", () => {
+    expect(recusado(GOV_AGENT_B, nova("ai"))).toBe(true);
+    expect(recusado(GOV_AGENT_B, nova("automation"))).toBe(true);
+  });
+  it("CONTROLE: atendente insere a própria mensagem", () => {
+    expect(escreveComo(GOV_AGENT_B, nova("user"))).toBe(1);
   });
 });
 
