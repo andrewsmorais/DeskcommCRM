@@ -13,6 +13,15 @@ import { enderecoDosPlanos } from "@/lib/billing/pagina-de-planos";
 import { faturaEmAberto } from "@/lib/billing/fatura-em-aberto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CancelSubscription } from "@/components/app/CancelSubscription";
+import { TrocarPlano, type OpcaoDeTroca } from "@/components/app/TrocarPlano";
+import {
+  PLANOS_TROCAVEIS,
+  cicloValido,
+  decidirTroca,
+  ehPlanoTrocavel,
+  precoDoCiclo,
+  type PrecosDoPlano,
+} from "@/lib/billing/troca-de-plano";
 import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
 import { RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "@/lib/billing/catalogo";
 import { consultarCotaDaEquipe } from "@/lib/billing/equipe";
@@ -40,6 +49,47 @@ export default async function BillingPage() {
   const equipe = billing
     ? await consultarCotaDaEquipe(admin, activeOrg.orgId).catch(() => null)
     : null;
+
+  // Troca de plano (Essencial ↔ Impulso): a prévia da mesma conta que a rota faz.
+  let opcoesDeTroca: OpcaoDeTroca[] | null = null;
+  if (billing && billing.status !== "canceled" && ehPlanoTrocavel(billing.plan_slug)) {
+    const { data: precos } = await admin
+      .from("plans")
+      .select("slug, price_monthly, price_quarterly, price_yearly")
+      .in("slug", [...PLANOS_TROCAVEIS]);
+    const porSlug = new Map(
+      ((precos ?? []) as Array<PrecosDoPlano & { slug: string }>).map((p) => [p.slug, p]),
+    );
+    const atual = porSlug.get(billing.plan_slug);
+    if (atual && cicloValido(billing.billing_cycle)) {
+      const ciclo = billing.billing_cycle;
+      opcoesDeTroca = PLANOS_TROCAVEIS.filter((slug) => slug !== billing.plan_slug).flatMap(
+        (slug) => {
+          const novo = porSlug.get(slug);
+          if (!novo) return [];
+          return [
+            {
+              slug,
+              nome: slug === "essencial" ? "Essencial" : "Impulso",
+              valorDoCicloCents: precoDoCiclo(novo, ciclo),
+              decisao: decidirTroca({
+                planoAtual: billing.plan_slug,
+                planoNovo: slug,
+                ciclo,
+                status: billing.status,
+                canceladaEm: billing.canceled_at ?? null,
+                inicioDoPeriodo: billing.current_period_start ?? null,
+                fimDoPeriodo: billing.current_period_end,
+                precoAtual: atual,
+                precoNovo: novo,
+                agora: new Date(),
+              }),
+            },
+          ];
+        },
+      );
+    }
+  }
 
   // Conta uso atual
   // A mesma conta que a cota aplica (`lib/channels/cota-do-plano.ts`).
@@ -248,6 +298,17 @@ export default async function BillingPage() {
                 ))}
             </ul>
           </Card>
+
+          {opcoesDeTroca ? (
+            <TrocarPlano
+              idioma={idioma}
+              planoAtual={billing.plan_slug}
+              cicloRotulo={t(ciclos[billing.billing_cycle] ?? billing.billing_cycle)}
+              troca={billing.troca ?? null}
+              opcoes={opcoesDeTroca}
+              suporteUrl={suporteEmail ? `mailto:${suporteEmail}` : "https://wa.me/5511999999999"}
+            />
+          ) : null}
 
           <CancelSubscription
             status={statusStr}

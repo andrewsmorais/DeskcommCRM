@@ -1035,6 +1035,12 @@ export const AUDIT_ACTIONS = [
   "chatbot_flow.started_manually",
   /** Dono da plataforma ativou o Escala de uma organização (proposta fechada fora do checkout). */
   "billing.escala_ativado",
+  /** O cliente trocou de plano e a troca valeu na hora (teste, ou diferença abaixo do mínimo de cobrança). */
+  "billing.plan_changed",
+  /** O cliente pediu troca de plano: upgrade aguardando o pagamento da diferença, ou downgrade agendado para o fim do período. */
+  "billing.plan_change_requested",
+  /** O cliente desistiu da troca de plano em andamento. */
+  "billing.plan_change_canceled",
   // Pergunta respondida pelo assistente do botão Ajuda (app/api/v1/ajuda).
   "ajuda.pergunta",
 ] as const;

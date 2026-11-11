@@ -18031,6 +18031,97 @@ export const DICIONARIO: Traducoes = {
   "Saia do acompanhamento para convidar pessoas para a equipe.": {
     es: "Sal del acompañamiento para invitar personas al equipo.",
   },
+  // Troca de plano pelo cliente (0508, 11/11/2026)
+  "Cobrança da diferença criada. O plano novo entra assim que o pagamento for confirmado.": {
+    es: "Cobro de la diferencia creado. El nuevo plan entra en cuanto se confirme el pago.",
+  },
+  "Plano trocado.": { es: "Plan cambiado." },
+  "Troca agendada para o fim do período já pago.": {
+    es: "Cambio programado para el final del período ya pagado.",
+  },
+  "Não foi possível trocar de plano agora.": { es: "No fue posible cambiar de plan ahora." },
+  "Troca de plano desfeita.": { es: "Cambio de plan deshecho." },
+  "Não foi possível desistir da troca agora.": { es: "No fue posible desistir del cambio ahora." },
+  "Trocar de plano": { es: "Cambiar de plan" },
+  "Aguardando o pagamento da diferença para o plano": {
+    es: "Esperando el pago de la diferencia para el plan",
+  },
+  "O plano muda assim que o pagamento for confirmado.": {
+    es: "El plan cambia en cuanto se confirme el pago.",
+  },
+  "Pagar a diferença": { es: "Pagar la diferencia" },
+  "Desistir da troca": { es: "Desistir del cambio" },
+  "Seu plano muda para o": { es: "Tu plan cambia a" },
+  "Até lá, tudo do plano atual continua liberado, e a próxima cobrança já vem com o valor do plano novo. Nada do que você criou é apagado.":
+    {
+      es: "Hasta entonces, todo el plan actual sigue disponible, y el próximo cobro ya llega con el valor del nuevo plan. Nada de lo que creaste se borra.",
+    },
+  "Manter o plano": { es: "Mantener el plan" },
+  "A troca vale na hora, sem cobrança agora. As próximas cobranças vêm com o valor do plano novo.":
+    {
+      es: "El cambio vale al instante, sin cobro ahora. Los próximos cobros llegan con el valor del nuevo plan.",
+    },
+  "Você paga agora": { es: "Pagas ahora" },
+  "a diferença proporcional aos dias que faltam no período": {
+    es: "la diferencia proporcional a los días que faltan en el período",
+  },
+  "e o plano novo entra assim que o pagamento for confirmado.": {
+    es: "y el nuevo plan entra en cuanto se confirme el pago.",
+  },
+  "Você continua no plano atual até": { es: "Sigues en el plan actual hasta" },
+  "depois, as cobranças vêm com o valor do plano novo. Não há devolução do período já pago, e nada do que você criou é apagado.":
+    {
+      es: "después, los cobros llegan con el valor del nuevo plan. No hay devolución del período ya pagado, y nada de lo que creaste se borra.",
+    },
+  "Confirmar a troca": { es: "Confirmar el cambio" },
+  "Mudar para o": { es: "Cambiar a" },
+  "Precisa de mais números, agentes ou usuários? O Escala é contratado com a nossa equipe.": {
+    es: "¿Necesitas más números, agentes o usuarios? El Escala se contrata con nuestro equipo.",
+  },
+  "Escolha o Essencial ou o Impulso.": { es: "Elige Essencial o Impulso." },
+  "Este já é o seu plano.": { es: "Este ya es tu plan." },
+  "O Escala é contratado com a nossa equipe. Fale com a gente pelo suporte.": {
+    es: "El Escala se contrata con nuestro equipo. Habla con nosotros por soporte.",
+  },
+  "A assinatura está cancelada. Contrate de novo pela página de planos para escolher o plano.": {
+    es: "La suscripción está cancelada. Contrata de nuevo en la página de planes para elegir el plan.",
+  },
+  "A assinatura não está em dia. Pague a fatura em aberto antes de trocar de plano.": {
+    es: "La suscripción no está al día. Paga la factura pendiente antes de cambiar de plan.",
+  },
+  "Não foi possível confirmar o período da sua assinatura. Fale com o suporte.": {
+    es: "No fue posible confirmar el período de tu suscripción. Habla con soporte.",
+  },
+  "Já existe uma troca de plano em andamento. Desista dela antes de pedir outra.": {
+    es: "Ya hay un cambio de plan en curso. Desiste de él antes de pedir otro.",
+  },
+  "Esta assinatura não é cobrada pelo cartão ou boleto automático. Fale com o suporte para trocar de plano.":
+    {
+      es: "Esta suscripción no se cobra con tarjeta o boleto automático. Habla con soporte para cambiar de plan.",
+    },
+  "Não foi possível consultar o preço dos planos. Tente novamente.": {
+    es: "No fue posible consultar el precio de los planes. Inténtalo de nuevo.",
+  },
+  "A assinatura mudou enquanto a troca era registrada. Atualize a página para conferir.": {
+    es: "La suscripción cambió mientras se registraba el cambio. Actualiza la página para verificar.",
+  },
+  "Não foi possível falar com o sistema de cobrança agora. Nada foi trocado; tente de novo em alguns minutos.":
+    {
+      es: "No fue posible comunicarse con el sistema de cobro ahora. No se cambió nada; inténtalo de nuevo en unos minutos.",
+    },
+  "Não foi possível cancelar a cobrança da diferença — se ela já foi paga, o plano novo entra em instantes. Atualize a página para conferir.":
+    {
+      es: "No fue posible cancelar el cobro de la diferencia: si ya se pagó, el nuevo plan entra en instantes. Actualiza la página para verificar.",
+    },
+  "Não foi possível confirmar o valor do seu plano. Tente novamente.": {
+    es: "No fue posible confirmar el valor de tu plan. Inténtalo de nuevo.",
+  },
+  "A assinatura mudou enquanto a desistência era registrada. Atualize a página para conferir.": {
+    es: "La suscripción cambió mientras se registraba el desistimiento. Actualiza la página para verificar.",
+  },
+  "Não foi possível falar com o sistema de cobrança agora. Tente de novo em alguns minutos.": {
+    es: "No fue posible comunicarse con el sistema de cobro ahora. Inténtalo de nuevo en unos minutos.",
+  },
 };
 /**
  * Traduz, ou devolve o próprio texto.

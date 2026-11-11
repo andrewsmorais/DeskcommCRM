@@ -1,6 +1,19 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { limitesEfetivos, planoComercial, type LimiteDoPlano } from "@/lib/billing/catalogo";
+import { planoEmVigor } from "@/lib/billing/troca-de-plano";
+
+/** Troca de plano pedida pelo cliente e ainda não aplicada (0508). */
+export interface TrocaDePlano {
+  plano: string;
+  tipo: "upgrade" | "downgrade";
+  efetiva_em: string | null;
+  valor_cents: number | null;
+  link: string | null;
+  pedida_em: string | null;
+  /** Upgrade: a cobrança avulsa da diferença no Asaas. */
+  pagamento_id: string | null;
+}
 
 export interface OrganizationBilling {
   subscription_id?: string;
@@ -15,6 +28,11 @@ export interface OrganizationBilling {
   is_active: boolean;
   seats: number;
   billing_cycle: string;
+  current_period_start?: string | null;
+  canceled_at?: string | null;
+  /** O plano gravado na assinatura (pode diferir de `plan_slug` num downgrade já vencido). */
+  plan_type?: string | null;
+  troca?: TrocaDePlano | null;
 }
 
 export type BillingReadResult =
@@ -39,7 +57,7 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
     const { data: assinatura, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_end, asaas_subscription_id, seats, billing_cycle, limites_personalizados",
+        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_start, current_period_end, canceled_at, asaas_subscription_id, seats, billing_cycle, limites_personalizados, troca_plano, troca_tipo, troca_efetiva_em, troca_valor_cents, troca_link, troca_pedida_em, troca_pagamento_id",
       )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false, nullsFirst: false })
@@ -51,7 +69,10 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
     if (!assinatura) return { ok: true, billing: null };
 
     let plano: { name: string; slug: string; limits: OrganizationBilling["limits"] } | null = null;
-    if (assinatura.plan_id) {
+    // Downgrade agendado vale no fim do período, mesmo antes de o webhook da
+    // renovação consolidar a troca na assinatura (lib/billing/troca-de-plano.ts).
+    const emVigor = planoEmVigor(assinatura);
+    if (assinatura.plan_id && emVigor === assinatura.plan_type) {
       const res = await supabase
         .from("plans")
         .select("name, slug, limits")
@@ -60,12 +81,12 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
       if (res.error) return leituraIndisponivel("consulta_indisponivel");
       plano = res.data;
     }
-    if (!plano && assinatura.plan_type) {
+    if (!plano && emVigor) {
       // Catálogo global; não é tabela tenant-aware. Nenhum preço é duplicado aqui.
       const res = await supabase
         .from("plans")
         .select("name, slug, limits")
-        .eq("slug", assinatura.plan_type)
+        .eq("slug", emVigor)
         .maybeSingle();
       if (res.error) return leituraIndisponivel("consulta_indisponivel");
       plano = res.data;
@@ -115,6 +136,23 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
         is_active: isActive,
         seats: assinatura.seats,
         billing_cycle: assinatura.billing_cycle || "monthly",
+        current_period_start: assinatura.current_period_start ?? null,
+        canceled_at: assinatura.canceled_at ?? null,
+        plan_type: assinatura.plan_type ?? null,
+        troca:
+          assinatura.troca_plano &&
+          (assinatura.troca_tipo === "upgrade" || assinatura.troca_tipo === "downgrade") &&
+          emVigor !== assinatura.troca_plano
+            ? {
+                plano: assinatura.troca_plano,
+                tipo: assinatura.troca_tipo,
+                efetiva_em: assinatura.troca_efetiva_em ?? null,
+                valor_cents: assinatura.troca_valor_cents ?? null,
+                link: assinatura.troca_link ?? null,
+                pedida_em: assinatura.troca_pedida_em ?? null,
+                pagamento_id: assinatura.troca_pagamento_id ?? null,
+              }
+            : null,
       },
     };
   } catch {
