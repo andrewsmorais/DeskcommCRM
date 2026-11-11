@@ -22,6 +22,7 @@ import {
   PRAZOS_DE_RESPOSTA,
   MODOS_DE_ATENDENTE,
   perguntaDoFormularioSchema,
+  problemaDaConfig,
   regraSchema,
   type ConfigDe,
   type FormatoDeResposta,
@@ -34,6 +35,7 @@ import { MENSAGEM_FORA_DO_FORMATO } from "@/lib/chatbot/motor";
 import type { MidiaDaBiblioteca } from "@/lib/chatbot/biblioteca-de-midias";
 import { lerDatasDeFeriado } from "@/lib/chatbot/feriados";
 import { linksDoTexto, type ProblemaDoLink } from "@/lib/chatbot/links";
+import { cabecalhoReservado, corpoPersonalizadoValido } from "@/lib/chatbot/webhook-corpo";
 import { IconeDoPasso } from "./icones";
 import type { NodeData } from "./node-types";
 
@@ -66,6 +68,8 @@ export type OpcoesDoPainel = {
   midias: MidiaDaBiblioteca[];
   /** Produtos do Catálogo ("Enviar produto"). */
   produtos: { id: string; nome: string; ativo: boolean }[];
+  /** Agentes de IA da empresa ("Transferir p/ agentes de IA"); só o publicado atende. */
+  agentes?: { id: string; nome: string; publicado: boolean }[];
 };
 
 type Props = {
@@ -136,6 +140,28 @@ function Texto(props: {
   );
 }
 
+/**
+ * Config gravada fora do formato (um texto acima do limite, uma lista longa
+ * demais): o motor apara o excesso, e o fluxo não liga enquanto não for
+ * corrigida. Antes o passo voltava inteiro ao padrão sem aviso nenhum.
+ */
+function AvisoDeConfig({ tipo, dados }: { tipo: string; dados: NodeData }) {
+  const t = useT();
+  if (!ehTipoDePasso(tipo)) return null;
+  const problema = problemaDaConfig(tipo, dados);
+  if (!problema) return null;
+  return (
+    <p
+      className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
+      data-testid="config-fora-do-limite"
+    >
+      {problema.limite !== null
+        ? `${t("Um campo passou do limite")} (“${problema.campo}”, ${t("máximo")} ${problema.limite}). ${t("Encurte para o fluxo poder ser ligado.")}`
+        : `${t("Um campo está num formato que o passo não aceita")} (“${problema.campo}”). ${t("Corrija para o fluxo poder ser ligado.")}`}
+    </p>
+  );
+}
+
 export function NodePanel({ tipo, dados, opcoes, onChange, onClose, onDelete }: Props) {
   const t = useT();
   const meta = metaDoPasso(tipo);
@@ -160,6 +186,7 @@ export function NodePanel({ tipo, dados, opcoes, onChange, onClose, onDelete }: 
 
       <div className="space-y-4 p-4">
         {meta ? <p className="text-xs text-muted-foreground">{t(meta.descricao)}</p> : null}
+        <AvisoDeConfig tipo={tipo} dados={dados} />
         {ehTipoDePasso(tipo) ? (
           <Campos tipo={tipo} dados={dados} opcoes={opcoes} aplicar={aplicar} />
         ) : null}
@@ -494,13 +521,15 @@ function Campos({
               id="inicio-palavras"
               rotulo={t("Palavras-chave")}
               valor={listaParaTexto(c.palavras)}
-              onCommit={(v) => aplicar({ palavras: textoParaLista(v) })}
-              ajuda={t("Separe com vírgula. Maiúsculas e acentos não importam.")}
+              onCommit={(v) => aplicar({ palavras: textoParaLista(v).slice(0, 20) })}
+              ajuda={t("Separe com vírgula, até 20 palavras. Maiúsculas e acentos não importam.")}
             />
           ) : null}
           <OrigensDoInicio origens={c.origens} aplicar={aplicar} />
           <p className="text-xs text-muted-foreground">
-            {t("Depois de terminar, o fluxo só recomeça na mesma conversa 6 horas depois.")}
+            {t(
+              "O fluxo roda uma vez por atendimento. Depois de entregar a conversa (à equipe, a um atendente ou à IA), só volta quando o atendimento for finalizado e o contato escrever de novo. Sem entrega, recomeça na mesma conversa 6 horas depois. Palavra-chave recomeça na hora.",
+            )}
           </p>
         </>
       );
@@ -1447,12 +1476,34 @@ function Campos({
       return <ValorDoPasso dados={dados} aplicar={aplicar} />;
     case "transferir_ia": {
       const c = lerConfig("transferir_ia", dados);
+      const agentes = opcoes.agentes ?? [];
       return (
         <>
+          <div className="space-y-1.5">
+            <Label htmlFor="ia-agente">{t("Agente de IA")}</Label>
+            <select
+              id="ia-agente"
+              data-testid="ia-agente"
+              className={SELECT}
+              value={c.agent_id ?? ""}
+              onChange={(e) => aplicar({ agent_id: e.target.value || null })}
+            >
+              <option value="">{t("O agente deste número (ou o roteador)")}</option>
+              {agentes.map((a) => (
+                <option key={a.id} value={a.id} disabled={!a.publicado && a.id !== c.agent_id}>
+                  {a.publicado ? a.nome : `${a.nome} — ${t("não publicado")}`}
+                </option>
+              ))}
+            </select>
+          </div>
           <p className="text-xs text-muted-foreground">
-            {t(
-              "A conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar. O chatbot sai da conversa.",
-            )}
+            {c.agent_id
+              ? t(
+                  "O agente escolhido responde dali em diante, inclusive a mensagem que o contato acabou de mandar, até o atendimento ser finalizado. O chatbot não volta a entrar neste atendimento.",
+                )
+              : t(
+                  "A conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar. O chatbot não volta a entrar neste atendimento.",
+                )}
           </p>
           <Texto
             id="ia-msg"
@@ -1461,7 +1512,7 @@ function Campos({
             linhas={3}
             onCommit={(v) => aplicar({ mensagem: v })}
             ajuda={t(
-              'Só é enviada se houver agente de IA no ar neste número. Se não houver, o fluxo segue por "Sem agente de IA" — ligue ali um "Transferir para a equipe".',
+              'Só é enviada se o agente estiver publicado (ou, sem agente escolhido, se houver agente no ar neste número). Se não houver, o fluxo segue por "Sem agente de IA" — ligue ali um "Transferir para a equipe".',
             )}
           />
         </>
@@ -1567,7 +1618,7 @@ function PedirEscolher({
   const [opcoes, setOpcoes] = useState(c.opcoes);
   const gravar = (lista: string[]) => {
     const limpa = lista
-      .map((o) => o.trim())
+      .map((o) => o.trim().slice(0, 80))
       .filter(Boolean)
       .slice(0, 10);
     if (limpa.length > 0) aplicar({ opcoes: limpa });
@@ -1588,6 +1639,7 @@ function PedirEscolher({
             <span className="w-5 text-right text-xs text-muted-foreground">{i + 1}.</span>
             <Input
               value={o}
+              maxLength={80}
               onChange={(e) => setOpcoes(opcoes.map((x, j) => (j === i ? e.target.value : x)))}
               onBlur={() => gravar(opcoes)}
               aria-label={`${t("Opção")} ${i + 1}`}
@@ -1657,6 +1709,15 @@ function PedirEscolher({
           ))}
         </select>
       </div>
+      <Texto
+        id="escolher-variavel"
+        rotulo={t("Guardar a escolha em (opcional)")}
+        valor={c.variavel}
+        onCommit={(v) => aplicar({ variavel: comoChave(v) })}
+        ajuda={t(
+          "O texto da opção escolhida fica guardado: use {{nome_que_você_escolheu}} numa mensagem, no WebHook ou no “Valor”. Vazio = não guarda.",
+        )}
+      />
       <PrazoDaResposta id="escolher-prazo" valor={c.prazo_minutos} aplicar={aplicar} />
     </>
   );
@@ -1807,7 +1868,10 @@ function Horarios({
           <Input
             type="time"
             value={f.inicio}
+            // Apagar o horário gravava "" e a config INTEIRA voltava ao padrão
+            // 08–18 sem aviso; vazio não é horário, então não grava.
             onChange={(e) =>
+              e.target.value &&
               aplicar({
                 faixas: c.faixas.map((x, j) => (j === i ? { ...x, inicio: e.target.value } : x)),
               })
@@ -1818,7 +1882,10 @@ function Horarios({
           <Input
             type="time"
             value={f.fim}
+            // Apagar o horário gravava "" e a config INTEIRA voltava ao padrão
+            // 08–18 sem aviso; vazio não é horário, então não grava.
             onChange={(e) =>
+              e.target.value &&
               aplicar({
                 faixas: c.faixas.map((x, j) => (j === i ? { ...x, fim: e.target.value } : x)),
               })
@@ -2306,6 +2373,9 @@ function WebhookDoChatbot({
         >
           <option value="POST">{t("POST — envia os dados da conversa")}</option>
           <option value="GET">{t("GET — só consulta o endereço")}</option>
+          <option value="PUT">{t("PUT — atualiza um registro")}</option>
+          <option value="PATCH">{t("PATCH — atualiza parte de um registro")}</option>
+          <option value="DELETE">{t("DELETE — apaga um registro")}</option>
         </select>
       </div>
       <Texto
@@ -2318,6 +2388,10 @@ function WebhookDoChatbot({
           "Use {{nome}} para pôr uma resposta do contato no endereço, por exemplo https://sualoja.example.com/pedidos/{{pedido}}. Endereço interno da VPS é recusado.",
         )}
       />
+      {c.metodo === "POST" || c.metodo === "PUT" || c.metodo === "PATCH" ? (
+        <CorpoDoWebhook c={c} aplicar={aplicar} />
+      ) : null}
+      <CabecalhosDoWebhook c={c} aplicar={aplicar} />
       <div className="space-y-1.5">
         <Label>{t("Guardar da resposta")}</Label>
         {campos.map((x, i) => (
@@ -2389,10 +2463,135 @@ function WebhookDoChatbot({
       />
       <p className="text-xs text-muted-foreground">
         {t(
-          'No POST vão o id da conversa, nome, telefone e e-mail do contato, a última mensagem e as respostas guardadas no fluxo. Resposta 2xx segue por "Deu certo"; erro, demora de mais de 8 segundos ou endereço recusado seguem por "Falhou". Sem ligação em "Falhou", o fluxo termina ali.',
+          'No corpo padrão vão o id da conversa, nome, telefone e e-mail do contato, a última mensagem e as respostas guardadas no fluxo. Resposta 2xx segue por "Deu certo"; erro, demora de mais de 8 segundos, corpo inválido ou endereço recusado seguem por "Falhou". Sem ligação em "Falhou", o fluxo termina ali.',
         )}
       </p>
     </>
+  );
+}
+
+function CorpoDoWebhook({
+  c,
+  aplicar,
+}: {
+  c: ConfigDe<"webhook">;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const [corpo, setCorpo] = useState(c.corpo);
+  const invalido = c.corpo_modo === "personalizado" && corpo.trim() !== "" && !corpoPersonalizadoValido(corpo);
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="webhook-corpo-modo">{t("Corpo da requisição")}</Label>
+      <select
+        id="webhook-corpo-modo"
+        className={SELECT}
+        value={c.corpo_modo}
+        onChange={(e) => aplicar({ corpo_modo: e.target.value })}
+      >
+        <option value="padrao">{t("Padrão — os dados da conversa e as respostas")}</option>
+        <option value="personalizado">{t("Personalizado — escrevo o JSON")}</option>
+      </select>
+      {c.corpo_modo === "personalizado" ? (
+        <>
+          <Textarea
+            id="webhook-corpo"
+            data-testid="webhook-corpo"
+            rows={6}
+            maxLength={8000}
+            className="font-mono text-xs"
+            value={corpo}
+            placeholder={'{"nome": "{{nome}}", "telefone": "{{telefone}}"}'}
+            onChange={(e) => setCorpo(e.target.value)}
+            onBlur={() => corpo !== c.corpo && aplicar({ corpo })}
+          />
+          {invalido ? (
+            <p className="text-xs text-destructive" data-testid="webhook-corpo-invalido">
+              {t("Isto não é um JSON válido. Confira aspas, vírgulas e chaves.")}
+            </p>
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Use {{nome}} entre aspas para pôr uma resposta do contato — o valor vai escapado, então nada que o contato escreva muda o formato do JSON.",
+            )}
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function CabecalhosDoWebhook({
+  c,
+  aplicar,
+}: {
+  c: ConfigDe<"webhook">;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const [lista, setLista] = useState(c.cabecalhos);
+  const gravar = (nova: typeof lista) =>
+    aplicar({
+      cabecalhos: nova
+        .map((h) => ({ nome: h.nome.trim().replace(/[^A-Za-z0-9-]/g, "").slice(0, 60), valor: h.valor.slice(0, 500) }))
+        .filter((h) => h.nome)
+        .slice(0, 10),
+    });
+  return (
+    <div className="space-y-1.5">
+      <Label>{t("Cabeçalhos (opcional)")}</Label>
+      {lista.map((h, i) => (
+        <div key={`${i}-${lista.length}`} className="flex items-center gap-1.5">
+          <Input
+            value={h.nome}
+            placeholder="X-Loja"
+            maxLength={60}
+            aria-label={t("Nome do cabeçalho")}
+            onChange={(e) => setLista(lista.map((y, j) => (j === i ? { ...y, nome: e.target.value } : y)))}
+            onBlur={() => gravar(lista)}
+          />
+          <Input
+            value={h.valor}
+            placeholder="{{pedido}}"
+            maxLength={500}
+            aria-label={t("Valor do cabeçalho")}
+            onChange={(e) => setLista(lista.map((y, j) => (j === i ? { ...y, valor: e.target.value } : y)))}
+            onBlur={() => gravar(lista)}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const nova = lista.filter((_, j) => j !== i);
+              setLista(nova);
+              gravar(nova);
+            }}
+            className="text-muted-foreground hover:text-destructive"
+            aria-label={t("Remover cabeçalho")}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+      {lista.some((h) => h.nome && cabecalhoReservado(h.nome)) ? (
+        <p className="text-xs text-destructive">
+          {t("Host, Authorization, Cookie, Content-Type e X-Webhook-… são do sistema. Para chave de API use o campo Authorization abaixo.")}
+        </p>
+      ) : null}
+      {lista.length < 10 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setLista([...lista, { nome: "", valor: "" }])}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          {t("Adicionar cabeçalho")}
+        </Button>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        {t("Aceita {{nome}} no valor. Não coloque senha aqui: todo mundo da equipe que abre o fluxo vê. Chave vai no Authorization, que fica cifrado.")}
+      </p>
+    </div>
   );
 }
 

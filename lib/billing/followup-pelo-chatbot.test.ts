@@ -75,10 +75,12 @@ describe("régua do grafo com o gatilho", () => {
     expect(verificarRecursoDoPlano).not.toHaveBeenCalled();
   });
 
-  it("o mesmo fluxo com gatilho automático segue a régua de sempre (processos)", async () => {
+  it("o mesmo fluxo com gatilho automático precisa do Follow-up automático (Impulso)", async () => {
+    // Desde 11/11/2026 a primeira régua fora do formato "só pelo chatbot" é o
+    // próprio recurso de follow-up; ramificação e skill vêm depois.
     const r = await verificarGrafoDoPlano("org", grafo(TEXTO), { gatilho: "silence" });
     expect(r.ok).toBe(false);
-    expect(verificarRecursoDoPlano).toHaveBeenCalledWith("org", "processos");
+    expect(verificarRecursoDoPlano).toHaveBeenCalledWith("org", "follow_up");
   });
 
   it("sem gatilho (roteiro, dublê antigo) a régua é a de sempre", async () => {

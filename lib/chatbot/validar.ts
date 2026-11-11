@@ -4,9 +4,17 @@
  * precisa ter por onde começar e cada passo precisa estar preenchido.
  * Mensagens escritas para quem monta o fluxo, não para quem programa.
  */
-import { ehTipoDePasso, lerConfig, metaDoPasso, type Grafo } from "./passos";
+import {
+  ehTipoDePasso,
+  lerConfig,
+  lerConfigOuNada,
+  metaDoPasso,
+  problemaDaConfig,
+  type Grafo,
+} from "./passos";
 import { linksDoTexto, linksQueBloqueiam } from "./links";
 import { problemaDaRegra, problemaDoValor } from "./regras";
+import { cabecalhoReservado, corpoPersonalizadoValido } from "./webhook-corpo";
 
 export function problemasDoGrafo(grafo: Grafo): string[] {
   const problemas: string[] = [];
@@ -35,6 +43,39 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
     if (c.gatilho === "palavra_chave" && c.palavras.length === 0)
       problemas.push('no "Iniciar por um canal", escreva ao menos uma palavra-chave.');
   }
+  // Dois inícios que disputam a MESMA mensagem: só um atende, e a tela não
+  // mostra qual. A palavra-chave vence o "toda conversa nova" (motor), então
+  // o conflito real é entre dois gerais do mesmo número, ou a mesma palavra em
+  // dois inícios do mesmo número.
+  const lidos = inicios
+    .map((n) => lerConfigOuNada("inicio_canal", n.data))
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+  const mesmoNumero = (a: string | null, b: string | null) => a === null || b === null || a === b;
+  const gerais = lidos.filter((c) => c.gatilho === "toda_conversa_nova");
+  if (
+    gerais.some((a, i) =>
+      gerais.slice(i + 1).some((b) => mesmoNumero(a.channel_session_id, b.channel_session_id)),
+    )
+  )
+    problemas.push(
+      'há dois "Iniciar por um canal" em "toda conversa nova" para o mesmo número; só um atenderia. Apague um ou troque por palavra-chave.',
+    );
+  const chaves = lidos.filter((c) => c.gatilho === "palavra_chave");
+  const norm = (p: string) =>
+    p
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  for (let i = 0; i < chaves.length; i++)
+    for (const b of chaves.slice(i + 1)) {
+      if (!mesmoNumero(chaves[i]!.channel_session_id, b.channel_session_id)) continue;
+      const repetida = chaves[i]!.palavras.find((p) => b.palavras.some((q) => norm(q) === norm(p)));
+      if (repetida)
+        problemas.push(
+          `a palavra-chave "${repetida}" está em dois "Iniciar por um canal" do mesmo número; deixe em um só.`,
+        );
+    }
 
   for (const no of grafo.nodes) {
     if (!ehTipoDePasso(no.type)) {
@@ -42,19 +83,32 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
       continue;
     }
     const nome = metaDoPasso(no.type)?.nome ?? no.type;
+    // Config fora do formato: o motor apara o excesso, mas ligado não pode
+    // ficar — quem monta precisa ver o que foi cortado.
+    const fora = problemaDaConfig(no.type, no.data);
+    if (fora)
+      problemas.push(
+        fora.limite !== null
+          ? `no passo "${nome}", o campo "${fora.campo}" passou do limite (máximo ${fora.limite}); encurte.`
+          : `no passo "${nome}", o campo "${fora.campo}" está num formato que o passo não aceita; corrija.`,
+      );
     switch (no.type) {
       case "enviar_mensagem": {
         const texto = lerConfig("enviar_mensagem", no.data).texto;
         if (!texto) problemas.push(`escreva o texto do passo "${nome}".`);
         for (const l of linksQueBloqueiam(texto))
-          problemas.push(`no passo "${nome}", o link ${l.link} não abre uma página; troque ou apague.`);
+          problemas.push(
+            `no passo "${nome}", o link ${l.link} não abre uma página; troque ou apague.`,
+          );
         break;
       }
       case "enviar_oferta": {
         const texto = lerConfig("enviar_oferta", no.data).texto;
         if (!texto) problemas.push(`escreva a mensagem do passo "${nome}".`);
         for (const l of linksQueBloqueiam(texto))
-          problemas.push(`no passo "${nome}", o link ${l.link} não abre uma página; troque ou apague.`);
+          problemas.push(
+            `no passo "${nome}", o link ${l.link} não abre uma página; troque ou apague.`,
+          );
         break;
       }
       case "pedir_escolher":
@@ -131,6 +185,16 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         // em "Falhou" em todo disparo, sem chamar nada (auditoria funcional f01).
         else if (!/^https:\/\/[^\s/{}?#]+(?:[/?#]|$)/i.test(c.url))
           problemas.push(`o endereço do passo "${nome}" precisa começar com https://.`);
+        const comCorpo = c.metodo === "POST" || c.metodo === "PUT" || c.metodo === "PATCH";
+        if (comCorpo && c.corpo_modo === "personalizado" && !corpoPersonalizadoValido(c.corpo))
+          problemas.push(
+            `o corpo do passo "${nome}" não é um JSON válido. Escreva, por exemplo, {"nome": "{{nome}}"}.`,
+          );
+        for (const h of c.cabecalhos)
+          if (cabecalhoReservado(h.nome))
+            problemas.push(
+              `no passo "${nome}", o cabeçalho "${h.nome}" é do sistema e não pode ser escrito; para chave de API use o campo Authorization.`,
+            );
         break;
       }
       case "iniciar_followup":
@@ -198,14 +262,20 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         break;
       case "enviar_pagamento": {
         const c = lerConfig("enviar_pagamento", no.data);
-        if (!c.link && !c.pix)
-          problemas.push(`escreva o link ou o Pix do passo "${nome}".`);
+        if (!c.link && !c.pix) problemas.push(`escreva o link ou o Pix do passo "${nome}".`);
         // O link inteiro numa variável ({{link_checkout}}) só existe na hora do
         // envio; escrito à mão, precisa ser endereço de página.
         if (c.link && !/^\{\{\s*[a-z_][a-z0-9_]*\s*\}\}$/.test(c.link)) {
           const [l] = linksDoTexto(c.link);
-          if (!l || l.link !== c.link || l.problema === "malformado" || l.problema === "protocolo_perigoso")
-            problemas.push(`no passo "${nome}", o link precisa começar com https:// (ou ser uma {{variavel}}).`);
+          if (
+            !l ||
+            l.link !== c.link ||
+            l.problema === "malformado" ||
+            l.problema === "protocolo_perigoso"
+          )
+            problemas.push(
+              `no passo "${nome}", o link precisa começar com https:// (ou ser uma {{variavel}}).`,
+            );
         }
         break;
       }

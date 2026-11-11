@@ -25,6 +25,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { assertDestinoResolvidoSeguro } from "@/lib/automation/outbound-ip";
 import { assertSafeOutboundUrl } from "@/lib/automation/outbound-url";
 import type { ConfigDe } from "./passos";
+import { cabecalhoReservado, corpoPersonalizado, textoComVariaveis } from "./webhook-corpo";
 import type { RespostaDoWebhook } from "./motor";
 
 export const TEMPO_DO_WEBHOOK_MS = 8_000;
@@ -70,20 +71,42 @@ export async function chamarWebhookDoChatbot(
     assertSafeOutboundUrl(url);
     if (!opts.pularChecagemDeRede) await assertDestinoResolvidoSeguro(new URL(url).hostname);
   } catch (err) {
-    return { ok: false, status: null, corpo: null, erro: err instanceof Error ? err.message : "unsafe_url" };
+    return {
+      ok: false,
+      status: null,
+      corpo: null,
+      erro: err instanceof Error ? err.message : "unsafe_url",
+    };
   }
 
   const entrega = randomUUID();
   const carimbo = Math.floor(agora.getTime() / 1000);
-  const corpo = c.metodo === "POST" ? JSON.stringify(corpoDoWebhook(envio, agora)) : "";
-  const cabecalhos: Record<string, string> = {
-    Accept: "application/json",
-    "X-Webhook-Delivery": entrega,
-    "X-Webhook-Timestamp": String(carimbo),
-  };
-  if (c.metodo === "POST") cabecalhos["Content-Type"] = "application/json";
+  const comCorpo = c.metodo === "POST" || c.metodo === "PUT" || c.metodo === "PATCH";
+  let corpo = "";
+  if (comCorpo) {
+    if (c.corpo_modo === "personalizado") {
+      const montado = corpoPersonalizado(c.corpo, envio.respostas);
+      if (montado === null) return { ok: false, status: null, corpo: null, erro: "corpo_invalido" };
+      corpo = montado;
+    } else {
+      corpo = JSON.stringify(corpoDoWebhook(envio, agora));
+    }
+  }
+  const cabecalhos: Record<string, string> = {};
+  // Os do passo primeiro; os do produto por cima (e os reservados nem entram).
+  for (const h of c.cabecalhos) {
+    if (cabecalhoReservado(h.nome)) continue;
+    const valor = textoComVariaveis(h.valor, envio.respostas);
+    if (valor) cabecalhos[h.nome] = valor;
+  }
+  cabecalhos.Accept = "application/json";
+  cabecalhos["X-Webhook-Delivery"] = entrega;
+  cabecalhos["X-Webhook-Timestamp"] = String(carimbo);
+  if (comCorpo) cabecalhos["Content-Type"] = "application/json";
   if (segredos.segredo) {
-    const v1 = createHmac("sha256", segredos.segredo).update(`${carimbo}.${entrega}.${corpo}`).digest("hex");
+    const v1 = createHmac("sha256", segredos.segredo)
+      .update(`${carimbo}.${entrega}.${corpo}`)
+      .digest("hex");
     cabecalhos["X-Webhook-Signature"] = `t=${carimbo},v1=${v1}`;
   }
   if (segredos.autorizacao) cabecalhos.Authorization = segredos.autorizacao;
@@ -92,7 +115,7 @@ export async function chamarWebhookDoChatbot(
     const res = await (opts.fetch ?? fetch)(url, {
       method: c.metodo,
       headers: cabecalhos,
-      ...(c.metodo === "POST" ? { body: corpo } : {}),
+      ...(comCorpo ? { body: corpo } : {}),
       redirect: "manual",
       signal: AbortSignal.timeout(TEMPO_DO_WEBHOOK_MS),
     });
@@ -107,6 +130,11 @@ export async function chamarWebhookDoChatbot(
     return { ok, status: res.status, corpo: json, ...(ok ? {} : { erro: `http_${res.status}` }) };
   } catch (err) {
     const nome = err instanceof Error ? err.name : "";
-    return { ok: false, status: null, corpo: null, erro: nome === "TimeoutError" ? "timeout" : "rede" };
+    return {
+      ok: false,
+      status: null,
+      corpo: null,
+      erro: nome === "TimeoutError" ? "timeout" : "rede",
+    };
   }
 }

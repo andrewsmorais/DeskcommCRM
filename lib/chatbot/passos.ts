@@ -187,6 +187,9 @@ const CONFIG_DA_AGENDA = z.object({
       .default("Separei {{horario}} para você. A equipe confirma em breve."),
   });
 
+/** Métodos do passo WebHook. GET e DELETE não levam corpo. */
+export const METODOS_DO_WEBHOOK = ["POST", "GET", "PUT", "PATCH", "DELETE"] as const;
+
 export const configDoPasso = {
   /**
    * Começa quando uma AUTOMAÇÃO manda (ação "Iniciar chatbot"): compra aprovada
@@ -240,6 +243,17 @@ export const configDoPasso = {
       .max(500)
       .default("Não entendi. Responda com o número de uma das opções."),
     tentativas: z.number().int().min(1).max(5).default(3),
+    /**
+     * Guarda o TEXTO da opção escolhida, para usar depois como {{nome}} — no
+     * WebHook, no "Valor", numa mensagem. Vazio = não guarda (como antes).
+     * Antes a escolha só decidia o caminho e se perdia (auditoria de 03/11).
+     */
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .or(z.literal(""))
+      .default(""),
     ...PRAZO_DA_RESPOSTA,
   }),
   pedir_digitar: z.object({
@@ -504,7 +518,30 @@ export const configDoPasso = {
   webhook: z.object({
     /** Aceita {{variavel}} (vai codificada para URL). */
     url: z.string().trim().max(2000).default(""),
-    metodo: z.enum(["POST", "GET"]).default("POST"),
+    metodo: z.enum(METODOS_DO_WEBHOOK).default("POST"),
+    /**
+     * Cabeçalhos próprios (11/11/2026, como a requisição HTTP da Umbler). O valor
+     * aceita {{variavel}}. NÃO é lugar de senha: o desenho é lido por todo
+     * membro — chave vai no "Cabeçalho Authorization", que é cifrado. Os nomes
+     * que o produto controla (Host, Authorization, Cookie, X-Webhook-…) são
+     * recusados.
+     */
+    cabecalhos: z
+      .array(
+        z.object({
+          nome: z.string().trim().regex(/^[A-Za-z0-9-]{1,60}$/, "Use letras, números e -."),
+          valor: z.string().max(500),
+        }),
+      )
+      .max(10)
+      .default([]),
+    /**
+     * O que vai no corpo de POST, PUT e PATCH: "padrao" = a projeção fixa (ids,
+     * contato, última mensagem, respostas); "personalizado" = o JSON escrito em
+     * `corpo`, com {{variavel}} trocada pelo valor (escapado para JSON).
+     */
+    corpo_modo: z.enum(["padrao", "personalizado"]).default("padrao"),
+    corpo: z.string().max(8000).default(""),
     campos: z
       .array(
         z.object({
@@ -642,6 +679,12 @@ export const configDoPasso = {
    */
   transferir_ia: z.object({
     mensagem: z.string().trim().max(1000).default(""),
+    /**
+     * Qual agente continua a conversa (11/11/2026, como na Umbler Talk). `null` =
+     * o agente do número ou o roteador, como antes. O escolhido vale até o fim
+     * do atendimento (`agenteEscolhidoPeloChatbot`).
+     */
+    agent_id: z.string().uuid().nullable().default(null),
   }),
   /**
    * Oferta com validade: até `valida_ate` (dia, no fuso da empresa) sai a
@@ -1264,12 +1307,77 @@ export function ehTipoDePasso(tipo: string): tipo is TipoDePasso {
   return Object.hasOwn(configDoPasso, tipo);
 }
 
-/** Config válida do passo, com padrões preenchidos. Config inválida volta inteira ao padrão. */
+/**
+ * Config do passo, com padrões preenchidos.
+ *
+ * Antes, um campo só fora do limite (uma opção de 81 letras, a 21ª
+ * palavra-chave, um horário apagado) fazia a config INTEIRA voltar ao padrão em
+ * silêncio: o menu virava "Opção 1 / Opção 2" para o cliente, e o "Iniciar por
+ * um canal" com 21 palavras virava "toda conversa nova" de qualquer número.
+ * Agora o que passou do limite é APARADO (texto cortado no máximo, lista
+ * cortada no máximo) e o resto é mantido; só o que nem assim se lê volta ao
+ * padrão. O validador (`problemasDoGrafo`) aponta o campo e impede ligar.
+ */
 export function lerConfig<T extends TipoDePasso>(tipo: T, dados: unknown): ConfigDe<T> {
+  const lida = lerConfigOuNada(tipo, dados);
+  if (lida) return lida;
+  const schema = configDoPasso[tipo] as unknown as z.ZodType<ConfigDe<T>>;
+  return schema.parse({});
+}
+
+/**
+ * A mesma leitura, mas SEM cair no padrão: `null` quando a config não se lê
+ * nem aparada. Para quem não pode transformar defeito em comportamento — o
+ * início de um fluxo, cujo padrão ("toda conversa nova") pega tudo.
+ */
+export function lerConfigOuNada<T extends TipoDePasso>(tipo: T, dados: unknown): ConfigDe<T> | null {
   const schema = configDoPasso[tipo] as unknown as z.ZodType<ConfigDe<T>>;
   const r = schema.safeParse(dados ?? {});
   if (r.success) return r.data;
-  return schema.parse({});
+  const aparada = schema.safeParse(apararExcessos(dados ?? {}, r.error.issues));
+  return aparada.success ? aparada.data : null;
+}
+
+/** O problema da config tal como está gravada, para o validador; `null` se ela se lê inteira. */
+export function problemaDaConfig(
+  tipo: TipoDePasso,
+  dados: unknown,
+): { campo: string; limite: number | null } | null {
+  const schema = configDoPasso[tipo] as unknown as z.ZodType<unknown>;
+  const r = schema.safeParse(dados ?? {});
+  if (r.success) return null;
+  const issue = r.error.issues[0]!;
+  const campo = issue.path.filter((p) => typeof p === "string").join(".") || "configuração";
+  const limite =
+    issue.code === "too_big" && typeof (issue as { maximum?: unknown }).maximum !== "bigint"
+      ? Number((issue as { maximum?: number }).maximum)
+      : null;
+  return { campo, limite };
+}
+
+/** Corta, numa cópia, cada texto e cada lista que passou do máximo do schema. */
+function apararExcessos(dados: unknown, issues: z.ZodError["issues"]): unknown {
+  let copia: unknown;
+  try {
+    copia = structuredClone(dados);
+  } catch {
+    return dados;
+  }
+  for (const issue of issues) {
+    if (issue.code !== "too_big" || issue.path.length === 0) continue;
+    const maximo = Number((issue as { maximum?: number | bigint }).maximum);
+    if (!Number.isFinite(maximo)) continue;
+    let alvo: unknown = copia;
+    for (const passo of issue.path.slice(0, -1)) {
+      alvo = alvo && typeof alvo === "object" ? (alvo as Record<PropertyKey, unknown>)[passo as PropertyKey] : undefined;
+    }
+    if (!alvo || typeof alvo !== "object") continue;
+    const chave = issue.path[issue.path.length - 1] as PropertyKey;
+    const valor = (alvo as Record<PropertyKey, unknown>)[chave];
+    if (typeof valor === "string" || Array.isArray(valor))
+      (alvo as Record<PropertyKey, unknown>)[chave] = valor.slice(0, maximo);
+  }
+  return copia;
 }
 
 /**

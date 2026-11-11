@@ -204,7 +204,7 @@ describe("Transferir p/ agentes de IA", () => {
 
   it("para pedindo ao executor que entregue — a mensagem ainda não sai", () => {
     const r = iniciarFluxo(grafo, "ini", ctx("oi"));
-    expect(r.pendente).toEqual({ tipo: "ia", no: "ia" });
+    expect(r.pendente).toEqual({ tipo: "ia", no: "ia", agent_id: null });
     expect(textos(r.efeitos)).toEqual([]);
   });
 

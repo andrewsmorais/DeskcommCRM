@@ -31,6 +31,8 @@
  */
 import {
   lerConfig,
+  lerConfigOuNada,
+  saidasDoPasso,
   type CampoDoContato,
   type ConfigDe,
   type FormatoDeResposta,
@@ -189,7 +191,7 @@ export type Pendente =
   /** Cancelar o próximo compromisso do contato e devolver em `continuarAposCancelar`. */
   | { tipo: "cancelar"; no: string }
   /** Devolver a conversa ao agente de IA e dizer se deu certo em `continuarAposAcao`. */
-  | { tipo: "ia"; no: string }
+  | { tipo: "ia"; no: string; agent_id: string | null }
   /** Mandar o modelo aprovado e dizer se saiu em `continuarAposAcao`. */
   | { tipo: "template"; no: string; template_id: string };
 
@@ -426,17 +428,36 @@ export function pontoDePartida(
   grafo: Grafo,
   entrada: { channelSessionId: string | null; mensagem: string | null },
 ): string | null {
+  return inicioQueAtende(grafo, entrada)?.id ?? null;
+}
+
+/**
+ * O início que atende e o tipo de gatilho dele.
+ *
+ * A palavra-chave vence o "toda conversa nova", seja qual for a ordem dos
+ * passos no desenho: antes vencia o primeiro do array, que a tela não mostra, e
+ * um início por palavra-chave colocado depois de um "toda conversa nova" nunca
+ * disparava. Início cuja config não se lê não atende (o padrão dele pega tudo).
+ */
+export function inicioQueAtende(
+  grafo: Grafo,
+  entrada: { channelSessionId: string | null; mensagem: string | null },
+): { id: string; gatilho: "toda_conversa_nova" | "palavra_chave" } | null {
+  let geral: string | null = null;
+  const m = normalizar(entrada.mensagem ?? "");
   for (const no of grafo.nodes) {
     if (no.type !== "inicio_canal") continue;
-    const c = lerConfig("inicio_canal", no.data);
+    const c = lerConfigOuNada("inicio_canal", no.data);
+    if (!c) continue;
     if (c.channel_session_id && c.channel_session_id !== entrada.channelSessionId) continue;
     if (c.gatilho === "palavra_chave") {
-      const m = normalizar(entrada.mensagem ?? "");
-      if (!m || !c.palavras.some((p) => m.includes(normalizar(p)))) continue;
+      if (m && c.palavras.some((p) => m.includes(normalizar(p))))
+        return { id: no.id, gatilho: "palavra_chave" };
+      continue;
     }
-    return no.id;
+    geral ??= no.id;
   }
-  return null;
+  return geral ? { id: geral, gatilho: "toda_conversa_nova" } : null;
 }
 
 /**
@@ -686,6 +707,7 @@ function andar(
         const i = ctx.mensagem === null ? null : opcaoEscolhida(ctx.mensagem, c.opcoes);
         if (i !== null) {
           sessao.tentativas = 0;
+          if (c.variavel) sessao.dados[c.variavel] = c.opcoes[i] ?? "";
           saida = `opcao-${i}`;
           break;
         }
@@ -948,7 +970,12 @@ function andar(
         sessao.no_atual = no.id;
         sessao.status = "running";
         sessao.tentativas = 0;
-        return { sessao, efeitos, passos, pendente: { tipo: "ia", no: no.id } };
+        return {
+          sessao,
+          efeitos,
+          passos,
+          pendente: { tipo: "ia", no: no.id, agent_id: lerConfig("transferir_ia", no.data).agent_id },
+        };
       case "enviar_template": {
         const c = lerConfig("enviar_template", no.data);
         if (!c.template_id) {
@@ -1165,6 +1192,13 @@ export function respondeMensagens(grafo: Grafo): boolean {
  * `ctx.mensagem` é a mensagem que chegou durante a espera (quando o passo diz
  * "seguir se o contato responder") ou null (quando foi o relógio que venceu).
  */
+/** A pergunta em que a sessão parou ainda tem a saída "Não respondeu a tempo"? */
+function perguntaTemPrazo(grafo: Grafo, noId: string): boolean {
+  const no = grafo.nodes.find((n) => n.id === noId);
+  if (!no || !ehTipoDePasso(no.type)) return false;
+  return saidasDoPasso(no.type, no.data).some((s) => s.id === "sem_resposta");
+}
+
 export function retomarFluxo(
   grafo: Grafo,
   sessao: SessaoDoChatbot,
@@ -1172,6 +1206,13 @@ export function retomarFluxo(
 ): ResultadoDoTurno {
   // Pergunta com prazo: o relógio venceu sem resposta → "Não respondeu a tempo".
   const semResposta = sessao.status === "waiting_input";
+  // O desenho mudou enquanto o contato esperava e a pergunta NÃO tem mais prazo:
+  // o relógio antigo não vale. Antes ele acordava assim mesmo, seguia por uma
+  // saída que o editor já tinha apagado e encerrava a conversa calado — quem
+  // ia responder ficava sem fluxo. Agora a pergunta continua esperando.
+  if (semResposta && sessao.no_atual && !perguntaTemPrazo(grafo, sessao.no_atual)) {
+    return { sessao: { ...sessao, retomar_em: null }, efeitos: [], passos: 0 };
+  }
   const parada =
     (sessao.status === "waiting_timer" || semResposta) && sessao.no_atual ? sessao.no_atual : null;
   const seguinte = parada ? proximo(grafo, parada, semResposta ? "sem_resposta" : "proximo") : null;

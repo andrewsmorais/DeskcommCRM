@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * Chatbot: salvar um fluxo LIGADO passa pela mesma validação de ligar, e ligar
- * um rascunho confere os passos do plano.
+ * Chatbot: salvar um fluxo LIGADO grava o rascunho (só Publicar valida e
+ * passa a valer), e ligar um rascunho confere os passos do plano.
  *
  * Achados da auditoria funcional f01 (04/11/2026), na rota real
  * PATCH /api/v1/chatbot-flows/[id], com banco e auth simulados:
@@ -16,7 +16,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const FLUXO = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-type Linha = { id: string; grafo: unknown; revisao: number; is_active: boolean };
+type Linha = {
+  id: string;
+  grafo: unknown;
+  revisao: number;
+  is_active: boolean;
+  rascunho?: unknown;
+};
 const estado: { atual: Linha | null; updates: Record<string, unknown>[] } = {
   atual: null,
   updates: [],
@@ -51,7 +57,23 @@ function construtor() {
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ from: () => construtor() }),
 }));
-vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({}) }));
+const versoes: Record<string, unknown>[] = [];
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: () => {
+      const b: Record<string, unknown> = {};
+      Object.assign(b, {
+        select: () => b,
+        eq: () => b,
+        order: () => b,
+        limit: () => b,
+        maybeSingle: async () => ({ data: null, error: null }),
+        insert: async (linha: Record<string, unknown>) => (versoes.push(linha), { error: null }),
+      });
+      return b;
+    },
+  }),
+}));
 vi.mock("@/lib/audit", () => ({ audit: async () => undefined }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: async () => null }));
 vi.mock("@/lib/auth/require-role", () => ({
@@ -129,17 +151,40 @@ describe("PATCH /api/v1/chatbot-flows/[id] — salvar ligado e ligar rascunho", 
     expect(estado.updates).toHaveLength(0);
   });
 
-  it("fluxo JÁ LIGADO + o corpo do botão Salvar ({name, grafo}) com desenho quebrado é recusado (422)", async () => {
+  it("fluxo JÁ LIGADO: Salvar grava o RASCUNHO — o desenho quebrado não chega aos clientes", async () => {
+    // Desde 11/11/2026 (rascunho × publicado, pendência V1): o salvar de um
+    // fluxo ligado não toca em `grafo`, o que o motor lê.
     estado.atual = { id: FLUXO, grafo: valido, revisao: 3, is_active: true };
     const r = await PATCH(pedido({ name: "Atendimento", grafo: quebrado }), ctx);
+    expect(r.status).toBe(200);
+    expect(estado.updates).toHaveLength(1);
+    expect(estado.updates[0]).toMatchObject({ rascunho: quebrado, revisao: 4 });
+    expect(estado.updates[0]).not.toHaveProperty("grafo");
+  });
+
+  it("PUBLICAR o rascunho quebrado é recusado (422) e nada muda", async () => {
+    estado.atual = { id: FLUXO, grafo: valido, revisao: 4, is_active: true, rascunho: quebrado };
+    const r = await PATCH(pedido({ publicar: true }), ctx);
     expect(r.status).toBe(422);
     expect(estado.updates).toHaveLength(0);
   });
 
-  it("controle: fluxo ligado + desenho válido salva (200)", async () => {
-    estado.atual = { id: FLUXO, grafo: valido, revisao: 3, is_active: true };
-    const r = await PATCH(pedido({ name: "Atendimento", grafo: valido }), ctx);
+  it("controle: PUBLICAR o rascunho válido o copia para o que roda e guarda a versão", async () => {
+    versoes.length = 0;
+    estado.atual = { id: FLUXO, grafo: quebrado, revisao: 4, is_active: true, rascunho: valido };
+    const r = await PATCH(pedido({ publicar: true }), ctx);
     expect(r.status).toBe(200);
+    expect(estado.updates[0]).toMatchObject({ grafo: valido, rascunho: null, revisao: 5 });
+    expect(versoes).toEqual([
+      expect.objectContaining({ flow_id: FLUXO, numero: 1, grafo: valido }),
+    ]);
+  });
+
+  it("duas abas: revisão diferente da gravada é recusada (409), sem gravar", async () => {
+    estado.atual = { id: FLUXO, grafo: valido, revisao: 7, is_active: true };
+    const r = await PATCH(pedido({ grafo: valido, revisao: 6 }), ctx);
+    expect(r.status).toBe(409);
+    expect(estado.updates).toHaveLength(0);
   });
 
   it("controle: rascunho DESLIGADO salva desenho incompleto (o editor salva no meio do trabalho)", async () => {

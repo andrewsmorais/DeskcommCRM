@@ -9,7 +9,8 @@
  *
  *   - chatbot_flows: membro lê só a própria org; `viewer` e `agent` não
  *     escrevem; `manager` escreve (é o papel que a rota exige).
- *   - chatbot_sessions / chatbot_nodes / chatbot_edges / chatbot_avaliacoes:
+ *   - chatbot_sessions / chatbot_nodes / chatbot_edges / chatbot_avaliacoes /
+ *     chatbot_flow_versions (0505):
  *     membro lê só a própria org; ninguém com JWT grava (quem grava é o motor
  *     no worker).
  *   - subscriptions: cada org lê só a própria assinatura; ninguém com JWT grava.
@@ -121,6 +122,10 @@ beforeAll(async () => {
       [org, flow, sessao.rows[0].id, sessao.rows[0].started_at, conversa.rows[0].id],
     );
     await q(
+      "insert into public.chatbot_flow_versions (organization_id, flow_id, numero, grafo) values ($1, $2, 1, '{\"nodes\":[],\"edges\":[]}'::jsonb) on conflict do nothing",
+      [org, flow],
+    );
+    await q(
       "insert into public.subscriptions (organization_id, status, plan_type, billing_cycle, seats) values ($1, 'trialing', 'essencial', 'monthly', 1) on conflict do nothing",
       [org],
     );
@@ -141,6 +146,7 @@ describe("chatbot e faturamento: cada organização só enxerga o que é seu", (
     "chatbot_nodes",
     "chatbot_edges",
     "chatbot_avaliacoes",
+    "chatbot_flow_versions",
     "subscriptions",
   ]) {
     it(`${tabela}: lê ≥1 da própria org e 0 da outra, nos dois sentidos`, async () => {
@@ -181,7 +187,14 @@ describe("chatbot_flows: escrever exige manager", () => {
 });
 
 describe("estado do motor e assinatura: ninguém com JWT grava", () => {
-  for (const tabela of ["chatbot_sessions", "chatbot_nodes", "chatbot_edges", "chatbot_avaliacoes"]) {
+  for (const tabela of [
+    "chatbot_sessions",
+    "chatbot_nodes",
+    "chatbot_edges",
+    "chatbot_avaliacoes",
+    // 0505: a versão publicada é imutável para quem tem JWT; quem grava é a rota.
+    "chatbot_flow_versions",
+  ]) {
     it(`${tabela}: manager não altera nem apaga`, async () => {
       await expect(como(MANAGER_A, `update public.${tabela} set organization_id = organization_id`)).rejects.toThrow(
         /permission denied/,

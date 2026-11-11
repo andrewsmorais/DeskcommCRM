@@ -271,22 +271,32 @@ describe("Fluxo de espera", () => {
       )
     ).rows[0];
 
-  it("desligar, num fluxo que começa por mensagem, desarma a espera da transferência", async () => {
+  it("desligar, num fluxo manual, desarma a espera da transferência", async () => {
     await fluxo(TRANSFERE, transfere);
     const c = await conversaNova(SEM_AGENTE);
     expect(await chega(c, "quero falar com alguém")).toBe("atendeu");
     expect((await espera(c.conversa))?.retomar_em).not.toBeNull();
 
-    // Outro fluxo de entrada (o cliente escreve de novo): ele desliga a espera.
+    // Desde 11/11/2026, um fluxo de ENTRADA não entra num atendimento que o
+    // chatbot já entregou à equipe (um atendimento, uma passagem — como na
+    // Umbler): a mensagem nova do cliente não começa o fluxo que desliga.
     await fluxo(DESLIGA, {
-      nodes: [no("ini", "inicio_canal"), no("e", "fluxo_de_espera", { acao: "desligar" })],
-      edges: [liga("ini", "e")],
+      nodes: [
+        no("ini", "inicio_canal"),
+        no("m", "inicio_manual"),
+        no("e", "fluxo_de_espera", { acao: "desligar" }),
+      ],
+      edges: [liga("ini", "e"), liga("m", "e")],
     });
-    expect(await chega(c, "alô?")).toBe("atendeu");
+    expect(await chega(c, "alô?")).toBe("nao_atende");
+    expect((await espera(c.conversa))?.retomar_em).not.toBeNull();
+
+    // Quem desliga a espera no meio do atendimento é a equipe (início manual)
+    // ou uma automação. (O próprio início manual já solta a espera do outro
+    // fluxo — "o fato mais novo vence" —, então o passo não tem o que desligar
+    // e não deixa nota: o que importa é a espera desarmada.)
+    expect(await iniciarManual(DESLIGA, c)).toBe("iniciou");
     expect(await espera(c.conversa)).toEqual({ retomar_em: null, retomada_token: null });
-    expect(await notas(c.conversa)).toContain(
-      "O chatbot desligou as mensagens de espera desta conversa.",
-    );
   });
 
   it("ligar, num fluxo manual, rearma a espera que o início manual tinha parado", async () => {

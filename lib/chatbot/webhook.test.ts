@@ -5,7 +5,7 @@ import { continuarAposWebhook, iniciarFluxo, valorNoCaminho, type ContextoDoTurn
 import { lerConfig, type Grafo } from "./passos";
 import { problemasDoGrafo } from "./validar";
 import { chamarWebhookDoChatbot, urlComVariaveis, type EnvioDoWebhook } from "./webhook";
-import { cifrarSegredosDoGrafo } from "./segredos";
+import { cifrarSegredosDoGrafo, decifrarSegredosDoPasso } from "./segredos";
 
 const no = (id: string, type: string, data: Record<string, unknown> = {}) => ({
   id,
@@ -231,6 +231,10 @@ describe("a chamada", () => {
   });
 });
 
+const DONO = { organizationId: "org-a", flowId: "fluxo-1" };
+const LACRE = (campo: string, v: string) =>
+  `cbwh1:${JSON.stringify({ o: "org-a", f: "fluxo-1", n: "h", c: campo, v })}`;
+
 describe("segredos do desenho", () => {
   const admin = {
     rpc: async (_fn: string, args: { plaintext: string }) => ({
@@ -249,11 +253,13 @@ describe("segredos do desenho", () => {
       admin,
       grafo({ url: "https://x.com", segredo: "abc", autorizacao: "Bearer z" }),
       null,
+      DONO,
     );
+    // O que vai para a cifra é o valor LACRADO (organização, fluxo, passo, campo).
     expect(r!.nodes[0]!.data).toEqual({
       url: "https://x.com",
-      segredo_enc: "\\xenc(abc)",
-      autorizacao_enc: "\\xenc(Bearer z)",
+      segredo_enc: `\\xenc(${LACRE("segredo_enc", "abc")})`,
+      autorizacao_enc: `\\xenc(${LACRE("autorizacao_enc", "Bearer z")})`,
     });
   });
 
@@ -263,6 +269,7 @@ describe("segredos do desenho", () => {
       admin,
       grafo({ segredo_enc: "\\xantigo", autorizacao: "", autorizacao_enc: "" }),
       gravado,
+      DONO,
     );
     expect(r!.nodes[0]!.data).toEqual({ segredo_enc: "\\xantigo", autorizacao_enc: null });
   });
@@ -275,6 +282,7 @@ describe("segredos do desenho", () => {
       admin,
       grafo({ autorizacao_enc: tokenDoCanal }),
       null,
+      DONO,
     );
     expect(semNada!.nodes[0]!.data).toEqual({ autorizacao_enc: null });
 
@@ -283,6 +291,7 @@ describe("segredos do desenho", () => {
       admin,
       grafo({ segredo_enc: tokenDoCanal, autorizacao_enc: tokenDoCanal }),
       gravado,
+      DONO,
     );
     expect(trocado!.nodes[0]!.data).toEqual({ segredo_enc: null, autorizacao_enc: null });
 
@@ -295,11 +304,163 @@ describe("segredos do desenho", () => {
       admin,
       grafo({ segredo_enc: "\\xdooutro" }),
       outroPasso,
+      DONO,
     );
     expect(movido!.nodes[0]!.data).toEqual({ segredo_enc: null });
   });
 
   it("sem cifra na instalação, recusa em vez de gravar aberto", async () => {
-    expect(await cifrarSegredosDoGrafo(semCifra, grafo({ segredo: "abc" }), null)).toBeNull();
+    expect(await cifrarSegredosDoGrafo(semCifra, grafo({ segredo: "abc" }), null, DONO)).toBeNull();
+  });
+});
+
+describe("lacre do segredo na hora de abrir (o grafo também é gravável pela REST)", () => {
+  // A cifra de mentira devolve o texto entre os parênteses de "\\xenc(...)".
+  const admin = {
+    rpc: async (_fn: string, args: { ciphertext?: string; p_ciphertext?: string }) => {
+      const c = String(args.ciphertext ?? args.p_ciphertext ?? Object.values(args)[0] ?? "");
+      const m = c.match(/^\\xenc\(([\s\S]*)\)$/);
+      return { data: m ? m[1] : null, error: null };
+    },
+  } as never;
+  const LACRE_DO_PASSO = { organizationId: "org-a", flowId: "fluxo-1", nodeId: "h" };
+
+  it("abre o que tem o lacre deste passo", async () => {
+    const r = await decifrarSegredosDoPasso(
+      admin,
+      { segredo_enc: `\\xenc(${LACRE("segredo_enc", "abc")})`, autorizacao_enc: null },
+      LACRE_DO_PASSO,
+    );
+    expect(r).toEqual({ segredo: "abc", autorizacao: null });
+  });
+
+  it("recusa o cifrado sem lacre (o token de um canal colado pela REST)", async () => {
+    const r = await decifrarSegredosDoPasso(
+      admin,
+      { segredo_enc: null, autorizacao_enc: "\\xenc(token-do-canal)" },
+      LACRE_DO_PASSO,
+    );
+    expect(r.autorizacao).toBeNull();
+  });
+
+  it("recusa o lacre de outro passo, de outro fluxo, de outra organização ou de outro campo", async () => {
+    for (const lacre of [
+      { ...LACRE_DO_PASSO, nodeId: "outro" },
+      { ...LACRE_DO_PASSO, flowId: "fluxo-2" },
+      { ...LACRE_DO_PASSO, organizationId: "org-b" },
+    ]) {
+      const r = await decifrarSegredosDoPasso(
+        admin,
+        { segredo_enc: `\\xenc(${LACRE("segredo_enc", "abc")})`, autorizacao_enc: null },
+        lacre,
+      );
+      expect(r.segredo).toBeNull();
+    }
+    const trocado = await decifrarSegredosDoPasso(
+      admin,
+      { segredo_enc: null, autorizacao_enc: `\\xenc(${LACRE("segredo_enc", "abc")})` },
+      LACRE_DO_PASSO,
+    );
+    expect(trocado.autorizacao).toBeNull();
+  });
+});
+
+describe("métodos, cabeçalhos e corpo montável (11/11/2026)", () => {
+  type Pedido = { url: string; init: RequestInit };
+  const espiao = () => {
+    const pedidos: Pedido[] = [];
+    const f = (async (url: string, init: RequestInit) => {
+      pedidos.push({ url, init });
+      return new Response('{"ok":true}', { status: 200 });
+    }) as unknown as typeof fetch;
+    return { pedidos, f };
+  };
+  const envioComRespostas = (respostas: Record<string, string>): EnvioDoWebhook => ({
+    fluxoId: "f1",
+    passoId: "hook",
+    conversationId: "c1",
+    contato: { id: "ct1", nome: "Ana", telefone: "+5511999990000", email: null },
+    mensagem: "oi",
+    respostas,
+  });
+
+  it("PUT com corpo personalizado: a variável vai ESCAPADA e não muda a estrutura do JSON", async () => {
+    const { pedidos, f } = espiao();
+    const r = await chamarWebhookDoChatbot(
+      lerConfig("webhook", {
+        url: "https://x.com/pedidos",
+        metodo: "PUT",
+        corpo_modo: "personalizado",
+        corpo: '{"nome": "{{nome}}", "fixo": true}',
+      }),
+      envioComRespostas({ nome: 'Ana", "admin": true, "x": "' }),
+      { segredo: null, autorizacao: null },
+      { fetch: f, pularChecagemDeRede: true },
+    );
+    expect(r.ok).toBe(true);
+    expect(pedidos[0]!.init.method).toBe("PUT");
+    const corpo = JSON.parse(String(pedidos[0]!.init.body)) as Record<string, unknown>;
+    expect(corpo).toEqual({ nome: 'Ana", "admin": true, "x": "', fixo: true });
+    expect(corpo).not.toHaveProperty("admin");
+  });
+
+  it("corpo que não vira JSON válido não sai: segue por 'Falhou'", async () => {
+    const { pedidos, f } = espiao();
+    const r = await chamarWebhookDoChatbot(
+      lerConfig("webhook", {
+        url: "https://x.com",
+        metodo: "POST",
+        corpo_modo: "personalizado",
+        corpo: '{"idade": {{idade}}}',
+      }),
+      envioComRespostas({ idade: "1, 2" }),
+      { segredo: null, autorizacao: null },
+      { fetch: f, pularChecagemDeRede: true },
+    );
+    expect(r).toMatchObject({ ok: false, erro: "corpo_invalido" });
+    expect(pedidos).toEqual([]);
+  });
+
+  it("cabeçalhos do passo saem com a variável; os reservados não entram", async () => {
+    const { pedidos, f } = espiao();
+    await chamarWebhookDoChatbot(
+      lerConfig("webhook", {
+        url: "https://x.com",
+        metodo: "DELETE",
+        cabecalhos: [
+          { nome: "X-Pedido", valor: "{{pedido}}" },
+          { nome: "Authorization", valor: "Bearer roubado" },
+          { nome: "X-Webhook-Signature", valor: "falsa" },
+        ],
+      }),
+      envioComRespostas({ pedido: "123\r\nX-Injetado: sim" }),
+      { segredo: null, autorizacao: null },
+      { fetch: f, pularChecagemDeRede: true },
+    );
+    const h = pedidos[0]!.init.headers as Record<string, string>;
+    expect(pedidos[0]!.init.method).toBe("DELETE");
+    expect(pedidos[0]!.init.body).toBeUndefined();
+    expect(h["X-Pedido"]).toBe("123 X-Injetado: sim");
+    expect(h.Authorization).toBeUndefined();
+    expect(h["X-Webhook-Signature"]).toBeUndefined();
+  });
+
+  it("validador: corpo inválido e cabeçalho reservado impedem ligar", () => {
+    const g: Grafo = {
+      nodes: [
+        no("ini", "inicio_canal"),
+        no("h", "webhook", {
+          url: "https://x.com",
+          metodo: "PATCH",
+          corpo_modo: "personalizado",
+          corpo: "{nome: sem aspas}",
+          cabecalhos: [{ nome: "Cookie", valor: "x" }],
+        }),
+      ],
+      edges: [liga("ini", "h")],
+    };
+    const p = problemasDoGrafo(g);
+    expect(p.some((x) => x.includes("não é um JSON válido"))).toBe(true);
+    expect(p.some((x) => x.includes('"Cookie" é do sistema'))).toBe(true);
   });
 });

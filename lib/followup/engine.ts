@@ -929,11 +929,14 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
     async gatilhoDoFluxo(enrollment) {
       const { data, error } = await admin
         .from("followup_flow_pointers")
-        .select("trigger_config")
+        .select("trigger_config, surface")
         .eq("organization_id", enrollment.organization_id)
         .eq("id", enrollment.pointer_id)
         .maybeSingle();
       if (error) throw new Error(`pointer_query_failed: ${error.message}`);
+      // Roteiro de atendimento não é follow-up: a régua dele é a de sempre
+      // (`verificarGrafoDoPlano` sem gatilho), como na publicação.
+      if ((data as { surface?: unknown } | null)?.surface === "atendimento") return null;
       const kind = (data as { trigger_config?: { kind?: unknown } } | null)?.trigger_config?.kind;
       return typeof kind === "string" ? kind : "manual";
     },

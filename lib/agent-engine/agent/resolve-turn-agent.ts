@@ -63,7 +63,7 @@ import type { DependenciasDoPonto } from '@/lib/ai/decisao/ponto';
 
 import type { Logger } from '../obs/logger';
 import type { LlmEdgeConfig } from '../edge/llm/run-model-call';
-import { agenteDaCampanhaDaConversa } from './agente-da-campanha';
+import { agenteDaCampanhaDaConversa, agenteEscolhidoPeloChatbot } from './agente-da-campanha';
 import { loadActiveRouter, type LoadedRouter, type RouterMember } from './router-config';
 import {
   loadPublishedAgentConfig,
@@ -95,7 +95,9 @@ export interface TurnAgentResolution {
     | 'no_match'
     | 'classifier_failed'
     /** A conversa nasceu de uma campanha que declarou agente (migration 0267). */
-    | 'campanha';
+    | 'campanha'
+    /** O passo "Transferir p/ agentes de IA" do chatbot nomeou o agente. */
+    | 'chatbot';
   /**
    * Fluxo de atendimento que o membro casado aponta (migration 0394; 0237 na branch do autor). O turno
    * começa o fluxo para o contato; `null` = nenhum. Só rótulos casados o trazem
@@ -108,6 +110,7 @@ export interface ResolveTurnAgentDeps {
   log: Logger;
   /** Injetável para o teste não precisar de banco. */
   agenteDaCampanha?: typeof agenteDaCampanhaDaConversa;
+  agenteDoChatbot?: typeof agenteEscolhidoPeloChatbot;
   loadActiveRouter?: typeof loadActiveRouter;
   loadPublishedAgentConfigById?: typeof loadPublishedAgentConfigById;
   loadPublishedAgentConfig?: typeof loadPublishedAgentConfig;
@@ -228,6 +231,23 @@ export async function resolveTurnAgent(
         return { config, routerId: null, intentName: null, confidence: null, outcome: 'campanha' };
       }
       deps.log.warn('agente da campanha sem versão publicada; seguindo pela régua do número', {
+        tenantId: input.tenantId,
+        conversationId: input.conversationId,
+      });
+    }
+
+    // ─── Degrau 0b: o agente que o chatbot nomeou neste atendimento ───
+    // Logo abaixo da campanha e acima do roteador pela mesma razão: quem monta o
+    // chatbot decidiu QUAL agente continua a conversa ("Transferir p/ agentes de
+    // IA" com agente escolhido). Agente sem versão publicada: régua normal.
+    const _agenteDoChatbot = deps.agenteDoChatbot ?? agenteEscolhidoPeloChatbot;
+    const idDoChatbot = await _agenteDoChatbot(db, input.tenantId, input.conversationId);
+    if (idDoChatbot !== null) {
+      const config = await _loadAgentById(db, input.tenantId, idDoChatbot);
+      if (config !== null) {
+        return { config, routerId: null, intentName: null, confidence: null, outcome: 'chatbot' };
+      }
+      deps.log.warn('agente escolhido pelo chatbot sem versão publicada; seguindo pela régua do número', {
         tenantId: input.tenantId,
         conversationId: input.conversationId,
       });

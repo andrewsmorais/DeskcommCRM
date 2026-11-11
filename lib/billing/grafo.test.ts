@@ -104,3 +104,32 @@ describe("recursos comerciais do fluxo publicado", () => {
     expect(verificarRecursoDoPlano).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("follow-up fora do formato 'só pelo chatbot' exige o Follow-up automático", () => {
+  const semFollowup = {
+    ok: false as const,
+    code: "billing_feature" as const,
+    status: 403 as const,
+    message: "Follow-up automático é do Impulso.",
+  };
+
+  it("espera 'inteligente' (chama a IA da plataforma) num follow-up manual: barrada sem o recurso", async () => {
+    vi.mocked(verificarRecursoDoPlano).mockImplementation(async (_org, recurso) =>
+      recurso === "follow_up" ? semFollowup : { ok: true },
+    );
+    const fluxo = grafo(no("wait", { mode: "smart", min_ms: 3_600_000, max_ms: 86_400_000 }));
+    expect(await verificarGrafoDoPlano("org-1", fluxo, { gatilho: "manual" })).toEqual(semFollowup);
+  });
+
+  it("controle: o formato 'só pelo chatbot' (manual, espera fixa) segue em qualquer plano", async () => {
+    vi.mocked(verificarRecursoDoPlano).mockResolvedValue(semFollowup);
+    const fluxo = grafo(no("wait", { mode: "fixed", duration_ms: 3_600_000 }));
+    expect(await verificarGrafoDoPlano("org-1", fluxo, { gatilho: "manual" })).toEqual({ ok: true });
+  });
+
+  it("controle: roteiro (sem gatilho) segue a régua de sempre", async () => {
+    vi.mocked(verificarRecursoDoPlano).mockResolvedValue(semFollowup);
+    const fluxo = grafo(no("collect", { key: "nome", label: "Seu nome" }));
+    expect(await verificarGrafoDoPlano("org-1", fluxo)).toEqual({ ok: true });
+  });
+});

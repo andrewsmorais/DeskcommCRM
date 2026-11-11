@@ -27,6 +27,7 @@ import { conferirCotaDeChatbots, conferirPassosDoPlano, disputamNumero } from "@
 import { assinaturaExigida } from "@/lib/billing/exigencia";
 import { comReservaDeCota, ErroDaReservaDeCota } from "@/lib/billing/reserva";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +36,16 @@ const PatchSchema = z.object({
   description: z.string().max(500).optional().nullable(),
   is_active: z.boolean().optional(),
   grafo: grafoSchema.optional(),
+  /** Copia o rascunho (ou o `grafo` enviado junto) para o que roda, e guarda a versão. */
+  publicar: z.boolean().optional(),
+  /**
+   * A revisão que o editor tinha ao abrir/salvar. Diferente da gravada = outra
+   * aba ou outra pessoa salvou no meio: 409 em vez de passar por cima.
+   */
+  revisao: z.number().int().min(0).optional(),
 });
 
-const COLUNAS = "id, name, description, status, is_active, grafo, revisao, updated_at";
+const COLUNAS = "id, name, description, status, is_active, grafo, rascunho, revisao, updated_at";
 
 type Ctx = { params: Promise<{ id: string }> };
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -83,13 +91,24 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const db = await createClient();
   const { data: atual } = await db
     .from("chatbot_flows")
-    .select("id, grafo, revisao, is_active")
+    .select("id, grafo, rascunho, revisao, is_active")
     .eq("id", id)
     .eq("organization_id", auth.org.orgId)
     .maybeSingle();
   if (!atual) return fail("not_found", "Fluxo não encontrado.", 404, { requestId });
 
-  const { grafo: grafoRecebido, is_active, ...meta } = parsed.data;
+  const { grafo: grafoRecebido, is_active, publicar, revisao: revisaoVista, ...meta } = parsed.data;
+
+  // Duas abas (ou duas pessoas) no mesmo fluxo: quem salva por último não
+  // apaga em silêncio o que o outro fez.
+  if (revisaoVista !== undefined && revisaoVista !== (atual.revisao ?? 0)) {
+    return fail(
+      "conflict",
+      "Este fluxo foi salvo em outra aba ou por outra pessoa enquanto você editava. Recarregue a página para ver a versão mais nova.",
+      409,
+      { requestId, details: { revisao_atual: atual.revisao ?? 0 } },
+    );
+  }
 
   // O arquivo do "Enviar mídia" é copiado com service role na hora do envio: só
   // aceita arquivo que esta organização subiu para o chatbot.
@@ -112,7 +131,15 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   // do editor só fica se for o que este passo já tinha no desenho gravado.
   let grafo = grafoRecebido;
   if (grafo !== undefined) {
-    const cifrado = await cifrarSegredosDoGrafo(createAdminClient(), grafo, atual.grafo);
+    // Os cifrados aceitos são os do publicado E os do rascunho: o editor abre
+    // o rascunho quando há um.
+    const gravados = [atual.grafo, atual.rascunho].flatMap(
+      (g) => ((g as { nodes?: unknown[] } | null)?.nodes ?? []) as unknown[],
+    );
+    const cifrado = await cifrarSegredosDoGrafo(createAdminClient(), grafo, { nodes: gravados }, {
+      organizationId: auth.org.orgId,
+      flowId: id,
+    });
     if (cifrado === null) {
       return fail(
         "encryption_unavailable",
@@ -124,16 +151,28 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     grafo = cifrado;
   }
 
-  // Ligar exige um desenho que o motor consiga rodar: o que vai ser gravado
-  // agora, ou o que já está gravado. E gravar desenho num fluxo JÁ LIGADO
-  // também: o salvar (e o Ctrl+S) manda só `{name, grafo}`, e a mudança vale
-  // na hora para os clientes — antes, mensagem vazia, menu sem pergunta ou
-  // WebHook sem endereço iam direto para o WhatsApp (auditoria funcional f01).
-  const ligadoDepois = is_active ?? Boolean(atual.is_active);
-  if (is_active === true || (ligadoDepois && grafo !== undefined)) {
-    const problemas = problemasDoGrafo(grafoSchema.parse(grafo ?? atual.grafo));
+  // RASCUNHO × PUBLICADO (pendência V1, como na Umbler/Blip/Typebot). O motor
+  // lê só `grafo` — o publicado. Num fluxo LIGADO, salvar grava o RASCUNHO e
+  // não muda nada para os clientes (desenho pela metade pode ficar salvo);
+  // só "Publicar" valida e copia para `grafo`, guardando a versão. Num fluxo
+  // DESLIGADO não há o que proteger: salvar grava `grafo` direto, e LIGAR é
+  // a publicação.
+  const ativoAgora = Boolean(atual.is_active);
+  const ligadoDepois = is_active ?? ativoAgora;
+  const rascunhoGravado = grafoSchema.safeParse(atual.rascunho);
+  const vaiParaORascunho =
+    grafo !== undefined && ativoAgora && ligadoDepois && publicar !== true;
+  const publicadoNovo: typeof grafo | undefined = vaiParaORascunho
+    ? undefined
+    : (grafo ??
+      (publicar === true && rascunhoGravado.success ? rascunhoGravado.data : undefined));
+
+  // Ligar, ou publicar num fluxo que fica ligado, exige um desenho que o motor
+  // consiga rodar.
+  if (is_active === true || (ligadoDepois && publicadoNovo !== undefined)) {
+    const problemas = problemasDoGrafo(grafoSchema.parse(publicadoNovo ?? atual.grafo));
     if (problemas.length > 0) {
-      const prefixo = is_active === true ? "Antes de ligar" : "O fluxo está ligado. Para salvar";
+      const prefixo = is_active === true && !ativoAgora ? "Antes de ligar" : "Antes de publicar";
       return fail("validation_failed", `${prefixo}: ${problemas[0]}`, 422, {
         requestId,
         details: { problemas },
@@ -142,10 +181,19 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 
   const update: Record<string, unknown> = { ...meta, updated_at: new Date().toISOString() };
-  if (grafo !== undefined) {
-    update.grafo = grafo;
+  if (vaiParaORascunho) {
+    update.rascunho = grafo;
+    update.revisao = (atual.revisao ?? 0) + 1;
+  } else if (publicadoNovo !== undefined) {
+    update.grafo = publicadoNovo;
+    update.rascunho = null;
     update.revisao = (atual.revisao ?? 0) + 1;
   }
+  // O que passa a rodar com esta operação vira versão: publicar, ou ligar.
+  const versaoNova =
+    ligadoDepois && (publicadoNovo !== undefined || (is_active === true && !ativoAgora))
+      ? (publicadoNovo ?? grafoSchema.safeParse(atual.grafo).data ?? null)
+      : null;
   if (is_active !== undefined) {
     update.is_active = is_active;
     update.status = is_active ? "active" : "draft";
@@ -157,6 +205,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   // (auditoria funcional f01). O que já estava ligado continua rodando.
   if (grafoRecebido !== undefined) {
     const passos = await conferirPassosDoPlano(auth.org.orgId, grafoRecebido);
+    if (!passos.ok) return fail(passos.code, passos.message, passos.status, { requestId });
+  } else if (publicar === true && publicadoNovo !== undefined) {
+    // O rascunho pode ter sido salvo num plano maior: a publicação confere de novo.
+    const passos = await conferirPassosDoPlano(auth.org.orgId, publicadoNovo);
     if (!passos.ok) return fail(passos.code, passos.message, passos.status, { requestId });
   } else if (is_active === true && !atual.is_active) {
     const gravado = grafoSchema.safeParse(atual.grafo);
@@ -170,7 +222,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   // desliga só os outros ligados que atendem algum número em comum. Fluxos
   // que só começam por automação ou à mão não disputam número nenhum.
   const ficaLigado = is_active ?? Boolean(atual.is_active);
-  const desenhoFinal = grafoSchema.safeParse(grafo ?? atual.grafo);
+  const desenhoFinal = grafoSchema.safeParse(publicadoNovo ?? atual.grafo);
   let concorrentes: string[] = [];
   if (ficaLigado && desenhoFinal.success && respondeMensagens(desenhoFinal.data)) {
     const { data: outros, error: erroAoLer } = await db
@@ -240,15 +292,31 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         });
     }
 
+    // A revisão no filtro faz a conferência de duas abas valer também na
+    // corrida: quem chegar segundo atualiza zero linhas.
     const { data, error } = await db
       .from("chatbot_flows")
       .update(update)
       .eq("id", id)
       .eq("organization_id", sessao.org.orgId)
+      .eq("revisao", atual.revisao ?? 0)
       .select(COLUNAS)
       .maybeSingle();
-    if (error || !data)
+    if (error)
       return fail("internal_error", "Não foi possível salvar o fluxo.", 500, { requestId });
+    if (!data)
+      return fail(
+        "conflict",
+        "Este fluxo foi salvo em outra aba ou por outra pessoa enquanto você editava. Recarregue a página para ver a versão mais nova.",
+        409,
+        { requestId },
+      );
+
+    if (versaoNova) {
+      const numero = await guardarVersao(sessao.org.orgId, id, versaoNova, sessao.user.id);
+      if (numero === null)
+        logger.warn("[chatbot] fluxo publicado sem versão no histórico", { flow_id: id });
+    }
 
     await audit({
       action: "chatbot_flow.updated",
@@ -263,6 +331,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         campos: camposRecebidos,
         ...(is_active !== undefined ? { ligado: is_active } : {}),
         ...(grafo !== undefined ? { passos: grafo.nodes.length, revisao: update.revisao } : {}),
+        ...(vaiParaORascunho ? { rascunho: true } : {}),
+        ...(versaoNova ? { publicado: true } : {}),
       },
     });
 
@@ -300,4 +370,40 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   });
 
   return ok({ id }, { requestId });
+}
+
+/**
+ * Guarda a versão publicada (imutável; só o servidor escreve na tabela). O
+ * número é o seguinte ao maior do fluxo; numa corrida rara, o `unique` recusa
+ * e tenta de novo uma vez. Falhar aqui não desfaz a publicação — o histórico
+ * é para voltar atrás, não para decidir o que roda.
+ */
+async function guardarVersao(
+  orgId: string,
+  flowId: string,
+  grafo: unknown,
+  publicadaPor: string,
+): Promise<number | null> {
+  const admin = createAdminClient();
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    const { data: ultima } = await admin
+      .from("chatbot_flow_versions")
+      .select("numero")
+      .eq("organization_id", orgId)
+      .eq("flow_id", flowId)
+      .order("numero", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const numero = (Number(ultima?.numero) || 0) + 1;
+    const { error } = await admin.from("chatbot_flow_versions").insert({
+      organization_id: orgId,
+      flow_id: flowId,
+      numero,
+      grafo,
+      publicada_por: publicadaPor,
+    });
+    if (!error) return numero;
+    if (error.code !== "23505") return null;
+  }
+  return null;
 }

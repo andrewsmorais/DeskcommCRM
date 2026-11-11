@@ -54,6 +54,7 @@ import {
   inicioParaAcionar,
   inicioManual,
   inicioPorAutomacao,
+  inicioQueAtende,
   pontoDePartida,
   proximaMensagemDeEspera,
   relogioDaEspera,
@@ -279,11 +280,20 @@ export async function atenderPeloChatbot(
       return "atendeu";
     }
   } else {
+    // UM ATENDIMENTO, UMA PASSAGEM PELO CHATBOT (como na Umbler Talk). Depois
+    // que o chatbot entregou a conversa — à fila da equipe, a um setor, a um
+    // atendente ou ao agente de IA —, ele não volta a entrar neste atendimento:
+    // volta quando o atendimento é finalizado e o contato escreve de novo.
+    // Antes a única barreira era a de 6 h, e quem ficasse sem resposta na fila
+    // (ou com a IA) recebia o menu de novo no meio do atendimento (cards 54/58).
+    if (await atendimentoJaEntregue(pool, e.organizationId, e.conversationId)) return "nao_atende";
+
     // Cada número tem o seu chatbot de entrada (lib/chatbot/plano.ts): o
     // escolhido é o fluxo ligado cujo "Iniciar por um canal" aceita ESTE
     // número (e a palavra-chave, se houver). Antes era o primeiro fluxo da
     // organização, e a mensagem do segundo número ficava sem chatbot.
     // Os de "Iniciar por automação" ou "manualmente" esperam quem os chama.
+    // A palavra-chave vence o "toda conversa nova" também ENTRE fluxos.
     const { rows: fluxos } = await pool.query<{ id: string; grafo: unknown }>(
       `select id, grafo from chatbot_flows
         where organization_id = $1 and is_active
@@ -291,31 +301,44 @@ export async function atenderPeloChatbot(
         limit 50`,
       [e.organizationId],
     );
-    let escolhido: { id: string; grafo: Grafo; inicio: string } | null = null;
+    let escolhido: {
+      id: string;
+      grafo: Grafo;
+      gatilho: "toda_conversa_nova" | "palavra_chave";
+    } | null = null;
     for (const f of fluxos) {
       const g = grafoSchema.safeParse(f.grafo);
       if (!g.success || !respondeMensagens(g.data)) continue;
-      const inicioDoFluxo = pontoDePartida(g.data, {
+      const inicioDoFluxo = inicioQueAtende(g.data, {
         channelSessionId: e.channelSessionId,
         mensagem: texto,
       });
-      if (inicioDoFluxo) {
-        escolhido = { id: f.id, grafo: g.data, inicio: inicioDoFluxo };
+      if (!inicioDoFluxo) continue;
+      if (inicioDoFluxo.gatilho === "palavra_chave") {
+        escolhido = { id: f.id, grafo: g.data, gatilho: "palavra_chave" };
         break;
       }
+      escolhido ??= { id: f.id, grafo: g.data, gatilho: "toda_conversa_nova" };
     }
     if (!escolhido) return "nao_atende";
     fluxoId = escolhido.id;
     grafo = escolhido.grafo;
 
-    // Já rodou nesta conversa há pouco: não recomeça a cada "obrigado".
-    const { rows: recente } = await pool.query<{ id: string }>(
-      `select id from chatbot_sessions
-        where organization_id = $1 and conversation_id = $2 and flow_id = $3
-          and coalesce(ended_at, updated_at) > now() - make_interval(hours => $4)`,
-      [e.organizationId, e.conversationId, fluxoId, HORAS_PARA_RECOMECAR],
-    );
-    if (recente[0]) return "nao_atende";
+    // "Toda conversa nova" = atendimento novo. Já rodou NESTE atendimento: não
+    // recomeça a cada "obrigado". As 6 h ficam só como rede para quem nunca
+    // finaliza atendimento (senão o contato que volta semanas depois nunca mais
+    // veria o menu). A palavra-chave é pedido explícito do contato e recomeça.
+    if (escolhido.gatilho === "toda_conversa_nova") {
+      const { rows: recente } = await pool.query<{ id: string }>(
+        `select s.id from chatbot_sessions s
+           join conversations c on c.id = s.conversation_id and c.organization_id = s.organization_id
+          where s.organization_id = $1 and s.conversation_id = $2 and s.flow_id = $3
+            and s.started_at >= coalesce(c.service_started_at, c.created_at)
+            and coalesce(s.ended_at, s.updated_at) > now() - make_interval(hours => $4)`,
+        [e.organizationId, e.conversationId, fluxoId, HORAS_PARA_RECOMECAR],
+      );
+      if (recente[0]) return "nao_atende";
+    }
   }
 
   const inicio = sessaoAnterior
@@ -479,8 +502,11 @@ async function conduzir(
         break;
       }
       case "ia": {
-        const entregou = await entregarAoAgente(pool, admin, e, fluxoId, log);
-        if (entregou) entregouAoAgente = true;
+        const entregou = await entregarAoAgente(pool, admin, e, fluxoId, pendente.agent_id, log);
+        if (entregou) {
+          entregouAoAgente = true;
+          await marcarEntrega(pool, e.organizationId, gravada.id, "ia");
+        }
         resultado = continuarAposAcao(grafo, resultado.sessao, entregou, ctx);
         break;
       }
@@ -601,20 +627,91 @@ async function atendenteDoPasso(
  * a mesma régua do portão do drain (`capacidadeDoNumero`): entregar a um número
  * sem agente deixaria o contato falando sozinho. false = siga por "Sem agente de IA".
  */
+/**
+ * O atendimento ATUAL já foi entregue a alguém? (o chatbot então não entra)
+ *
+ * O atendimento atual começa em `conversations.service_started_at` (finalizar e
+ * o contato escrever de novo abre outro). Conta como entregue:
+ *   - o próprio chatbot ter entregue neste atendimento (`chatbot_sessions.entregue_em`):
+ *     à equipe, a um setor, a um atendente ou ao agente de IA — a IA devolvida
+ *     não deixa rastro na conversa, por isso o rastro mora na sessão;
+ *   - uma passagem para humano neste atendimento (`last_handoff_at`), feita pela
+ *     IA, pela tela ou pelo chatbot;
+ *   - o robô calado por alguém com prazo (`bot_silenced_until` no futuro). O
+ *     "para sempre" de uma passagem de um atendimento ANTERIOR não conta: o
+ *     atendimento novo começa do zero, como na Umbler.
+ * O dono humano (`assignee_kind = 'user'`) já é barrado antes, por quem chama.
+ */
+async function atendimentoJaEntregue(
+  pool: pg.Pool,
+  organizationId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ entregue: boolean }>(
+    `select (
+        exists (select 1 from chatbot_sessions s
+                 where s.organization_id = c.organization_id and s.conversation_id = c.id
+                   and s.entregue_em is not null
+                   and s.entregue_em >= coalesce(c.service_started_at, c.created_at))
+        or (c.last_handoff_at is not null
+            and c.last_handoff_at >= coalesce(c.service_started_at, c.created_at))
+        or (c.bot_silenced_until is not null and c.bot_silenced_until > now()
+            and not (c.bot_silenced_until = 'infinity'::timestamptz
+                     and (c.last_handoff_at is null
+                          or c.last_handoff_at < coalesce(c.service_started_at, c.created_at))))
+      ) as entregue
+       from conversations c
+      where c.organization_id = $1 and c.id = $2`,
+    [organizationId, conversationId],
+  );
+  return rows[0]?.entregue === true;
+}
+
+/** Rastro da entrega na sessão: o chatbot não volta a entrar neste atendimento. */
+async function marcarEntrega(
+  pool: pg.Pool,
+  organizationId: string,
+  sessaoId: string,
+  a: "ia" | "equipe" | "atendente",
+): Promise<void> {
+  await pool.query(
+    `update chatbot_sessions set entregue_a = $3, entregue_em = now()
+      where organization_id = $1 and id = $2`,
+    [organizationId, sessaoId, a],
+  );
+}
+
 async function entregarAoAgente(
   pool: pg.Pool,
   admin: SupabaseClient,
   e: EntradaDoChatbot,
   fluxoId: string,
+  agentId: string | null,
   log: Log,
 ): Promise<boolean> {
   if (!e.channelSessionId) return false;
-  const capacidade = await capacidadeDoNumero(pool, e.organizationId, e.channelSessionId);
-  if (!temQuemAtenda(capacidade)) {
-    log.info("chatbot: 'Transferir p/ agentes de IA' sem agente no ar no número", {
-      flow_id: fluxoId,
-    });
-    return false;
+  if (agentId) {
+    // Agente nomeado no passo: tem de existir NESTA organização, publicado e não
+    // arquivado. Senão segue por "Sem agente de IA" — nunca entrega a conversa
+    // a quem não vai responder.
+    const { rows } = await pool.query<{ ok: boolean }>(
+      `select true as ok from ai_agents
+        where organization_id = $1 and id = $2
+          and published_version_id is not null and archived_at is null`,
+      [e.organizationId, agentId],
+    );
+    if (!rows[0]) {
+      log.info("chatbot: agente escolhido no passo não está publicado", { flow_id: fluxoId });
+      return false;
+    }
+  } else {
+    const capacidade = await capacidadeDoNumero(pool, e.organizationId, e.channelSessionId);
+    if (!temQuemAtenda(capacidade)) {
+      log.info("chatbot: 'Transferir p/ agentes de IA' sem agente no ar no número", {
+        flow_id: fluxoId,
+      });
+      return false;
+    }
   }
   const r = await devolverAtendimentoAoAgente(
     {
@@ -629,7 +726,17 @@ async function entregarAoAgente(
     log.warn("chatbot: entrega ao agente de IA falhou", { flow_id: fluxoId, erro: r.erro });
     return false;
   }
-  log.info("chatbot: conversa entregue ao agente de IA", { flow_id: fluxoId });
+  if (agentId) {
+    // Gravado DEPOIS da devolução (que não toca nestas colunas): é o que o
+    // resolvedor do turno lê (`agenteEscolhidoPeloChatbot`).
+    await pool.query(
+      `update conversations
+          set active_ai_agent_id = $3, active_intent = 'chatbot', active_agent_set_at = now()
+        where organization_id = $1 and id = $2`,
+      [e.organizationId, e.conversationId, agentId],
+    );
+  }
+  log.info("chatbot: conversa entregue ao agente de IA", { flow_id: fluxoId, escolhido: Boolean(agentId) });
   return true;
 }
 
@@ -1128,13 +1235,25 @@ async function fazerWebhook(
   const no = grafo.nodes.find((n) => n.id === resultado.pendente?.no);
   if (!no) return { ok: false, status: null, corpo: null };
   const c = lerConfig("webhook", no.data);
-  const segredos = await decifrarSegredosDoPasso(admin, c);
-  // Segredo gravado que não abre: não chama sem ele (sairia sem assinatura ou
-  // sem autorização) — segue por "Falhou".
+  const segredos = await decifrarSegredosDoPasso(admin, c, {
+    organizationId: e.organizationId,
+    flowId: fluxoId,
+    nodeId: no.id,
+  });
+  // Segredo gravado que não abre (cifra indisponível, ou sem o lacre deste
+  // passo — inclusive o gravado antes do lacre): não chama sem ele (sairia sem
+  // assinatura ou sem autorização) — segue por "Falhou", e a equipe lê o porquê.
   if ((c.segredo_enc && !segredos.segredo) || (c.autorizacao_enc && !segredos.autorizacao)) {
-    log.warn("chatbot: segredo do WebHook não pôde ser decifrado — chamada não feita", {
+    log.warn("chatbot: segredo do WebHook não pôde ser aberto — chamada não feita", {
       flow_id: fluxoId,
     });
+    await notaDoChatbot(
+      pool,
+      e,
+      fluxoId,
+      `chatbot:${fluxoId}:${e.inboundMessageId ?? e.referencia ?? no.id}:segredo`,
+      "O WebHook do chatbot não foi chamado: o segredo ou a autorização do passo precisa ser digitado de novo (abra o passo WebHook, digite e salve).",
+    ).catch(() => undefined);
     return { ok: false, status: null, corpo: null };
   }
   const { rows } = await pool.query<{
@@ -1681,6 +1800,8 @@ async function gravarSessao(
            tentativas = excluded.tentativas,
            collected_data = excluded.collected_data,
            started_at = case when $9::uuid is null then now() else chatbot_sessions.started_at end,
+           entregue_a = case when $9::uuid is null then null else chatbot_sessions.entregue_a end,
+           entregue_em = case when $9::uuid is null then null else chatbot_sessions.entregue_em end,
            updated_at = now(),
            ended_at = excluded.ended_at,
            retomar_em = excluded.retomar_em,
@@ -1932,10 +2053,12 @@ async function executarEfeitos(
                   flow_id: fluxoId,
                 },
               });
+              await marcarEntrega(pool, e.organizationId, sessao.id, "equipe");
               break;
             }
           }
           await paraAFilaDaEquipe();
+          await marcarEntrega(pool, e.organizationId, sessao.id, "equipe");
           break;
         }
         case "transferir_atendente": {
@@ -1945,6 +2068,7 @@ async function executarEfeitos(
             // robô — vai para a fila humana, e a equipe lê o porquê.
             await notaInterna(notaSemAtendente(efeito.modo));
             await paraAFilaDaEquipe();
+            await marcarEntrega(pool, e.organizationId, sessao.id, "equipe");
             break;
           }
           const { error } = await admin.rpc("fn_conversation_assign", {
@@ -1961,6 +2085,9 @@ async function executarEfeitos(
               erro: error.message.slice(0, 120),
             });
             await paraAFilaDaEquipe();
+            await marcarEntrega(pool, e.organizationId, sessao.id, "equipe");
+          } else {
+            await marcarEntrega(pool, e.organizationId, sessao.id, "atendente");
           }
           break;
         }

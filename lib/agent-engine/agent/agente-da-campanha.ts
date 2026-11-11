@@ -78,3 +78,39 @@ export async function agenteDaCampanhaDaConversa(
     return null;
   }
 }
+
+/**
+ * O agente que o CHATBOT escolheu para esta conversa, neste atendimento.
+ *
+ * O passo "Transferir p/ agentes de IA" pode nomear o agente (11/11/2026, como
+ * na Umbler Talk); a escolha fica em `conversations.active_ai_agent_id` com
+ * `active_intent = 'chatbot'` e vale até o atendimento acabar
+ * (`service_started_at`): o atendimento seguinte começa do zero. Mesma régua de
+ * falha da campanha — `null` em qualquer dúvida, o turno segue pela régua normal.
+ */
+export async function agenteEscolhidoPeloChatbot(
+  db: pg.Pool,
+  tenantId: string,
+  conversationId: string,
+): Promise<string | null> {
+  try {
+    const consulta = db.query<{ agent_id: string | null }>(
+      `select c.active_ai_agent_id as agent_id
+         from conversations c
+        where c.organization_id = $1
+          and c.id = $2
+          and c.active_intent = 'chatbot'
+          and c.active_ai_agent_id is not null
+          and c.active_agent_set_at >= coalesce(c.service_started_at, c.created_at)`,
+      [tenantId, conversationId],
+    );
+    const resultado = await Promise.race([
+      consulta,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), TETO_MS)),
+    ]);
+    if (resultado === null) return null;
+    return resultado.rows[0]?.agent_id ?? null;
+  } catch {
+    return null;
+  }
+}

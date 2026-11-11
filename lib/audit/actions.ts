@@ -1027,6 +1027,8 @@ export const AUDIT_ACTIONS = [
   "chatbot_flow.updated",
   /** Um fluxo de chatbot foi excluído. */
   "chatbot_flow.deleted",
+  /** Uma versão publicada de um fluxo de chatbot foi restaurada (para o rascunho, se o fluxo está ligado). */
+  "chatbot_flow.version_restored",
   /** Um arquivo foi subido para o passo "Enviar mídia" de um fluxo de chatbot. */
   "chatbot_flow.media_uploaded",
   /** Um atendente acionou um chatbot numa conversa ("Iniciar manualmente"). */

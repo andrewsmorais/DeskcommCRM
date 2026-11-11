@@ -17944,6 +17944,93 @@ export const DICIONARIO: Traducoes = {
   "Nenhuma pergunta nos últimos 7 dias.": { es: "Ninguna pregunta en los últimos 7 días." },
   "pediu uma pessoa": { es: "pidió una persona" },
   "Ver resposta": { es: "Ver respuesta" },
+  // Chatbot: rascunho e versões, WebHook completo, entrega por atendimento (11/11/2026)
+  "Rascunho salvo. Os clientes só veem as mudanças quando você publicar.": {
+    es: "Borrador guardado. Los clientes solo ven los cambios cuando publiques.",
+  },
+  "Não foi possível publicar o fluxo.": { es: "No se pudo publicar el flujo." },
+  "Publicado: os clientes já recebem a versão nova.": {
+    es: "Publicado: los clientes ya reciben la versión nueva.",
+  },
+  "O fluxo está ligado: o editor salva um rascunho, e as mudanças só valem para os clientes quando você publicar.":
+    {
+      es: "El flujo está activado: el editor guarda un borrador, y los cambios solo valen para los clientes cuando publiques.",
+    },
+  "Rascunho não publicado": { es: "Borrador sin publicar" },
+  "Não foi possível restaurar a versão.": { es: "No se pudo restaurar la versión." },
+  "Versão restaurada. Confira e publique.": { es: "Versión restaurada. Revísala y publica." },
+  Versões: { es: "Versiones" },
+  "Nenhuma versão publicada ainda. Cada vez que você liga ou publica o fluxo, uma versão fica guardada aqui.":
+    {
+      es: "Todavía no hay versiones publicadas. Cada vez que activas o publicas el flujo, se guarda una versión aquí.",
+    },
+  "Um campo passou do limite": { es: "Un campo superó el límite" },
+  máximo: { es: "máximo" },
+  "Encurte para o fluxo poder ser ligado.": { es: "Acórtalo para que el flujo se pueda activar." },
+  "Um campo está num formato que o passo não aceita": {
+    es: "Un campo tiene un formato que el paso no acepta",
+  },
+  "Corrija para o fluxo poder ser ligado.": { es: "Corrígelo para que el flujo se pueda activar." },
+  "Separe com vírgula, até 20 palavras. Maiúsculas e acentos não importam.": {
+    es: "Separa con comas, hasta 20 palabras. Mayúsculas y acentos no importan.",
+  },
+  "O fluxo roda uma vez por atendimento. Depois de entregar a conversa (à equipe, a um atendente ou à IA), só volta quando o atendimento for finalizado e o contato escrever de novo. Sem entrega, recomeça na mesma conversa 6 horas depois. Palavra-chave recomeça na hora.":
+    {
+      es: "El flujo se ejecuta una vez por atención. Después de entregar la conversación (al equipo, a un agente o a la IA), solo vuelve cuando la atención se finaliza y el contacto escribe de nuevo. Sin entrega, se reinicia en la misma conversación 6 horas después. La palabra clave lo reinicia al instante.",
+    },
+  "O agente deste número (ou o roteador)": { es: "El agente de este número (o el enrutador)" },
+  "O agente escolhido responde dali em diante, inclusive a mensagem que o contato acabou de mandar, até o atendimento ser finalizado. O chatbot não volta a entrar neste atendimento.":
+    {
+      es: "El agente elegido responde desde ahí, incluso el mensaje que el contacto acaba de enviar, hasta que la atención se finalice. El chatbot no vuelve a entrar en esta atención.",
+    },
+  "A conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar. O chatbot não volta a entrar neste atendimento.":
+    {
+      es: "La conversación vuelve a la atención automática: el agente de IA de este número (o el enrutador) responde desde ahí, incluso el mensaje que el contacto acaba de enviar. El chatbot no vuelve a entrar en esta atención.",
+    },
+  'Só é enviada se o agente estiver publicado (ou, sem agente escolhido, se houver agente no ar neste número). Se não houver, o fluxo segue por "Sem agente de IA" — ligue ali um "Transferir para a equipe".':
+    {
+      es: 'Solo se envía si el agente está publicado (o, sin agente elegido, si hay un agente activo en este número). Si no lo hay, el flujo sigue por "Sin agente de IA": conecta ahí un "Transferir al equipo".',
+    },
+  "Guardar a escolha em (opcional)": { es: "Guardar la elección en (opcional)" },
+  "O texto da opção escolhida fica guardado: use {{nome_que_você_escolheu}} numa mensagem, no WebHook ou no “Valor”. Vazio = não guarda.":
+    {
+      es: "El texto de la opción elegida queda guardado: usa {{nombre_que_elegiste}} en un mensaje, en el WebHook o en “Valor”. Vacío = no guarda.",
+    },
+  "PUT — atualiza um registro": { es: "PUT — actualiza un registro" },
+  "PATCH — atualiza parte de um registro": { es: "PATCH — actualiza parte de un registro" },
+  "DELETE — apaga um registro": { es: "DELETE — borra un registro" },
+  'No corpo padrão vão o id da conversa, nome, telefone e e-mail do contato, a última mensagem e as respostas guardadas no fluxo. Resposta 2xx segue por "Deu certo"; erro, demora de mais de 8 segundos, corpo inválido ou endereço recusado seguem por "Falhou". Sem ligação em "Falhou", o fluxo termina ali.':
+    {
+      es: 'En el cuerpo estándar van el id de la conversación, nombre, teléfono y correo del contacto, el último mensaje y las respuestas guardadas en el flujo. Una respuesta 2xx sigue por "Funcionó"; error, demora de más de 8 segundos, cuerpo inválido o dirección rechazada siguen por "Falló". Sin conexión en "Falló", el flujo termina ahí.',
+    },
+  "Corpo da requisição": { es: "Cuerpo de la solicitud" },
+  "Padrão — os dados da conversa e as respostas": {
+    es: "Estándar — los datos de la conversación y las respuestas",
+  },
+  "Personalizado — escrevo o JSON": { es: "Personalizado — escribo el JSON" },
+  "Isto não é um JSON válido. Confira aspas, vírgulas e chaves.": {
+    es: "Esto no es un JSON válido. Revisa comillas, comas y llaves.",
+  },
+  "Use {{nome}} entre aspas para pôr uma resposta do contato — o valor vai escapado, então nada que o contato escreva muda o formato do JSON.":
+    {
+      es: "Usa {{nombre}} entre comillas para poner una respuesta del contacto: el valor va escapado, así que nada de lo que el contacto escriba cambia el formato del JSON.",
+    },
+  "Cabeçalhos (opcional)": { es: "Encabezados (opcional)" },
+  "Nome do cabeçalho": { es: "Nombre del encabezado" },
+  "Valor do cabeçalho": { es: "Valor del encabezado" },
+  "Remover cabeçalho": { es: "Quitar encabezado" },
+  "Host, Authorization, Cookie, Content-Type e X-Webhook-… são do sistema. Para chave de API use o campo Authorization abaixo.":
+    {
+      es: "Host, Authorization, Cookie, Content-Type y X-Webhook-… son del sistema. Para clave de API usa el campo Authorization abajo.",
+    },
+  "Adicionar cabeçalho": { es: "Agregar encabezado" },
+  "Aceita {{nome}} no valor. Não coloque senha aqui: todo mundo da equipe que abre o fluxo vê. Chave vai no Authorization, que fica cifrado.":
+    {
+      es: "Acepta {{nombre}} en el valor. No pongas contraseñas aquí: todo el equipo que abre el flujo las ve. La clave va en Authorization, que queda cifrado.",
+    },
+  "Saia do acompanhamento para convidar pessoas para a equipe.": {
+    es: "Sal del acompañamiento para invitar personas al equipo.",
+  },
 };
 /**
  * Traduz, ou devolve o próprio texto.

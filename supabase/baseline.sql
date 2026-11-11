@@ -45215,3 +45215,83 @@ drop policy if exists "tenant_read_ai_policy" on storage.objects;
 drop policy if exists "tenant_write_ai_policy" on storage.objects;
 drop policy if exists "tenant_delete_ai_policy" on storage.objects;
 drop policy if exists "tenant_read_lgpd_exports" on storage.objects;
+
+-- ---- o chatbot sabe a quem entregou o atendimento (migration 0504) ----
+--
+-- Depois que o chatbot entrega a conversa (à fila da equipe, a um setor, a um
+-- atendente ou ao agente de IA), ele não volta a entrar NESTE atendimento —
+-- volta quando o atendimento é finalizado e o contato escreve de novo
+-- (`conversations.service_started_at` muda), como na Umbler Talk. Antes a única
+-- barreira era a de 6 h, e quem ficava sem resposta na fila (ou com a IA)
+-- recebia o menu de novo no meio do atendimento (cards 54/58 do chatbot).
+--
+-- A entrega à IA não deixa rastro na conversa (a devolução limpa as travas de
+-- passagem), então o rastro mora na sessão do chatbot. Uma rodada nova do mesmo
+-- fluxo zera as duas colunas (`gravarSessao`). Aditiva e idempotente; nenhum
+-- dado existente muda.
+alter table public.chatbot_sessions add column if not exists entregue_a text;
+alter table public.chatbot_sessions add column if not exists entregue_em timestamptz;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint
+                  where conname = 'chatbot_sessions_entregue_a_check'
+                    and conrelid = 'public.chatbot_sessions'::regclass) then
+    alter table public.chatbot_sessions
+      add constraint chatbot_sessions_entregue_a_check
+      check (entregue_a is null or entregue_a in ('ia', 'equipe', 'atendente'));
+  end if;
+end $$;
+
+create index if not exists idx_chatbot_sessions_entregue
+  on public.chatbot_sessions (organization_id, conversation_id, entregue_em)
+  where entregue_em is not null;
+
+-- ---- chatbot: rascunho e versões publicadas (migration 0505) ----
+--
+-- Até aqui, salvar um fluxo LIGADO valia na hora para os clientes: não havia
+-- "publicar" separado de "salvar", nem histórico para voltar atrás, nem
+-- controle de duas abas salvando por cima uma da outra (pendência V1 da
+-- auditoria funcional de 03/11; padrão de mercado — Umbler, Blip, Typebot).
+--
+-- 1. `chatbot_flows.rascunho`: o desenho em edição de um fluxo ligado. O motor
+--    continua lendo `chatbot_flows.grafo` (o PUBLICADO); salvar um fluxo ligado
+--    grava aqui, e só "Publicar" (a rota) copia para `grafo`. NULL = sem
+--    mudança pendente.
+-- 2. `chatbot_flow_versions`: cada publicação vira uma linha imutável
+--    (número, desenho, quem e quando). Restaurar copia uma versão para o
+--    rascunho. Só o servidor grava (a rota usa a service role); membros leem.
+-- 3. Fluxo já ligado ganha a versão 1 com o desenho que está rodando, para
+--    haver para onde voltar desde o primeiro dia.
+--
+-- Aditiva e idempotente; o que roda hoje não muda.
+alter table public.chatbot_flows add column if not exists rascunho jsonb;
+
+create table if not exists public.chatbot_flow_versions (
+  id               uuid        not null default gen_random_uuid() primary key,
+  organization_id  uuid        not null references public.organizations(id) on delete cascade,
+  flow_id          uuid        not null references public.chatbot_flows(id) on delete cascade,
+  numero           integer     not null check (numero > 0),
+  grafo            jsonb       not null,
+  publicada_por    uuid        references auth.users(id) on delete set null,
+  publicada_em     timestamptz not null default now(),
+  unique (flow_id, numero)
+);
+create index if not exists idx_chatbot_flow_versions_flow
+  on public.chatbot_flow_versions (organization_id, flow_id, numero desc);
+
+alter table public.chatbot_flow_versions enable row level security;
+revoke all on public.chatbot_flow_versions from anon;
+revoke insert, update, delete, truncate on public.chatbot_flow_versions from authenticated;
+drop policy if exists chatbot_flow_versions_leitura on public.chatbot_flow_versions;
+create policy chatbot_flow_versions_leitura on public.chatbot_flow_versions
+  for select to authenticated
+  using (organization_id in (select public.fn_user_org_ids()));
+
+insert into public.chatbot_flow_versions (organization_id, flow_id, numero, grafo, publicada_em)
+select f.organization_id, f.id, 1, f.grafo, coalesce(f.updated_at, now())
+  from public.chatbot_flows f
+ where f.is_active
+   and not exists (select 1 from public.chatbot_flow_versions v where v.flow_id = f.id);
+
+do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;

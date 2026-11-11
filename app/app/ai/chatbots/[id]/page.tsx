@@ -39,10 +39,11 @@ export default async function ChatbotEditorPage({ params }: Props) {
     modelosRes,
     setoresRes,
     produtosRes,
+    agentesRes,
   ] = await Promise.all([
     db
       .from("chatbot_flows")
-      .select("id, name, is_active, grafo")
+      .select("id, name, is_active, grafo, rascunho, revisao")
       .eq("id", id)
       .eq("organization_id", activeOrg.orgId)
       .maybeSingle(),
@@ -96,6 +97,13 @@ export default async function ChatbotEditorPage({ params }: Props) {
       .order("ativo", { ascending: false })
       .order("nome")
       .limit(500),
+    // "Transferir p/ agentes de IA": quem pode continuar a conversa.
+    db
+      .from("ai_agents")
+      .select("id, name, published_version_id")
+      .eq("organization_id", activeOrg.orgId)
+      .is("archived_at", null)
+      .order("name"),
   ]);
 
   if (!flowRes.data) notFound();
@@ -104,8 +112,11 @@ export default async function ChatbotEditorPage({ params }: Props) {
   // (Essencial). Quem barra de verdade é a rota que grava o desenho.
   const avancadoLiberado = (await verificarRecursoDoPlano(activeOrg.orgId, "chatbot_avancado")).ok;
 
+  // Fluxo ligado com mudança não publicada: o editor abre o RASCUNHO (o que
+  // roda para os clientes continua sendo `grafo`, até "Publicar").
+  const rascunho = grafoSchema.safeParse(flowRes.data.rascunho);
   // Desenho gravado fora do formato (ou vazio): abre em branco, sem quebrar a tela.
-  const grafo = grafoSchema.safeParse(flowRes.data.grafo);
+  const grafo = rascunho.success ? rascunho : grafoSchema.safeParse(flowRes.data.grafo);
 
   const pessoas = (pessoasRes.data ?? []).filter((p) => p.role !== "viewer");
   const nomes = await nomesDosAtendentes(pessoas.map((p) => String(p.user_id)));
@@ -118,6 +129,8 @@ export default async function ChatbotEditorPage({ params }: Props) {
         name: flowRes.data.name,
         is_active: flowRes.data.is_active,
         grafo: grafo.success ? grafo.data : { nodes: [], edges: [] },
+        temRascunho: rascunho.success,
+        revisao: typeof flowRes.data.revisao === "number" ? flowRes.data.revisao : undefined,
       }}
       opcoes={{
         canais: canais.map((c) => ({
@@ -156,6 +169,11 @@ export default async function ChatbotEditorPage({ params }: Props) {
         modelos: modelosQueOFluxoEnvia((modelosRes.data ?? []) as LinhaDeModeloDoCanal[]).map(
           (m) => ({ id: m.id, nome: m.name, idioma: m.language, texto: m.texto }),
         ),
+        agentes: (agentesRes.data ?? []).map((a) => ({
+          id: String(a.id),
+          nome: String(a.name),
+          publicado: a.published_version_id !== null,
+        })),
         produtos: (produtosRes.data ?? []).map((p) => ({
           id: String(p.id),
           nome: String(p.nome),

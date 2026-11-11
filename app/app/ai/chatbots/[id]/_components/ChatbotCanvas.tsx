@@ -78,7 +78,16 @@ import { NodePanel, type OpcoesDoPainel } from "./NodePanel";
 import { PainelDeAjuda } from "./PainelDeAjuda";
 import { TesteDoFluxo } from "./TesteDoFluxo";
 
-type Flow = { id: string; name: string; is_active: boolean; grafo: Grafo };
+type Flow = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  grafo: Grafo;
+  /** Fluxo ligado com mudança salva e ainda não publicada (o editor abre o rascunho). */
+  temRascunho?: boolean;
+  /** Revisão gravada quando a página abriu (conferência de duas abas). */
+  revisao?: number;
+};
 
 const NODE_TYPES = Object.fromEntries(PASSOS.map((p) => [p.tipo, PassoNode]));
 const ARRASTO = "application/x-passo-do-chatbot";
@@ -231,6 +240,10 @@ function Editor({
   const [autoParado, setAutoParado] = useState(false);
   const [salvoAuto, setSalvoAuto] = useState(false);
   const [ligado, setLigado] = useState(flow.is_active);
+  const [rascunhoPendente, setRascunhoPendente] = useState(Boolean(flow.temRascunho));
+  const revisaoRef = useRef<number | undefined>(flow.revisao);
+  const [publicando, setPublicando] = useState(false);
+  const [versoesAbertas, setVersoesAbertas] = useState(false);
   const [nome, setNome] = useState(flow.name);
   const [editandoNome, setEditandoNome] = useState(false);
   const [passado, setPassado] = useState<Foto[]>([]);
@@ -278,18 +291,26 @@ function Editor({
       const res = await fetch(`/api/v1/chatbot-flows/${flow.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nome.trim() || flow.name, grafo: paraGrafo(nodes, edges) }),
+        body: JSON.stringify({
+          name: nome.trim() || flow.name,
+          grafo: paraGrafo(nodes, edges),
+          ...(revisaoRef.current !== undefined ? { revisao: revisaoRef.current } : {}),
+        }),
       });
       const corpo = await res.json().catch(() => null);
       if (!res.ok) {
         toast.error(corpo?.error?.message ?? t("Não foi possível salvar o fluxo."));
         // No automático, uma falha só aparece uma vez: volta a tentar na próxima mudança.
-        if (opcoes.automatico) setAutoParado(true);
+        if (opcoes.automatico || res.status === 409) setAutoParado(true);
         return false;
       }
+      if (typeof corpo?.data?.revisao === "number") revisaoRef.current = corpo.data.revisao;
+      const ficouNoRascunho = Boolean(corpo?.data?.rascunho);
+      setRascunhoPendente(ficouNoRascunho);
       // O servidor cifra o segredo do WebHook: a tela troca o texto digitado
       // pela versão salva, para o segredo não ficar aberto na memória da página.
-      const salvos = (corpo?.data?.grafo?.nodes ?? []) as { id: string; data: NodeData }[];
+      const salvos = ((ficouNoRascunho ? corpo?.data?.rascunho?.nodes : corpo?.data?.grafo?.nodes) ??
+        []) as { id: string; data: NodeData }[];
       if (salvos.length > 0) {
         setNodes((atuais) =>
           atuais.map((n) =>
@@ -301,38 +322,73 @@ function Editor({
       }
       setSujo(false);
       if (opcoes.automatico) setSalvoAuto(true);
-      else toast.success(t("Fluxo salvo."));
+      else
+        toast.success(
+          ficouNoRascunho
+            ? t("Rascunho salvo. Os clientes só veem as mudanças quando você publicar.")
+            : t("Fluxo salvo."),
+        );
       return true;
     } finally {
       setSalvando(false);
     }
   }, [flow.id, flow.name, nome, nodes, edges, setNodes, t]);
 
+  /** Publica o rascunho: valida e passa a valer para os clientes (vira uma versão). */
+  async function publicar() {
+    if (sujo && !(await salvar())) return;
+    setPublicando(true);
+    try {
+      const res = await fetch(`/api/v1/chatbot-flows/${flow.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicar: true,
+          ...(revisaoRef.current !== undefined ? { revisao: revisaoRef.current } : {}),
+        }),
+      });
+      const corpo = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(corpo?.error?.message ?? t("Não foi possível publicar o fluxo."));
+        return;
+      }
+      if (typeof corpo?.data?.revisao === "number") revisaoRef.current = corpo.data.revisao;
+      setRascunhoPendente(false);
+      toast.success(t("Publicado: os clientes já recebem a versão nova."));
+    } finally {
+      setPublicando(false);
+    }
+  }
+
   async function alternarLigado(valor: boolean) {
     if (valor && sujo && !(await salvar())) return;
     const res = await fetch(`/api/v1/chatbot-flows/${flow.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: valor }),
+      body: JSON.stringify({
+        is_active: valor,
+        ...(revisaoRef.current !== undefined ? { revisao: revisaoRef.current } : {}),
+      }),
     });
+    const corpo = await res.json().catch(() => null);
     if (!res.ok) {
-      const corpo = await res.json().catch(() => null);
       toast.error(corpo?.error?.message ?? t("Não foi possível mudar o fluxo."));
       return;
     }
+    if (typeof corpo?.data?.revisao === "number") revisaoRef.current = corpo.data.revisao;
     setLigado(valor);
     toast.success(valor ? t("Fluxo ligado: ele já responde no WhatsApp.") : t("Fluxo desligado."));
   }
 
 
-  // Salvar automático: com o fluxo DESLIGADO, 2 s depois da última mudança.
-  // Ligado, não — o desenho pela metade passaria a responder clientes no meio
-  // da edição. Aí o salvar é no botão (ou Ctrl+S), quando a pessoa terminar.
+  // Salvar automático, 2 s depois da última mudança. Com o fluxo LIGADO ele
+  // grava o RASCUNHO — nada muda para os clientes até "Publicar" —, então o
+  // desenho pela metade fica guardado sem responder ninguém.
   useEffect(() => {
-    if (!sujo || ligado || salvando || autoParado) return;
+    if (!sujo || salvando || autoParado || publicando) return;
     const relogio = setTimeout(() => void salvar({ automatico: true }), 2000);
     return () => clearTimeout(relogio);
-  }, [sujo, ligado, salvando, autoParado, nodes, edges, nome, salvar]);
+  }, [sujo, salvando, autoParado, publicando, nodes, edges, nome, salvar]);
 
   // Sair com alterações não salvas pergunta antes.
   useEffect(() => {
@@ -740,16 +796,39 @@ function Editor({
           <FlaskConical className="h-4 w-4" />
           {t("Testar")}
         </button>
+        {ligado ? (
+          <button
+            type="button"
+            onClick={() => void publicar()}
+            disabled={publicando || (!rascunhoPendente && !sujo)}
+            className="ml-1 flex h-9 items-center gap-1.5 rounded-full bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-40"
+            data-testid="chatbot-publicar"
+          >
+            {publicando ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {t("Publicar")}
+          </button>
+        ) : null}
+        <VersoesDoFluxo
+          fluxoId={flow.id}
+          aberto={versoesAbertas}
+          aoAbrir={setVersoesAbertas}
+          revisao={() => revisaoRef.current}
+        />
         <span
           className="ml-2 flex items-center gap-1.5 text-sm"
           data-testid="chatbot-estado"
           title={
             ligado
-              ? t("O fluxo está ligado: as mudanças só valem para os clientes quando você salvar.")
+              ? t("O fluxo está ligado: o editor salva um rascunho, e as mudanças só valem para os clientes quando você publicar.")
               : t("Com o fluxo desligado, o editor salva sozinho.")
           }
         >
-          {sujo && !ligado && !autoParado ? (
+          {ligado && rascunhoPendente && !sujo ? (
+            <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300" data-testid="chatbot-rascunho">
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+              {t("Rascunho não publicado")}
+            </span>
+          ) : sujo && !autoParado ? (
             <span className="text-muted-foreground">{t("Salvando…")}</span>
           ) : sujo ? (
             <>
@@ -1116,6 +1195,106 @@ function Editor({
           </aside>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+type VersaoDoFluxo = { id: string; numero: number; publicada_em: string };
+
+/**
+ * Histórico de versões publicadas (pendência V1). Restaurar leva a versão para
+ * o rascunho (fluxo ligado) ou para o desenho (desligado) e recarrega o editor.
+ */
+function VersoesDoFluxo({
+  fluxoId,
+  aberto,
+  aoAbrir,
+  revisao,
+}: {
+  fluxoId: string;
+  aberto: boolean;
+  aoAbrir: (v: boolean) => void;
+  revisao: () => number | undefined;
+}) {
+  const t = useT();
+  const [versoes, setVersoes] = useState<VersaoDoFluxo[] | null>(null);
+  const [restaurando, setRestaurando] = useState<string | null>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    let vivo = true;
+    void fetch(`/api/v1/chatbot-flows/${fluxoId}/versoes`)
+      .then((r) => r.json())
+      .then((c: { data?: VersaoDoFluxo[] }) => vivo && setVersoes(c.data ?? []))
+      .catch(() => vivo && setVersoes([]));
+    return () => {
+      vivo = false;
+    };
+  }, [aberto, fluxoId]);
+
+  async function restaurar(v: VersaoDoFluxo) {
+    setRestaurando(v.id);
+    try {
+      const atual = revisao();
+      const res = await fetch(`/api/v1/chatbot-flows/${fluxoId}/versoes/${v.id}/restaurar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(atual !== undefined ? { revisao: atual } : {}),
+      });
+      const corpo = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(corpo?.error?.message ?? t("Não foi possível restaurar a versão."));
+        return;
+      }
+      toast.success(t("Versão restaurada. Confira e publique."));
+      window.location.reload();
+    } finally {
+      setRestaurando(null);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => aoAbrir(!aberto)}
+        className="ml-1 flex h-9 items-center gap-1.5 rounded-full border border-border px-3 text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
+        data-testid="chatbot-versoes"
+      >
+        {t("Versões")}
+      </button>
+      {aberto ? (
+        <div className="absolute left-0 top-11 z-30 w-72 rounded-lg border border-border bg-surface p-2 shadow-lg">
+          {versoes === null ? (
+            <p className="p-2 text-xs text-muted-foreground">{t("Carregando…")}</p>
+          ) : versoes.length === 0 ? (
+            <p className="p-2 text-xs text-muted-foreground">
+              {t("Nenhuma versão publicada ainda. Cada vez que você liga ou publica o fluxo, uma versão fica guardada aqui.")}
+            </p>
+          ) : (
+            <ul className="max-h-72 space-y-1 overflow-auto">
+              {versoes.map((v) => (
+                <li key={v.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-elevated">
+                  <span>
+                    {t("Versão")} {v.numero}
+                    <span className="block text-xs text-muted-foreground">
+                      {new Date(v.publicada_em).toLocaleString()}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void restaurar(v)}
+                    disabled={restaurando !== null}
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-surface"
+                    data-testid={`chatbot-restaurar-${v.numero}`}
+                  >
+                    {restaurando === v.id ? <Loader2 className="h-3 w-3 animate-spin" /> : t("Restaurar")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
