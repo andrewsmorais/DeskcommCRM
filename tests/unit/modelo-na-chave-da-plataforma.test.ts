@@ -93,6 +93,8 @@ function poolFalso(opts: {
   padrao?: { provider: string; default_model: string | null };
   /** Provedores em que a empresa tem credencial ativa e validada. */
   credenciaisDaEmpresa?: string[];
+  /** Modelo padrão do catálogo (`ai_models`) por provedor. */
+  catalogo?: Record<string, string>;
 }) {
   const query = vi.fn(async (sql: string, params: unknown[] = []) => {
     if (sql.includes("settings->'llm'")) {
@@ -124,6 +126,10 @@ function poolFalso(opts: {
             ? [{ id: CREDENCIAL, api_key_encrypted: "x", api_key_iv: "y", api_key_tag: "z" }]
             : [],
       };
+    }
+    if (sql.includes("from ai_models")) {
+      const padrao = opts.catalogo?.[String(params[0])];
+      return { rows: padrao ? [{ model_id: padrao }] : [] };
     }
     if (sql.includes("insert into llm_calls")) return { rows: [{ id: "call-1" }] };
     return { rows: [] };
@@ -236,6 +242,85 @@ describe("seam — a escolha da empresa não roda na chave da plataforma", () =>
 
     expect(chamadas).toEqual([
       { provider: "openai", apiKey: "chave-da-empresa", modelId: "gpt-5.4-pro" },
+    ]);
+  });
+
+  it("plataforma num provedor sem chave na instalação: padrão do CATÁLOGO no provedor que tem chave, e o aviso nomeia o .env", async () => {
+    // A instalação só tem a chave Anthropic e nunca declarou a plataforma (o
+    // padrão do código é OpenAI). Recusar faria a atualização exigir edição do
+    // `.env`; a escolha da empresa (aqui, o modelo caro) continua descartada —
+    // vale o padrão do catálogo da plataforma.
+    const { registry, chamadas } = registrySpiao();
+    const avisos: string[] = [];
+    await runModelCall(
+      poolFalso({
+        binding: null,
+        padrao: { provider: "anthropic", default_model: "claude-opus-5" },
+        catalogo: { anthropic: "claude-sonnet-5" },
+      }),
+      { anthropicApiKey: "chave-anthropic-da-instalacao", cacheTtl: "1h" } as never,
+      {
+        tenantId: ORG,
+        purpose: "jailbreak_detect",
+        messages: [{ role: "user", content: "oi" }],
+      } as never,
+      { registry, log: { warn: (msg: string) => avisos.push(msg), info: () => {} } as never },
+    );
+
+    expect(chamadas).toEqual([
+      {
+        provider: "anthropic",
+        apiKey: "chave-anthropic-da-instalacao",
+        modelId: "claude-sonnet-5",
+      },
+    ]);
+    expect(avisos.some((a) => a.includes("PLATAFORMA_IA_PROVEDOR"))).toBe(true);
+  });
+
+  it("sem padrão no catálogo para o provedor que tem chave: a recusa de antes", async () => {
+    const { registry, chamadas } = registrySpiao();
+    await expect(
+      runModelCall(
+        poolFalso({
+          binding: null,
+          padrao: { provider: "anthropic", default_model: "claude-opus-5" },
+        }),
+        { anthropicApiKey: "chave-anthropic-da-instalacao", cacheTtl: "1h" } as never,
+        {
+          tenantId: ORG,
+          purpose: "jailbreak_detect",
+          messages: [{ role: "user", content: "oi" }],
+        } as never,
+        { registry },
+      ),
+    ).rejects.toThrow(/sem credencial LLM/);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("controle: plataforma declarada igual à chave da instalação segue o padrão da empresa", async () => {
+    vi.stubEnv("PLATAFORMA_IA_PROVEDOR", "anthropic");
+    vi.stubEnv("PLATAFORMA_IA_MODELO", "claude-sonnet-5");
+    const { registry, chamadas } = registrySpiao();
+    await runModelCall(
+      poolFalso({
+        binding: null,
+        padrao: { provider: "anthropic", default_model: "claude-sonnet-5" },
+      }),
+      { anthropicApiKey: "chave-anthropic-da-instalacao", cacheTtl: "1h" } as never,
+      {
+        tenantId: ORG,
+        purpose: "jailbreak_detect",
+        messages: [{ role: "user", content: "oi" }],
+      } as never,
+      { registry },
+    );
+
+    expect(chamadas).toEqual([
+      {
+        provider: "anthropic",
+        apiKey: "chave-anthropic-da-instalacao",
+        modelId: "claude-sonnet-5",
+      },
     ]);
   });
 

@@ -26,7 +26,7 @@ import { scrubMessage } from '@/lib/sentry/scrub';
 
 import type { Logger } from '../../obs/logger';
 import { decidirParaOSeam } from './binding-do-ponto';
-import { resolveOrgLlmConfig, type LlmEdgeConfig, type OrcamentoDaOrg } from './credentials';
+import { LlmNotConfiguredError, resolveOrgLlmConfig, type LlmEdgeConfig, type OrcamentoDaOrg } from './credentials';
 import {
   AVISO_CORPO,
   AVISO_TITULO,
@@ -508,6 +508,25 @@ async function registrarRecusaDeEnderecoSemChave(d: {
   return erro;
 }
 
+/**
+ * O modelo padrão do catálogo da plataforma para um provedor, ou `null`.
+ * Falha de leitura vira `null`: quem chama trata como "sem padrão" e mantém a
+ * recusa — nunca inventa um id.
+ */
+async function modeloPadraoDoCatalogo(db: pg.Pool, provider: string): Promise<string | null> {
+  try {
+    const { rows } = await db.query<{ model_id: string }>(
+      `select model_id from ai_models
+        where provider = $1 and is_default_for_provider and deprecated_at is null
+        limit 1`,
+      [provider],
+    );
+    return rows[0]?.model_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunModelCallInput, deps: RunModelCallDeps = {}) {
   // O knob do raciocínio da DeepSeek entra pela fábrica: `deepseekThinking` só é
   // lido pela fábrica `deepseek`, então os outros provedores não têm como mudar.
@@ -590,6 +609,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
       modelo_descartado: decisao.modelId,
       modelo_da_plataforma: plataforma.model,
     });
+    const configDaChaveQueExiste = config;
     decisao = {
       ...decisao,
       provider: plataforma.provider,
@@ -598,10 +618,36 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
       baseUrl: null,
       origem: 'variavel_de_ambiente',
     };
-    config = await resolveOrgLlmConfig(db, cfg, input.tenantId, {
-      provider: plataforma.provider,
-      credentialId: null,
-    });
+    try {
+      config = await resolveOrgLlmConfig(db, cfg, input.tenantId, {
+        provider: plataforma.provider,
+        credentialId: null,
+      });
+    } catch (err) {
+      if (!(err instanceof LlmNotConfiguredError)) throw err;
+      // A instalação não tem a chave do provedor que ELA MESMA declara como o
+      // da plataforma (`PLATAFORMA_IA_PROVEDOR`, padrão `openai`) — típico de
+      // quem só tem a chave Anthropic e nunca mexeu nessa variável. Recusar o
+      // turno faria a atualização exigir edição do `.env` (proibido pela
+      // doutrina de packaging); voltar à escolha da empresa reabriria a conta do
+      // dono. O meio-termo continua sendo escolha da PLATAFORMA: o modelo padrão
+      // do catálogo (`ai_models`, que só o servidor grava) no provedor cuja chave
+      // a instalação tem. Sem padrão no catálogo, a recusa de antes.
+      const doCatalogo = await modeloPadraoDoCatalogo(db, configDaChaveQueExiste.provider);
+      deps.log?.warn(
+        'llm: a instalação não tem a chave do provedor da plataforma — usando o modelo padrão do catálogo no provedor que tem chave; confira PLATAFORMA_IA_PROVEDOR no .env',
+        {
+          tenant_id: input.tenantId,
+          purpose,
+          provedor_da_plataforma: plataforma.provider,
+          provedor_usado: configDaChaveQueExiste.provider,
+          modelo_usado: doCatalogo,
+        },
+      );
+      if (doCatalogo === null) throw err;
+      config = configDaChaveQueExiste;
+      decisao = { ...decisao, provider: configDaChaveQueExiste.provider, modelId: doCatalogo };
+    }
   }
 
   const model = decisao.modelId;
