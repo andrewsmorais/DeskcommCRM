@@ -28,6 +28,7 @@ import type { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { audit } from "@/lib/audit";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { requireRole } from "@/lib/auth/require-role";
 import { createCallSchema, listCallsQuerySchema } from "@/lib/schemas/calls";
 import { validateRequest } from "@/lib/schemas/_validate";
@@ -135,6 +136,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   const authz = await requireRole("manager", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
   const { user: authUser, org: activeOrg } = authz;
+
+  // A ligação abre uma sessão de voz da IA (chave da plataforma quando a
+  // organização não tem a dela): sem assinatura ativa, não origina.
+  const semAssinatura = await exigirAssinaturaAtiva(activeOrg.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
 
   let input;
   try {

@@ -156,6 +156,8 @@ export async function continueDialplan(channelId: string, context: string, exten
 /** Só os campos que o worker de voz lê — o envelope ARI real tem muito mais. */
 export interface AriChannel {
   id: string;
+  /** "PJSIP/<endpoint>-<seq>": o endpoint pelo qual a chamada CHEGOU. */
+  name?: string;
   dialplan?: { exten?: string };
   caller?: { number?: string; name?: string };
 }

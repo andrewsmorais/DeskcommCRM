@@ -110,6 +110,7 @@ export function TrunkSettingsClient({
     ? `[${trunk?.endpoint_name ?? ""}]
 type=endpoint
 context=from-trunk
+identify_by=ip
 disallow=all
 allow=ulaw
 allow=alaw
@@ -127,6 +128,11 @@ password=${ultimoSalvo.password || "(senha não alterada nesta sessão — use a
 [${trunk?.endpoint_name ?? ""}-aor]
 type=aor
 contact=sip:${ultimoSalvo.host}:${ultimoSalvo.port}
+
+[${trunk?.endpoint_name ?? ""}-identify]
+type=identify
+endpoint=${trunk?.endpoint_name ?? ""}
+match=${ultimoSalvo.host}
 
 [${trunk?.endpoint_name ?? ""}-registration]
 type=registration

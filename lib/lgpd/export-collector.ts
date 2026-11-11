@@ -465,6 +465,12 @@ export interface VoiceCallRow {
   answered_at: string | null;
   ended_at: string | null;
   duration_ms: number | null;
+  /**
+   * A transcrição da ligação com o agente de voz (a fala dos dois lados). A
+   * anonimização a apaga (0348, restaurada pela 0509); por isso o titular a
+   * recebe aqui. Opcional: o tipo é montado à mão nos testes de PDF.
+   */
+  transcript?: unknown;
 }
 
 /** Pesquisa e resultado da abordagem ligados ao titular (redação: migration 0370). */
@@ -1419,7 +1425,7 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     const { data, error } = await admin
       .from("voice_calls")
       .select(
-        "id, direction, peer_phone, status, end_reason, started_at, answered_at, ended_at, duration_ms",
+        "id, direction, peer_phone, status, end_reason, started_at, answered_at, ended_at, duration_ms, transcript",
       )
       .eq("organization_id", organizationId)
       .eq("contact_id", contactId)

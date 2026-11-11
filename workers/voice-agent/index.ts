@@ -75,6 +75,26 @@ async function handleStasisStart(event: AriEvent) {
     return;
   }
 
+  // O número discado é do CHAMADOR (Request-URI); quem diz de onde a chamada
+  // veio é o endpoint de chegada. Uma chamada que chegou pelo tronco de uma
+  // organização só pode cair num número DELA — senão o tronco de A atendia
+  // (e criava contato e lead) no lugar de B. O tronco global da instalação
+  // (`trunk-endpoint`) segue valendo para qualquer número cadastrado.
+  const doTronco = /^PJSIP\/org-([0-9a-f-]{36})-trunk-endpoint-/i.exec(channel.name ?? "");
+  if (doTronco?.[1] && doTronco[1].toLowerCase() !== routing.organization_id.toLowerCase()) {
+    console.error(`[voice-agent] chamada pelo tronco de outra organização para ${dialedNumber} — recusada`);
+    await hangupChannel(channel.id, "normal");
+    return;
+  }
+
+  // Conta suspensa ou sem assinatura não é atendida pela IA (mesma régua do texto).
+  const acessoNaEntrada = await acessoPeloPlanoDaOrganizacao(routing.organization_id);
+  if (!acessoNaEntrada.liberado) {
+    console.warn(`[voice-agent] org ${routing.organization_id} sem acesso à IA (${acessoNaEntrada.motivo}) — recusando`);
+    await hangupChannel(channel.id, "normal");
+    return;
+  }
+
   const callerNumber = channel.caller?.number ?? "unknown";
 
   // Identificador de ligações: acha (ou cria) o contato pelo número de quem

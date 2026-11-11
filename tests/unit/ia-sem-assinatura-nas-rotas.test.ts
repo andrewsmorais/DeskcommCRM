@@ -272,6 +272,8 @@ describe("cerca: toda rota que chama modelo pela tela confere a assinatura antes
     ["app/api/v1/proposals/[id]/preencher-com-conversa/route.ts", "sugerirValoresDaConversa("],
     ["app/api/v1/settings/proposal-templates/importar/route.ts", "gerarModeloDoTexto("],
     ["app/api/v1/prospecting/agents/chat/route.ts", "chatAboutAgent("],
+    // A ligação abre a sessão de voz da IA no worker (rodada 2 da auditoria).
+    ["app/api/v1/calls/route.ts", "originateCall("],
   ];
 
   it.each(ROTAS)("%s", (rota, chamadaPaga) => {
