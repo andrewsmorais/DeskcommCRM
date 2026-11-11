@@ -54,6 +54,7 @@ import { getActiveVoiceAgent } from "@/lib/ai/agents";
 import { resolveOrCreateCallerContact } from "@/lib/voip/resolve-caller";
 import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
 import { buscarConhecimento, resolverAcervoDoAgente } from "@/lib/ai/knowledge/busca";
+import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
 
 const supabaseAdmin = createAdminClient();
 
@@ -236,6 +237,21 @@ async function handleAudioSocketConnection(socket: net.Socket, uuid: string, lef
 
   if (error || !callRow) {
     console.error(`[audiosocket] uuid ${uuid} não corresponde a nenhuma voice_calls — encerrando`);
+    socket.end();
+    return;
+  }
+
+  // A mesma régua do agente de texto: organização suspensa ou sem assinatura
+  // ativa não abre sessão de voz (que gasta a chave de IA da plataforma por
+  // minuto). A linha da ligação fica gravada, como a mensagem que chega a uma
+  // conta suspensa; só a IA não atende.
+  const acesso = await acessoPeloPlanoDaOrganizacao(callRow.organization_id);
+  if (!acesso.liberado) {
+    console.warn(`[audiosocket] org ${callRow.organization_id} sem acesso à IA (${acesso.motivo}) — encerrando`);
+    await supabaseAdmin
+      .from("voice_calls")
+      .update({ status: "ended", end_reason: acesso.motivo, ended_at: new Date().toISOString() })
+      .eq("id", callRow.id);
     socket.end();
     return;
   }

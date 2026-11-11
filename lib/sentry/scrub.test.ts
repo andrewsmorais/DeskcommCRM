@@ -174,6 +174,37 @@ describe("scrubMessage", () => {
   });
 });
 
+describe("rodada 2 da auditoria: campos que o SDK preenche fora da lista", () => {
+  it("redige o link assinado da exportação", () => {
+    expect(scrubUrl("/api/v1/exportacao/eyJhbGciOi.abc.def")).toBe("/api/v1/exportacao/[TOKEN]");
+  });
+
+  it("limpa contexts.nextjs.request_path e o valor do referer", () => {
+    const ev = sentryScrubHooks.beforeSend({
+      request: { headers: { referer: "https://crm.exemplo/team/accept-invite/tok123" } },
+      contexts: { nextjs: { request_path: "/api/v1/webhooks/waha/seg123?sig=abc" } },
+    } as never) as unknown as {
+      request: { headers: Record<string, string> };
+      contexts: { nextjs: { request_path: string } };
+    };
+    expect(ev.contexts.nextjs.request_path).toBe("/api/v1/webhooks/waha/[TOKEN]?sig=[REDACTED]");
+    expect(ev.request.headers.referer).toBe("https://crm.exemplo/team/accept-invite/[TOKEN]");
+  });
+
+  it("breadcrumb de navegação limpa from/to e o do console perde os argumentos", () => {
+    const nav = sentryScrubHooks.beforeBreadcrumb({
+      data: { from: "/team/accept-invite/tok1", to: "/signup?invite=tok1" },
+    });
+    expect(nav.data).toEqual({ from: "/team/accept-invite/[TOKEN]", to: "/signup?invite=[REDACTED]" });
+    const cons = sentryScrubHooks.beforeBreadcrumb({
+      message: "falhou ana@exemplo.com",
+      data: { arguments: [{ nome: "Fulana", email: "ana@exemplo.com" }] },
+    });
+    expect(cons.data).toEqual({});
+    expect(cons.message).not.toContain("ana@exemplo.com");
+  });
+});
+
 describe("sentryScrubHooks", () => {
   const urlComToken = `https://crm.exemplo.com/api/v1/webhooks/in/${TOKEN}?sig=deadbeef`;
 

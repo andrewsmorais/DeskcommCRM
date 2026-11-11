@@ -3,7 +3,7 @@ import { runFollowupTick } from "@/lib/followup/engine";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
-import { seedGov, GOV_ORG, GOV_AGENT_A, GOV_SESSION, GOV_VIEWER } from "./gov-helpers";
+import { seedGov, GOV_ORG, GOV_AGENT_A, GOV_MANAGER, GOV_SESSION, GOV_VIEWER } from "./gov-helpers";
 const pool = new pg.Pool({
   connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.TEST_DB_PORT ?? 54329}/postgres`,
   max: 5,
@@ -680,10 +680,24 @@ describe("presença e recuperação transacionais", () => {
         ),
       ).rejects.toMatchObject({ code: "42501" });
       await c.query("rollback");
+      // Desde a 0509 o atendente nem alcança o evento (follow-up: só gerente
+      // escreve) — o DELETE dele não apaga nada. Quem alcança é o gerente, e é
+      // nele que o gatilho prova a guarda.
       await c.query("begin");
       await c.query("set local role authenticated");
       await c.query("select set_config('request.jwt.claims',$1,true)", [
         JSON.stringify({ sub: GOV_AGENT_A, role: "authenticated" }),
+      ]);
+      const doAtendente = await c.query(
+        "delete from followup_enrollment_events where enrollment_id=$1 and idempotency_key='t:2'",
+        [enr],
+      );
+      expect(doAtendente.rowCount).toBe(0);
+      await c.query("rollback");
+      await c.query("begin");
+      await c.query("set local role authenticated");
+      await c.query("select set_config('request.jwt.claims',$1,true)", [
+        JSON.stringify({ sub: GOV_MANAGER, role: "authenticated" }),
       ]);
       await expect(
         c.query(

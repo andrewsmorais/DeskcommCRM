@@ -113,16 +113,21 @@ beforeAll(() => {
 });
 
 describe("superfície imutável e roteiro só com gatilho manual", () => {
-  it("controle positivo: o viewer ALCANÇA a linha (a policy é só de tenant) — muda o nome", () => {
+  // Desde a 0509 o viewer nem alcança a linha (follow-up: só gerente escreve —
+  // endurecimento-rodada-2.test.ts). O gatilho continua sendo a última guarda
+  // para quem ALCANÇA: o admin, pela mesma via do PostgREST.
+  it("controle: o viewer não alcança mais a linha (0509); o admin alcança — muda o nome", () => {
+    tentaComo(VIEWER, `update public.followup_flow_pointers set name = 'Do Leitor' where id = '${FOLLOWUP}'`);
+    expect(sql(`select name from public.followup_flow_pointers where id = '${FOLLOWUP}';`)).toBe("Retomada");
     expect(
-      tentaComo(VIEWER, `update public.followup_flow_pointers set name = 'Retomada 2' where id = '${FOLLOWUP}'`),
+      tentaComo(ADMIN, `update public.followup_flow_pointers set name = 'Retomada 2' where id = '${FOLLOWUP}'`),
     ).toBe("ok");
     expect(sql(`select name from public.followup_flow_pointers where id = '${FOLLOWUP}';`)).toBe("Retomada 2");
   });
 
-  it("⭐ o viewer NÃO leva um fluxo de follow-up a 'atendimento' (23514)", () => {
+  it("⭐ quem alcança a linha NÃO leva um fluxo de follow-up a 'atendimento' (23514)", () => {
     expect(
-      tentaComo(VIEWER, `update public.followup_flow_pointers set surface = 'atendimento' where id = '${FOLLOWUP}'`),
+      tentaComo(ADMIN, `update public.followup_flow_pointers set surface = 'atendimento' where id = '${FOLLOWUP}'`),
     ).toBe("23514");
     expect(sql(`select surface from public.followup_flow_pointers where id = '${FOLLOWUP}';`)).toBe("followup");
   });

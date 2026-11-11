@@ -24,13 +24,15 @@ Sentry.init({
   ],
 
   // No Sentry da comunidade, só erro (issue #100): sem trace, sem replay de
-  // sessão e sem sessão de release health (ver integracoesDoCliente). O replay DE
-  // ERRO continua, porque é o que explica o stack trace — e o replayIntegration()
-  // sem argumentos já aplica maskAllText/blockAllMedia.
+  // sessão, sem replay de erro e sem sessão de release health (ver
+  // integracoesDoCliente). Com o DSN do próprio operador, o replay de erro fica.
   tracesSampleRate: community ? 0 : 1,
 
   replaysSessionSampleRate: community ? 0 : 0.1,
-  replaysOnErrorSampleRate: 1.0,
+  // No Sentry da comunidade, nem o replay de erro: ele não passa por nenhum
+  // scrub (o `beforeSend` só vale para evento de erro) e levava URLs com token e
+  // nomes de contato para fora — e o instalador promete "sem replay".
+  replaysOnErrorSampleRate: community ? 0 : 1.0,
 
   // Coleta restrita + scrub, num ponto só (Sentry 11 coleta amplo por default).
   ...opcoesDePrivacidade,

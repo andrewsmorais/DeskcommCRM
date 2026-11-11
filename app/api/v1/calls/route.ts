@@ -158,8 +158,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select("endpoint_name, is_active")
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
+  // O nome salvo pela tela não traz a tecnologia ("org-<uuid>-trunk-endpoint"),
+  // e o originate precisa de "PJSIP/<endpoint>": sem o prefixo a ligação saía
+  // como "org-…/<número>@undefined" e falhava sempre.
   const trunkEndpoint =
-    trunkConfig && trunkConfig.is_active ? trunkConfig.endpoint_name : process.env.VOIP_TRUNK_ENDPOINT;
+    trunkConfig && trunkConfig.is_active
+      ? trunkConfig.endpoint_name.includes("/")
+        ? trunkConfig.endpoint_name
+        : `PJSIP/${trunkConfig.endpoint_name}`
+      : process.env.VOIP_TRUNK_ENDPOINT;
   if (!trunkEndpoint) {
     return fail(
       "trunk_not_configured",

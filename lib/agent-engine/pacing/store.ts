@@ -45,7 +45,10 @@ export function fusoDaJanela(
   doCanal: string | null | undefined,
   daOrganizacao: string | null | undefined,
 ): string {
-  if (doCanal) return doCanal;
+  // O fuso do número também passa pela régua: um valor inválido gravado na
+  // linha fazia todo envio daquele número lançar RangeError.
+  const canal = doCanal?.trim() ?? '';
+  if (canal !== '' && fusoValido(canal)) return canal;
   const tz = daOrganizacao?.trim() ?? '';
   return tz !== '' && fusoValido(tz) ? tz : PACING_DEFAULTS.timezone;
 }

@@ -182,7 +182,8 @@ export async function GET(
           : null,
       })),
       demandas: demandas.data ?? [],
-      fatos: fatos.data ?? [], historico: historico.data ?? [],
+      // Contato anonimizado não tem fato durável a mostrar (LGPD; a 0509 também apaga).
+      fatos: contactScope.is_anonymized ? [] : (fatos.data ?? []), historico: historico.data ?? [],
     },
     { requestId },
   );

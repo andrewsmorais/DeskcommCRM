@@ -75,6 +75,7 @@ interface Excecao {
  * linhas da OUTRA organização, não uma leitura como superusuário.
  */
 const PROVA_PROPRIA: readonly Excecao[] = [
+  { tabela: "voip_trunk_settings", razao: "tests/invariants/endurecimento-rodada-2.test.ts — leitura só de gerente desde a 0509: o gerente (JWT real) lê a linha da própria organização e ZERO da vizinha; o atendente não lê nenhuma." },
   { tabela: "ajuda_mensagens", razao: "tests/invariants/tabelas-so-do-servidor.test.ts — tabela exclusiva do servidor (assistente de ajuda): admin de cada uma de duas organizações reais não lê nenhuma linha, nem da própria nem da vizinha, e a gravação direta por authenticated é negada." },
   { tabela: "transactional_email_log", razao: "tests/invariants/tabelas-so-do-servidor.test.ts — livro de e-mails exclusivo do servidor: admin de cada uma de duas organizações reais não lê nenhuma linha, nem da própria nem da vizinha, e a gravação direta por authenticated é negada." },
   { tabela: "golden_candidates", razao: "tests/invariants/golden-candidates.test.ts — dois tenants reais por JWT (agent): leitura positiva local e ZERO do vizinho nos dois sentidos, a tabela inteira sem filtro igual à própria, anon recusado, e insert/update/delete de authenticated sem efeito (só o servidor grava)." },

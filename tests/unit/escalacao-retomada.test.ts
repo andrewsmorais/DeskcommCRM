@@ -18,6 +18,11 @@ import { devolverAtendimentoAoAgente, type OrigemDaRetomada } from "@/lib/escala
 import type { Actor } from "@/lib/api/handlers/types";
 
 vi.mock("@/lib/audit", () => ({ audit: vi.fn().mockResolvedValue(undefined) }));
+// Desde a 0509 o checkpoint da retomada é escrito pela service role
+// (`lead_checkpoints` é memória do motor). O cliente admin do teste é o MESMO
+// banco falso da sessão, para que a escrita continue capturada.
+const adminFalso = vi.hoisted(() => ({ client: null as unknown }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => adminFalso.client }));
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const CONV = "44444444-4444-4444-8444-444444444444";
@@ -183,10 +188,12 @@ async function retomar(
   actor: Actor = USUARIO,
   origem?: OrigemDaRetomada,
 ) {
+  const banco = fazerSupabase(cenario, cap);
+  adminFalso.client = banco;
   return devolverAtendimentoAoAgente(
     {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      supabase: fazerSupabase(cenario, cap) as any,
+      supabase: banco as any,
       organizationId: ORG,
       actor,
       requestId: "req-1",

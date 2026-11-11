@@ -631,11 +631,11 @@ export const TABLES = [
   "crm_proposal_items",
   // 0227 — texto de sugestões: org + visibilidade da conversa por authenticated.
   "ai_reply_drafts",
-  // migration 0349 — credenciais do trunk SIP por organizacao. Leitura e
-  // qualquer membro da org (a tela de originar chamada precisa saber SE
-  // existe trunk configurado); a ESCRITA exige admin (mesmo nivel de
-  // ai_provider_credentials) e NAO e medida aqui.
-  "voip_trunk_settings",
+  // ⚠️ `voip_trunk_settings` (migration 0349) SAIU desta lista na 0509: a
+  // leitura passou a exigir `manager` (toda tela e rota que a lê já exigia), e
+  // o usuário semeado aqui é `agent` — o controle positivo falharia por ACERTO.
+  // A prova das duas direções mais o gate de papel vive em
+  // `tests/invariants/endurecimento-rodada-2.test.ts`.
   // phone_numbers (SIP module, #677): numeros (DID) que recebem ligacao.
   // Leitura/escrita org-scoped (sem segundo eixo medido aqui -- ver a nota
   // de DIVIDA_RBAC_CONHECIDA em rbac-config-ia-canais.test.ts).

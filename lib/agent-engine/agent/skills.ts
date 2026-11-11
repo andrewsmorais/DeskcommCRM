@@ -185,19 +185,25 @@ export async function loadSkills(db: Queryable, tenantId: string): Promise<Loade
     `select v.id, v.organization_id, v.name, v.description, v.body, v.matcher, v.manifest
      from skill_pointers p
      join skill_versions v on v.id = p.version_id
+                          and v.name = p.name
+                          and v.organization_id is not distinct from p.organization_id
      where p.organization_id is null or p.organization_id = $1`,
     [tenantId],
   );
   // tenant vence plataforma no mesmo nome; ordem final estável por nome (prefixo estável).
   const byName = new Map<string, LoadedSkill>();
   for (const r of rows) {
+    // Matcher lido do banco passa pela mesma régua da gravação: um `{}` fazia
+    // `matchSkills` lançar e derrubava todo turno da organização.
+    const matcher = skillMatcherSchema.safeParse(r.matcher);
+    if (!matcher.success) continue;
     if (!byName.has(r.name) || r.organization_id !== null) {
       byName.set(r.name, {
         versionId: r.id,
         name: r.name,
         description: r.description,
         body: r.body,
-        matcher: r.matcher,
+        matcher: matcher.data,
         manifest: r.manifest ?? [],
       });
     }

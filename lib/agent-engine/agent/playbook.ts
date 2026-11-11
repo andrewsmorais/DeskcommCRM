@@ -130,6 +130,8 @@ export async function loadPlaybook(
     `select v.layer, v.id as version_id, v.content
      from playbook_pointers p
      join playbook_versions v on v.id = p.version_id
+                             and v.layer = p.layer
+                             and v.organization_id is not distinct from p.organization_id
      where (p.organization_id is null and p.layer = 'platform')
         or (p.organization_id = $1 and p.layer in ('tenant', 'campaign'))`,
     [tenantId],

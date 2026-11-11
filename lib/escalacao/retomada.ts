@@ -36,6 +36,7 @@ import { audit } from "@/lib/audit";
 import { emitLeadActivity } from "@/lib/leads/activity-emitter";
 import { resolveActiveLeadForContact, type LeadCandidate } from "@/lib/leads/active-lead";
 import { logger } from "@/lib/logger";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 
 import { lerContinuidadeHumana, type ContinuidadeHumana } from "./continuidade";
@@ -236,7 +237,14 @@ export async function devolverAtendimentoAoAgente(
 
   // (5) O input estruturado que a IA lê para retomar (invariante 2 da doutrina).
   if (conv.contact_id !== null && continuidade.houveAtendimentoHumano) {
-    await gravarCheckpointDeRetomada(supabase, organizationId, conv.contact_id, continuidade);
+    // `lead_checkpoints` é memória do motor e só o servidor escreve (0509): a
+    // organização e o contato vêm da conversa que quem chamou já pôde devolver.
+    await gravarCheckpointDeRetomada(
+      createAdminClient(),
+      organizationId,
+      conv.contact_id,
+      continuidade,
+    );
   }
 
   // (6) Passagem de atendimento é evento de vida do negócio — a ida já emitia

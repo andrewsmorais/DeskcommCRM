@@ -70,7 +70,7 @@ export async function loadDisclosureTemplate(db: Queryable, tenantId: string): P
   const { rows } = await db.query<{ version_id: string; body: string }>(
     `select v.id as version_id, v.body
      from disclosure_template_pointers p
-     join disclosure_template_versions v on v.id = p.version_id
+     join disclosure_template_versions v on v.id = p.version_id and v.organization_id = p.organization_id
      where p.organization_id = $1`,
     [tenantId],
   );
