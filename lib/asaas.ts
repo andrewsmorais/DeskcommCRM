@@ -21,7 +21,8 @@ async function chamar(
     method: metodo,
     headers: { access_token: env.ASAAS_API_KEY, "Content-Type": "application/json" },
     ...(corpo ? { body: JSON.stringify(corpo) } : {}),
-    cache: "no-store",
+    // Leitura nunca do cache: o cliente da assinatura decide para quem vai a cobrança.
+    ...(metodo === "GET" ? { cache: "no-store" as const } : {}),
     signal: AbortSignal.timeout(15000),
   });
   let dados: Record<string, unknown> | null = null;
