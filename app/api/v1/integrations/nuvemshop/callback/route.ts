@@ -33,6 +33,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import { integracaoDaLoja } from "@/lib/nuvemshop/integracao-da-loja";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getConfig, SUBSCRIBED_EVENTS, eventToSlug } from "@/lib/nuvemshop/config";
@@ -76,10 +77,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const state = verifyState(stateParam);
   if (!state) {
-    await audit({
-      action: "nuvemshop.oauth_failed",
-      metadata: { reason: "invalid_state" },
-    });
+    // Nada prova que este retorno saiu daqui (rota pública, sem assinatura
+    // válida): auditar daria a qualquer anônimo escrita ilimitada em
+    // `api_audit_log`, que é só-acréscimo e guarda 5 anos. Mesma regra do
+    // retorno da Agenda (auditoria de 04/11/2026). Fica só o log do servidor.
+    logger.warn("[nuvemshop] callback com state inválido", { reason: "invalid_state" });
     return redirectTo(`/app/integrations/nuvemshop?error=invalid_state`);
   }
 

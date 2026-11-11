@@ -102,7 +102,7 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   // abertos para quem a plataforma tinha suspendido. Quem administra a
   // plataforma passa — é quem suspende e quem reativa.
   const orgId = org.orgId;
-  const estadoDaOrg = user.organizations.find(
+  const estadoDaOrg = (user.organizations ?? []).find(
     (o) => o.organization_id === orgId,
   )?.organization_status;
   if (estadoDaOrg === "suspended" && !user.is_platform_admin) {

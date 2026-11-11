@@ -196,4 +196,14 @@ describe("GET /api/v1/integrations/nuvemshop/callback — vínculo e uso único"
     expect(fake.troca).not.toHaveBeenCalled();
     expect(fake.upserts).toHaveLength(0);
   });
+
+  it("state que não confere (anônimo) é recusado SEM linha na auditoria", async () => {
+    // A rota é pública: auditar aqui daria a qualquer anônimo escrita
+    // ilimitada em api_audit_log (só-acréscimo, 5 anos) — achado da auditoria
+    // de 04/11/2026, mesma regra do retorno da Agenda.
+    const res = await chamar(pedido("lixo-que-nao-confere"));
+    expect(res.headers.get("location")).toBe(RECUSA);
+    expect(fake.audit).not.toHaveBeenCalled();
+    expect(fake.troca).not.toHaveBeenCalled();
+  });
 });
