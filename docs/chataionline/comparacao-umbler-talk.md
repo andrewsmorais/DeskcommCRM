@@ -21,17 +21,17 @@ Legenda: ✅ tem igual ou melhor · 🟡 tem parecido (diferença anotada) · �
 | Transferir para **outro canal** (outro número) | ❌ | Hoje a conversa fica no número em que chegou |
 | Privar atendimento (cadeado) | ✅ | Conversa privada |
 | Detalhes do contato (telefone, foto, anotações, etiquetas) | ✅ | Painel lateral do CRM |
-| **Agendar mensagem** (mensagem, nota, chatbot ou template), aba "Agendadas" para editar/excluir | ❌ | O CRM agenda follow-ups e espera no chatbot, mas não tem "agendar esta mensagem" na conversa |
+| Agendar mensagem (mensagem, nota ou chatbot), aba "Agendadas" | ✅ | Feito 13/11 (template não: o agendamento sai pelo QR code) |
 | Detalhes da conversa: etiquetas, canal, setor, responsável, datas | ✅ | |
-| **Observadores** da conversa | ❌ | |
-| **Baixar o histórico** da conversa em .txt ou .pdf | ❌ | Existe exportar a conta inteira (ZIP), não uma conversa |
+| Observadores da conversa ("Quem está vendo esse chat") | ✅ | Feito 13/11: iniciais de quem está com a conversa aberta, ao vivo; opção de ocultar administradores |
+| Baixar o histórico da conversa em .txt ou .pdf | ✅ | Feito 13/11 |
 | Chatbots executados e log de atividade da conversa | ✅ | Linha do tempo e passagens |
 | **Finalizar enviando uma mensagem** ou **acionando um chatbot de finalização** | ✅ | Feito 13/11: a janela Fechar oferece Só encerrar, Despedida antes ou Chatbot de encerramento (este precisa ter o passo Finalizar conversa) |
 | Notas internas | ✅ | Notas em tempo real |
-| **Assinar mensagens** com o nome do atendente | ❌ | |
+| Assinar mensagens com o nome do atendente | ✅ | Feito 13/11 |
 | Anexar arquivo, emojis, áudio | ✅ | |
 | Respostas rápidas (pessoais ou da equipe) | ✅ | Digita "/" no campo |
-| **Figurinhas salvas** para enviar | 🟡 | Mostra figurinha recebida; não guarda nem envia figurinha |
+| Figurinhas salvas para enviar | 🟡 | Mostra figurinha recebida; enviar figurinha depende do WAHA 2026.8.2 (`sendSticker`), e a versão fixada é a 2026.7.2 |
 
 ## 2. Canais
 
@@ -125,6 +125,8 @@ Evidência do histórico baixado em PDF (13/11/2026, gerado pelo código de verd
 
 - `evidence/historico-da-conversa/h1-pdf-do-historico.png` — topo da primeira página do PDF do histórico.
 
+Evidência dos extras da conversa (13/11/2026): o histórico em PDF está na imagem citada acima; encaminhar, favoritar, quem está vendo e reatribuição têm testes de rota e de consumidor (sem prova de tela nesta rodada).
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
@@ -204,11 +206,11 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | # | Recurso | Observação |
 |---|---|---|
 | G1 | Ocultar conversa na caixa de entrada + filtro "Ocultas" | ✅ feito 13/11 (olho no topo da conversa) |
-| G2 | **Mascarar o telefone** dos contatos por papel/atendente (busca e exportação também mascaram) | privacidade da base |
-| G3 | **Reatribuição de chats**: tira o atendente offline quando o contato escreve | |
+| G2 | Mascarar o telefone dos contatos por papel/atendente (busca e exportação também mascaram) | ❌ não feito: o telefone aparece em ~45 telas e chega ao navegador pela leitura direta do banco; esconder de verdade pede mudar a permissão da coluna e todas essas leituras — tarefa própria |
+| G3 | Reatribuição de chats: tira o atendente offline quando o contato escreve | ✅ feito 13/11 (migration 0514) |
 | G4 | **Atalhos de chatbot** fixados no rodapé do campo de mensagem | temos o botão do robô no topo |
 | G5 | **Chat interno da equipe** | |
-| G6 | **Encaminhar** e **favoritar** mensagens | editar e apagar já temos |
+| G6 | Encaminhar e favoritar mensagens | ✅ feito 13/11 (migration 0513) |
 | G7 | **Kanban de contatos** por etiqueta, com resumo por coluna | temos funil de negócios |
 | G8 | **Variáveis da organização** (chaves e valores guardados uma vez, usados nos fluxos) | |
 | G9 | Importar contatos de **.vcf** com mapeamento de colunas | temos planilha |
@@ -232,7 +234,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 3. ~~**Assinatura do atendente** nas mensagens~~ — feito 13/11, junto com a tela Configurações › Conversas (assinatura sempre/nunca/atendente escolhe; comportamento do Fechar com mensagem e chatbot padrão; despedida pessoal no Perfil).
 4. ~~**Pedir para digitar** com várias opções e regex próprio~~ — feito 13/11 ("Aceitar várias respostas", "Testar opções").
 5. ~~Opções dentro de blocos~~ — feito 13/11: modos de transferir (variável, mesma conversa, remover, setor da conversa), Notificar com escolha e "só se disponível", botão de link, "não listado" e perguntas no Iniciar manualmente, dia útil no Aguardar até e estatística por bloco com CSV. Ficaram de fora o "outro caminho se falhar" (o motor decide antes de enviar) e o CRON.
-6. Conversa: baixar histórico (.txt/.pdf), encaminhar e favoritar mensagem, figurinhas salvas, observadores, esconder telefone por papel, tirar atendente offline.
+6. ~~Conversa~~ — feito 13/11: baixar histórico (.txt/.pdf), encaminhar e favoritar, quem está vendo a conversa, reatribuição do atendente offline. Ficaram de fora: figurinhas salvas (o WAHA fixado não envia figurinha) e mascarar telefone (tarefa grande e própria).
 7. Maiores: webchat no site, chat interno da equipe, variáveis da empresa, importar .vcf.
 
 **O que o ChatAI tem e a Umbler não** (para a oferta): agente de IA com agenda, follow-ups visuais com IA e gatilhos (silêncio, etapa, caso, retorno), roteadores entre agentes, memória e casos, propostas e comandas, prospecção e radar, chamadas por telefone (SIP), Nuvemshop, Kiwify, Cakto e Hotmart, conversões do Meta Ads, LGPD completa, auditoria, API e MCP, marca própria, Empresas/Pessoas (B2B), tarefas, honorários e faturamento.
