@@ -56,9 +56,31 @@ referência estão conferidos em `docs/audits/2026-11-03-chatbot-60-cards.md`.
 | Transferir para agente de IA | ✅ | Escolhe qual agente |
 | Agendar um chatbot para um contato numa data | ❌ | Depende do "agendar mensagem" da seção 1 |
 
-**Lacuna de informação:** não foi possível ler a lista oficial de blocos da Umbler. Para fechar o
-chatbot com certeza, o melhor é o dono mandar capturas do menu de blocos da Umbler (todas as
-categorias), como fez antes.
+### Bloco a bloco (capturas do menu da Umbler enviadas pelo dono em 13/11/2026)
+
+| Bloco da Umbler | ChatAI | Observação |
+|---|---|---|
+| Iniciar por um canal · Iniciar manualmente | ✅ | Também "Iniciar por automação" |
+| Dias da semana · Horários · Definir condição · Multi-condicional | ✅ | Horários com feriados |
+| Aguardar intervalo · Aguardar até | ✅ | Na Umbler ficam em Condição; aqui, em Ação |
+| Distribuir fluxo · O contato está ativo? · Etiquetas · Primeira conversa? | ✅ | |
+| O contato é um grupo? | — | Fora por decisão (chatbot não roda em grupo) |
+| **Campo do contato** (condição) | 🟡 | Existe dentro do Definir condição/Multi-condicional (regra "campo do contato"), mas não como card próprio |
+| Setor · Canal · Atendente da conversa · Presença do atendente | ✅ | |
+| Mensagem contém · Valor · Bot paralelo em execução · Status da conversa | ✅ | |
+| Enviar mensagem · Criar uma nota no chat | ✅ | |
+| Transferir para setor | ✅ | Aqui chama "Transferir para a equipe" (equipe toda ou um setor) |
+| **Editar etiquetas — do contato ou da conversa** | 🟡 | Só etiqueta do contato; a conversa tem etiquetas próprias na Inbox, mas o chatbot não mexe nelas |
+| Transferir p/ atendente · Transferir p/ agentes de IA · Privar ou liberar | ✅ | |
+| Pedir para escolher · Pedir para digitar · Enviar template · Enviar formulário · Acionar outro fluxo | ✅ | Pedir para digitar sem regex próprio (ver acima) |
+| Status esperando | — | Fora por decisão |
+| Pedir para avaliar · Pedir feedback escrito · Campo do contato (ação) · Fluxo de espera · Notificar atendente | ✅ | |
+| **Visibilidade da conversa** | ❓ | A Umbler tem este card **separado** do "Privar ou liberar". O que ele faz não foi confirmado — falta a captura do painel dele |
+| Excluir contato · Bloquear contato · Finalizar conversa · Bloco de notas · Webhook | ✅ | Excluir abre pedido LGPD em vez de apagar na hora |
+
+Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
+Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
+Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
 
 ## 4. CRM, equipe e relatórios
 
@@ -101,6 +123,9 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 | 7 | **Transferir para outro número** | médio | Mexe na cadeia de envio |
 | 8 | **Figurinhas salvas** | pequeno | |
 | 9 | **Webchat** no site | grande | Canal novo inteiro |
+| C1 | Chatbot: **Editar etiquetas da conversa** (além das do contato) | pequeno | Bloco da Umbler |
+| C2 | Chatbot: card **Campo do contato** em Condição | pequeno | Já funciona dentro do Definir condição; falta o card |
+| C3 | Chatbot: **Visibilidade da conversa** | ? | Depende de saber o que o card da Umbler faz |
 
 ## Fontes
 
