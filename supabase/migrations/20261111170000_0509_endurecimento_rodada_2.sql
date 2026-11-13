@@ -461,9 +461,25 @@ begin
     return null;
   end if;
   if old.consent is distinct from new.consent then
+    -- Só a finalidade e se ela estava/ficou concedida — nunca o conteúdo do
+    -- jsonb (texto livre que a anonimização apaga do contato e que o log,
+    -- append-only, guardaria para sempre).
     insert into public.api_audit_log (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
-    values (new.organization_id, v_ator, 'lgpd.consent_changed', 'contact', new.id,
-            jsonb_build_object('de', old.consent, 'para', new.consent, 'registrado_por', 'banco'));
+    select new.organization_id, v_ator, 'lgpd.consent_changed', 'contact', new.id,
+           jsonb_build_object(
+             'finalidades', coalesce(jsonb_object_agg(f.k, jsonb_build_object(
+                 'de', case when jsonb_typeof(old.consent -> f.k) = 'object'
+                            then coalesce(old.consent -> f.k ->> 'granted', '') = 'true'
+                                 or (old.consent -> f.k ->> 'granted_at') is not null end,
+                 'para', case when jsonb_typeof(new.consent -> f.k) = 'object'
+                              then coalesce(new.consent -> f.k ->> 'granted', '') = 'true'
+                                   or (new.consent -> f.k ->> 'granted_at') is not null end))
+               filter (where old.consent -> f.k is distinct from new.consent -> f.k), '{}'::jsonb),
+             'outras_chaves_mudaram',
+               (old.consent - array['marketing', 'transactional', 'profiling'])
+                 is distinct from (new.consent - array['marketing', 'transactional', 'profiling']),
+             'registrado_por', 'banco')
+      from unnest(array['marketing', 'transactional', 'profiling']) as f(k);
   end if;
   if old.source is distinct from new.source then
     v_campos := array_append(v_campos, 'source');
@@ -584,6 +600,20 @@ begin
      or old.organization_id is distinct from new.organization_id then
     raise exception 'colunas_do_tronco_do_numero' using errcode = '42501';
   end if;
+  -- Agente padrão e atendente de reserva são da MESMA organização: as chaves
+  -- estrangeiras não olham organização.
+  if new.default_ai_agent_id is distinct from old.default_ai_agent_id
+     and new.default_ai_agent_id is not null
+     and not exists (select 1 from public.ai_agents a
+                      where a.id = new.default_ai_agent_id and a.organization_id = new.organization_id) then
+    raise exception 'agente_de_outra_organizacao' using errcode = '42501';
+  end if;
+  if new.fallback_user_id is distinct from old.fallback_user_id
+     and new.fallback_user_id is not null
+     and not exists (select 1 from public.user_organizations uo
+                      where uo.user_id = new.fallback_user_id and uo.organization_id = new.organization_id) then
+    raise exception 'atendente_de_outra_organizacao' using errcode = '42501';
+  end if;
   return new;
 end $$;
 revoke execute on function public.fn_numero_colunas_do_tronco() from public, anon, authenticated;
@@ -702,6 +732,15 @@ create policy idempotency_do_proprio_autor on public.idempotency_keys
 -- escritos só pelo servidor (rotas com service role e funções security
 -- definer) — o membro segue lendo. Policy restritiva em vez de revoke: a
 -- recusa continua sendo da RLS, que é o que demandas-rls.test.ts mede.
+-- Apagar uma conversa apaga as mensagens dela (FK ON DELETE CASCADE, que não
+-- passa pela RLS de messages): pelo login, nem o atendente apaga conversa — o
+-- histórico do cliente e da IA sumia inteiro sem auditoria. A exclusão de
+-- contato apaga as conversas que o caller vê pela service role, depois das
+-- conferências.
+drop policy if exists conversations_delete_so_servidor on public.conversations;
+create policy conversations_delete_so_servidor on public.conversations
+  as restrictive for delete to anon, authenticated
+  using (false);
 drop policy if exists crm_lead_activities_insert_de_atendente on public.crm_lead_activities;
 create policy crm_lead_activities_insert_de_atendente on public.crm_lead_activities
   as restrictive for insert to authenticated

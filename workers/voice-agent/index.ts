@@ -55,7 +55,7 @@ import { resolveOrCreateCallerContact } from "@/lib/voip/resolve-caller";
 import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
 import { buscarConhecimento, resolverAcervoDoAgente } from "@/lib/ai/knowledge/busca";
 import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
-import { escolherCadastroPeloTronco, recusaPeloTroncoDeChegada } from "@/lib/voip/tronco-de-chegada";
+import { escolherCadastroPeloTronco, recusaPeloTroncoDeChegada, troncoDoCanal } from "@/lib/voip/tronco-de-chegada";
 
 const supabaseAdmin = createAdminClient();
 
@@ -192,12 +192,19 @@ async function resolveInboundNumber(
   // UM número ativo NAQUELE tronco não tem ambiguidade nenhuma: só pode ser
   // ele. Número de outra empresa, em outro tronco, não entra na conta; mais de
   // um no mesmo tronco recusa (ambíguo) em vez de adivinhar.
+  // O recorte pelo tronco também vai para a consulta: no caminho "s" ela lê
+  // todos os números ativos, e numa instalação grande um limite sem esse
+  // recorte deixaria o número certo de fora.
+  const tronco = troncoDoCanal(nomeDoCanal);
   let consulta = supabaseAdmin
     .from("phone_numbers")
     .select("organization_id, routing_mode, default_ai_agent_id, fallback_user_id, trunk_endpoint")
     .eq("is_active", true);
   if (dialedNumber !== "s") consulta = consulta.eq("number", dialedNumber);
-  const { data, error } = await consulta.limit(200);
+  consulta = tronco
+    ? consulta.ilike("trunk_endpoint", tronco)
+    : consulta.not("trunk_endpoint", "ilike", "PJSIP/org-%-trunk-endpoint");
+  const { data, error } = await consulta.limit(2);
   if (error || !data) return null;
   const escolhido = escolherCadastroPeloTronco(data as RoteamentoInbound[], nomeDoCanal);
   if (!escolhido && dialedNumber === "s") {

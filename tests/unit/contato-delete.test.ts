@@ -14,7 +14,7 @@ const CONTATO = "c05e7a00-0000-4000-8000-0000000000c1";
 const USUARIO = "c05e7a00-0000-4000-8000-0000000000a1";
 
 const chamadas: Array<{ tabela: string; op: string }> = [];
-/** Filtros do DELETE de mensagens pela service role (0509: o login não apaga mensagem do cliente/IA). */
+/** Filtros dos DELETE de mensagens e conversas pela service role (0509: o login não apaga nenhum dos dois). */
 const filtrosDoAdmin: Array<[string, unknown]> = [];
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -149,11 +149,17 @@ describe("deleteContactHandler", () => {
     expect(chamadas.map((c) => c.tabela)).toEqual(["messages", "conversations", "contacts"]);
     // Mensagens saem pela service role, filtradas por organização, contato e
     // SÓ as conversas que a sessão alcança.
-    expect(chamadas[0]).toEqual({ tabela: "messages", op: "delete:admin" });
+    expect(chamadas.slice(0, 2)).toEqual([
+      { tabela: "messages", op: "delete:admin" },
+      { tabela: "conversations", op: "delete:admin" },
+    ]);
     expect(filtrosDoAdmin).toEqual([
       ["organization_id", ORG],
       ["contact_id", CONTATO],
       ["conversation_id", ["conv-visivel"]],
+      ["organization_id", ORG],
+      ["contact_id", CONTATO],
+      ["id", ["conv-visivel"]],
     ]);
     // A pré-checagem da #752 conta o vínculo com os DOIS filtros (contato +
     // organização): sem o de organização, contato de outra org bloquearia.

@@ -22,6 +22,7 @@ import {
   lastLine,
   seedGov,
   sql,
+  GOV_ADMIN,
 } from "./gov-helpers";
 
 /** O membro tenta; a recusa pode ser de RLS ou de GRANT — as duas valem. */
@@ -150,6 +151,28 @@ describe("0509 — follow-up, botões do número e telefones: gerente escreve", 
       ).toThrow(/colunas_do_tronco_do_numero/);
     tenta("number = '551140000000'");
     tenta("trunk_endpoint = 'PJSIP/outro'");
+    // Agente padrão e atendente de reserva de OUTRA organização: recusados.
+    sql(`insert into public.organizations (id, slug, legal_name, display_name)
+           values ('cccccccc-0000-4000-8000-0000000000b3','r2-org-c','Org C','Org C') on conflict (id) do nothing;
+         insert into public.ai_agents (id, organization_id, name, system_prompt)
+           values ('cccccccc-7777-4000-8000-0000000000c3','cccccccc-0000-4000-8000-0000000000b3','Agente de C','x')
+           on conflict (id) do nothing;`);
+    expect(() =>
+      sql(`
+        set role authenticated;
+        select set_config('request.jwt.claims', '{"sub":"${GOV_MANAGER}"}', false);
+        update public.phone_numbers set default_ai_agent_id = 'cccccccc-7777-4000-8000-0000000000c3' where number = '5511999990003';`),
+    ).toThrow(/agente_de_outra_organizacao/);
+    expect(() =>
+      sql(`
+        set role authenticated;
+        select set_config('request.jwt.claims', '{"sub":"${GOV_MANAGER}"}', false);
+        update public.phone_numbers set fallback_user_id = 'cccccccc-1111-4000-8000-0000000000f9' where number = '5511999990003';`),
+    ).toThrow(/atendente_de_outra_organizacao/);
+    // CONTROLE: atendente de reserva da própria organização.
+    expect(
+      escreveComo(GOV_MANAGER, `update public.phone_numbers set fallback_user_id = '${GOV_AGENT_A}' where number = '5511999990003'`),
+    ).toBe(1);
     // CONTROLE: rótulo e liga/desliga seguem com o gerente.
     expect(
       escreveComo(GOV_MANAGER, `update public.phone_numbers set label = 'recepção', is_active = false where number = '5511999990003'`),
@@ -460,6 +483,15 @@ describe("0509 — mensagens: leitor não escreve; ninguém grava em nome da IA 
     expect(escreveComo(GOV_AGENT_B, `delete from public.messages where body = 'r2-eco-do-celular'`)).toBe(1);
   });
 
+  it("apagar a conversa (que leva as mensagens em cascata) também não é do login", () => {
+    expect(recusado(GOV_AGENT_B, `delete from public.conversations where id = '${GOV_CONV_AGENT_B}'`)).toBe(true);
+    expect(recusado(GOV_ADMIN, `delete from public.conversations where id = '${GOV_CONV_AGENT_B}'`)).toBe(true);
+    expect(sql(`select count(*) from public.conversations where id = '${GOV_CONV_AGENT_B}';`).trim()).toBe("1");
+    expect(
+      sql(`select count(*) from public.messages where body in ('r2-fala-do-cliente','r2-fala-da-ia');`).trim(),
+    ).toBe("2");
+  });
+
   it("CONTROLE: atendente encerra e reabre a conversa (o carimbo do atendimento roda depois do guarda)", () => {
     expect(escreveComo(GOV_AGENT_B, `update public.conversations set status = 'closed' where id = '${GOV_CONV_AGENT_B}'`)).toBe(1);
     expect(escreveComo(GOV_AGENT_B, `update public.conversations set status = 'open' where id = '${GOV_CONV_AGENT_B}'`)).toBe(1);
@@ -537,12 +569,16 @@ describe("0509 — contato: colunas de controle e piso de atendente", () => {
     expect(auditoria("lgpd.consent_changed")).toBe(`1|${GOV_AGENT_A}`);
     // A retomada do caso anterior (force_human → false) e esta troca de origem.
     expect(auditoria("contact.updated")).toBe(`2|${GOV_AGENT_A}`);
+    // A linha diz QUAL finalidade mudou e se ficou concedida — sem copiar o
+    // conteúdo livre do jsonb, que a anonimização apaga do contato mas o log
+    // (append-only) guardaria para sempre.
     expect(
       lastLine(
-        sql(`select metadata->'para'->'marketing'->>'source' from public.api_audit_log
+        sql(`select (metadata->'finalidades'->'marketing'->>'para') || '|' || (metadata::text like '%forjado%')
+               from public.api_audit_log
               where resource_id = '${GOV_CONTACT_3}' and action = 'lgpd.consent_changed' order by created_at desc limit 1;`),
       ),
-    ).toBe("forjado");
+    ).toBe("true|false");
     // CONTROLE: mudança pelo servidor é auditada por quem a faz, não pelo banco.
     sql(`update public.contacts set source = 'manual' where id = '${GOV_CONTACT_3}';`);
     expect(auditoria("contact.updated")).toBe(`2|${GOV_AGENT_A}`);

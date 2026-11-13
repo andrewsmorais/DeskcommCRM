@@ -817,10 +817,11 @@ export async function deleteContactHandler(
     // DELETE da ficha falha para qualquer lead que já falou no canal.
     //
     // Pelo login ninguém apaga o que o cliente disse nem o que a IA mandou
-    // (policy `messages_delete_de_atendente`, 0509): as mensagens saem pela
-    // service role, mas só as das conversas que o caller ALCANÇA pela RLS dele
-    // — o mesmo recorte que o DELETE pela sessão fazia. Conversa que ele não vê
-    // fica, e o DELETE da ficha cai no RESTRICT abaixo, como antes.
+    // (policy `messages_delete_de_atendente`, 0509), nem conversa: mensagens e
+    // conversas saem pela service role, mas só as das conversas que o caller
+    // ALCANÇA pela RLS dele — o mesmo recorte que o DELETE pela sessão fazia.
+    // Conversa que ele não vê fica, e o DELETE da ficha cai no RESTRICT
+    // abaixo, como antes.
     const { data: conversasVisiveis, error: convSelErr } = await supabase
       .from("conversations")
       .select("id")
@@ -839,12 +840,18 @@ export async function deleteContactHandler(
     }
     apagados.push("messages");
 
-    const { error: convErr } = await supabase
-      .from("conversations")
-      .delete()
-      .eq("contact_id", contactId)
-      .eq("organization_id", ctx.organization_id);
-    throwOnDbError(convErr, ctx.requestId, ctx.idioma);
+    // A conversa também só sai pela service role (0509: pelo login ninguém
+    // apaga conversa, porque o DELETE leva as mensagens junto em cascata) — e
+    // só as que o caller vê, as mesmas cujas mensagens saíram acima.
+    if (idsDasConversas.length > 0) {
+      const { error: convErr } = await createAdminClient()
+        .from("conversations")
+        .delete()
+        .eq("organization_id", ctx.organization_id)
+        .eq("contact_id", contactId)
+        .in("id", idsDasConversas);
+      throwOnDbError(convErr, ctx.requestId, ctx.idioma);
+    }
     apagados.push("conversations");
 
     const { data, error: delErr } = await supabase
