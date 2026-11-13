@@ -18,6 +18,8 @@ import { AudioRecorder } from "@/components/inbox/composer/AudioRecorder";
 import { ReplyReviewPanel } from "@/components/inbox/composer/ReplyReviewPanel";
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
 import { AgendarButton } from "@/components/inbox/composer/AgendarButton";
+import { AssinarButton } from "@/components/inbox/composer/AssinarButton";
+import { useAssinarLembrado } from "@/hooks/inbox/usePreferenciasDeConversa";
 import { resolveSlash, TemplateMenu } from "@/components/inbox/composer/TemplateMenu";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
 import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
@@ -132,6 +134,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }, [text, mode, onDraftChange]);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const send = useSendMessage();
+  const [assinar, setAssinar] = useAssinarLembrado();
   const upload = useUploadMedia();
   const createNote = useCreateNote();
   const templates = useMessageTemplates();
@@ -179,6 +182,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         conversation_id: conversationId,
         body,
         type: "text",
+        assinar,
         ...(respondendo ? { reply_to_message_id: respondendo.id } : {}),
       },
       {
@@ -381,6 +385,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             disabled={Boolean(disabled || blockedReason)}
             textoAtual={text}
           />
+          {/* Assinatura do atendente (Configurações › Conversas). Só na
+              resposta: nota interna não vai para o cliente. */}
+          {mode === "reply" && (
+            <AssinarButton ligado={assinar} onChange={setAssinar} disabled={respostaBarrada} />
+          )}
           <EmojiButton
             disabled={isDisabled}
             onPick={(emoji) => {
@@ -467,6 +476,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 conversation_id: conversationId,
                 type: uploaded.kind,
                 body: caption || undefined,
+                assinar,
                 media_storage_path: uploaded.storage_path,
                 media_mime: uploaded.media_mime,
                 media_size_bytes: uploaded.media_size_bytes,

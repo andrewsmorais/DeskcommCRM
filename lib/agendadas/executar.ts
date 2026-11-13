@@ -25,6 +25,7 @@ import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
 import { audit } from "@/lib/audit";
 import { inicioManual } from "@/lib/chatbot/motor";
+import { deveAssinar, lerPreferenciasDeConversa, nomeQueAssina, textoAssinado } from "@/lib/conversas/preferencias";
 import { grafoSchema } from "@/lib/chatbot/passos";
 
 import type { TipoDeAgendada } from "./regras";
@@ -107,12 +108,16 @@ export async function executarMensagemAgendada(
     is_anonymized: boolean | null;
     is_group: boolean | null;
     channel_session_id: string | null;
+    meta: Record<string, unknown> | null;
+    settings: unknown;
   }>(
     `select uo.role,
             coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name') as nome,
+            u.raw_user_meta_data as meta, o.settings,
             ct.is_blocked, ct.is_anonymized, cv.is_group, cv.channel_session_id
        from conversations cv
        join contacts ct on ct.id = cv.contact_id and ct.organization_id = cv.organization_id
+       join organizations o on o.id = cv.organization_id
        left join user_organizations uo
          on uo.organization_id = cv.organization_id and uo.user_id = $3
         and uo.revoked_at is null and uo.accepted_at is not null
@@ -129,6 +134,12 @@ export async function executarMensagemAgendada(
 
   try {
     if (linha.tipo === "mensagem") {
+      // Assinatura: agendada não tem a chave "Assinar" do momento do envio, então
+      // só assina quando a empresa manda assinar SEMPRE.
+      const prefs = lerPreferenciasDeConversa(c.settings);
+      const texto = linha.texto ?? "";
+      const corpo = deveAssinar(prefs.assinatura, false) ? textoAssinado(nomeQueAssina(c.meta), texto) : texto;
+      if (corpo === null) return falhar("Com a assinatura, a mensagem passa do limite do WhatsApp.");
       const enviada = await sendMessageHandler(
         admin,
         {
@@ -139,7 +150,7 @@ export async function executarMensagemAgendada(
         {
           conversation_id: linha.conversation_id,
           type: "text",
-          body: linha.texto ?? "",
+          body: corpo,
         } as Parameters<typeof sendMessageHandler>[2],
       );
       if (enviada.status === "failed")

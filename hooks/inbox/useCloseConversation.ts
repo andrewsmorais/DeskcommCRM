@@ -13,7 +13,7 @@ interface CloseArgs {
    * "Finalizar conversa".
    */
   encerramento?:
-    | { tipo: "mensagem"; texto: string }
+    | { tipo: "mensagem"; texto: string; assinar?: boolean }
     | { tipo: "chatbot"; chatbot_flow_id: string };
 }
 

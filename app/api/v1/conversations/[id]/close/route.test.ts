@@ -36,19 +36,30 @@ const USER = "40000000-0000-4000-8000-000000000003";
 const FLUXO = "40000000-0000-4000-8000-000000000004";
 
 let revisaoNoBanco = 3;
+let ehGrupo = false;
+let conversasDaEmpresa: Record<string, unknown> | undefined;
 const rpc = vi.fn();
 
-/** Client do usuário: só lê a conversa (id, org, revisão). */
+/** Client do usuário: lê a conversa, as configurações da empresa e o perfil. */
 function clienteDoUsuario() {
-  const consulta = {
-    select: () => consulta,
-    eq: () => consulta,
-    maybeSingle: async () => ({
-      data: { id: CONV, organization_id: ORG, service_revision: revisaoNoBanco },
-      error: null,
-    }),
+  const consulta = (tabela: string) => {
+    const q = {
+      select: () => q,
+      eq: () => q,
+      maybeSingle: async () =>
+        tabela === "organizations"
+          ? { data: { settings: conversasDaEmpresa ? { conversas: conversasDaEmpresa } : {} }, error: null }
+          : {
+              data: { id: CONV, organization_id: ORG, service_revision: revisaoNoBanco, is_group: ehGrupo },
+              error: null,
+            },
+    };
+    return q;
   };
-  return { from: () => consulta };
+  return {
+    from: (tabela: string) => consulta(tabela),
+    auth: { getUser: async () => ({ data: { user: { user_metadata: { full_name: "Ana Lima" } } } }) },
+  };
 }
 
 function pedido(corpo: unknown) {
@@ -63,6 +74,8 @@ const contexto = { params: Promise.resolve({ id: CONV }) };
 beforeEach(() => {
   vi.clearAllMocks();
   revisaoNoBanco = 3;
+  ehGrupo = false;
+  conversasDaEmpresa = undefined;
   vi.mocked(requireSupportWrite).mockResolvedValue(null);
   vi.mocked(requireRole).mockResolvedValue({
     ok: true,
@@ -162,5 +175,43 @@ describe("POST /conversations/[id]/close — encerramento", () => {
     const r = await POST(pedido({ encerramento: { tipo: "chatbot", chatbot_flow_id: FLUXO } }), contexto);
     expect(r.status).toBe(422);
     expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /conversations/[id]/close — Configurações › Conversas", () => {
+  it("empresa só finaliza: despedida é recusada e nada sai", async () => {
+    conversasDaEmpresa = { finalizar: { comportamento: "so_finalizar" } };
+    const r = await POST(pedido({ encerramento: { tipo: "mensagem", texto: "Tchau" } }), contexto);
+    expect(r.status).toBe(422);
+    expect(sendMessageHandler).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("empresa exige despedida: só encerrar é recusado", async () => {
+    conversasDaEmpresa = { finalizar: { comportamento: "mensagem", mensagem_padrao: "Obrigado!" } };
+    const r = await POST(pedido({}), contexto);
+    expect(r.status).toBe(422);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("empresa exige chatbot, mas em GRUPO só encerrar continua valendo", async () => {
+    conversasDaEmpresa = { finalizar: { comportamento: "chatbot", chatbot_padrao: FLUXO } };
+    ehGrupo = true;
+    const r = await POST(pedido({}), contexto);
+    expect(r.status).toBe(200);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("assinatura: a despedida sai com o nome do perfil quando o atendente pede", async () => {
+    vi.mocked(sendMessageHandler).mockResolvedValue({ status: "sending" } as never);
+    await POST(pedido({ encerramento: { tipo: "mensagem", texto: "Tchau", assinar: true } }), contexto);
+    expect(vi.mocked(sendMessageHandler).mock.calls[0]![2]).toMatchObject({ body: "*Ana Lima:*\nTchau" });
+  });
+
+  it("empresa proíbe assinatura: mesmo pedindo, sai sem nome", async () => {
+    conversasDaEmpresa = { assinatura: "nunca" };
+    vi.mocked(sendMessageHandler).mockResolvedValue({ status: "sending" } as never);
+    await POST(pedido({ encerramento: { tipo: "mensagem", texto: "Tchau", assinar: true } }), contexto);
+    expect(vi.mocked(sendMessageHandler).mock.calls[0]![2]).toMatchObject({ body: "Tchau" });
   });
 });

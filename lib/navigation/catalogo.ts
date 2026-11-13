@@ -898,6 +898,18 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
   {
+    // Configurações › Conversas (paridade com a Umbler Talk): assinatura dos
+    // atendentes e o que o botão Fechar faz. Mesma vizinhança e papel da
+    // Distribuição de atendimento.
+    href: "/app/settings/conversas",
+    label: "Conversas",
+    description: "Assinatura dos atendentes e o que acontece ao fechar uma conversa.",
+    icon: "Inbox",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "manager",
+  },
+  {
     // Setores de atendimento (migration 0496): grupos de atendentes. A conversa
     // posta num setor só é distribuída a membros dele. Mesmo papel e mesma
     // vizinhança da Distribuição de atendimento, que é a regra que o setor afina.

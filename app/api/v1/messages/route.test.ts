@@ -399,3 +399,52 @@ describe("POST /api/v1/messages — ritmo por token", () => {
     expect(mockedRegistrar).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/v1/messages — assinatura do atendente (Configurações › Conversas)", () => {
+  function comPerfil(settings: Record<string, unknown> | null) {
+    autenticado("session");
+    const s = banco.supabase as unknown as Record<string, unknown> & {
+      auth: Record<string, unknown>;
+      from: (t: string) => unknown;
+    };
+    const fromOriginal = s.from;
+    s.from = (t: string) =>
+      t === "organizations"
+        ? {
+            select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { settings }, error: null }) }) }),
+          }
+        : fromOriginal(t);
+    s.auth.getUser = async () => ({ data: { user: { user_metadata: { full_name: "Ana Lima" } } } });
+  }
+
+  it("atendente pede: a mensagem sai com o nome em negrito antes do texto", async () => {
+    comPerfil(null);
+    const r = await POST(pedido({ corpo: { assinar: true } }));
+    expect(r.status).toBe(201);
+    expect(mockedSend.mock.calls[0]![2]).toMatchObject({ body: "*Ana Lima:*\nOi!" });
+  });
+
+  it("sem pedir, sai como foi escrita", async () => {
+    comPerfil(null);
+    await POST(pedido());
+    expect(mockedSend.mock.calls[0]![2]).toMatchObject({ body: "Oi!" });
+  });
+
+  it("empresa manda assinar sempre: assina mesmo sem pedir", async () => {
+    comPerfil({ conversas: { assinatura: "sempre" } });
+    await POST(pedido());
+    expect(mockedSend.mock.calls[0]![2]).toMatchObject({ body: "*Ana Lima:*\nOi!" });
+  });
+
+  it("empresa proíbe: não assina mesmo pedindo", async () => {
+    comPerfil({ conversas: { assinatura: "nunca" } });
+    await POST(pedido({ corpo: { assinar: true } }));
+    expect(mockedSend.mock.calls[0]![2]).toMatchObject({ body: "Oi!" });
+  });
+
+  it("por token ninguém assina — token não tem perfil de atendente", async () => {
+    autenticado("token");
+    await POST(pedido({ corpo: { assinar: true } }));
+    expect(mockedSend.mock.calls[0]![2]).toMatchObject({ body: "Oi!" });
+  });
+});

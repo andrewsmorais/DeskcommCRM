@@ -24,6 +24,8 @@ interface SendArgs {
   /** A mensagem citada — id da NOSSA linha; o handler traduz para o do canal. */
   reply_to_message_id?: string;
   metadata?: Record<string, unknown>;
+  /** A chave "Assinar" do campo de mensagem; o servidor decide o nome. */
+  assinar?: boolean;
 }
 
 interface MessagesPage {

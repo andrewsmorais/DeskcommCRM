@@ -161,6 +161,10 @@ export const AUDIT_ACTIONS = [
   "scheduled_message.canceled",
   "scheduled_message.sent",
   "scheduled_message.failed",
+  // Configurações › Conversas (assinatura e comportamento do Fechar) e a
+  // assinatura do próprio atendente, editada pelo campo de mensagem.
+  "conversation_settings.changed",
+  "signature.changed",
   /** A conversa foi posta num setor (ou tirada dele) — Inbox ou chatbot. */
   "conversation.setor_changed",
   /** Setores de atendimento (migration 0496): cadastro em Configurações › Setores. */

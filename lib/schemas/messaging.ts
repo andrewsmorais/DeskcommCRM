@@ -108,6 +108,13 @@ export const sendMessageSchema = z
      * linha do token e o membership, no banco.
      */
     on_behalf_of_user_id: z.string().uuid().optional(),
+    /**
+     * A chave "Assinar" do campo de mensagem: o atendente quer o nome dele antes
+     * do texto. É só um PEDIDO — o nome vem do perfil da sessão e a empresa pode
+     * forçar ou proibir (`lib/conversas/preferencias.ts`). Só a rota REST com
+     * sessão de navegador lê este campo; token, MCP e automação o ignoram.
+     */
+    assinar: z.boolean().optional(),
   })
   .refine(
     (d) => {

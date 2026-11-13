@@ -25,6 +25,8 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { pedirChatbotManual } from "@/lib/chatbot/iniciar-manual";
+import { deveAssinar, nomeQueAssina, saidasDoFinalizar, textoAssinado } from "@/lib/conversas/preferencias";
+import { carregarPreferenciasDeConversa } from "@/lib/conversas/preferencias-servidor";
 import type { SendMessageInput } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import type { Conversation } from "@/lib/types/messaging";
@@ -50,7 +52,12 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
       encerramento: z
         .discriminatedUnion("tipo", [
           z.object({ tipo: z.literal("nenhum") }),
-          z.object({ tipo: z.literal("mensagem"), texto: z.string().trim().min(1).max(4096) }),
+          z.object({
+            tipo: z.literal("mensagem"),
+            texto: z.string().trim().min(1).max(4096),
+            /** A chave "Assinar" do campo de mensagem desta conversa. */
+            assinar: z.boolean().optional(),
+          }),
           z.object({ tipo: z.literal("chatbot"), chatbot_flow_id: z.string().uuid() }),
         ])
         .optional(),
@@ -67,11 +74,25 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const user = authz.user;
 
   const { data: visible, error: readError } = await supabase.from("conversations")
-    .select("id, organization_id, service_revision").eq("id", id)
+    .select("id, organization_id, service_revision, is_group").eq("id", id)
     .eq("organization_id", authz.org.orgId).maybeSingle();
   if (readError) return fail("internal_error", readError.message, 500, { requestId });
   if (!visible) return fail("not_found", t("Conversa não encontrada."), 404, { requestId });
   const encerramento = parsed.data.encerramento ?? { tipo: "nenhum" as const };
+  // O que a empresa permite no Fechar (Configurações › Conversas). Grupo nunca
+  // recebe chatbot, então nele "só encerrar" sempre vale.
+  const prefs = await carregarPreferenciasDeConversa(supabase, authz.org.orgId);
+  const ehGrupo = (visible as { is_group?: boolean }).is_group === true;
+  const permitidas: ReadonlyArray<string> = ehGrupo
+    ? [...saidasDoFinalizar(prefs.finalizar.comportamento).filter((s) => s !== "chatbot"), "nenhum"]
+    : saidasDoFinalizar(prefs.finalizar.comportamento);
+  if (!permitidas.includes(encerramento.tipo))
+    return fail(
+      "validation_failed",
+      t("A empresa definiu outro jeito de fechar a conversa: use o botão Fechar no topo da conversa."),
+      422,
+      { requestId },
+    );
   let revisaoDoFechamento = parsed.data.expected_revision ?? visible.service_revision;
 
   if (encerramento.tipo === "chatbot") {
@@ -107,6 +128,23 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     )
       return fail("conflict", t("O atendimento mudou. Atualize e tente novamente."), 409, { requestId });
     const naoSaiu = t("A mensagem de despedida não saiu, e a conversa continua aberta.");
+    // A despedida é mensagem do atendente: segue a mesma regra de assinatura.
+    let textoDaDespedida = encerramento.texto;
+    if (deveAssinar(prefs.assinatura, encerramento.assinar)) {
+      const { data: sessao } = await supabase.auth.getUser();
+      const assinado = textoAssinado(
+        nomeQueAssina(sessao.user?.user_metadata as Record<string, unknown> | undefined),
+        encerramento.texto,
+      );
+      if (assinado === null)
+        return fail(
+          "validation_failed",
+          t("Com a assinatura, a mensagem passa do limite do WhatsApp. Encurte o texto."),
+          422,
+          { requestId },
+        );
+      textoDaDespedida = assinado;
+    }
     let despedida;
     try {
       despedida = await sendMessageHandler(
@@ -117,7 +155,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
           requestId,
           idioma: authz.user.idioma,
         },
-        { conversation_id: id, type: "text", body: encerramento.texto } as SendMessageInput,
+        { conversation_id: id, type: "text", body: textoDaDespedida } as SendMessageInput,
       );
     } catch (err) {
       const motivo = err instanceof Error ? err.message : "";

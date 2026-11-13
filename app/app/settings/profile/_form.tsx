@@ -39,6 +39,8 @@ interface Props {
   initialAvatarUrl: string | null;
   initialLocale: Locale | typeof SEM_PREFERENCIA_DE_IDIOMA;
   initialTimezone: string;
+  initialAssinatura?: string;
+  initialMensagemDeFinalizacao?: string;
 }
 
 export function ProfileForm({
@@ -47,12 +49,16 @@ export function ProfileForm({
   initialAvatarUrl,
   initialLocale,
   initialTimezone,
+  initialAssinatura = "",
+  initialMensagemDeFinalizacao = "",
 }: Props) {
   const t = useT();
   const [fullName, setFullName] = useState(initialFullName ?? "");
   const [locale, setLocale] = useState<Locale | typeof SEM_PREFERENCIA_DE_IDIOMA>(initialLocale);
   const [timezone, setTimezone] = useState(initialTimezone);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl ?? "");
+  const [assinatura, setAssinatura] = useState(initialAssinatura);
+  const [despedida, setDespedida] = useState(initialMensagemDeFinalizacao);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
@@ -62,6 +68,8 @@ export function ProfileForm({
       locale,
       timezone,
       avatar_url: avatarUrl || null,
+      assinatura: assinatura.trim() || null,
+      mensagem_de_finalizacao: despedida.trim() || null,
     });
     if (!parsed.success) {
       toast.error(t("Dados inválidos."));
@@ -92,6 +100,34 @@ export function ProfileForm({
             onChange={(e) => setFullName(e.target.value)}
             maxLength={120}
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="assinatura">{t("Assinatura")}</Label>
+          <Input
+            id="assinatura"
+            value={assinatura}
+            onChange={(e) => setAssinatura(e.target.value)}
+            maxLength={75}
+            placeholder={fullName}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("Vai antes das suas mensagens quando a assinatura está ligada. Vazia, usa o seu nome.")}
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="mensagem_de_finalizacao">{t("Mensagem de finalização de conversa")}</Label>
+          <textarea
+            id="mensagem_de_finalizacao"
+            rows={3}
+            maxLength={4096}
+            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+            value={despedida}
+            onChange={(e) => setDespedida(e.target.value)}
+            placeholder={t("Sua mensagem de encerramento")}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("Se definida, tem precedência sobre a mensagem de finalização configurada na empresa.")}
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">

@@ -2,6 +2,7 @@ import { requireAuth } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { normalizarIdioma } from "@/lib/i18n/idiomas";
 import { SEM_PREFERENCIA_DE_IDIOMA } from "@/lib/schemas/settings";
+import { createClient } from "@/lib/supabase/server";
 import { ProfileForm } from "./_form";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,11 @@ export default async function ProfilePage() {
   //                    uma preferência que ela nunca escolheu — e daí em diante
   //                    a troca de idioma da empresa passaria por cima dela.
   const idioma = user.idioma;
+  // Assinatura e despedida pessoal moram no perfil (user_metadata), fora do
+  // AuthUser: só esta tela e a conversa precisam delas.
+  const { data: sessao } = await (await createClient()).auth.getUser();
+  const extra = (sessao.user?.user_metadata ?? {}) as Record<string, unknown>;
+  const texto = (v: unknown) => (typeof v === "string" ? v : "");
   return (
     <div className="flex h-full flex-col gap-6 p-6">
       <header>
@@ -40,6 +46,8 @@ export default async function ProfilePage() {
         initialAvatarUrl={meta.avatar_url}
         initialLocale={user.locale ? normalizarIdioma(user.locale) : SEM_PREFERENCIA_DE_IDIOMA}
         initialTimezone={meta.timezone ?? "America/Sao_Paulo"}
+        initialAssinatura={texto(extra.assinatura)}
+        initialMensagemDeFinalizacao={texto(extra.mensagem_de_finalizacao)}
       />
     </div>
   );

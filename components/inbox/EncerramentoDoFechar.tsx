@@ -40,14 +40,39 @@ const SELECT =
 /** As três saídas do Fechar, na ordem da tela. */
 const TIPOS = ["nenhum", "mensagem", "chatbot"] as const;
 
+/**
+ * A escolha com que a janela abre, segundo Configurações › Conversas: se a
+ * empresa só permite uma saída, ela já vem escolhida e preenchida.
+ */
+export function escolhaInicial(
+  permitidas: ReadonlyArray<EscolhaDoEncerramento["tipo"]>,
+  despedidaPadrao: string,
+  chatbotPadrao: string | null,
+): EscolhaDoEncerramento {
+  if (permitidas.length === 1 && permitidas[0] === "mensagem")
+    return { tipo: "mensagem", texto: despedidaPadrao || despedidaLembrada() };
+  if (permitidas.length === 1 && permitidas[0] === "chatbot")
+    return { tipo: "chatbot", chatbot_flow_id: chatbotPadrao ?? "" };
+  return { tipo: "nenhum" };
+}
+
 export function EncerramentoDoFechar(props: {
   valor: EscolhaDoEncerramento;
   onChange: (v: EscolhaDoEncerramento) => void;
+  /** O que a empresa permite (Configurações › Conversas); padrão: as três. */
+  permitidas?: ReadonlyArray<EscolhaDoEncerramento["tipo"]>;
+  /** A despedida sugerida: a do perfil, senão a da empresa. */
+  despedidaPadrao?: string;
+  chatbotPadrao?: string | null;
 }) {
   const t = useT();
   const { data: chatbots } = useChatbotsManuais();
   const { valor, onChange } = props;
-  const opcao = (tipo: EscolhaDoEncerramento["tipo"], rotulo: string) => (
+  const permitidas = props.permitidas ?? TIPOS;
+  // Uma saída só: não há o que escolher, então não há botão de opção.
+  const unica = permitidas.length === 1;
+  const opcao = (tipo: EscolhaDoEncerramento["tipo"], rotulo: string) =>
+    !permitidas.includes(tipo) || unica ? null : (
     <label className="flex items-center gap-2 text-sm">
       <input
         type="radio"
@@ -57,22 +82,28 @@ export function EncerramentoDoFechar(props: {
         onChange={() =>
           onChange(
             tipo === "mensagem"
-              ? { tipo, texto: despedidaLembrada() }
+              ? { tipo, texto: props.despedidaPadrao || despedidaLembrada() }
               : tipo === "chatbot"
-                ? { tipo, chatbot_flow_id: "" }
+                ? { tipo, chatbot_flow_id: props.chatbotPadrao ?? "" }
                 : { tipo: "nenhum" },
           )
         }
       />
       {rotulo}
     </label>
-  );
+    );
   return (
     <div className="space-y-2" data-testid="encerramento-do-fechar">
+      {unica && permitidas[0] === "mensagem" ? (
+        <p className="text-sm font-medium">{t("Antes de fechar, sai esta despedida:")}</p>
+      ) : null}
+      {unica && permitidas[0] === "chatbot" ? (
+        <p className="text-sm font-medium">{t("A conversa é encerrada por este chatbot:")}</p>
+      ) : null}
       {opcao(TIPOS[0], t("Só encerrar"))}
       {opcao(TIPOS[1], t("Enviar uma mensagem de despedida antes"))}
       {valor.tipo === "mensagem" ? (
-        <div className="space-y-1 pl-6">
+        <div className={unica ? "space-y-1" : "space-y-1 pl-6"}>
           <Label htmlFor="despedida" className="sr-only">
             {t("Mensagem de despedida")}
           </Label>
@@ -89,7 +120,7 @@ export function EncerramentoDoFechar(props: {
       ) : null}
       {opcao(TIPOS[2], t("Acionar um chatbot de encerramento"))}
       {valor.tipo === "chatbot" ? (
-        <div className="space-y-1 pl-6">
+        <div className={unica ? "space-y-1" : "space-y-1 pl-6"}>
           <select
             aria-label={t("Chatbot de encerramento")}
             className={SELECT}

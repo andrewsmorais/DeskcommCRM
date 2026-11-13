@@ -39,6 +39,13 @@ export async function updateProfile(input: ProfileInput): Promise<UpdateProfileR
       locale: parsed.data.locale === SEM_PREFERENCIA_DE_IDIOMA ? null : parsed.data.locale,
       timezone: parsed.data.timezone,
       avatar_url: parsed.data.avatar_url ?? null,
+      // Só quando o formulário manda: `updateUser` mescla as chaves, então
+      // campo ausente preserva o valor (o lápis do campo de mensagem também
+      // grava a assinatura).
+      ...(parsed.data.assinatura !== undefined ? { assinatura: parsed.data.assinatura || null } : {}),
+      ...(parsed.data.mensagem_de_finalizacao !== undefined
+        ? { mensagem_de_finalizacao: parsed.data.mensagem_de_finalizacao || null }
+        : {}),
     },
   });
   if (error) {

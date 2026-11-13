@@ -71,6 +71,14 @@ export const profileSchema = z.object({
     .nullable()
     .optional()
     .or(z.literal("").transform(() => null)),
+  /**
+   * Assinatura do atendente (Configurações › Conversas): o nome que vai antes
+   * das mensagens. Vazia, assina com o nome. Opcional: quem não manda o campo
+   * não apaga o que estava gravado.
+   */
+  assinatura: z.string().trim().max(75).nullable().optional(),
+  /** Despedida pessoal do Fechar: vale mais que a mensagem padrão da empresa. */
+  mensagem_de_finalizacao: z.string().trim().max(4096).nullable().optional(),
 });
 export type ProfileInput = z.infer<typeof profileSchema>;
 

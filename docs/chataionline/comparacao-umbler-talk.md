@@ -102,6 +102,15 @@ Evidência pela tela do Fechar com despedida ou chatbot (13/11/2026, cabeçalho 
 - `evidence/fechar-com-despedida/f3-chatbot-de-encerramento.png` — chatbot de encerramento escolhido; o botão vira "Acionar chatbot".
 - `evidence/fechar-com-despedida/f4-chatbot-acionado.png` — aviso de que o chatbot encerra no passo "Finalizar conversa".
 
+Evidência pela tela da assinatura e de Configurações › Conversas (13/11/2026, componentes de verdade, API simulada):
+
+- `evidence/assinatura-e-conversas/a1-editar-assinatura.png` — lápis da assinatura no campo de mensagem (até 75 letras).
+- `evidence/assinatura-e-conversas/a2-assinar-ligado.png` — chave de assinatura ligada antes de enviar.
+- `evidence/assinatura-e-conversas/a3-fechar-exige-despedida.png` — empresa exige despedida: o Fechar já abre com a mensagem padrão.
+- `evidence/assinatura-e-conversas/a4-configuracoes-conversas.png` — a tela Configurações › Conversas.
+
+Diferença deliberada: na Umbler o "Iniciar um chatbot e finalizar" encerra na hora; aqui a conversa fica aberta até o chatbot chegar ao passo "Finalizar conversa", para a pesquisa de satisfação não ser cortada.
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
@@ -140,7 +149,7 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 |---|---|---|---|
 | 1 | **Agendar mensagem na conversa** (texto, nota ou chatbot), com aba "Agendadas" | médio | É o recurso mais visível que falta, e destrava o "agendar chatbot" |
 | 2 | ~~Finalizar com mensagem ou chatbot de finalização~~ — feito 13/11 | pequeno | Usado em todo atendimento (pesquisa de satisfação no fim) |
-| 3 | **Assinatura do atendente** nas mensagens | pequeno | Rápido e o cliente nota |
+| 3 | ~~Assinatura do atendente nas mensagens~~ — feito 13/11 | pequeno | Rápido e o cliente nota |
 | 4 | **Regex próprio** no Pedir para digitar | pequeno | Precisa de trava contra regex que trava o servidor |
 | 5 | **Baixar histórico** da conversa (.txt e .pdf) | pequeno | |
 | 6 | **Observadores** da conversa | médio | Mexe em quem vê a conversa (segurança) |
@@ -189,7 +198,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | G7 | **Kanban de contatos** por etiqueta, com resumo por coluna | temos funil de negócios |
 | G8 | **Variáveis da organização** (chaves e valores guardados uma vez, usados nos fluxos) | |
 | G9 | Importar contatos de **.vcf** com mapeamento de colunas | temos planilha |
-| G10 | **Assinatura do atendente** e **mensagem de encerramento** por perfil/empresa | já estava na lista (itens 2 e 3) |
+| G10 | Assinatura do atendente e mensagem de encerramento por perfil/empresa | ✅ feito 13/11 (Configurações › Conversas e Perfil) |
 
 ## 9. Correção da lista (13/11/2026, depois de reler o CRM inteiro)
 
@@ -206,7 +215,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 **O que de fato falta**, depois da correção:
 1. ~~Agendar uma MENSAGEM na conversa~~ — feito 13/11 (migration 0511): botão de calendário no campo de mensagem, aba "Agendadas".
 2. ~~**Finalizar** o atendimento enviando mensagem ou chatbot de encerramento~~ — feito 13/11: a janela Fechar oferece Só encerrar, Despedida antes ou Chatbot de encerramento.
-3. **Assinatura do atendente** nas mensagens.
+3. ~~**Assinatura do atendente** nas mensagens~~ — feito 13/11, junto com a tela Configurações › Conversas (assinatura sempre/nunca/atendente escolhe; comportamento do Fechar com mensagem e chatbot padrão; despedida pessoal no Perfil).
 4. **Pedir para digitar** com várias opções e regex próprio.
 5. Opções dentro de blocos: modos extras de transferir (remover, anterior), Notificar com escolha de quem e "só se disponível", botão de link no Enviar mensagem, "não listado" e perguntas no Iniciar manualmente, "dia útil" no Aguardar até, estatística por bloco.
 6. Conversa: baixar histórico (.txt/.pdf), encaminhar e favoritar mensagem, figurinhas salvas, observadores, esconder telefone por papel, tirar atendente offline.

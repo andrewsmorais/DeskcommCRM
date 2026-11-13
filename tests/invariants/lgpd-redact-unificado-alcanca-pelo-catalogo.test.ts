@@ -207,6 +207,11 @@ const DECISOES: Record<string, Decisao> = {
     razao: "0482 (grupos na inbox, #1647): subject é o NOME do grupo e vira null; contact_id aponta para o placeholder do grupo (contacts.kind = 'whatsapp_group'), e número, conversa e liga/desliga ficam. O que o TITULAR escreveu em grupo é redigido pelo gatilho fn_redigir_conversas_ao_anonimizar, em messages.",
   },
   // ── redigir pela virada de is_anonymized (gatilho) ────────────────────────
+  mensagens_agendadas: {
+    decidida: "redigir",
+    caminho: "gatilho",
+    razao: "0511 (mensagens agendadas): texto livre escrito para a pessoa, ainda por sair. fn_mensagens_agendadas_ao_anonimizar apaga as linhas do contato na virada de is_anonymized — nada agendado sai para quem foi anonimizado.",
+  },
   ai_reply_drafts: {
     decidida: "redigir",
     caminho: "gatilho",

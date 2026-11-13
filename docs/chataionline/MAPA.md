@@ -77,6 +77,7 @@
 | 13/11 | Ocultar conversa (olho no topo + filtro "Ocultas") e bloco "Visibilidade da conversa" do chatbot (migration 0510) | `.changes/conversa-oculta.md`, `evidence/chatbot-visibilidade/` |
 | 13/11 | Agendar mensagem, nota ou chatbot na conversa (migration 0511; o worker envia no horário pelo `event_log`) | `.changes/mensagens-agendadas.md`, `evidence/mensagens-agendadas/` |
 | 13/11 | Fechar a conversa com despedida ou chatbot de encerramento (pesquisa de satisfação); sem migration | `.changes/finalizar-com-despedida-ou-chatbot.md`, `evidence/fechar-com-despedida/` |
+| 13/11 | Assinatura do atendente (chave no campo de mensagem, campo no Perfil) e a tela Configurações › Conversas (assinatura e comportamento do Fechar); sem migration | `.changes/assinatura-e-configuracoes-de-conversas.md`, `evidence/assinatura-e-conversas/` |
 | 11–13/11 | Auditoria de segurança — 2ª rodada (telefonia, telemetria, LGPD, prompt, mensagens), 3 verificadores independentes | `.changes/endurecimento-auditoria-rodada-2.md`; migration `0509`; relatório em `/srv/security-audit-skill/chataionline/run-2/REPORT.md` |
 
 ## 5. O que falta / pendências conhecidas
@@ -89,9 +90,9 @@
 - O último commit de segurança (`57e7229`) não teve verificador independente.
 - Chatbot: carrossel e cupom bloqueados por decisão; ver a comparação com a Umbler para o resto.
 - Comparação com a Umbler Talk: ver [`comparacao-umbler-talk.md`](comparacao-umbler-talk.md) —
-  faltando, em ordem (seção 9 de lá): assinatura do atendente, Pedir para digitar com várias
+  faltando, em ordem (seção 9 de lá): Pedir para digitar com várias
   opções/regex, opções dentro de blocos, extras da conversa (baixar histórico, observadores,
-  figurinhas…), webchat. Agendar mensagem e Fechar com despedida/chatbot já foram feitos.
+  figurinhas…), webchat. Agendar mensagem, Fechar com despedida/chatbot e assinatura já foram feitos.
 - Chatbot: os blocos da Umbler estão todos; faltam opções dentro de alguns (seção 8 da comparação: Pedir para digitar com várias opções/regex, modos de transferência, Notificar, botão de link, estatística por bloco).
 
 ## 6. Dia de subir para a VPS (checklist)

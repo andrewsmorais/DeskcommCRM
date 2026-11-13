@@ -134,7 +134,9 @@ export function AgendarButton({ conversationId, disabled, textoAtual }: Props) {
         size="icon"
         variant="ghost"
         className="h-9 w-9 shrink-0"
-        aria-label={t("Agendar mensagem")}
+        // "Agendar", e não "Agendar mensagem": o campo de texto se chama
+        // "Mensagem", e os testes (e leitores de tela) o acham pelo rótulo.
+        aria-label={t("Agendar")}
         title={t("Agendar mensagem")}
         disabled={disabled}
         onClick={abrir}
@@ -283,7 +285,7 @@ function ListaDeAgendadas(props: {
             </span>
             <span className="text-xs text-muted-foreground">{t(ROTULO_DO_STATUS[a.status])}</span>
           </div>
-          {a.texto ? <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-muted-foreground">{a.texto}</p> : null}
+          {a.texto ? <p className="mt-1 line-clamp-3 whitespace-pre-wrap wrap-anywhere text-muted-foreground">{a.texto}</p> : null}
           {a.tipo === "chatbot" && a.chatbot_flow_id ? (
             <p className="mt-1 text-muted-foreground">
               {props.nomeDoChatbot(a.chatbot_flow_id) ?? t("Chatbot desligado ou apagado")}

@@ -25,6 +25,8 @@ import {
 } from "@/lib/messaging/ritmo-do-envio-por-token";
 import { sendMessageSchema, validateRequest, type SendMessageInput } from "@/lib/schemas";
 import { conversaFicaComQuemAtendeu } from "@/lib/schemas/routing";
+import { textoAssinado } from "@/lib/conversas/preferencias";
+import { assinaturaDaSessao } from "@/lib/conversas/preferencias-servidor";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
 
@@ -42,6 +44,8 @@ const ENDPOINT = "POST /api/v1/messages";
 const SCOPE_EM_NOME_DE = "messages:on_behalf";
 /** Papel mínimo de quem é apontado "em nome de": atendente ou acima. */
 const PAPEL_MINIMO_EM_NOME_DE = "agent";
+/** Tipos cujo texto (ou legenda) sai com a assinatura do atendente. */
+const TIPOS_ASSINADOS = new Set<string>(["text", "image", "video", "document"]);
 
 export async function POST(req: NextRequest): Promise<Response> {
   const supportDenied = await requireSupportWrite();
@@ -78,6 +82,24 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const t = (texto: string) => traduzir(texto, idioma ?? "pt-BR");
+
+  // ASSINATURA DO ATENDENTE (Configurações › Conversas). Só quem digita no
+  // navegador assina: o nome sai do perfil da sessão, nunca do corpo, e a
+  // empresa decide se é escolha do atendente, sempre ou nunca.
+  if (authz.via === "session" && actor.type === "user" && input.body && TIPOS_ASSINADOS.has(input.type)) {
+    const nome = await assinaturaDaSessao(supabase, organizationId, input.assinar);
+    if (nome) {
+      const assinado = textoAssinado(nome, input.body);
+      if (assinado === null)
+        return fail(
+          "validation_failed",
+          t("Com a assinatura, a mensagem passa do limite do WhatsApp. Encurte o texto."),
+          422,
+          { requestId },
+        );
+      input = { ...input, body: assinado };
+    }
+  }
 
   // Idempotency-Key, quando vem, tem de ser UUID — mesma régua de
   // `message-templates` e do contrato (spec 01 §7.3). Chave malformada não vira

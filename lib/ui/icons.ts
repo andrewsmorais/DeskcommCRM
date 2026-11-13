@@ -58,6 +58,7 @@ export {
   Plus,
   Trash,
   PencilSimple,
+  Signature,
   MagnifyingGlass,
   Pause,
   Play,

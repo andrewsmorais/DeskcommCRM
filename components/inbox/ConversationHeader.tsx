@@ -38,8 +38,11 @@ import { VisibilidadeButton } from "@/components/inbox/VisibilidadeButton";
 import {
   EncerramentoDoFechar,
   lembrarDespedida,
+  escolhaInicial,
   type EscolhaDoEncerramento,
 } from "@/components/inbox/EncerramentoDoFechar";
+import { lerAssinarLembrado, usePreferenciasDeConversa } from "@/hooks/inbox/usePreferenciasDeConversa";
+import { despedidaSugerida, saidasDoFinalizar } from "@/lib/conversas/preferencias";
 import { toast } from "sonner";
 import { useSetores } from "@/hooks/inbox/useSetores";
 import { DialButton } from "@/components/voice/DialButton";
@@ -116,6 +119,14 @@ export function ConversationHeader({
   const [reassignOpen, setReassignOpen] = useState(false);
   const [confirmFecharOpen, setConfirmFecharOpen] = useState(false);
   const [encerramento, setEncerramento] = useState<EscolhaDoEncerramento>({ tipo: "nenhum" });
+  // Configurações › Conversas: o que o Fechar oferece e o que já vem sugerido.
+  const prefsDeConversa = usePreferenciasDeConversa();
+  const permitidasNoFechar = saidasDoFinalizar(prefsDeConversa.data?.finalizar.comportamento ?? "atendente_escolhe");
+  const despedidaPadrao = despedidaSugerida(
+    prefsDeConversa.data?.meu.mensagem_de_finalizacao,
+    prefsDeConversa.data?.finalizar.mensagem_padrao ?? null,
+  );
+  const chatbotPadrao = prefsDeConversa.data?.finalizar.chatbot_padrao ?? null;
   const [confirmArquivarOpen, setConfirmArquivarOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
@@ -393,7 +404,14 @@ export function ConversationHeader({
             size="sm"
             variant="outline"
             disabled={close.isPending}
-            onClick={() => setConfirmFecharOpen(true)}
+            onClick={() => {
+              setEncerramento(
+                conversation.is_group
+                  ? { tipo: "nenhum" }
+                  : escolhaInicial(permitidasNoFechar, despedidaPadrao, chatbotPadrao),
+              );
+              setConfirmFecharOpen(true);
+            }}
           >
             {t("Fechar")}
           </Button>
@@ -479,7 +497,13 @@ export function ConversationHeader({
           {/* Como o "Finalizar" da Umbler: despedida antes, ou chatbot de
               encerramento. Grupo não tem chatbot nem despedida automática. */}
           {!conversation.is_group && (
-            <EncerramentoDoFechar valor={encerramento} onChange={setEncerramento} />
+            <EncerramentoDoFechar
+              valor={encerramento}
+              onChange={setEncerramento}
+              permitidas={permitidasNoFechar}
+              despedidaPadrao={despedidaPadrao}
+              chatbotPadrao={chatbotPadrao}
+            />
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
@@ -495,7 +519,14 @@ export function ConversationHeader({
                   conversation_id: conversation.id,
                   expected_revision: conversation.service_revision,
                   ...(escolha.tipo === "mensagem"
-                    ? { encerramento: { tipo: "mensagem" as const, texto: escolha.texto.trim() } }
+                    ? {
+                        encerramento: {
+                          tipo: "mensagem" as const,
+                          texto: escolha.texto.trim(),
+                          // A despedida segue a chave "Assinar" do atendente.
+                          ...(lerAssinarLembrado() ? { assinar: true } : {}),
+                        },
+                      }
                     : escolha.tipo === "chatbot"
                       ? { encerramento: { tipo: "chatbot" as const, chatbot_flow_id: escolha.chatbot_flow_id } }
                       : {}),

@@ -189,6 +189,25 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
     ],
   },
 
+  "/app/settings/conversas": {
+    oQueE:
+      "Define o comportamento padrão das conversas da empresa: se as mensagens dos atendentes saem assinadas com o nome deles e o que o botão “Fechar” faz.",
+    comoUsar: [
+      "Em “Defina o comportamento da assinatura do atendente”, escolha “O atendente escolhe mostrar ou não a assinatura na conversa” (cada um liga a chave de assinatura no campo de mensagem), “Sempre mostrar assinatura do atendente” ou “Nunca mostrar assinatura do atendente”.",
+      "Em “Defina o comportamento da ação de finalizar conversa”, escolha “O atendente escolhe o que fazer”, “Apenas finalizar a conversa”, “Enviar mensagem e finalizar a conversa” ou “Iniciar um chatbot de encerramento”.",
+      "Se quiser, escreva a “Mensagem padrão sugerida” (ela já vem escrita na despedida) e escolha o “Chatbot padrão sugerido”.",
+      "Clique em “Salvar”.",
+      "Cada atendente pode escrever a própria “Assinatura” e a própria “Mensagem de finalização de conversa” em Perfil. A assinatura também se edita pelo lápis ao lado da chave, no campo de mensagem.",
+    ],
+    cuidados: [
+      "Com “Enviar mensagem e finalizar a conversa”, a mensagem padrão é obrigatória; com “Iniciar um chatbot de encerramento”, o chatbot padrão é obrigatório.",
+      "O chatbot de encerramento precisa estar ligado e ter os passos “Iniciar manualmente” e “Finalizar conversa”. A conversa fica aberta até o chatbot chegar ao “Finalizar conversa”.",
+      "Se a despedida não sair (WhatsApp desconectado, contato bloqueado), a conversa continua aberta.",
+      "Grupos sempre podem ser só fechados: o chatbot não atende grupos.",
+      "Só gerente ou administrador abre esta tela.",
+    ],
+  },
+
   "/app/settings/setores": {
     oQueE:
       "Divide a equipe em setores, como Vendas, Suporte e Financeiro. A conversa posta num setor só é entregue a quem é do setor, e aparece marcada com o setor na Inbox.",
