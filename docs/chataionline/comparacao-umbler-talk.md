@@ -75,7 +75,7 @@ referência estão conferidos em `docs/audits/2026-11-03-chatbot-60-cards.md`.
 | Pedir para escolher · Pedir para digitar · Enviar template · Enviar formulário · Acionar outro fluxo | ✅ | Pedir para digitar sem regex próprio (ver acima) |
 | Status esperando | — | Fora por decisão |
 | Pedir para avaliar · Pedir feedback escrito · Campo do contato (ação) · Fluxo de espera · Notificar atendente | ✅ | |
-| **Visibilidade da conversa** | ❓ | A Umbler tem este card **separado** do "Privar ou liberar". O que ele faz não foi confirmado — falta a captura do painel dele |
+| Visibilidade da conversa | ✅ | Feito 13/11: Visível, Oculta, Oculta até a próxima mensagem do contato |
 | Excluir contato · Bloquear contato · Finalizar conversa · Bloco de notas · Webhook | ✅ | Excluir abre pedido LGPD em vez de apagar na hora |
 
 Evidência pela tela dos dois blocos feitos em 13/11/2026 (editor de verdade, API simulada, sem banco):
@@ -83,6 +83,12 @@ Evidência pela tela dos dois blocos feitos em 13/11/2026 (editor de verdade, AP
 - `evidence/chatbot-etiquetas-e-campo/a2-painel-campo-do-contato.png` — card "Campo do contato" em Condição, com o painel aberto (sem o "Olhar para").
 - `evidence/chatbot-etiquetas-e-campo/a3-painel-etiquetas-conversa.png` — "Editar etiquetas" com "Onde mexer" em "Etiquetas da conversa"; o card mostra "Conversa: +urgente".
 - `evidence/chatbot-etiquetas-e-campo/a4-menu-de-passos.png` — menu de passos: "Campo do contato" em Condição e em Ação, como na Umbler.
+
+Evidência pela tela do bloco Visibilidade e do olho da conversa (13/11/2026, componentes de verdade, API simulada):
+
+- `evidence/chatbot-visibilidade/v1-painel-visibilidade.png` — painel do bloco com as três opções.
+- `evidence/chatbot-visibilidade/v2-menu-de-passos.png` — o bloco no menu de passos, em Ação.
+- `evidence/chatbot-visibilidade/v3-olho-menu.png` — o olho da conversa aberto, com as três opções; à direita, o olho de uma conversa já oculta.
 
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
@@ -131,7 +137,7 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 | 9 | **Webchat** no site | grande | Canal novo inteiro |
 | ~~C1~~ | ~~Chatbot: Editar etiquetas da conversa~~ | feito 13/11 | |
 | ~~C2~~ | ~~Chatbot: card Campo do contato em Condição~~ | feito 13/11 | |
-| C3 | Chatbot: **Visibilidade da conversa** | ? | Depende de saber o que o card da Umbler faz |
+| ~~C3~~ | ~~Chatbot: Visibilidade da conversa~~ | feito 13/11 | |
 
 ## 8. Levantamento direto no app da Umbler (13/11/2026)
 
@@ -143,7 +149,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 
 | # | Bloco / opção na Umbler | ChatAI hoje |
 |---|---|---|
-| U1 | **Visibilidade da conversa**: Visível · Oculto · Oculto até a próxima mensagem do contato. Conversa oculta sai da caixa de entrada e fica num filtro "ocultas" | ❌ não existe ocultar conversa (nem o filtro) |
+| U1 | Visibilidade da conversa: Visível · Oculto · Oculto até a próxima mensagem do contato | ✅ feito 13/11 (migration 0510) |
 | U2 | **Pedir para digitar** com várias opções de resposta, cada uma com formato nativo (telefone, CPF, e-mail…) ou **regex**; botão "Testar opções"; a saída é a primeira opção que bate | 🟡 um formato só por pergunta, sem regex |
 | U3 | **Transferir p/ atendente**: também "por variável", "atendente anterior na mesma conversa" e **"Remover"** (tira o atendente) | 🟡 temos fixo, rodízio, menos conversas, quem atendeu antes |
 | U4 | **Transferir para setor**: "setor da conversa anterior", "setor anterior na mesma conversa" e caminho alternativo se falhar | 🟡 só setor fixo |
@@ -162,7 +168,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 
 | # | Recurso | Observação |
 |---|---|---|
-| G1 | **Ocultar conversa** na caixa de entrada + filtro "ocultas" | par do U1 |
+| G1 | Ocultar conversa na caixa de entrada + filtro "Ocultas" | ✅ feito 13/11 (olho no topo da conversa) |
 | G2 | **Mascarar o telefone** dos contatos por papel/atendente (busca e exportação também mascaram) | privacidade da base |
 | G3 | **Reatribuição de chats**: tira o atendente offline quando o contato escreve | |
 | G4 | **Atalhos de chatbot** fixados no rodapé do campo de mensagem | temos o botão do robô no topo |

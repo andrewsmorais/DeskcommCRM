@@ -166,3 +166,23 @@ describe('Condição "Campo do contato"', () => {
     expect(AJUDA_DOS_PASSOS.condicao_campo_contato).toContain("campo do cadastro do contato");
   });
 });
+
+describe('Ação "Visibilidade da conversa"', () => {
+  const grafo = (dados: Record<string, unknown>): Grafo => ({
+    nodes: [no("i", "inicio_canal"), no("v", "visibilidade_conversa", dados)],
+    edges: [liga("i", "v")],
+  });
+
+  it("nasce ocultando, e cada opção vira o efeito com a mesma visibilidade", () => {
+    expect(lerConfig("visibilidade_conversa", {}).visibilidade).toBe("oculta");
+    for (const v of ["visivel", "oculta", "oculta_ate_mensagem"] as const) {
+      const r = iniciarFluxo(grafo({ visibilidade: v }), "i", ctx());
+      expect(r.efeitos).toContainEqual({ tipo: "visibilidade", visibilidade: v });
+    }
+  });
+
+  it("é passo do chatbot avançado (diamante na Umbler) e tem texto de ajuda", () => {
+    expect(PASSOS_AVANCADOS.has("visibilidade_conversa")).toBe(true);
+    expect(AJUDA_DOS_PASSOS.visibilidade_conversa).toContain("Ocultas");
+  });
+});

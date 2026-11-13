@@ -270,6 +270,14 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       const n = lerConfig("enviar_formulario", dados).perguntas.length;
       return n === 1 ? t("1 pergunta") : `${n} ${t("perguntas")}`;
     }
+    case "visibilidade_conversa": {
+      const v = lerConfig("visibilidade_conversa", dados).visibilidade;
+      return v === "visivel"
+        ? t("Visível")
+        : v === "oculta"
+          ? t("Oculta")
+          : t("Oculta até a próxima mensagem");
+    }
     case "privar_liberar":
       return lerConfig("privar_liberar", dados).acao === "privar"
         ? t("Torna a conversa privada")

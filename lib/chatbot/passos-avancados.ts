@@ -34,6 +34,8 @@ export const PASSOS_AVANCADOS: ReadonlySet<string> = new Set([
   "enviar_formulario",
   "fluxo_de_espera",
   "privar_liberar",
+  // Diamante na Umbler, como o "Privar ou liberar".
+  "visibilidade_conversa",
   "setor_da_conversa",
   // Condição do funil, como as outras condições do avançado.
   "etapa_do_funil",

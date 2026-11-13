@@ -56,6 +56,43 @@ export const DICIONARIO: Traducoes = {
     { es: "Acompañan al contacto en todas las conversaciones y disparan las automatizaciones de etiqueta." },
   "Etiqueta do contato ou da conversa":
     { es: "Etiqueta del contacto o de la conversación" },
+  // ─── CONVERSA OCULTA (migration 0510) e bloco Visibilidade da conversa ───
+  "Quando adicionada essa ação no seu chatbot, ela tira a conversa da caixa de entrada sem fechar o atendimento, ou a mostra de novo.\n\nOculta, a conversa some das abas da tela de Conversas e aparece no filtro “Ocultas”. Nada é apagado: o histórico, o responsável e o funil continuam iguais.\n\n“Oculta até a próxima mensagem do contato” volta sozinha para a caixa de entrada quando o contato escrever. “Oculta” fica oculta até alguém mostrar, pelo olho no topo da conversa ou por outro chatbot.\n\nUse, por exemplo, para tirar da frente da equipe a conversa que o chatbot já resolveu, sem finalizá-la.":
+    { es: "Cuando agregues esta acción a tu chatbot, saca la conversación de la bandeja de entrada sin cerrar la atención, o la vuelve a mostrar.\n\nOculta, la conversación desaparece de las pestañas de Conversaciones y aparece en el filtro “Ocultas”. Nada se borra: el historial, el responsable y el embudo siguen iguales.\n\n“Oculta hasta el próximo mensaje del contacto” vuelve sola a la bandeja cuando el contacto escriba. “Oculta” queda oculta hasta que alguien la muestre, con el ojo arriba de la conversación o con otro chatbot.\n\nÚsalo, por ejemplo, para sacar de la vista del equipo la conversación que el chatbot ya resolvió, sin finalizarla." },
+  "Oculte a conversa da caixa de entrada (sem fechar) ou mostre de novo.":
+    { es: "Oculta la conversación de la bandeja de entrada (sin cerrar) o muéstrala de nuevo." },
+  "Visibilidade da conversa":
+    { es: "Visibilidad de la conversación" },
+  "Visível":
+    { es: "Visible" },
+  "Oculta":
+    { es: "Oculta" },
+  "Oculta até a próxima mensagem do contato":
+    { es: "Oculta hasta el próximo mensaje del contacto" },
+  "Oculta até a próxima mensagem":
+    { es: "Oculta hasta el próximo mensaje" },
+  "Como deixar a conversa":
+    { es: "Cómo dejar la conversación" },
+  'Oculta, a conversa sai da caixa de entrada sem ser fechada e aparece no filtro "Ocultas" da tela de Conversas. "Até a próxima mensagem" volta sozinha quando o contato escrever.':
+    { es: 'Oculta, la conversación sale de la bandeja de entrada sin cerrarse y aparece en el filtro "Ocultas" de Conversaciones. "Hasta el próximo mensaje" vuelve sola cuando el contacto escriba.' },
+  "Conversa visível na caixa de entrada":
+    { es: "Conversación visible en la bandeja de entrada" },
+  "Conversa oculta: está no filtro Ocultas":
+    { es: "Conversación oculta: está en el filtro Ocultas" },
+  "Conversa oculta até a próxima mensagem do contato":
+    { es: "Conversación oculta hasta el próximo mensaje del contacto" },
+  "Conversa oculta até a próxima mensagem do contato. Clique para mostrar ou mudar.":
+    { es: "Conversación oculta hasta el próximo mensaje del contacto. Haz clic para mostrarla o cambiarla." },
+  "Conversa oculta: está no filtro Ocultas. Clique para mostrar ou mudar.":
+    { es: "Conversación oculta: está en el filtro Ocultas. Haz clic para mostrarla o cambiarla." },
+  "Ocultar conversa: ela sai da caixa de entrada sem ser fechada.":
+    { es: "Ocultar conversación: sale de la bandeja de entrada sin cerrarse." },
+  "Mostrar na caixa de entrada":
+    { es: "Mostrar en la bandeja de entrada" },
+  "Ocultar até a próxima mensagem do contato":
+    { es: "Ocultar hasta el próximo mensaje del contacto" },
+  "Ocultas":
+    { es: "Ocultas" },
   // ─── EMPRESAS, PESSOAS E IMPORTAÇÃO (metade B2B do #1621, de @renatofortal) ───
   Arquivo: { es: "Archivo" },
   Atualizado: { es: "Actualizado" },

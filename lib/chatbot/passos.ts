@@ -789,6 +789,15 @@ export const configDoPasso = {
   privar_liberar: z.object({
     acao: z.enum(["privar", "liberar"]).default("privar"),
   }),
+  /**
+   * "Visibilidade da conversa" da Umbler (migration 0510): a conversa oculta
+   * sai da caixa de entrada sem ser fechada e fica no filtro "Ocultas";
+   * "até a próxima mensagem do contato" volta sozinha quando ele escreve.
+   * Régua em `lib/inbox/visibilidade.ts`.
+   */
+  visibilidade_conversa: z.object({
+    visibilidade: z.enum(["visivel", "oculta", "oculta_ate_mensagem"]).default("oculta"),
+  }),
 } as const;
 
 export type TipoDePasso = keyof typeof configDoPasso;
@@ -1239,6 +1248,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     descricao: "Abra um aviso na Central de avisos, com link para a conversa.",
     icone: "BellRing",
     cor: "text-orange-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "visibilidade_conversa",
+    grupo: "acao",
+    nome: "Visibilidade da conversa",
+    descricao: "Oculte a conversa da caixa de entrada (sem fechar) ou mostre de novo.",
+    icone: "Eye",
+    cor: "text-red-500",
     temEntrada: true,
   },
   {

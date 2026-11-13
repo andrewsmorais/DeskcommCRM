@@ -7,6 +7,7 @@
  */
 import {
   Activity,
+  Eye,
   AlarmClock,
   BadgePercent,
   Ban,
@@ -63,6 +64,7 @@ import {
 } from "lucide-react";
 
 const ICONES: Record<string, LucideIcon> = {
+  Eye,
   BadgePercent,
   PencilLine,
   CreditCard,

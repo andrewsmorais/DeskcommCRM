@@ -2336,6 +2336,36 @@ async function executarEfeitos(
           );
           break;
         }
+        case "visibilidade": {
+          // A conversa oculta sai da caixa de entrada (lib/inbox/visibilidade.ts);
+          // "até a próxima mensagem" o gatilho do banco desfaz sozinho.
+          const { rows } = await pool.query<{ antes: string }>(
+            `update conversations c set visibilidade = $3, updated_at = now()
+               from (select visibilidade as antes from conversations
+                      where organization_id = $1 and id = $2) a
+              where c.organization_id = $1 and c.id = $2 and c.visibilidade is distinct from $3
+              returning a.antes`,
+            [e.organizationId, e.conversationId, efeito.visibilidade],
+          );
+          if (rows.length === 0) break;
+          void audit({
+            action: "conversation.visibility_changed",
+            actorUserId: null,
+            organizationId: e.organizationId,
+            resourceType: "conversation",
+            resourceId: e.conversationId,
+            requestId,
+            bypassedRls: true,
+            metadata: {
+              conversation_id: e.conversationId,
+              visibilidade: efeito.visibilidade,
+              prev: rows[0]?.antes ?? null,
+              source: "chatbot",
+              flow_id: fluxoId,
+            },
+          });
+          break;
+        }
         case "privacidade": {
           // Quem garante a privacidade é a RLS (fn_can_view_conversation de 3
           // argumentos); aqui só a marca muda, auditada e com nota para a equipe.

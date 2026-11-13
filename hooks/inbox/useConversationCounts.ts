@@ -27,6 +27,8 @@ export interface FiltrosDaContagem {
   tag?: string;
   channel_session_id?: string;
   setor_id?: string;
+  /** `so` = só as ocultas (migration 0510). Ausente = sem as ocultas, como a lista. */
+  ocultas?: "so";
 }
 
 /**
@@ -42,6 +44,7 @@ export function useConversationCounts(
   if (filtros.tag) qs.set("tag", filtros.tag);
   if (filtros.channel_session_id) qs.set("channel_session_id", filtros.channel_session_id);
   if (filtros.setor_id) qs.set("setor_id", filtros.setor_id);
+  if (filtros.ocultas) qs.set("ocultas", filtros.ocultas);
   const sufixo = qs.toString();
 
   return useQuery({

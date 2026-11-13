@@ -303,6 +303,12 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
       const nome = opcoes.modelos.find((m) => m.id === e.template_id)?.nome ?? t("o modelo");
       return `📄 ${t("Aqui sairia o modelo")} "${nome}". ${t("No teste, nada é enviado; no WhatsApp só sai por número oficial da Meta.")}`;
     }
+    case "visibilidade":
+      return e.visibilidade === "visivel"
+        ? `👁 ${t("Conversa visível na caixa de entrada")}`
+        : e.visibilidade === "oculta"
+          ? `🙈 ${t("Conversa oculta: está no filtro Ocultas")}`
+          : `🙈 ${t("Conversa oculta até a próxima mensagem do contato")}`;
     case "privacidade":
       return e.privada
         ? `🔒 ${t("Conversa privada: só o responsável e os gestores a veem")}`

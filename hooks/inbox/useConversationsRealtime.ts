@@ -98,6 +98,8 @@ export interface ConversationsFilters {
   tag?: string;
   /** A aba "Grupos" do inbox (Task 10). Ausente = sem filtro, mostra tudo. */
   is_group?: boolean;
+  /** `so` = só as ocultas (migration 0510). Ausente = a rota esconde as ocultas. */
+  ocultas?: "so";
 }
 
 interface ListResponse {
@@ -137,6 +139,7 @@ export function useConversationsRealtime(
       if (filters.setor_id) qs.set("setor_id", filters.setor_id);
       if (filters.tag) qs.set("tag", filters.tag);
       if (filters.is_group !== undefined) qs.set("is_group", filters.is_group ? "true" : "false");
+      if (filters.ocultas) qs.set("ocultas", filters.ocultas);
       if (pageParam) qs.set("cursor", pageParam);
       qs.set("limit", "50");
       try {

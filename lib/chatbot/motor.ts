@@ -121,6 +121,8 @@ export type Efeito =
   | { tipo: "fluxo_de_espera"; ligar: boolean }
   /** Torna a conversa privada ou a libera (`conversations.is_private`). */
   | { tipo: "privacidade"; privada: boolean }
+  /** "Visibilidade da conversa" (migration 0510). */
+  | { tipo: "visibilidade"; visibilidade: "visivel" | "oculta" | "oculta_ate_mensagem" }
   | { tipo: "finalizar" };
 
 /**
@@ -1059,6 +1061,12 @@ function andar(
         if (fecho) efeitos.push({ tipo: "enviar", texto: fecho });
         break;
       }
+      case "visibilidade_conversa":
+        efeitos.push({
+          tipo: "visibilidade",
+          visibilidade: lerConfig("visibilidade_conversa", no.data).visibilidade,
+        });
+        break;
       case "privar_liberar":
         efeitos.push({
           tipo: "privacidade",

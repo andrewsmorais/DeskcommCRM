@@ -59,6 +59,7 @@ export type EventoDoTeste =
   | { tipo: "modelo_de_exemplo"; template_id: string }
   | { tipo: "fluxo_de_espera"; ligar: boolean }
   | { tipo: "privacidade"; privada: boolean }
+  | { tipo: "visibilidade"; visibilidade: "visivel" | "oculta" | "oculta_ate_mensagem" }
   | { tipo: "horarios_de_exemplo" }
   | { tipo: "marcou_de_exemplo" }
   | { tipo: "cancelou_de_exemplo" }
@@ -409,6 +410,9 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         break;
       case "privacidade":
         bolhas.push({ de: "evento", evento: { tipo: "privacidade", privada: e.privada } });
+        break;
+      case "visibilidade":
+        bolhas.push({ de: "evento", evento: { tipo: "visibilidade", visibilidade: e.visibilidade } });
         break;
     }
   }

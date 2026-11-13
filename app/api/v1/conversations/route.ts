@@ -63,6 +63,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     // único lugar que pode esquecer sem erro nenhum. `rota-le-todo-filtro-do-schema`
     // cobra a chave.
     is_group: url.searchParams.get("is_group") ?? undefined,
+    // Conversas ocultas (migration 0510): ausente = sem as ocultas.
+    ocultas: url.searchParams.get("ocultas") ?? undefined,
     search: url.searchParams.get("search") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
     limit: url.searchParams.get("limit") ?? undefined,

@@ -34,6 +34,7 @@ import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { IniciarChatbotButton } from "@/components/inbox/IniciarChatbotButton";
 import { PrivacidadeButton } from "@/components/inbox/PrivacidadeButton";
+import { VisibilidadeButton } from "@/components/inbox/VisibilidadeButton";
 import { useSetores } from "@/hooks/inbox/useSetores";
 import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
@@ -90,6 +91,7 @@ export function ConversationHeader({
   const t = useT();
   const { user } = useAuth();
   const privacidadeDeQualquer = usePermission("inbox.privacy.any");
+  const podeOcultar = usePermission("inbox.visibility");
   const claim = useClaimConversation();
   const release = useReleaseConversation();
   const close = useCloseConversation();
@@ -273,6 +275,14 @@ export function ConversationHeader({
         )}
         {/* O chatbot não atende grupo; e só aparece com chatbot de início manual ligado. */}
         {!conversation.is_group && !encerrada && <IniciarChatbotButton conversationId={conversation.id} />}
+        {/* Ocultar da caixa de entrada (migration 0510). A rota exige atendente
+            para cima; o leitor não vê o botão. */}
+        {podeOcultar && (
+          <VisibilidadeButton
+            conversationId={conversation.id}
+            visibilidade={conversation.visibilidade ?? "visivel"}
+          />
+        )}
         {!conversation.is_group &&
           (privacidadeDeQualquer || conversation.assigned_to_user_id === user.id) && (
             <PrivacidadeButton

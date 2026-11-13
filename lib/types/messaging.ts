@@ -42,6 +42,8 @@ export interface Conversation {
   is_group: boolean;
   /** Conversa privada (migration 0495): só o responsável e os gestores veem. */
   is_private?: boolean;
+  /** Migration 0510: visivel | oculta | oculta_ate_mensagem. */
+  visibilidade?: "visivel" | "oculta" | "oculta_ate_mensagem";
   /** Setor de atendimento (migration 0496), ou null. */
   setor_id?: string | null;
   group_chat_id: string | null;

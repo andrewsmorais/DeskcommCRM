@@ -1564,6 +1564,37 @@ function Campos({
       return <EnviarTemplate dados={dados} opcoes={opcoes} aplicar={aplicar} />;
     case "enviar_formulario":
       return <EnviarFormulario dados={dados} aplicar={aplicar} />;
+    case "visibilidade_conversa": {
+      const c = lerConfig("visibilidade_conversa", dados);
+      const opcoes = [
+        ["visivel", t("Visível")],
+        ["oculta", t("Oculta")],
+        ["oculta_ate_mensagem", t("Oculta até a próxima mensagem do contato")],
+      ] as const;
+      return (
+        <>
+          <div className="space-y-1.5">
+            <Label>{t("Como deixar a conversa")}</Label>
+            {opcoes.map(([valor, rotulo]) => (
+              <label key={valor} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="visibilidade-conversa"
+                  checked={c.visibilidade === valor}
+                  onChange={() => aplicar({ visibilidade: valor })}
+                />
+                {rotulo}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'Oculta, a conversa sai da caixa de entrada sem ser fechada e aparece no filtro "Ocultas" da tela de Conversas. "Até a próxima mensagem" volta sozinha quando o contato escrever.',
+            )}
+          </p>
+        </>
+      );
+    }
     case "privar_liberar": {
       const c = lerConfig("privar_liberar", dados);
       return (

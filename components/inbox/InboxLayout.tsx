@@ -163,7 +163,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   // Desliga só os AUXILIARES e mantém a aba: a aba é onde a pessoa está, e
   // limpá-la junto a tiraria do lugar sem ela ter pedido.
   const limparFiltrosAuxiliares = useCallback(() => {
-    setFilterValue({ tab, search: "", onlyUnread: false, onlyGroups: false });
+    setFilterValue({ tab, search: "", onlyUnread: false, onlyGroups: false, onlyOcultas: false });
   }, [tab, setFilterValue]);
 
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? idNaUrl);
@@ -237,6 +237,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       tag: filterValue.tag,
       unread: filterValue.onlyUnread || undefined,
       is_group: filterValue.onlyGroups || undefined,
+      ocultas: filterValue.onlyOcultas ? ("so" as const) : undefined,
     }),
     [
       filterValue.tab,
@@ -247,6 +248,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       filterValue.tag,
       filterValue.onlyUnread,
       filterValue.onlyGroups,
+      filterValue.onlyOcultas,
     ],
   );
 

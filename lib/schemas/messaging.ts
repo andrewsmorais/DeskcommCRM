@@ -5,6 +5,7 @@
  * /api/v1/messages. Validações compartilhadas entre rota REST e webhooks
  * (quando o payload entra na pipeline pós-verificação HMAC).
  */
+import { FILTROS_DE_OCULTAS } from "@/lib/inbox/visibilidade";
 import { z } from "zod";
 import { COMANDOS_DO_BANCO, type ComandoDoBanco } from "@/lib/inbox/comando-da-conversa";
 import { PISO_DA_BUSCA, buscaValeConsulta } from "@/lib/inbox/termo-de-busca";
@@ -336,6 +337,12 @@ export const listConversationsQuerySchema = z.object({
    * `.eq("is_group", …)` no handler.
    */
   is_group: z.enum(["true", "false"]).optional(),
+  /**
+   * Conversas ocultas (migration 0510): `excluir` (padrão — a caixa de
+   * entrada), `so` (o filtro "Ocultas") ou `incluir` (tudo). Régua em
+   * `lib/inbox/visibilidade.ts`, a mesma da contagem das abas.
+   */
+  ocultas: z.enum(FILTROS_DE_OCULTAS).default("excluir"),
   /**
    * Só as que têm mensagem não lida para o dono.
    *

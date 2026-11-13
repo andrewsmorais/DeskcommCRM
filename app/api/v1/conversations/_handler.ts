@@ -19,6 +19,7 @@ import type { Conversation } from "@/lib/types/messaging";
 import { normalizarTermoDeBusca } from "@/lib/inbox/termo-de-busca";
 import { ORDEM_DA_ESPERA, ehAFila } from "@/lib/inbox/comando-da-conversa";
 import { aplicarMarcador } from "@/lib/inbox/marcador-da-conversa";
+import { aplicarOcultas } from "@/lib/inbox/visibilidade";
 
 /**
  * Prepara o termo digitado para viajar dentro de um `or=` do PostgREST.
@@ -87,7 +88,7 @@ const SELECT_COLS = `
   id, organization_id, contact_id, channel_session_id, channel, status,
   status_changed_at, service_revision, service_closed_at, service_started_at, current_demanda_id, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at, awaiting_since,
   last_outbound_at, last_message_at, last_message_preview,
-  unread_count_for_assignee, is_group, is_private, setor_id, group_chat_id, tags, metadata,
+  unread_count_for_assignee, is_group, is_private, visibilidade, setor_id, group_chat_id, tags, metadata,
   snooze_until, created_at, updated_at,
   bot_silenced_until, last_handoff_at, last_handoff_reason,
   comando_da_conversa,
@@ -223,6 +224,9 @@ export async function listConversationsHandler(
   // porque a segunda régua sempre diverge: foi assim que a contagem das abas
   // passou a pedir uma coluna que não existe (#1223). Aqui ela é só aplicada.
   if (q.tag) query = aplicarMarcador(query, q.tag);
+  // Conversa oculta (migration 0510) sai da caixa de entrada; o filtro "Ocultas"
+  // pede só elas. A contagem das abas aplica a MESMA régua.
+  query = aplicarOcultas(query, q.ocultas);
 
   // No BANCO, e não em memória: filtrar depois de paginar devolveria páginas curtas —
   // e, quando a página inteira estivesse lida, uma lista vazia que a tela apresentava

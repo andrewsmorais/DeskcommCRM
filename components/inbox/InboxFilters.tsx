@@ -62,6 +62,8 @@ export interface InboxFiltersValue {
   tag?: string;
   /** A aba "Grupos" (Task 10): manda `is_group=true` na listagem. */
   onlyGroups?: boolean;
+  /** Só as conversas ocultas (migration 0510): manda `ocultas=so`. */
+  onlyOcultas?: boolean;
 }
 
 interface Props {
@@ -163,6 +165,7 @@ export function InboxFilters({ value, onChange }: Props) {
     tag: value.tag,
     channel_session_id: value.channel_session_id,
     setor_id: value.setor_id,
+    ocultas: value.onlyOcultas ? "so" : undefined,
   });
   // O seletor de setor só aparece quando a empresa tem setores (ou quando o
   // filtro ligado aponta para um setor que acabou de ser excluído — senão a
@@ -345,6 +348,23 @@ export function InboxFilters({ value, onChange }: Props) {
             )}
           >
             {t("Grupos")}
+          </button>
+          {/* Ocultas (migration 0510): a conversa oculta sai da caixa de
+              entrada e só aparece aqui. Mesmo padrão dos filtros ao lado. */}
+          <button
+            type="button"
+            aria-pressed={value.onlyOcultas ?? false}
+            data-testid="filtro-ocultas"
+            onClick={() => onChange({ ...value, onlyOcultas: !value.onlyOcultas })}
+            className={cn(
+              "h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              value.onlyOcultas
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border bg-transparent text-text-muted hover:bg-surface-elevated",
+            )}
+          >
+            {t("Ocultas")}
           </button>
         </div>
 

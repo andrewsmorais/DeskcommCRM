@@ -6,6 +6,7 @@
  * em modo own* recebe a contagem do SEU escopo, NUNCA o total da org — a mesma
  * garantia do listing. Head count (count:'exact', head:true) não devolve linhas.
  */
+import { aplicarOcultas, filtroDeOcultas } from "@/lib/inbox/visibilidade";
 import { randomUUID } from "node:crypto";
 
 import type { NextRequest } from "next/server";
@@ -102,6 +103,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const auxiliares = filtrosAuxiliaresDaContagem(sp);
   const soNaoLidas = contagemSoNaoLidas(sp);
   const marcador = sp.get("tag");
+  const ocultas = filtroDeOcultas(sp.get("ocultas"));
 
   // ⚠️ TODA contagem nasce daqui, e daqui já sai com `organization_id` E com os
   // filtros auxiliares. Herdar tira a opção de esquecer: não existe o caminho
@@ -115,6 +117,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     // O marcador entra pela régua da LISTA — a mesma função, não uma segunda.
     q = aplicarMarcador(q, marcador);
     if (soNaoLidas) q = q.gt("unread_count_for_assignee", 0);
+    // As ocultas (migration 0510), pela MESMA régua da lista.
+    q = aplicarOcultas(q, ocultas);
     return q;
   };
 
