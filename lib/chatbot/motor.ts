@@ -657,7 +657,10 @@ function andar(
       }
       case "enviar_mensagem": {
         const c = lerConfig("enviar_mensagem", no.data);
-        const texto = preencher(c.texto, sessao.dados).trim();
+        let texto = preencher(c.texto, sessao.dados).trim();
+        // Botão de link: vira texto embaixo da mensagem (QR code não tem botão).
+        const url = preencher(c.botao_url, sessao.dados).trim();
+        if (url) texto = `${texto}\n\n${c.botao_texto ? `${c.botao_texto}: ` : ""}${url}`.trim();
         if (texto) efeitos.push({ tipo: "enviar", texto });
         break;
       }

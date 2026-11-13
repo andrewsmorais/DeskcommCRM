@@ -35,7 +35,7 @@ export function lembrarDespedida(texto: string): void {
 }
 
 const SELECT =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 
 /** As três saídas do Fechar, na ordem da tela. */
 const TIPOS = ["nenhum", "mensagem", "chatbot"] as const;
@@ -111,7 +111,7 @@ export function EncerramentoDoFechar(props: {
             id="despedida"
             rows={3}
             maxLength={4096}
-            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden"
             placeholder={t("Ex.: Obrigado pelo contato! Qualquer coisa, é só chamar.")}
             value={valor.texto}
             onChange={(e) => onChange({ tipo: "mensagem", texto: e.target.value })}

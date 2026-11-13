@@ -3,6 +3,7 @@
  * andar — PURO, sem banco. O executor grava o instante na sessão e agenda a
  * retomada no `event_log` (`chatbot.retomada_requested`), que o worker drena.
  */
+import { ehFeriado } from "./feriados";
 import type { ConfigDe } from "./passos";
 
 /** Teto de qualquer espera: um fluxo esquecido não acorda meses depois. */
@@ -134,9 +135,19 @@ export function instanteDaData(
 /** A próxima vez (estritamente depois de `agora`) que for `hora` num dos `dias`, no fuso da empresa. */
 export function proximoHorario(c: ConfigDe<"aguardar_ate">, agora: Date, fuso: string): Date {
   const [h = 9, m = 0] = c.hora.split(":").map(Number);
-  for (let k = 0; k <= 7; k++) {
+  // 14 dias: com feriados pulados, a semana inteira pode não bastar (Natal
+  // numa sexta + fim de semana + Ano-Novo).
+  for (let k = 0; k <= 14; k++) {
     const dia = partesLocais(new Date(agora.getTime() + k * 86_400_000), fuso);
     if (!c.dias.includes(dia.diaDaSemana)) continue;
+    if (
+      c.pular_feriados &&
+      ehFeriado(
+        `${dia.ano}-${String(dia.mes).padStart(2, "0")}-${String(dia.dia).padStart(2, "0")}`,
+        { feriados_nacionais: true, pontos_facultativos: false, datas: [] },
+      )
+    )
+      continue;
     const candidato = instanteLocal(dia.ano, dia.mes, dia.dia, h, m, fuso);
     if (candidato.getTime() > agora.getTime() + ESPERA_MINIMA_MS) return candidato;
   }

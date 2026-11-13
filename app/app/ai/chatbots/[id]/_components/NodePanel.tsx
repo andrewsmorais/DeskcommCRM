@@ -104,6 +104,98 @@ const SELECT =
   "h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-hidden focus:border-primary";
 
 /** Campo de texto que só aplica ao sair (ou Enter, se for uma linha). */
+/** "Iniciar manualmente": não listado e perguntas ao atendente (paridade Umbler). */
+function InicioManual({ dados, aplicar }: { dados: NodeData; aplicar: (p: Record<string, unknown>) => void }) {
+  const t = useT();
+  const c = lerConfig("inicio_manual", dados);
+  const mudar = (i: number, parte: Partial<(typeof c.perguntas)[number]>) =>
+    aplicar({ perguntas: c.perguntas.map((p, j) => (j === i ? { ...p, ...parte } : p)) });
+  return (
+    <>
+      <div className="space-y-2 text-xs text-muted-foreground">
+        <p>
+          {t(
+            "Este fluxo começa quando um atendente aciona na conversa: na Inbox, o botão do robô no topo da conversa lista os chatbots ligados com este início.",
+          )}
+        </p>
+        <p>
+          {t(
+            "Bom para pesquisa de satisfação no fim do atendimento, menu de pagamento ou coleta de dados. O chatbot responde até o fluxo terminar, mesmo com a conversa no nome do atendente.",
+          )}
+        </p>
+      </div>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={c.nao_listado}
+          onChange={(e) => aplicar({ nao_listado: e.target.checked })}
+          data-testid="nao-listado"
+        />
+        <span>
+          {t("Não listado")}
+          <span className="block text-xs text-muted-foreground">
+            {t("Não aparece no botão do robô da conversa. Continua valendo no Fechar, no Agendar e nas automações.")}
+          </span>
+        </span>
+      </label>
+      <div className="space-y-2">
+        <Label>{t("Perguntar ao atendente ao iniciar")}</Label>
+        {c.perguntas.map((p, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input
+              aria-label={t("Pergunta ao atendente")}
+              value={p.rotulo}
+              maxLength={80}
+              onChange={(e) => mudar(i, { rotulo: e.target.value })}
+            />
+            <Input
+              aria-label={t("Guardar em")}
+              className="w-36 font-mono"
+              value={p.variavel}
+              maxLength={40}
+              onChange={(e) =>
+                mudar(i, {
+                  variavel: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^[0-9]/, "_$&"),
+                })
+              }
+            />
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label={t("Remover pergunta")}
+              onClick={() => aplicar({ perguntas: c.perguntas.filter((_, j) => j !== i) })}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ))}
+        {c.perguntas.length < 5 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              aplicar({
+                perguntas: [
+                  ...c.perguntas,
+                  { rotulo: t("Número do pedido"), variavel: `pergunta_${c.perguntas.length + 1}` },
+                ],
+              })
+            }
+          >
+            <Plus className="size-4" /> {t("Adicionar pergunta")}
+          </Button>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          {t("Na hora de iniciar, o atendente responde; cada resposta vira uma variável do fluxo, como {{numero_do_pedido}}.")}
+        </p>
+      </div>
+    </>
+  );
+}
+
 function Texto(props: {
   id: string;
   rotulo: string;
@@ -244,20 +336,7 @@ function Campos({
         </div>
       );
     case "inicio_manual":
-      return (
-        <div className="space-y-2 text-xs text-muted-foreground">
-          <p>
-            {t(
-              "Este fluxo começa quando um atendente aciona na conversa: na Inbox, o botão do robô no topo da conversa lista os chatbots ligados com este início.",
-            )}
-          </p>
-          <p>
-            {t(
-              "Bom para pesquisa de satisfação no fim do atendimento, menu de pagamento ou coleta de dados. O chatbot responde até o fluxo terminar, mesmo com a conversa no nome do atendente.",
-            )}
-          </p>
-        </div>
-      );
+      return <InicioManual dados={dados} aplicar={aplicar} />;
     case "distribuir_fluxo":
       return <DistribuirFluxo dados={dados} aplicar={aplicar} />;
     case "contato_ativo": {
@@ -548,6 +627,26 @@ function Campos({
             ajuda={ajudaVariavel}
           />
           <AvisosDeLink texto={c.texto} />
+          <div className="space-y-1.5 rounded-md border border-border p-3">
+            <Label>{t("Botão de link (opcional)")}</Label>
+            <Texto
+              id="msg-botao-texto"
+              rotulo={t("Texto do botão")}
+              valor={c.botao_texto}
+              placeholder={t("Ver o pedido")}
+              onCommit={(v) => aplicar({ botao_texto: v.slice(0, 40) })}
+            />
+            <Texto
+              id="msg-botao-url"
+              rotulo={t("Endereço")}
+              valor={c.botao_url}
+              placeholder="https://"
+              onCommit={(v) => aplicar({ botao_url: v })}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("No WhatsApp por QR code não existe botão: vai como texto embaixo da mensagem, assim: Texto do botão: endereço.")}
+            </p>
+          </div>
         </>
       );
     }
@@ -1390,6 +1489,34 @@ function Campos({
             <p className="text-xs text-muted-foreground">
               {t("O fluxo segue no próximo horário marcado, no fuso horário da empresa.")}
             </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => aplicar({ dias: [1, 2, 3, 4, 5], pular_feriados: true })}
+              >
+                {t("Só dia útil")}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => aplicar({ dias: [0, 1, 2, 3, 4, 5, 6] })}>
+                {t("Próximo dia, qualquer um")}
+              </Button>
+            </div>
+            <label className="flex items-start gap-2 pt-1 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={c.pular_feriados}
+                onChange={(e) => aplicar({ pular_feriados: e.target.checked })}
+                data-testid="pular-feriados"
+              />
+              <span>
+                {t("Pular feriados nacionais")}
+                <span className="block text-xs text-muted-foreground">
+                  {t("Em feriado o fluxo espera o próximo dia marcado.")}
+                </span>
+              </span>
+            </label>
           </div>
           )}
           <SeResponder valor={c.se_responder} aplicar={aplicar} />

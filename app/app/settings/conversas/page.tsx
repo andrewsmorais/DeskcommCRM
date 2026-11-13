@@ -31,7 +31,7 @@ export default async function ConversasSettingsPage() {
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Conversas", idioma)}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Configurações de conversas", idioma)}</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
           {traduzir(
             "Defina o comportamento padrão das conversas: a assinatura dos atendentes e o que acontece ao fechar uma conversa.",

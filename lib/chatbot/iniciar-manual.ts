@@ -16,7 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
 import { inicioManual } from "@/lib/chatbot/motor";
-import { grafoSchema, type Grafo } from "@/lib/chatbot/passos";
+import { grafoSchema, lerConfig, type Grafo } from "@/lib/chatbot/passos";
 
 export type ResultadoDoPedido =
   | { ok: true; conversationId: string; contactId: string; flowId: string }
@@ -43,6 +43,11 @@ export async function pedirChatbotManual(
     requestId: string;
     /** Chatbot de encerramento: precisa terminar no passo "Finalizar conversa". */
     exigirFinalizar?: boolean;
+    /**
+     * Respostas do atendente às perguntas do "Iniciar manualmente". Só entram as
+     * variáveis que o fluxo declara: o corpo do pedido não injeta outra.
+     */
+    variaveis?: Record<string, string>;
   },
 ): Promise<ResultadoDoPedido> {
   const { data: conv, error: convErr } = await supabase
@@ -106,6 +111,14 @@ export async function pedirChatbotManual(
         'O chatbot de encerramento precisa ter o passo "Finalizar conversa", que é quem encerra o atendimento.',
     };
 
+  const noManual = g.data.nodes.find((n) => n.id === inicioManual(g.data));
+  const perguntas = lerConfig("inicio_manual", noManual?.data ?? {}).perguntas;
+  const variaveis: Record<string, string> = {};
+  for (const p of perguntas) {
+    const v = args.variaveis?.[p.variavel];
+    if (typeof v === "string" && v.trim()) variaveis[p.variavel] = v.trim().slice(0, 500);
+  }
+
   let boundary;
   try {
     boundary = await beginServiceAtOrigin(admin, args.orgId, c.contact_id, c.channel_session_id);
@@ -128,7 +141,7 @@ export async function pedirChatbotManual(
       conversation_id: boundary.conversation_id,
       channel_session_id: c.channel_session_id,
       boundary,
-      variaveis: {},
+      variaveis,
       regra_id: null,
       manual: true,
       iniciado_por: args.userId,

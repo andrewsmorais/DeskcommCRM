@@ -11,7 +11,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createClient } from "@/lib/supabase/server";
-import { grafoSchema } from "@/lib/chatbot/passos";
+import { grafoSchema, lerConfig } from "@/lib/chatbot/passos";
 import { inicioManual, inicioPorAutomacao } from "@/lib/chatbot/motor";
 
 export const dynamic = "force-dynamic";
@@ -40,10 +40,18 @@ export async function GET(_req: NextRequest) {
   // o que a escolha da automação precisa saber: o fluxo começa por automação?
   const lista = (data ?? []).map(({ grafo, ...fluxo }) => {
     const g = grafoSchema.safeParse(grafo);
+    const manual = g.success ? inicioManual(g.data) : null;
+    const cfgManual =
+      g.success && manual
+        ? lerConfig("inicio_manual", g.data.nodes.find((n) => n.id === manual)?.data ?? {})
+        : null;
     return {
       ...fluxo,
       inicia_por_automacao: g.success && inicioPorAutomacao(g.data) !== null,
-      inicia_manualmente: g.success && inicioManual(g.data) !== null,
+      inicia_manualmente: manual !== null,
+      // "Iniciar manualmente": some do botão do robô? e o que perguntar ao atendente.
+      nao_listado: cfgManual?.nao_listado ?? false,
+      perguntas_ao_iniciar: cfgManual?.perguntas ?? [],
     };
   });
   return ok(lista, { requestId });

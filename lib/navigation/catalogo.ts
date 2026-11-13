@@ -902,7 +902,7 @@ export const NAV_CATALOG = [
     // atendentes e o que o botão Fechar faz. Mesma vizinhança e papel da
     // Distribuição de atendimento.
     href: "/app/settings/conversas",
-    label: "Conversas",
+    label: "Configurações de conversas",
     description: "Assinatura dos atendentes e o que acontece ao fechar uma conversa.",
     icon: "Inbox",
     group: "organizacao",

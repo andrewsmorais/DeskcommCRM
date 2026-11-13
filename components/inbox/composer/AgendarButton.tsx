@@ -31,7 +31,7 @@ import { problemaDoHorario, type MensagemAgendada, type TipoDeAgendada } from "@
 import { CalendarPlus, PencilSimple, Trash } from "@/lib/ui/icons";
 
 const SELECT =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 
 /** `datetime-local` fala a hora do navegador, sem fuso: daqui para ISO e de volta. */
 function paraCampo(d: Date): string {
@@ -203,7 +203,7 @@ export function AgendarButton({ conversationId, disabled, textoAtual }: Props) {
                     id="agendar-texto"
                     rows={4}
                     maxLength={4096}
-                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                     value={texto}
                     onChange={(e) => setTexto(e.target.value)}
                   />

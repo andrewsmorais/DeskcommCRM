@@ -120,7 +120,7 @@ export function ProfileForm({
             id="mensagem_de_finalizacao"
             rows={3}
             maxLength={4096}
-            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden"
             value={despedida}
             onChange={(e) => setDespedida(e.target.value)}
             placeholder={t("Sua mensagem de encerramento")}

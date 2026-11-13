@@ -18283,6 +18283,7 @@ export const DICIONARIO: Traducoes = {
   "Assinar mensagens": { es: "Firmar mensajes" },
   "Editar assinatura": { es: "Editar firma" },
   "Assinar": { es: "Firmar" },
+  "Configurações de conversas": { es: "Configuraciones de conversaciones" },
   "Vazio usa o nome do perfil.": { es: "Vacío usa el nombre del perfil." },
   "Assinatura dos atendentes e o que acontece ao fechar uma conversa.": { es: "Firma de los agentes y lo que pasa al cerrar una conversación." },
   "Chatbot não encontrado.": { es: "Chatbot no encontrado." },
@@ -18314,6 +18315,21 @@ export const DICIONARIO: Traducoes = {
   'A regra repete um grupo que já tem repetição ou "|" dentro, e isso pode travar o atendimento. Simplifique o grupo.': { es: 'La regla repite un grupo que ya tiene repetición o "|" dentro, y eso puede trabar la atención. Simplifica el grupo.' },
   "A regra pode ter no máximo 3 repetições sem limite (* ou +).": { es: "La regla puede tener como máximo 3 repeticiones sin límite (* o +)." },
   "Não entendi a sua resposta. Pode tentar de novo?": { es: "No entendí tu respuesta. ¿Puedes intentar de nuevo?" },
+  // Chatbot: opções extras dos blocos (Umbler)
+  "Não listado": { es: "No listado" },
+  "Não aparece no botão do robô da conversa. Continua valendo no Fechar, no Agendar e nas automações.": { es: "No aparece en el botón del robot de la conversación. Sigue valiendo en Cerrar, en Programar y en las automatizaciones." },
+  "Perguntar ao atendente ao iniciar": { es: "Preguntar al agente al iniciar" },
+  "Pergunta ao atendente": { es: "Pregunta al agente" },
+  "Número do pedido": { es: "Número del pedido" },
+  "Na hora de iniciar, o atendente responde; cada resposta vira uma variável do fluxo, como {{numero_do_pedido}}.": { es: "Al iniciar, el agente responde; cada respuesta se vuelve una variable del flujo, como {{numero_do_pedido}}." },
+  "Botão de link (opcional)": { es: "Botón de enlace (opcional)" },
+  "Ver o pedido": { es: "Ver el pedido" },
+  "No WhatsApp por QR code não existe botão: vai como texto embaixo da mensagem, assim: Texto do botão: endereço.": { es: "En WhatsApp por código QR no existe botón: va como texto debajo del mensaje, así: Texto del botón: dirección." },
+  "Só dia útil": { es: "Solo día hábil" },
+  "Próximo dia, qualquer um": { es: "Próximo día, cualquiera" },
+  "Pular feriados nacionais": { es: "Saltar feriados nacionales" },
+  "Em feriado o fluxo espera o próximo dia marcado.": { es: "En feriado el flujo espera el próximo día marcado." },
+  "Responda antes de iniciar o chatbot.": { es: "Responde antes de iniciar el chatbot." },
 };
 /**
  * Traduz, ou devolve o próprio texto.

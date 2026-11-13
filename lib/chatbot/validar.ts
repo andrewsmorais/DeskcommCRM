@@ -95,8 +95,14 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
       );
     switch (no.type) {
       case "enviar_mensagem": {
-        const texto = lerConfig("enviar_mensagem", no.data).texto;
+        const c = lerConfig("enviar_mensagem", no.data);
+        const texto = c.texto;
         if (!texto) problemas.push(`escreva o texto do passo "${nome}".`);
+        // Botão de link: endereço que abre página (ou vem de uma variável).
+        if (c.botao_texto && !c.botao_url)
+          problemas.push(`no passo "${nome}", escreva o endereço do botão de link.`);
+        if (c.botao_url && !/^\{\{[a-z_][a-z0-9_]*\}\}$/.test(c.botao_url) && !/^https?:\/\/\S+$/i.test(c.botao_url))
+          problemas.push(`no passo "${nome}", o endereço do botão precisa começar com https://.`);
         for (const l of linksQueBloqueiam(texto))
           problemas.push(
             `no passo "${nome}", o link ${l.link} não abre uma página; troque ou apague.`,

@@ -216,7 +216,30 @@ export const configDoPasso = {
    * de automação, não responde a mensagem nenhuma por conta própria — pode
    * ficar ligado junto com o fluxo de atendimento.
    */
-  inicio_manual: z.object({}),
+  inicio_manual: z.object({
+    /**
+     * "Não listado" da Umbler: o chatbot some do botão do robô na conversa, mas
+     * continua valendo no Fechar (chatbot de encerramento), no Agendar e nas
+     * automações.
+     */
+    nao_listado: z.boolean().default(false),
+    /**
+     * Perguntas feitas ao ATENDENTE ao iniciar (ex.: "Número do pedido"): cada
+     * resposta vira uma variável do fluxo, usável como {{nome}}.
+     */
+    perguntas: z
+      .array(
+        z.object({
+          variavel: z
+            .string()
+            .trim()
+            .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _."),
+          rotulo: z.string().trim().min(1).max(80),
+        }),
+      )
+      .max(5)
+      .default([]),
+  }),
   inicio_canal: z.object({
     /** null = qualquer número de WhatsApp da empresa. */
     channel_session_id: z.string().uuid().nullable().default(null),
@@ -241,6 +264,14 @@ export const configDoPasso = {
   }),
   enviar_mensagem: z.object({
     texto: z.string().trim().max(4000).default(""),
+    /**
+     * "Botão de link" da Umbler: um rótulo e um endereço. No número por QR code
+     * o WhatsApp não mostra botão, então vai como texto embaixo da mensagem
+     * ("Rótulo: endereço") — o mesmo que a Umbler faz. Os dois vazios = sem botão.
+     */
+    botao_texto: z.string().trim().max(40).default(""),
+    /** Aceita {{variavel}}. */
+    botao_url: z.string().trim().max(2000).default(""),
   }),
   pedir_escolher: z.object({
     pergunta: z.string().trim().max(2000).default(""),
@@ -430,6 +461,11 @@ export const configDoPasso = {
     hora: HORA.default("09:00"),
     /** 0 = domingo … 6 = sábado. */
     dias: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([0, 1, 2, 3, 4, 5, 6]),
+    /**
+     * "Dia útil" da Umbler: no modo "dias", pula feriado nacional (além dos dias
+     * da semana desmarcados). Marque só seg–sex para o dia útil completo.
+     */
+    pular_feriados: z.boolean().default(false),
     fonte_da_data: z.enum(["fixa", "resposta"]).default("fixa"),
     data: z
       .string()

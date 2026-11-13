@@ -37,7 +37,7 @@ const ROTULO_DO_FINALIZAR = (t: (s: string) => string): Record<ComportamentoDoFi
 });
 
 const CAMPO =
-  "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none";
+  "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden";
 
 export function ConversasForm({ initial }: { initial: PreferenciasDeConversa }) {
   const t = useT();

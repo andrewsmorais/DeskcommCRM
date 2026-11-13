@@ -30,7 +30,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const corpoSchema = z.object({ flow_id: z.string().uuid() });
+const corpoSchema = z.object({
+  flow_id: z.string().uuid(),
+  /** Respostas às perguntas do "Iniciar manualmente" (só as declaradas no fluxo entram). */
+  variaveis: z.record(z.string().max(40), z.string().max(500)).optional(),
+});
 
 interface RouteCtx {
   params: Promise<{ id: string }>;
@@ -59,6 +63,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     flowId: corpo.data.flow_id,
     userId: user.id,
     requestId,
+    variaveis: corpo.data.variaveis,
   });
   if (!r.ok) return fail(r.code, t(r.mensagem), r.status, { requestId });
   const c = { id: r.conversationId };

@@ -10,7 +10,16 @@ import { toast } from "sonner";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 
-type FluxoDaLista = { id: string; name: string; is_active: boolean; inicia_manualmente?: boolean };
+type FluxoDaLista = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  inicia_manualmente?: boolean;
+  /** Some do botão do robô (continua no Fechar, no Agendar e nas automações). */
+  nao_listado?: boolean;
+  /** Perguntas ao atendente ao iniciar; cada resposta vira variável do fluxo. */
+  perguntas_ao_iniciar?: { variavel: string; rotulo: string }[];
+};
 
 export function useChatbotsManuais() {
   return useQuery({
@@ -25,10 +34,10 @@ export function useChatbotsManuais() {
 
 export function useIniciarChatbot(mensagemDeSucesso: string) {
   return useMutation({
-    mutationFn: async (args: { conversation_id: string; flow_id: string }) =>
+    mutationFn: async (args: { conversation_id: string; flow_id: string; variaveis?: Record<string, string> }) =>
       apiClient.post<{ data: { iniciado: boolean } }>(
         `/api/v1/conversations/${args.conversation_id}/chatbot`,
-        { flow_id: args.flow_id },
+        args.variaveis ? { flow_id: args.flow_id, variaveis: args.variaveis } : { flow_id: args.flow_id },
       ),
     onError: showApiError,
     onSuccess: () => toast.success(mensagemDeSucesso),

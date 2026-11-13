@@ -24,7 +24,7 @@ import { primeiraOpcaoQueBate } from "@/lib/chatbot/regras";
 import { problemaDaRegex, REGEX_MAX } from "@/lib/chatbot/regex-segura";
 
 const SELECT =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 
 const MAX_OPCOES = 10;
 
