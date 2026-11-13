@@ -6,7 +6,7 @@ titulo: O tronco SIP da instalação só serve a outras empresas quando o servid
 
 O tronco SIP configurado no servidor (`VOIP_TRUNK_ENDPOINT`) era usado por qualquer empresa da instalação que não tivesse tronco próprio — numa instalação com várias empresas, uma delas ligava pela conta SIP de quem paga o servidor, sem ninguém ter autorizado; e podia cadastrar um número do servidor e passar a receber as ligações dele.
 
-Agora o tronco da instalação vale sozinho só quando a instalação tem uma empresa (o caso comum). Com mais de uma, cada empresa usa o tronco que configurou em Configurações › Telefonia, e o da instalação — para ligar ou para cadastrar número — só entra para as demais se o servidor disser que é compartilhado. Quem tem tronco próprio cadastra os números nele: esses números só recebem ligação que chega pelo tronco da própria empresa, e o número de saída do servidor (`VOIP_DEFAULT_CALLER_ID`) deixa de ser enviado nas ligações feitas pelo tronco próprio.
+Agora o tronco da instalação vale sozinho só quando a instalação tem uma empresa (o caso comum). Com mais de uma, cada empresa usa o tronco que configurou em Configurações › Telefonia, e o da instalação — para ligar ou para cadastrar número — só entra para as demais se o servidor disser que é compartilhado. O mesmo número pode ser cadastrado uma vez por tronco (antes era uma vez na instalação inteira, e quem cadastrava primeiro tirava o número das outras empresas). Quem tem tronco próprio cadastra os números nele: esses números só recebem ligação que chega pelo tronco da própria empresa, e o número de saída do servidor (`VOIP_DEFAULT_CALLER_ID`) deixa de ser enviado nas ligações feitas pelo tronco próprio.
 
 ## Requer atenção
 

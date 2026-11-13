@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { recusaPeloTroncoDeChegada } from "./tronco-de-chegada";
+import { escolherCadastroPeloTronco, recusaPeloTroncoDeChegada, troncoDoCanal } from "./tronco-de-chegada";
 
 const A = "aaaaaaaa-0000-4000-8000-000000000001";
 const B = "bbbbbbbb-0000-4000-8000-000000000002";
@@ -43,3 +43,36 @@ describe("recusaPeloTroncoDeChegada", () => {
     expect(recusaPeloTroncoDeChegada(undefined, { organization_id: B, trunk_endpoint: null })).toBeNull();
   });
 });
+
+describe("escolherCadastroPeloTronco — o mesmo número em troncos diferentes", () => {
+  const daInstalacao = { organization_id: A, trunk_endpoint: "PJSIP/trunk-endpoint" };
+  const doTroncoDeB = { organization_id: B, trunk_endpoint: `PJSIP/org-${B}-trunk-endpoint` };
+
+  it("pelo tronco da instalação, atende o cadastro da instalação (não o do tronco próprio de B)", () => {
+    expect(escolherCadastroPeloTronco([doTroncoDeB, daInstalacao], "PJSIP/trunk-endpoint-0000001")).toBe(daInstalacao);
+  });
+
+  it("pelo tronco de B, atende o cadastro de B", () => {
+    expect(escolherCadastroPeloTronco([daInstalacao, doTroncoDeB], `PJSIP/org-${B}-trunk-endpoint-00000009`)).toBe(
+      doTroncoDeB,
+    );
+  });
+
+  it("pelo tronco de A sem cadastro de A: ninguém atende", () => {
+    expect(escolherCadastroPeloTronco([daInstalacao, doTroncoDeB], `PJSIP/org-${A}-trunk-endpoint-00000009`)).toBeNull();
+  });
+
+  it("caminho 's': o número ativo de outra empresa não torna ambígua a resolução do tronco da instalação", () => {
+    expect(escolherCadastroPeloTronco([daInstalacao, doTroncoDeB], "PJSIP/trunk-endpoint-0000001")).toBe(daInstalacao);
+    const outroDaInstalacao = { organization_id: B, trunk_endpoint: "PJSIP/trunk-endpoint" };
+    expect(
+      escolherCadastroPeloTronco([daInstalacao, outroDaInstalacao, doTroncoDeB], "PJSIP/trunk-endpoint-0000001"),
+    ).toBeNull();
+  });
+
+  it("troncoDoCanal: tronco de organização vira o formato do cadastro; o da instalação é nulo", () => {
+    expect(troncoDoCanal(`PJSIP/org-${B}-trunk-endpoint-00000009`)).toBe(`PJSIP/org-${B}-trunk-endpoint`);
+    expect(troncoDoCanal("PJSIP/trunk-endpoint-0000001")).toBeNull();
+  });
+});
+

@@ -33,3 +33,38 @@ export function recusaPeloTroncoDeChegada(
     ? "numero_de_tronco_proprio"
     : null;
 }
+
+/**
+ * O tronco (no formato gravado em `phone_numbers.trunk_endpoint`) por onde a
+ * ligação chegou: `PJSIP/org-<uuid>-trunk-endpoint` para o tronco de uma
+ * organização, `null` para o tronco da instalação.
+ */
+export function troncoDoCanal(nomeDoCanal: string | null | undefined): string | null {
+  const daOrg = CANAL_DE_TRONCO_DA_ORG.exec(nomeDoCanal ?? "");
+  return daOrg?.[1] ? `PJSIP/org-${daOrg[1].toLowerCase()}-trunk-endpoint` : null;
+}
+
+/**
+ * Entre os cadastros ATIVOS de um número (o mesmo número pode existir em
+ * troncos diferentes — um por tronco), qual atende a ligação que chegou por
+ * este canal. Pelo tronco de uma organização, o cadastro desse tronco; pelo da
+ * instalação, o cadastro que não é de tronco próprio. Mais de um candidato é
+ * ambíguo: devolve `null` em vez de adivinhar.
+ *
+ * Serve também ao caminho `s` (tronco de DID único, sem número discado): ali
+ * as linhas são TODOS os números ativos, e o recorte pelo tronco de chegada é
+ * o que impede o número de outra empresa de tornar a resolução ambígua.
+ */
+export function escolherCadastroPeloTronco<T extends { trunk_endpoint: string | null }>(
+  linhas: ReadonlyArray<T>,
+  nomeDoCanal: string | null | undefined,
+): T | null {
+  const tronco = troncoDoCanal(nomeDoCanal);
+  const candidatos = linhas.filter((l) =>
+    tronco
+      ? (l.trunk_endpoint ?? "").toLowerCase() === tronco.toLowerCase()
+      : !(l.trunk_endpoint && TRONCO_PROPRIO.test(l.trunk_endpoint)),
+  );
+  return candidatos.length === 1 ? candidatos[0]! : null;
+}
+

@@ -390,7 +390,16 @@ create policy messages_update_de_atendente on public.messages
 drop policy if exists messages_delete_de_atendente on public.messages;
 create policy messages_delete_de_atendente on public.messages
   as restrictive for delete to authenticated
-  using (public.fn_role_at_least(organization_id, 'agent'));
+  using (
+    public.fn_role_at_least(organization_id, 'agent')
+    -- Apagar pelo login só o que a própria empresa mandou (a equipe, ou o
+    -- celular da empresa — o eco duplicado que o envio limpa). O que o cliente
+    -- disse e o que a IA/automação mandou é o histórico que o agente lê: some
+    -- só pela service role (exclusão de contato, depois das conferências) ou
+    -- pela anonimização (LGPD).
+    and direction = 'outbound'
+    and sent_via in ('user', 'crm', 'external_device')
+  );
 
 -- Colunas de CONTROLE do contato: bloqueio por opt-out (só o admin reabre, pela
 -- rota auditada), anonimização (só pela RPC de LGPD), fusão (só pela RPC de
@@ -425,6 +434,55 @@ begin
   return new;
 end $$;
 revoke execute on function public.fn_contato_colunas_de_controle() from public, anon, authenticated;
+
+-- ---- auditoria do consentimento, da origem e do "só humano" (migration 0509) ----
+-- Consentimento (base legal do envio), origem e a trava "só humano" do
+-- contato seguem editáveis pelo atendente — a tela de contato e a retomada da
+-- conversa fazem isso. Mas pelo login a mudança também chegava direto pela
+-- API do banco, sem linha de auditoria nenhuma. O banco passa a registrar toda
+-- mudança dessas colunas feita por uma sessão, venha da tela ou não:
+-- `lgpd.consent_changed` (de → para) para o consentimento e `contact.updated`
+-- para origem e "só humano". Mudança feita pelo servidor (service role,
+-- funções do produto) já é auditada por quem a faz.
+create or replace function public.fn_contato_auditoria_de_controle()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_ator uuid := auth.uid();
+  v_campos text[] := array[]::text[];
+begin
+  -- Função security definer (grava na auditoria, que a sessão não alcança):
+  -- aqui dentro `current_user` é o dono, então quem fez a mudança se lê pelo
+  -- papel da sessão (o SET ROLE que o PostgREST faz).
+  if coalesce(current_setting('role', true), 'none') not in ('authenticated', 'anon') then
+    return null;
+  end if;
+  if old.consent is distinct from new.consent then
+    insert into public.api_audit_log (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+    values (new.organization_id, v_ator, 'lgpd.consent_changed', 'contact', new.id,
+            jsonb_build_object('de', old.consent, 'para', new.consent, 'registrado_por', 'banco'));
+  end if;
+  if old.source is distinct from new.source then
+    v_campos := array_append(v_campos, 'source');
+  end if;
+  if old.force_human is distinct from new.force_human then
+    v_campos := array_append(v_campos, 'force_human');
+  end if;
+  if cardinality(v_campos) > 0 then
+    insert into public.api_audit_log (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+    values (new.organization_id, v_ator, 'contact.updated', 'contact', new.id,
+            jsonb_build_object(
+              'campos', to_jsonb(v_campos),
+              'de', jsonb_build_object('source', old.source, 'force_human', old.force_human),
+              'para', jsonb_build_object('source', new.source, 'force_human', new.force_human),
+              'registrado_por', 'banco'));
+  end if;
+  return null;
+end $$;
+revoke execute on function public.fn_contato_auditoria_de_controle() from public, anon, authenticated;
 
 -- ---- colunas de envio da mensagem (migration 0509) ----
 -- O resgate da fila (session-reconciler) reenvia direto ao WhatsApp, sem a
@@ -530,6 +588,34 @@ begin
 end $$;
 revoke execute on function public.fn_numero_colunas_do_tronco() from public, anon, authenticated;
 
+-- ---- um cadastro de número por tronco (migration 0509) ----
+-- O número era único na instalação inteira: a empresa com tronco próprio que
+-- cadastrasse primeiro um número que outra (ou o servidor) também usa tomava o
+-- lugar, e a outra recebia 409. Agora o número é único POR TRONCO
+-- (`phone_numbers_numero_por_tronco`, abaixo) e o worker de voz escolhe o
+-- cadastro pelo tronco de chegada (lib/voip/tronco-de-chegada.ts). Esta RPC
+-- antiga (só número) não tem o tronco: passa a responder só quando há UM
+-- cadastro ativo, em vez de escolher um ao acaso.
+create or replace function public.fn_resolve_inbound_number(p_number text)
+returns table (
+  organization_id uuid,
+  routing_mode text,
+  default_ai_agent_id uuid,
+  fallback_user_id uuid
+)
+language sql
+security definer
+stable
+set search_path = public, pg_temp
+as $$
+  select p.organization_id, p.routing_mode, p.default_ai_agent_id, p.fallback_user_id
+    from public.phone_numbers p
+   where p.number = p_number and p.is_active
+     and (select count(*) from public.phone_numbers q where q.number = p_number and q.is_active) = 1;
+$$;
+revoke execute on function public.fn_resolve_inbound_number(text) from public, anon, authenticated;
+grant execute on function public.fn_resolve_inbound_number(text) to service_role;
+
 -- ---- autor da atividade gravada pelo login (migration 0509) ----
 -- Atividade da linha do tempo gravada pelo login é de uma pessoa e em nome
 -- dela (policy crm_lead_activities_insert_de_atendente). Quem não informa o
@@ -570,6 +656,10 @@ drop trigger if exists trg_contato_colunas_de_controle on public.contacts;
 create trigger trg_contato_colunas_de_controle
   before insert or update on public.contacts
   for each row execute function public.fn_contato_colunas_de_controle();
+drop trigger if exists trg_contato_auditoria_de_controle on public.contacts;
+create trigger trg_contato_auditoria_de_controle
+  after update of consent, source, force_human on public.contacts
+  for each row execute function public.fn_contato_auditoria_de_controle();
 drop trigger if exists trg_mensagem_colunas_de_envio on public.messages;
 create trigger trg_mensagem_colunas_de_envio
   before update on public.messages
@@ -663,6 +753,11 @@ do $f$ begin
     create trigger trg_numero_colunas_do_tronco
       before update on public.phone_numbers
       for each row execute function public.fn_numero_colunas_do_tronco();
+    -- Um cadastro por TRONCO, não por instalação (ver fn_resolve_inbound_number).
+    -- Os dados de hoje já são únicos por número, logo também pelo par.
+    alter table public.phone_numbers drop constraint if exists phone_numbers_number_key;
+    create unique index if not exists phone_numbers_numero_por_tronco
+      on public.phone_numbers (number, trunk_endpoint);
   end if;
 end $f$;
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;

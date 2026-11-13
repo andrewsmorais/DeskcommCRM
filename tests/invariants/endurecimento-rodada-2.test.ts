@@ -155,6 +155,25 @@ describe("0509 — follow-up, botões do número e telefones: gerente escreve", 
       escreveComo(GOV_MANAGER, `update public.phone_numbers set label = 'recepção', is_active = false where number = '5511999990003'`),
     ).toBe(1);
   });
+
+  it("número é único por TRONCO, não por instalação; a RPC antiga (só número) não escolhe ao acaso", () => {
+    const GOV_ORG_B = "cccccccc-0000-4000-8000-0000000000b2";
+    sql(`insert into public.organizations (id, slug, legal_name, display_name)
+           values ('${GOV_ORG_B}','r2-org-b','Org B','Org B') on conflict (id) do nothing;`);
+    sql(`insert into public.phone_numbers (organization_id, number, trunk_endpoint, routing_mode, is_active)
+           values ('${GOV_ORG}','5511999990004','PJSIP/trunk-endpoint','ai',true),
+                  ('${GOV_ORG_B}','5511999990004','PJSIP/org-${GOV_ORG_B}-trunk-endpoint','ai',true);`);
+    // Mesmo número no MESMO tronco: recusado.
+    expect(() =>
+      sql(`insert into public.phone_numbers (organization_id, number, trunk_endpoint, routing_mode, is_active)
+             values ('${GOV_ORG_B}','5511999990004','PJSIP/trunk-endpoint','ai',true);`),
+    ).toThrow(/phone_numbers_numero_por_tronco/);
+    // Dois cadastros ativos: a RPC sem tronco não responde.
+    expect(sql(`select count(*) from public.fn_resolve_inbound_number('5511999990004');`).trim()).toBe("0");
+    // CONTROLE: um cadastro só, a RPC responde.
+    sql(`update public.phone_numbers set is_active = false where number = '5511999990004' and organization_id = '${GOV_ORG_B}';`);
+    expect(lastLine(sql(`select organization_id from public.fn_resolve_inbound_number('5511999990004');`))).toBe(GOV_ORG);
+  });
 });
 
 describe("0509 — memória do agente e cópias derivadas", () => {
@@ -428,6 +447,19 @@ describe("0509 — mensagens: leitor não escreve; ninguém grava em nome da IA 
     );
   });
 
+  it("apagar pelo login: nem o que o cliente disse nem o que a IA mandou; a mensagem da própria equipe, sim", () => {
+    expect(recusado(GOV_AGENT_B, `delete from public.messages where body = 'r2-fala-do-cliente'`)).toBe(true);
+    expect(recusado(GOV_AGENT_B, `delete from public.messages where body = 'r2-fala-da-ia'`)).toBe(true);
+    expect(recusado(GOV_MANAGER, `delete from public.messages where body = 'r2-fala-do-cliente'`)).toBe(true);
+    expect(
+      sql(`select count(*) from public.messages where body in ('r2-fala-do-cliente','r2-fala-da-ia');`).trim(),
+    ).toBe("2");
+    // CONTROLE: o eco do celular da empresa (que o envio limpa) e a mensagem da equipe.
+    sql(`insert into public.messages (organization_id, conversation_id, channel_session_id, contact_id, type, direction, status, sent_via, body)
+           values ('${GOV_ORG}','${GOV_CONV_AGENT_B}','${GOV_SESSION}','${GOV_CONTACT_2}','text','outbound','sent','external_device','r2-eco-do-celular');`);
+    expect(escreveComo(GOV_AGENT_B, `delete from public.messages where body = 'r2-eco-do-celular'`)).toBe(1);
+  });
+
   it("CONTROLE: atendente encerra e reabre a conversa (o carimbo do atendimento roda depois do guarda)", () => {
     expect(escreveComo(GOV_AGENT_B, `update public.conversations set status = 'closed' where id = '${GOV_CONV_AGENT_B}'`)).toBe(1);
     expect(escreveComo(GOV_AGENT_B, `update public.conversations set status = 'open' where id = '${GOV_CONV_AGENT_B}'`)).toBe(1);
@@ -487,6 +519,33 @@ describe("0509 — contato: colunas de controle e piso de atendente", () => {
     expect(
       escreveComo(GOV_AGENT_A, `update public.contacts set force_human = false where id = '${GOV_CONTACT_3}'`),
     ).toBe(1);
+  });
+
+  it("consentimento, origem e \"só humano\" mudados pelo login ficam na auditoria (com quem mudou, de e para)", () => {
+    const auditoria = (acao: string) =>
+      lastLine(
+        sql(`select count(*) || '|' || coalesce(max(actor_user_id::text), '-')
+               from public.api_audit_log
+              where resource_id = '${GOV_CONTACT_3}' and action = '${acao}' and metadata->>'registrado_por' = 'banco';`),
+      );
+    expect(
+      escreveComo(
+        GOV_AGENT_A,
+        `update public.contacts set consent = consent || '{"marketing":{"granted_at":"2026-11-13T00:00:00Z","source":"forjado"}}'::jsonb, source = 'api' where id = '${GOV_CONTACT_3}'`,
+      ),
+    ).toBe(1);
+    expect(auditoria("lgpd.consent_changed")).toBe(`1|${GOV_AGENT_A}`);
+    // A retomada do caso anterior (force_human → false) e esta troca de origem.
+    expect(auditoria("contact.updated")).toBe(`2|${GOV_AGENT_A}`);
+    expect(
+      lastLine(
+        sql(`select metadata->'para'->'marketing'->>'source' from public.api_audit_log
+              where resource_id = '${GOV_CONTACT_3}' and action = 'lgpd.consent_changed' order by created_at desc limit 1;`),
+      ),
+    ).toBe("forjado");
+    // CONTROLE: mudança pelo servidor é auditada por quem a faz, não pelo banco.
+    sql(`update public.contacts set source = 'manual' where id = '${GOV_CONTACT_3}';`);
+    expect(auditoria("contact.updated")).toBe(`2|${GOV_AGENT_A}`);
   });
 });
 

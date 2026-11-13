@@ -14,6 +14,30 @@ const CONTATO = "c05e7a00-0000-4000-8000-0000000000c1";
 const USUARIO = "c05e7a00-0000-4000-8000-0000000000a1";
 
 const chamadas: Array<{ tabela: string; op: string }> = [];
+/** Filtros do DELETE de mensagens pela service role (0509: o login não apaga mensagem do cliente/IA). */
+const filtrosDoAdmin: Array<[string, unknown]> = [];
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: (tabela: string) => ({
+      delete: () => {
+        chamadas.push({ tabela, op: "delete:admin" });
+        const cadeia = {
+          eq: (coluna: string, valor: unknown) => {
+            filtrosDoAdmin.push([coluna, valor]);
+            return cadeia;
+          },
+          in: (coluna: string, valor: unknown) => {
+            filtrosDoAdmin.push([coluna, valor]);
+            return cadeia;
+          },
+          then: (r: (v: unknown) => unknown) => r({ error: null }),
+        };
+        return cadeia;
+      },
+    }),
+  }),
+}));
 const contagens: Array<{ tabela: string; filtros: Array<[string, unknown]> }> = [];
 
 interface CadeiaContagem {
@@ -82,6 +106,9 @@ function clienteFalso(opts?: OpcoesFake): unknown {
                   opts?.missing
                     ? { data: null, error: null }
                     : { data: { id: CONTATO, organization_id: ORG }, error: null },
+                // `select("id")` das conversas que o caller alcança (recorte do
+                // DELETE de mensagens pela service role).
+                then: (r: (v: unknown) => unknown) => r({ data: [{ id: "conv-visivel" }], error: null }),
               }),
             }),
           };
@@ -108,6 +135,7 @@ describe("deleteContactHandler", () => {
   beforeEach(() => {
     auditSpy.mockClear();
     chamadas.length = 0;
+    filtrosDoAdmin.length = 0;
   });
 
   it("apaga mensagens e conversas antes do contato e audita", async () => {
@@ -119,6 +147,14 @@ describe("deleteContactHandler", () => {
     );
     expect(out).toEqual({ id: CONTATO });
     expect(chamadas.map((c) => c.tabela)).toEqual(["messages", "conversations", "contacts"]);
+    // Mensagens saem pela service role, filtradas por organização, contato e
+    // SÓ as conversas que a sessão alcança.
+    expect(chamadas[0]).toEqual({ tabela: "messages", op: "delete:admin" });
+    expect(filtrosDoAdmin).toEqual([
+      ["organization_id", ORG],
+      ["contact_id", CONTATO],
+      ["conversation_id", ["conv-visivel"]],
+    ]);
     // A pré-checagem da #752 conta o vínculo com os DOIS filtros (contato +
     // organização): sem o de organização, contato de outra org bloquearia.
     expect(contagens).toEqual([

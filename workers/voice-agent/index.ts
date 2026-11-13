@@ -55,7 +55,7 @@ import { resolveOrCreateCallerContact } from "@/lib/voip/resolve-caller";
 import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
 import { buscarConhecimento, resolverAcervoDoAgente } from "@/lib/ai/knowledge/busca";
 import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
-import { recusaPeloTroncoDeChegada } from "@/lib/voip/tronco-de-chegada";
+import { escolherCadastroPeloTronco, recusaPeloTroncoDeChegada } from "@/lib/voip/tronco-de-chegada";
 
 const supabaseAdmin = createAdminClient();
 
@@ -69,7 +69,7 @@ async function handleStasisStart(event: AriEvent) {
 
   // chamada de entrada: resolve o tenant pelo número discado (phone_numbers)
   const dialedNumber = channel.dialplan?.exten ?? "unknown";
-  const routing = await resolveInboundNumber(dialedNumber);
+  const routing = await resolveInboundNumber(dialedNumber, channel.name);
   if (!routing) {
     console.error(`[voice-agent] número ${dialedNumber} não mapeado em phone_numbers`);
     await hangupChannel(channel.id, "normal");
@@ -177,39 +177,35 @@ type RoteamentoInbound = {
   trunk_endpoint: string | null;
 };
 
-async function resolveInboundNumber(dialedNumber: string): Promise<RoteamentoInbound | null> {
+async function resolveInboundNumber(
+  dialedNumber: string,
+  nomeDoCanal: string | undefined,
+): Promise<RoteamentoInbound | null> {
+  // O mesmo número pode estar cadastrado em troncos diferentes (um cadastro
+  // por tronco — `phone_numbers_numero_por_tronco`, 0509): quem atende é o
+  // cadastro do tronco por onde a ligação CHEGOU (lib/voip/tronco-de-chegada.ts).
+  //
   // Trunks de DID único mandam a extensão "s" no Request-URI em vez dos
   // dígitos do número discado (ver extensions.conf, contexto [from-trunk] —
-  // "extension not found" antes desta função nem rodar era o sintoma).  Sem
+  // "extension not found" antes desta função nem rodar era o sintoma). Sem
   // DNIS real não dá pra saber QUAL número foi discado — mas com exatamente
-  // UM número ativo cadastrado não tem ambiguidade nenhuma: só pode ser ele.
-  // Se um dia existir mais de um, isto recusa (ambíguo) em vez de adivinhar.
-  if (dialedNumber === "s") {
-    const { data, error } = await supabaseAdmin
-      .from("phone_numbers")
-      .select("organization_id, routing_mode, default_ai_agent_id, fallback_user_id, trunk_endpoint")
-      .eq("is_active", true)
-      .limit(2);
-    if (error || !data || data.length !== 1) {
-      console.error(
-        `[voice-agent] extensão "s" (trunk de DID único) só resolve com exatamente 1 número ativo — achei ${data?.length ?? 0}`,
-      );
-      return null;
-    }
-    return data[0] as RoteamentoInbound;
-  }
-
-  // Mesma regra de `fn_resolve_inbound_number` (número ativo, um só), lida
-  // direto pela service role para trazer também o tronco do cadastro.
-  const { data, error } = await supabaseAdmin
+  // UM número ativo NAQUELE tronco não tem ambiguidade nenhuma: só pode ser
+  // ele. Número de outra empresa, em outro tronco, não entra na conta; mais de
+  // um no mesmo tronco recusa (ambíguo) em vez de adivinhar.
+  let consulta = supabaseAdmin
     .from("phone_numbers")
     .select("organization_id, routing_mode, default_ai_agent_id, fallback_user_id, trunk_endpoint")
-    .eq("number", dialedNumber)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
+    .eq("is_active", true);
+  if (dialedNumber !== "s") consulta = consulta.eq("number", dialedNumber);
+  const { data, error } = await consulta.limit(200);
   if (error || !data) return null;
-  return data as RoteamentoInbound;
+  const escolhido = escolherCadastroPeloTronco(data as RoteamentoInbound[], nomeDoCanal);
+  if (!escolhido && dialedNumber === "s") {
+    console.error(
+      `[voice-agent] extensão "s" (trunk de DID único) só resolve com exatamente 1 número ativo no tronco de chegada`,
+    );
+  }
+  return escolhido;
 }
 
 // ---------- AudioSocket (entrada E saída convergem aqui) ----------

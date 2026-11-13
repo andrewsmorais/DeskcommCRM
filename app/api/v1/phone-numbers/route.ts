@@ -147,7 +147,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     // uniq em `number` é GLOBAL (uma linha do trunk único, não por org) — 23505
     // aqui quase sempre é "esse DID já pertence a outra organização".
     if (error.code === "23505") {
-      return fail("numero_ja_cadastrado", "Esse número já está cadastrado.", 409, { requestId });
+      return fail("numero_ja_cadastrado", "Esse número já está cadastrado neste tronco.", 409, { requestId });
     }
     return fail("internal_error", error.message, 500, { requestId });
   }

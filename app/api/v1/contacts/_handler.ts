@@ -815,12 +815,28 @@ export async function deleteContactHandler(
   try {
     // Mensagens e conversas RESTRICT no contato: apagar primeiro, senão o
     // DELETE da ficha falha para qualquer lead que já falou no canal.
-    const { error: msgErr } = await supabase
-      .from("messages")
-      .delete()
+    //
+    // Pelo login ninguém apaga o que o cliente disse nem o que a IA mandou
+    // (policy `messages_delete_de_atendente`, 0509): as mensagens saem pela
+    // service role, mas só as das conversas que o caller ALCANÇA pela RLS dele
+    // — o mesmo recorte que o DELETE pela sessão fazia. Conversa que ele não vê
+    // fica, e o DELETE da ficha cai no RESTRICT abaixo, como antes.
+    const { data: conversasVisiveis, error: convSelErr } = await supabase
+      .from("conversations")
+      .select("id")
       .eq("contact_id", contactId)
       .eq("organization_id", ctx.organization_id);
-    throwOnDbError(msgErr, ctx.requestId, ctx.idioma);
+    throwOnDbError(convSelErr, ctx.requestId, ctx.idioma);
+    const idsDasConversas = ((conversasVisiveis ?? []) as Array<{ id: string }>).map((c) => c.id);
+    if (idsDasConversas.length > 0) {
+      const { error: msgErr } = await createAdminClient()
+        .from("messages")
+        .delete()
+        .eq("organization_id", ctx.organization_id)
+        .eq("contact_id", contactId)
+        .in("conversation_id", idsDasConversas);
+      throwOnDbError(msgErr, ctx.requestId, ctx.idioma);
+    }
     apagados.push("messages");
 
     const { error: convErr } = await supabase
