@@ -18352,6 +18352,13 @@ export const DICIONARIO: Traducoes = {
   "Quem atendeu esta conversa": { es: "Quien atendió esta conversación" },
   "Atendente da variável": { es: "Agente de la variable" },
   "Remover atendente": { es: "Quitar agente" },
+  // Chatbot: estatística por bloco
+  "Seguiu": { es: "Siguió" },
+  "Estatística": { es: "Estadística" },
+  "conclusões": { es: "conclusiones" },
+  "Baixar CSV do fluxo": { es: "Descargar CSV del flujo" },
+  "Ninguém passou por este bloco no período.": { es: "Nadie pasó por este bloque en el período." },
+  "Conta cada vez que o bloco foi concluído e por qual saída seguiu. Conta a partir desta versão do sistema.": { es: "Cuenta cada vez que el bloque se concluyó y por qué salida siguió. Cuenta a partir de esta versión del sistema." },
 };
 /**
  * Traduz, ou devolve o próprio texto.

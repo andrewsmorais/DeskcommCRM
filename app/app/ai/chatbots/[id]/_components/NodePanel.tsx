@@ -38,6 +38,7 @@ import { linksDoTexto, type ProblemaDoLink } from "@/lib/chatbot/links";
 import { cabecalhoReservado, corpoPersonalizadoValido } from "@/lib/chatbot/webhook-corpo";
 import { IconeDoPasso } from "./icones";
 import { RespostasAceitas } from "./RespostasAceitas";
+import { EstatisticaDoBloco } from "./EstatisticaDoBloco";
 import type { NodeData } from "./node-types";
 
 export type OpcoesDoPainel = {
@@ -74,6 +75,8 @@ export type OpcoesDoPainel = {
 };
 
 type Props = {
+  /** O id do bloco no desenho (para a estatística dele). */
+  noId?: string;
   tipo: string;
   dados: NodeData;
   opcoes: OpcoesDoPainel;
@@ -255,7 +258,7 @@ function AvisoDeConfig({ tipo, dados }: { tipo: string; dados: NodeData }) {
   );
 }
 
-export function NodePanel({ tipo, dados, opcoes, onChange, onClose, onDelete }: Props) {
+export function NodePanel({ noId, tipo, dados, opcoes, onChange, onClose, onDelete }: Props) {
   const t = useT();
   const meta = metaDoPasso(tipo);
   const aplicar = (parcial: Record<string, unknown>) => onChange({ ...dados, ...parcial });
@@ -280,6 +283,9 @@ export function NodePanel({ tipo, dados, opcoes, onChange, onClose, onDelete }: 
       <div className="space-y-4 p-4">
         {meta ? <p className="text-xs text-muted-foreground">{t(meta.descricao)}</p> : null}
         <AvisoDeConfig tipo={tipo} dados={dados} />
+        {noId && opcoes.fluxoAtual ? (
+          <EstatisticaDoBloco fluxoId={opcoes.fluxoAtual} noId={noId} tipo={tipo} dados={dados} />
+        ) : null}
         {ehTipoDePasso(tipo) ? (
           <Campos tipo={tipo} dados={dados} opcoes={opcoes} aplicar={aplicar} />
         ) : null}

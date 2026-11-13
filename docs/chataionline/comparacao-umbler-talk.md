@@ -116,6 +116,11 @@ Evidência pela tela do Pedir para digitar com várias respostas (13/11/2026, pa
 - `evidence/pedir-digitar-opcoes/d1-varias-respostas.png` — opções CPF e Placa (regra própria) e "Testar opções" dizendo "Seguiria por: Placa".
 - `evidence/pedir-digitar-opcoes/d2-regra-recusada.png` — regra que travaria o atendimento, recusada com o motivo.
 
+Evidência pela tela das opções extras dos blocos (13/11/2026, painel de verdade do editor, API simulada):
+
+- `evidence/chatbot-opcoes-extras/e1-estatistica-do-bloco.png` — estatística de um menu: conclusões, % por saída e "Baixar CSV do fluxo".
+- `evidence/chatbot-opcoes-extras/e2-notificar-quem.png` — Notificar atendente com atendente escolhida e "Somente se estiver disponível".
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
@@ -177,16 +182,16 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 |---|---|---|
 | U1 | Visibilidade da conversa: Visível · Oculto · Oculto até a próxima mensagem do contato | ✅ feito 13/11 (migration 0510) |
 | U2 | Pedir para digitar com várias opções de resposta, cada uma com formato nativo (telefone, CPF, e-mail…) ou regex; botão "Testar opções"; a saída é a primeira opção que bate | ✅ feito 13/11 ("Aceitar várias respostas", com trava contra regra que trava o servidor) |
-| U3 | **Transferir p/ atendente**: também "por variável", "atendente anterior na mesma conversa" e **"Remover"** (tira o atendente) | 🟡 temos fixo, rodízio, menos conversas, quem atendeu antes |
-| U4 | **Transferir para setor**: "setor da conversa anterior", "setor anterior na mesma conversa" e caminho alternativo se falhar | 🟡 só setor fixo |
-| U5 | **Notificar atendente**: escolher atendentes específicos, "somente se disponível" e caminho se ninguém puder ser avisado | 🟡 avisa o atendente da conversa |
-| U6 | **Enviar mensagem** com **botão de link** (vira texto no QR code) e "seguir outro caminho se a mensagem não sair" | ❌ |
-| U7 | **Iniciar manualmente**: "Não listado" e **variáveis perguntadas ao atendente** na hora de iniciar | ❌ |
+| U3 | Transferir p/ atendente: também "por variável", "atendente anterior na mesma conversa" e "Remover" | ✅ feito 13/11 |
+| U4 | Transferir para setor: "setor da conversa anterior", "setor anterior na mesma conversa" e caminho alternativo se falhar | 🟡 feito "o setor em que a conversa já estava" (13/11); sem caminho alternativo — falha vai para a equipe toda, com nota |
+| U5 | Notificar atendente: escolher atendentes específicos, "somente se disponível" e caminho se ninguém puder ser avisado | ✅ feito 13/11 (ninguém alcançável → Central de avisos, em vez de outro caminho) |
+| U6 | Enviar mensagem com botão de link (vira texto no QR code) e "seguir outro caminho se a mensagem não sair" | 🟡 botão de link feito 13/11; "outro caminho se não sair" não (o motor decide o caminho antes de enviar) |
+| U7 | Iniciar manualmente: "Não listado" e variáveis perguntadas ao atendente na hora de iniciar | ✅ feito 13/11 |
 | U8 | Fluxo de inatividade: roda quando o contato some | ✅ coberto por follow-up de silêncio e automação (ver seção 9) |
-| U9 | **Aguardar até** com "dia útil", "próximo dia" e expressão de agenda (CRON) | 🟡 data/hora fixa ou de uma resposta |
+| U9 | Aguardar até com "dia útil", "próximo dia" e expressão de agenda (CRON) | 🟡 dia útil (pula feriado) e próximo dia feitos 13/11; CRON não |
 | U10 | **Bot paralelo**: iniciar sem encerrar o fluxo que já roda | ❌ |
 | U11 | **Finalizar conversa**: escolher quem aparece como quem fechou | ❌ |
-| U12 | **Estatística por bloco**: "% de quem passou por aqui saiu por esta saída" e nº de execuções, com exportar CSV | ❌ |
+| U12 | Estatística por bloco: % por saída e nº de execuções, com exportar CSV | ✅ feito 13/11 (migration 0512) |
 | U13 | **Resumo por IA** do último atendimento, salvo como nota | ❌ (gasta IA — decisão do dono) |
 | U14 | Integrações em bloco: **Pipedrive**, **Asaas** (cobranças/Pix) | ❌ |
 
@@ -222,7 +227,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 2. ~~**Finalizar** o atendimento enviando mensagem ou chatbot de encerramento~~ — feito 13/11: a janela Fechar oferece Só encerrar, Despedida antes ou Chatbot de encerramento.
 3. ~~**Assinatura do atendente** nas mensagens~~ — feito 13/11, junto com a tela Configurações › Conversas (assinatura sempre/nunca/atendente escolhe; comportamento do Fechar com mensagem e chatbot padrão; despedida pessoal no Perfil).
 4. ~~**Pedir para digitar** com várias opções e regex próprio~~ — feito 13/11 ("Aceitar várias respostas", "Testar opções").
-5. Opções dentro de blocos: modos extras de transferir (remover, anterior), Notificar com escolha de quem e "só se disponível", botão de link no Enviar mensagem, "não listado" e perguntas no Iniciar manualmente, "dia útil" no Aguardar até, estatística por bloco.
+5. ~~Opções dentro de blocos~~ — feito 13/11: modos de transferir (variável, mesma conversa, remover, setor da conversa), Notificar com escolha e "só se disponível", botão de link, "não listado" e perguntas no Iniciar manualmente, dia útil no Aguardar até e estatística por bloco com CSV. Ficaram de fora o "outro caminho se falhar" (o motor decide antes de enviar) e o CRON.
 6. Conversa: baixar histórico (.txt/.pdf), encaminhar e favoritar mensagem, figurinhas salvas, observadores, esconder telefone por papel, tirar atendente offline.
 7. Maiores: webchat no site, chat interno da equipe, variáveis da empresa, importar .vcf.
 

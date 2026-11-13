@@ -1185,6 +1185,7 @@ function Editor({
           <aside className="w-80 shrink-0 overflow-y-auto border-l border-border bg-surface">
             <NodePanel
               key={noSelecionado.id}
+              noId={noSelecionado.id}
               tipo={noSelecionado.type ?? ""}
               dados={noSelecionado.data}
               opcoes={opcoes}

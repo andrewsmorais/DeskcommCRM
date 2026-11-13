@@ -1408,6 +1408,7 @@ async function concluirTurno(
   const gravada = await gravarSessao(pool, e, fluxoId, sessaoAnteriorId, resultado.sessao, token);
 
   await executarEfeitos(pool, admin, e, fluxoId, gravada, resultado.efeitos, log);
+  await somarEstatistica(pool, e.organizationId, fluxoId, resultado.caminho ?? [], log);
 
   if (token && resultado.sessao.retomar_em)
     await agendarRetomada(pool, e, fluxoId, gravada.id, token, resultado.sessao.retomar_em);
@@ -1421,6 +1422,48 @@ async function concluirTurno(
     pendente: resultado.pendente?.tipo ?? null,
   });
   return gravada;
+}
+
+/**
+ * Estatística por bloco (migration 0512): cada bloco concluído no turno soma 1
+ * na saída por onde seguiu, no dia da empresa. Falha aqui nunca atrapalha o
+ * atendimento — é contagem, não efeito.
+ */
+async function somarEstatistica(
+  pool: pg.Pool,
+  organizationId: string,
+  fluxoId: string,
+  caminho: { no: string; saida: string }[],
+  log: Log,
+): Promise<void> {
+  if (caminho.length === 0) return;
+  const contas = new Map<string, { no: string; saida: string; n: number }>();
+  for (const p of caminho) {
+    const no = p.no.slice(0, 100);
+    const saida = (p.saida || "proximo").slice(0, 60);
+    const k = `${no}\u0000${saida}`;
+    const atual = contas.get(k);
+    if (atual) atual.n += 1;
+    else contas.set(k, { no, saida, n: 1 });
+  }
+  const linhas = [...contas.values()];
+  try {
+    await pool.query(
+      `insert into chatbot_estatisticas (organization_id, flow_id, node_id, saida, dia, contagem)
+       select $1, $2, x.no, x.saida,
+              (now() at time zone coalesce((select timezone from organizations where id = $1), 'America/Sao_Paulo'))::date,
+              x.n
+         from unnest($3::text[], $4::text[], $5::int[]) as x(no, saida, n)
+       on conflict (organization_id, flow_id, node_id, saida, dia)
+       do update set contagem = chatbot_estatisticas.contagem + excluded.contagem`,
+      [organizationId, fluxoId, linhas.map((l) => l.no), linhas.map((l) => l.saida), linhas.map((l) => l.n)],
+    );
+  } catch (err) {
+    log.warn("chatbot: não deu para somar a estatística do bloco", {
+      flow_id: fluxoId,
+      erro: (err as Error).message.slice(0, 120),
+    });
+  }
 }
 
 /**

@@ -216,6 +216,13 @@ export type ResultadoDoTurno = {
   sessao: SessaoDoChatbot;
   efeitos: Efeito[];
   passos: number;
+  /**
+   * Os passos CONCLUÍDOS neste turno e por qual saída cada um seguiu ("fim" =
+   * o fluxo acabou ou transferiu ali). É a estatística por bloco: quem passou
+   * por aqui e saiu por onde. Passo que ficou esperando não entra — entra quando
+   * a resposta (ou o relógio) o conclui.
+   */
+  caminho?: { no: string; saida: string }[];
   /** O fluxo parou num passo que o executor precisa fazer fora (rede) e devolver. */
   pendente?: Pendente;
 };
@@ -515,25 +522,34 @@ function andar(
   let atual: string | null = inicio;
   let resposta = respondendo;
   let passos = 0;
+  const caminho: { no: string; saida: string }[] = [];
+  let noDaVez: string | null = null;
+  let registrado = true;
+  const registrar = (saida: string) => {
+    if (noDaVez && !registrado) caminho.push({ no: noDaVez, saida });
+    registrado = true;
+  };
 
   sessao.retomar_em = null;
   const fim = (status: StatusDaSessao): ResultadoDoTurno => {
+    registrar("fim");
     sessao.status = status;
     sessao.no_atual = null;
     sessao.tentativas = 0;
-    return { sessao, efeitos, passos };
+    return { sessao, efeitos, passos, caminho };
   };
   /** Transferiu. Com mensagem de espera, o relógio fica armado sobre a sessão transferida. */
   const transferido = (
     noId: string,
     c: { espera_minutos: number; espera_mensagem: string },
   ): ResultadoDoTurno => {
+    registrar("fim");
     if (c.espera_minutos <= 0 || !c.espera_mensagem) return fim("transferred");
     sessao.status = "transferred";
     sessao.no_atual = noId;
     sessao.tentativas = 0;
     sessao.retomar_em = new Date(ctx.agora.getTime() + c.espera_minutos * 60_000).toISOString();
-    return { sessao, efeitos, passos };
+    return { sessao, efeitos, passos, caminho };
   };
   /** A pergunta espera a resposta; com prazo, o relógio leva a "Não respondeu a tempo". */
   const esperarResposta = (noId: string, prazoMinutos: number): ResultadoDoTurno => {
@@ -543,14 +559,14 @@ function andar(
       prazoMinutos > 0
         ? new Date(ctx.agora.getTime() + prazoMinutos * 60_000).toISOString()
         : null;
-    return { sessao, efeitos, passos };
+    return { sessao, efeitos, passos, caminho };
   };
   const esperarRelogio = (noId: string, ate: Date): ResultadoDoTurno => {
     sessao.status = "waiting_timer";
     sessao.no_atual = noId;
     sessao.tentativas = 0;
     sessao.retomar_em = ate.toISOString();
-    return { sessao, efeitos, passos };
+    return { sessao, efeitos, passos, caminho };
   };
 
   while (atual) {
@@ -559,6 +575,8 @@ function andar(
     const no: No | undefined = porId.get(atual);
     // Passo apagado do desenho enquanto a conversa estava nele: encerra sem erro.
     if (!no || !ehTipoDePasso(no.type)) return fim("completed");
+    noDaVez = no.id;
+    registrado = false;
     const tipo = no.type as TipoDePasso;
     let saida = "proximo";
 
@@ -715,7 +733,7 @@ function andar(
       case "cancelar_agendamento":
         sessao.no_atual = no.id;
         sessao.status = "running";
-        return { sessao, efeitos, passos, pendente: { tipo: "cancelar", no: no.id } };
+        return { sessao, efeitos, passos, caminho, pendente: { tipo: "cancelar", no: no.id } };
       case "pedir_escolher": {
         const c = lerConfig("pedir_escolher", no.data);
         if (!resposta) {
@@ -974,14 +992,14 @@ function andar(
           sessao.no_atual = no.id;
           sessao.status = "running";
           sessao.tentativas = 0;
-          return { sessao, efeitos, passos, pendente: { tipo: "horarios", no: no.id } };
+          return { sessao, efeitos, passos, caminho, pendente: { tipo: "horarios", no: no.id } };
         }
         resposta = false;
         const ofertas = ofertasGuardadas(sessao.dados);
         if (ofertas.length === 0) {
           sessao.no_atual = no.id;
           sessao.status = "running";
-          return { sessao, efeitos, passos, pendente: { tipo: "horarios", no: no.id } };
+          return { sessao, efeitos, passos, caminho, pendente: { tipo: "horarios", no: no.id } };
         }
         const i =
           ctx.mensagem === null ? null : opcaoEscolhida(ctx.mensagem, ofertas.map((o) => o.quando));
@@ -1147,7 +1165,7 @@ function andar(
           sessao.no_atual = no.id;
           sessao.status = "waiting_input";
           sessao.tentativas = 0;
-          return { sessao, efeitos, passos };
+          return { sessao, efeitos, passos, caminho };
         }
         resposta = false;
         const nota = ctx.mensagem === null ? null : notaDaResposta(ctx.mensagem, c.escala);
@@ -1162,7 +1180,7 @@ function andar(
           efeitos.push({ tipo: "enviar", texto: c.mensagem_invalida });
           sessao.no_atual = no.id;
           sessao.status = "waiting_input";
-          return { sessao, efeitos, passos };
+          return { sessao, efeitos, passos, caminho };
         }
         sessao.tentativas = 0;
         saida = "invalida";
@@ -1175,7 +1193,7 @@ function andar(
           if (pergunta) efeitos.push({ tipo: "enviar", texto: pergunta });
           sessao.no_atual = no.id;
           sessao.status = "waiting_input";
-          return { sessao, efeitos, passos };
+          return { sessao, efeitos, passos, caminho };
         }
         resposta = false;
         const texto = (ctx.mensagem ?? "").trim().slice(0, 2000);
@@ -1204,7 +1222,7 @@ function andar(
         sessao.no_atual = no.id;
         sessao.status = "running";
         sessao.tentativas = 0;
-        return { sessao, efeitos, passos, pendente: { tipo: "webhook", no: no.id } };
+        return { sessao, efeitos, passos, caminho, pendente: { tipo: "webhook", no: no.id } };
       case "aguardar_intervalo":
         return esperarRelogio(no.id, fimDoIntervalo(lerConfig("aguardar_intervalo", no.data), ctx.agora));
       case "aguardar_ate": {
@@ -1227,6 +1245,7 @@ function andar(
         return fim("completed");
     }
 
+    registrar(saida);
     atual = proximo(grafo, no.id, saida);
     // "Valor inválido" sem ligação: o fluxo segue pelo caminho normal em vez de
     // morrer ali — quem não desenhou o "pedir de novo" não perde o resto.
