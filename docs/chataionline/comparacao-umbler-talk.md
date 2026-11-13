@@ -78,6 +78,12 @@ referência estão conferidos em `docs/audits/2026-11-03-chatbot-60-cards.md`.
 | **Visibilidade da conversa** | ❓ | A Umbler tem este card **separado** do "Privar ou liberar". O que ele faz não foi confirmado — falta a captura do painel dele |
 | Excluir contato · Bloquear contato · Finalizar conversa · Bloco de notas · Webhook | ✅ | Excluir abre pedido LGPD em vez de apagar na hora |
 
+Evidência pela tela dos dois blocos feitos em 13/11/2026 (editor de verdade, API simulada, sem banco):
+
+- `evidence/chatbot-etiquetas-e-campo/a2-painel-campo-do-contato.png` — card "Campo do contato" em Condição, com o painel aberto (sem o "Olhar para").
+- `evidence/chatbot-etiquetas-e-campo/a3-painel-etiquetas-conversa.png` — "Editar etiquetas" com "Onde mexer" em "Etiquetas da conversa"; o card mostra "Conversa: +urgente".
+- `evidence/chatbot-etiquetas-e-campo/a4-menu-de-passos.png` — menu de passos: "Campo do contato" em Condição e em Ação, como na Umbler.
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
