@@ -2,6 +2,10 @@
 
 > Instruções pra futuras sessões Claude trabalhando neste repo. Leitura obrigatória antes de qualquer task de código.
 
+> **Fork ChatAI Online:** antes de qualquer tarefa, leia [`docs/chataionline/MAPA.md`](docs/chataionline/MAPA.md)
+> — o que já foi feito, as decisões do dono e a branch onde está o código de verdade. Ao terminar,
+> acrescente lá o que mudou. O dono não lê inglês: fale com ele em português simples.
+
 **Este arquivo é a doutrina — a autoridade final sobre convenção e anti-pattern.** Complementos, na ordem em que ajudam:
 
 - [`AGENTS.md`](AGENTS.md) — mesmo contrato em forma portável (para Codex/Cursor/Copilot e afins). É derivado deste arquivo, não o substitui. **Ao mudar doutrina aqui, verifique se `AGENTS.md` desatualizou.**

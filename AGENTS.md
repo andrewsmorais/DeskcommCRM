@@ -5,6 +5,9 @@
 > leia-o antes de tocar em código. O mapa de toda a documentação está em [`docs/index.md`](docs/index.md).
 > Precedência quando dois documentos discordam: `CLAUDE.md` > `docs/specs/` > `docs/prd/` >
 > `HANDOFF-*.md` > `README.md`.
+>
+> **Fork ChatAI Online:** leia [`docs/chataionline/MAPA.md`](docs/chataionline/MAPA.md) antes de
+> qualquer tarefa e atualize-o ao terminar.
 
 ## Project Overview
 
