@@ -115,13 +115,6 @@ const liga = (source: string, target: string, sourceHandle = "proximo") => ({
   target,
   sourceHandle,
 });
-const etiquetas = async (c: { contato: string; conversa: string }) => {
-  const contato = await pool.query<{ tags: string[] }>(`select tags from contacts where id = $1`, [c.contato]);
-  const conversa = await pool.query<{ tags: string[] }>(`select tags from conversations where id = $1`, [
-    c.conversa,
-  ]);
-  return { contato: contato.rows[0]!.tags, conversa: conversa.rows[0]!.tags };
-};
 
 beforeAll(async () => {
   await pool.query(

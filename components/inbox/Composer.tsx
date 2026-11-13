@@ -17,6 +17,7 @@ import { ContactPickerDialog } from "@/components/inbox/composer/ContactPickerDi
 import { AudioRecorder } from "@/components/inbox/composer/AudioRecorder";
 import { ReplyReviewPanel } from "@/components/inbox/composer/ReplyReviewPanel";
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
+import { AgendarButton } from "@/components/inbox/composer/AgendarButton";
 import { resolveSlash, TemplateMenu } from "@/components/inbox/composer/TemplateMenu";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
 import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
@@ -372,6 +373,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               onPickContact={() => setContactPickerOpen(true)}
             />
           )}
+          {/* Agendar mensagem, nota ou chatbot (migration 0511). Bloqueio do
+              contato barra; janela de 24h fechada não barra (a nota e o
+              chatbot podem ser agendados, e a janela pode reabrir). */}
+          <AgendarButton
+            conversationId={conversationId}
+            disabled={Boolean(disabled || blockedReason)}
+            textoAtual={text}
+          />
           <EmojiButton
             disabled={isDisabled}
             onPick={(emoji) => {

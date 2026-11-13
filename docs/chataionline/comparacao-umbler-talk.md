@@ -90,6 +90,11 @@ Evidência pela tela do bloco Visibilidade e do olho da conversa (13/11/2026, co
 - `evidence/chatbot-visibilidade/v2-menu-de-passos.png` — o bloco no menu de passos, em Ação.
 - `evidence/chatbot-visibilidade/v3-olho-menu.png` — o olho da conversa aberto, com as três opções; à direita, o olho de uma conversa já oculta.
 
+Evidência pela tela do agendamento de mensagem (13/11/2026, componente de verdade, API simulada):
+
+- `evidence/mensagens-agendadas/g1-agendar-mensagem.png` — janela de agendar com o texto já escrito no campo.
+- `evidence/mensagens-agendadas/g3-agendadas.png` — aba Agendadas: agendada (editar/cancelar), chatbot enviado e uma que não saiu, com o motivo.
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
@@ -192,7 +197,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 | G7 Kanban de contatos | Funis (Kanban de negócios), Contatos, Empresas, Pessoas | ✅ coberto na prática |
 
 **O que de fato falta**, depois da correção:
-1. **Agendar uma MENSAGEM** na conversa para depois (texto, nota ou chatbot), com aba "Agendadas".
+1. ~~Agendar uma MENSAGEM na conversa~~ — feito 13/11 (migration 0511): botão de calendário no campo de mensagem, aba "Agendadas".
 2. **Finalizar** o atendimento enviando mensagem ou chatbot de encerramento.
 3. **Assinatura do atendente** nas mensagens.
 4. **Pedir para digitar** com várias opções e regex próprio.

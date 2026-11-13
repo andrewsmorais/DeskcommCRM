@@ -691,6 +691,19 @@ export interface ExportPayload {
     created_by_name: string | null;
     created_at: string;
   }>;
+  /**
+   * Mensagens, notas e chatbots agendados nas conversas do titular (migration
+   * 0511). A anonimização as apaga; antes disso, o pedido de acesso as entrega.
+   */
+  mensagens_agendadas?: Array<{
+    id: string;
+    conversation_id: string;
+    tipo: string;
+    texto: string | null;
+    enviar_em: string;
+    status: string;
+    created_at: string;
+  }>;
   /** Respostas que o titular deu ao chatbot (esvaziadas pela 0509). */
   chatbot_sessions?: Array<{
     id: string;
@@ -1678,6 +1691,7 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
   const conversation_drafts: NonNullable<ExportPayload["conversation_drafts"]> = [];
   const conversation_notes: NonNullable<ExportPayload["conversation_notes"]> = [];
   const chatbot_sessions: NonNullable<ExportPayload["chatbot_sessions"]> = [];
+  const mensagens_agendadas: NonNullable<ExportPayload["mensagens_agendadas"]> = [];
   if (contactId) {
     const pageSize = 500;
     const refBatchSize = 100; // Mantém o filtro IN abaixo dos limites de URL dos proxies.
@@ -1745,6 +1759,25 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
         case_events.push(...(data ?? []));
         if (!data || data.length < pageSize) break;
       }
+    }
+    // Mensagens agendadas (migration 0511): FK direta para o contato.
+    for (let offset = 0; ; offset += pageSize) {
+      const { data: pagina, error: erro } = await admin
+        .from("mensagens_agendadas")
+        .select("id, conversation_id, tipo, texto, enviar_em, status, created_at")
+        .eq("organization_id", organizationId)
+        .eq("contact_id", contactId)
+        .order("id")
+        .range(offset, offset + pageSize - 1);
+      if (erro) {
+        logger.warn("[lgpd-export-worker] mensagens agendadas load failed", {
+          request_id: requestId,
+          error: erro.message,
+        });
+        break;
+      }
+      mensagens_agendadas.push(...(pagina ?? []));
+      if (!pagina || pagina.length < pageSize) break;
     }
     // Demanda tem FK direta para o contato (`contact_id` é `not null`).
     const { data, error } = await admin
@@ -2027,6 +2060,7 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     memoria_do_agente,
     conversation_notes,
     chatbot_sessions,
+    mensagens_agendadas,
     eventos_com_previa,
     b2b,
   };

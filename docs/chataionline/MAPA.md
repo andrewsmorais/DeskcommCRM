@@ -75,6 +75,7 @@
 | 11/11 | Cliente troca de plano pela tela (Essencial ↔ Impulso); chatbot com rascunho e versões; imagens Docker do fork | `.changes/troca-de-plano-pelo-cliente.md`, `chatbot-rascunho-versoes-e-uma-passagem.md` |
 | 13/11 | Chatbot: "Editar etiquetas" no contato ou na conversa; card "Campo do contato" em Condição (paridade com o menu da Umbler) | `.changes/chatbot-etiquetas-da-conversa-e-campo-do-contato.md`, `evidence/chatbot-etiquetas-e-campo/` |
 | 13/11 | Ocultar conversa (olho no topo + filtro "Ocultas") e bloco "Visibilidade da conversa" do chatbot (migration 0510) | `.changes/conversa-oculta.md`, `evidence/chatbot-visibilidade/` |
+| 13/11 | Agendar mensagem, nota ou chatbot na conversa (migration 0511; o worker envia no horário pelo `event_log`) | `.changes/mensagens-agendadas.md`, `evidence/mensagens-agendadas/` |
 | 11–13/11 | Auditoria de segurança — 2ª rodada (telefonia, telemetria, LGPD, prompt, mensagens), 3 verificadores independentes | `.changes/endurecimento-auditoria-rodada-2.md`; migration `0509`; relatório em `/srv/security-audit-skill/chataionline/run-2/REPORT.md` |
 
 ## 5. O que falta / pendências conhecidas

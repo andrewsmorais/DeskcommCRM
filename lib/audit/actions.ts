@@ -154,6 +154,13 @@ export const AUDIT_ACTIONS = [
   "conversation.privacy_changed",
   // Ocultar ou mostrar a conversa na caixa de entrada (migration 0510).
   "conversation.visibility_changed",
+  // Mensagens agendadas na conversa (migration 0511): criar, editar, cancelar
+  // pela tela; enviar ou falhar pelo worker no horário.
+  "scheduled_message.created",
+  "scheduled_message.updated",
+  "scheduled_message.canceled",
+  "scheduled_message.sent",
+  "scheduled_message.failed",
   /** A conversa foi posta num setor (ou tirada dele) — Inbox ou chatbot. */
   "conversation.setor_changed",
   /** Setores de atendimento (migration 0496): cadastro em Configurações › Setores. */

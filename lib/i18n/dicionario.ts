@@ -93,6 +93,57 @@ export const DICIONARIO: Traducoes = {
     { es: "Ocultar hasta el próximo mensaje del contacto" },
   "Ocultas":
     { es: "Ocultas" },
+  // ─── MENSAGENS AGENDADAS (migration 0511) ───
+  "Chatbot desligado ou apagado":
+    { es: "Chatbot desactivado o eliminado" },
+  "Agendar mensagem":
+    { es: "Programar mensaje" },
+  "No horário escolhido, sai em seu nome, como se você tivesse enviado agora.":
+    { es: "A la hora elegida, sale a tu nombre, como si lo hubieras enviado ahora." },
+  "Agendadas":
+    { es: "Programadas" },
+  "O que agendar":
+    { es: "Qué programar" },
+  "Mensagem para o contato":
+    { es: "Mensaje para el contacto" },
+  "Nota interna (só a equipe vê)":
+    { es: "Nota interna (solo el equipo la ve)" },
+  "Escolha…":
+    { es: "Elige…" },
+  'Nenhum chatbot ligado com o passo "Iniciar manualmente".':
+    { es: 'Ningún chatbot activado con el paso "Iniciar manualmente".' },
+  "Nota":
+    { es: "Nota" },
+  "No horário do seu computador. Pelo menos 1 minuto à frente, até um ano.":
+    { es: "En la hora de tu computadora. Al menos 1 minuto adelante, hasta un año." },
+  "Cancelar edição":
+    { es: "Cancelar edición" },
+  "Nada agendado nesta conversa.":
+    { es: "Nada programado en esta conversación." },
+  "Data ou hora inválida.":
+    { es: "Fecha u hora inválida." },
+  "Escolha um horário pelo menos 1 minuto à frente.":
+    { es: "Elige una hora al menos 1 minuto adelante." },
+  "Escolha um horário dentro de um ano.":
+    { es: "Elige una hora dentro de un año." },
+  "Escolha o chatbot.":
+    { es: "Elige el chatbot." },
+  "Escreva a mensagem.":
+    { es: "Escribe el mensaje." },
+  "Pedido inválido.":
+    { es: "Solicitud inválida." },
+  "Este contato foi anonimizado.":
+    { es: "Este contacto fue anonimizado." },
+  "Não foi possível agendar. Tente de novo.":
+    { es: "No fue posible programar. Inténtalo de nuevo." },
+  "Só quem agendou ou um gerente pode mudar este agendamento.":
+    { es: "Solo quien programó o un gerente puede cambiar esta programación." },
+  "Este agendamento já saiu, falhou ou foi cancelado.":
+    { es: "Esta programación ya salió, falló o fue cancelada." },
+  "Este agendamento acabou de sair. Atualize a lista.":
+    { es: "Esta programación acaba de salir. Actualiza la lista." },
+  "Não foi possível reagendar. Tente de novo.":
+    { es: "No fue posible reprogramar. Inténtalo de nuevo." },
   // ─── EMPRESAS, PESSOAS E IMPORTAÇÃO (metade B2B do #1621, de @renatofortal) ───
   Arquivo: { es: "Archivo" },
   Atualizado: { es: "Actualizado" },

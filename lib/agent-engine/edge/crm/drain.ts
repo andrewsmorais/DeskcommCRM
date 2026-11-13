@@ -12,6 +12,8 @@
  *   - grupos @g.us: skip (regra dura nº 12) — evento marcado done sem job;
  *   - eventos 'processing' órfãos (crash do worker) voltam a 'pending' por timeout.
  */
+import { executarMensagemAgendada } from "@/lib/agendadas/executar";
+import { EVENTO_DA_AGENDADA } from "@/lib/agendadas/regras";
 import { z } from "zod";
 import type pg from "pg";
 
@@ -569,7 +571,11 @@ export async function runDrainLoop(
 
 export const RETOMADA_DO_CHATBOT = "chatbot.retomada_requested";
 export const INICIO_DO_CHATBOT = "chatbot.inicio_requested";
-const COMANDOS_DO_CHATBOT = [RETOMADA_DO_CHATBOT, INICIO_DO_CHATBOT];
+/** O horário de uma mensagem agendada na conversa (migration 0511). */
+export const ENVIO_DA_AGENDADA = EVENTO_DA_AGENDADA;
+const COMANDOS_DO_CHATBOT = [RETOMADA_DO_CHATBOT, INICIO_DO_CHATBOT, ENVIO_DA_AGENDADA];
+
+const pedidoDaAgendadaSchema = z.object({ agendada_id: z.string().uuid() });
 
 const CHATBOT_QUE_NAO_ANDOU = {
   titulo: "Um chatbot não começou ou não voltou a andar",
@@ -654,7 +660,19 @@ export async function drenarComandosDoChatbot(pool: pg.Pool, log: Logger): Promi
   for (const evento of eventos) {
     try {
       let desfecho: string | { adiarAte: string } = "descartado";
-      if (evento.event_type === INICIO_DO_CHATBOT) {
+      if (evento.event_type === ENVIO_DA_AGENDADA) {
+        const pedido = pedidoDaAgendadaSchema.safeParse(evento.payload);
+        if (!pedido.success)
+          log.warn("drain: mensagem agendada malformada — descartada", { event_id: evento.id });
+        if (pedido.success)
+          desfecho = await executarMensagemAgendada(
+            pool,
+            createAdminClient(),
+            pedido.data.agendada_id,
+            evento.organization_id,
+            log,
+          );
+      } else if (evento.event_type === INICIO_DO_CHATBOT) {
         const pedido = pedidoDeInicioSchema.safeParse(evento.payload);
         if (!pedido.success)
           log.warn("drain: pedido de início do chatbot malformado — descartado", {
