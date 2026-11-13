@@ -16,6 +16,12 @@ vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async (
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/app/api/v1/messages/_handler", () => ({ sendMessageHandler: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn() }));
+const copias: Array<[string, string]> = [];
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({
+    storage: { from: () => ({ copy: async (de: string, para: string) => (copias.push([de, para]), { error: null }) }) },
+  })),
+}));
 
 const ORG = "60000000-0000-4000-8000-000000000001";
 const MSG = "60000000-0000-4000-8000-000000000002";
@@ -68,10 +74,21 @@ describe("encaminhar mensagem", () => {
     expect(input).toMatchObject({ conversation_id: C1, type: "text", body: "Seu código é 123", metadata: { encaminhada_de: MSG } });
   });
 
-  it("mídia reaproveita o arquivo guardado", async () => {
-    original = { id: MSG, type: "image", body: "foto", media_storage_path: "org/x.jpg", media_mime: "image/jpeg", media_size_bytes: 10, revoked_at: null, conversation_id: "o" };
+  it("mídia: o arquivo é copiado para a pasta da conversa de destino", async () => {
+    copias.length = 0;
+    original = { id: MSG, type: "image", body: "foto", media_storage_path: `${ORG}/orig/x.jpg`, media_mime: "image/jpeg", media_size_bytes: 10, revoked_at: null, conversation_id: "orig" };
     await POST(pedido([C1]), ctx);
-    expect(vi.mocked(sendMessageHandler).mock.calls[0]![2]).toMatchObject({ type: "image", media_storage_path: "org/x.jpg" });
+    expect(copias[0]?.[0]).toBe(`${ORG}/orig/x.jpg`);
+    expect(copias[0]?.[1]).toMatch(new RegExp(`^${ORG}/${C1}/.+-x\\.jpg$`));
+    expect(vi.mocked(sendMessageHandler).mock.calls[0]![2]).toMatchObject({ type: "image", media_storage_path: copias[0]?.[1] });
+  });
+
+  it("arquivo de outra organização não é copiado", async () => {
+    copias.length = 0;
+    original = { id: MSG, type: "image", body: null, media_storage_path: "outra-org/c/x.jpg", media_mime: "image/jpeg", media_size_bytes: 10, revoked_at: null, conversation_id: "orig" };
+    await POST(pedido([C1]), ctx);
+    expect(copias).toEqual([]);
+    expect(sendMessageHandler).not.toHaveBeenCalled();
   });
 
   it("conversa que a pessoa não enxerga não recebe", async () => {

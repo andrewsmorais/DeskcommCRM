@@ -5,7 +5,8 @@
  * Origem e destinos são lidos com o client da SESSÃO: quem não enxerga a
  * mensagem ou a conversa de destino não encaminha. O envio é o mesmo da tela
  * (`sendMessageHandler`, em nome de quem encaminhou). Texto vai como texto;
- * foto, vídeo, áudio e documento reaproveitam o arquivo já guardado. Mensagem
+ * foto, vídeo, áudio e documento são copiados para a pasta da conversa de
+ * destino no Storage (o envio só aceita arquivo da própria conversa). Mensagem
  * apagada não se encaminha.
  */
 import { requireSupportWrite } from "@/lib/impersonate/support";
@@ -19,6 +20,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { traduzir } from "@/lib/i18n/dicionario";
 import type { SendMessageInput } from "@/lib/schemas";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const corpo = z.object({ conversation_ids: z.array(z.string().uuid()).min(1).max(5) });
@@ -68,13 +70,30 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       resultados.push({ conversation_id: destino, ok: false, erro: t("Conversa não encontrada.") });
       continue;
     }
+    // O envio só aceita arquivo da PRÓPRIA conversa de destino
+    // (`isMediaPathOwnedBy`): copia o arquivo para a pasta dela no Storage.
+    let caminho = m.media_storage_path;
+    if (m.type !== "text" && caminho) {
+      if (!caminho.startsWith(`${authz.org.orgId}/`)) {
+        resultados.push({ conversation_id: destino, ok: false, erro: t("Esta mensagem não pode ser encaminhada.") });
+        continue;
+      }
+      const nome = caminho.split("/").pop() ?? "arquivo";
+      const novo = `${authz.org.orgId}/${destino}/${randomUUID()}-${nome}`.slice(0, 480);
+      const { error: erroDaCopia } = await createAdminClient().storage.from("whatsapp-media").copy(caminho, novo);
+      if (erroDaCopia) {
+        resultados.push({ conversation_id: destino, ok: false, erro: erroDaCopia.message.slice(0, 200) });
+        continue;
+      }
+      caminho = novo;
+    }
     const input = {
       conversation_id: destino,
       type: m.type,
       ...(m.body ? { body: m.body } : {}),
       ...(m.type !== "text"
         ? {
-            media_storage_path: m.media_storage_path,
+            media_storage_path: caminho,
             media_mime: m.media_mime ?? undefined,
             media_size_bytes: m.media_size_bytes ?? undefined,
           }
