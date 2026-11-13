@@ -1070,6 +1070,32 @@ function Campos({
       const c = lerConfig("editar_etiquetas", dados);
       return (
         <>
+          <div className="space-y-1.5">
+            <Label>{t("Onde mexer")}</Label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="tags-alvo"
+                checked={c.alvo === "contato"}
+                onChange={() => aplicar({ alvo: "contato" })}
+              />
+              {t("Etiquetas do contato")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="tags-alvo"
+                checked={c.alvo === "conversa"}
+                onChange={() => aplicar({ alvo: "conversa" })}
+              />
+              {t("Etiquetas da conversa")}
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {c.alvo === "conversa"
+                ? t("Valem só para este atendimento. A conversa guarda até 20 etiquetas.")
+                : t("Seguem com o contato em todas as conversas e disparam as automações de etiqueta.")}
+            </p>
+          </div>
           <Texto
             id="tags-add"
             rotulo={t("Adicionar etiquetas")}
@@ -1121,6 +1147,22 @@ function Campos({
       return (
         <>
           <EditorDeRegra id="regra" regra={c.regra} onChange={(regra) => aplicar({ regra })} />
+          <p className="text-xs text-muted-foreground">
+            {t('Se a regra valer, segue por "Regra atendida"; senão, por "Regra não atendida".')}
+          </p>
+        </>
+      );
+    }
+    case "condicao_campo_contato": {
+      const c = lerConfig("condicao_campo_contato", dados);
+      return (
+        <>
+          <EditorDeRegra
+            id="regra-campo"
+            regra={{ ...c.regra, fonte: "campo_contato" }}
+            fonteFixa
+            onChange={(regra) => aplicar({ regra: { ...regra, fonte: "campo_contato" } })}
+          />
           <p className="text-xs text-muted-foreground">
             {t('Se a regra valer, segue por "Regra atendida"; senão, por "Regra não atendida".')}
           </p>
@@ -2023,10 +2065,13 @@ function EditorDeRegra({
   id,
   regra,
   onChange,
+  fonteFixa = false,
 }: {
   id: string;
   regra: Regra;
   onChange: (r: Regra) => void;
+  /** O card já diz o que olhar (ex.: "Campo do contato"): some o "Olhar para". */
+  fonteFixa?: boolean;
 }) {
   const t = useT();
   const mudar = (parcial: Partial<Regra>) => onChange({ ...regra, ...parcial });
@@ -2036,7 +2081,7 @@ function EditorDeRegra({
 
   return (
     <div className="space-y-3">
-      <div className="space-y-1.5">
+      <div className={fonteFixa ? "hidden" : "space-y-1.5"}>
         <Label htmlFor={`${id}-fonte`}>{t("Olhar para")}</Label>
         <select
           id={`${id}-fonte`}
@@ -2061,7 +2106,7 @@ function EditorDeRegra({
             });
           }}
         >
-          <option value="etiqueta">{t("Etiqueta do contato")}</option>
+          <option value="etiqueta">{t("Etiqueta do contato ou da conversa")}</option>
           <option value="variavel">{t("Resposta guardada")}</option>
           <option value="campo_contato">{t("Campo do contato")}</option>
           <option value="mensagem">{t("Última mensagem do contato")}</option>

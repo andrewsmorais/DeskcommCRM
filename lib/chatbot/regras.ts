@@ -17,7 +17,15 @@ import type {
 
 /** O que o motor sabe do contato neste turno (lido pelo executor antes de rodar). */
 export type ContatoDoTurno = {
+  /** Etiquetas do CONTATO (`contacts.tags`). */
   tags: string[];
+  /**
+   * Etiquetas da CONVERSA (`conversations.tags`) — a outra caixa do marcador.
+   * As condições de etiqueta olham as duas, como o filtro da Inbox
+   * (`lib/inbox/marcador-da-conversa.ts`): o "Editar etiquetas" da Umbler
+   * escreve numa ou noutra, e a condição seguinte tem de enxergar.
+   */
+  tags_da_conversa: string[];
   nome: string | null;
   email: string | null;
   /** aaaa-mm-dd */
@@ -26,7 +34,32 @@ export type ContatoDoTurno = {
 };
 
 export function contatoVazio(): ContatoDoTurno {
-  return { tags: [], nome: null, email: null, aniversario: null, personalizados: {} };
+  return {
+    tags: [],
+    tags_da_conversa: [],
+    nome: null,
+    email: null,
+    aniversario: null,
+    personalizados: {},
+  };
+}
+
+/** O contato (ou a conversa) tem esta etiqueta? Maiúsculas e acentos não importam. */
+export function temEtiqueta(contato: ContatoDoTurno, etiqueta: string): boolean {
+  const alvo = normalizar(etiqueta);
+  if (alvo === "") return false;
+  return (
+    contato.tags.some((t) => normalizar(t) === alvo) ||
+    (contato.tags_da_conversa ?? []).some((t) => normalizar(t) === alvo)
+  );
+}
+
+/** A lista depois de tirar `remover` e pôr `adicionar` (sem repetir). Não muda a original. */
+export function aplicarEtiquetas(lista: string[], adicionar: string[], remover: string[]): string[] {
+  const sai = new Set(remover.map(normalizar));
+  const depois = lista.filter((t) => !sai.has(normalizar(t)));
+  for (const t of adicionar) if (!depois.some((x) => normalizar(x) === normalizar(t))) depois.push(t);
+  return depois;
 }
 
 /** Minúsculas, sem acento, espaços colapsados — para comparar o que o contato digitou. */
@@ -70,11 +103,11 @@ export function regraVale(
   r: Regra,
   ctx: { mensagem: string | null; dados: Record<string, string>; contato: ContatoDoTurno },
 ): boolean {
-  const alvo = normalizar(r.valor);
   if (r.fonte === "etiqueta") {
-    const tem = alvo !== "" && ctx.contato.tags.some((t) => normalizar(t) === alvo);
+    const tem = temEtiqueta(ctx.contato, r.valor);
     return NEGA.has(r.operador) ? !tem : tem;
   }
+  const alvo = normalizar(r.valor);
   const bruto =
     r.fonte === "mensagem"
       ? (ctx.mensagem ?? "")

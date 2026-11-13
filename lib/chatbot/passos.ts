@@ -329,6 +329,12 @@ export const configDoPasso = {
     ...ESPERA_DO_ATENDENTE,
   }),
   editar_etiquetas: z.object({
+    /**
+     * Onde mexer, como na Umbler: nas etiquetas do CONTATO (seguem com ele em
+     * toda conversa) ou nas da CONVERSA (só deste atendimento). Fluxo salvo
+     * antes de existir a escolha não tem `alvo` e segue no contato.
+     */
+    alvo: z.enum(["contato", "conversa"]).default("contato"),
     adicionar: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
     remover: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
   }),
@@ -348,6 +354,16 @@ export const configDoPasso = {
   }),
   definir_condicao: z.object({
     regra: regraSchema.default(regraSchema.parse({})),
+  }),
+  /**
+   * "Campo do contato" na CONDIÇÃO (o card da Umbler): é a mesma regra do
+   * "Definir condição", presa ao campo do contato. O motor força
+   * `fonte = "campo_contato"`, então um desenho editado à mão não troca de fonte.
+   */
+  condicao_campo_contato: z.object({
+    regra: regraSchema.default(
+      regraSchema.parse({ fonte: "campo_contato", chave: "nome", operador: "preenchido" }),
+    ),
   }),
   multi_condicional: z.object({
     regras: z
@@ -856,6 +872,15 @@ export const PASSOS: readonly MetaDoPasso[] = [
     temEntrada: true,
   },
   {
+    tipo: "condicao_campo_contato",
+    grupo: "condicao",
+    nome: "Campo do contato",
+    descricao: "Siga por um caminho conforme um campo do contato (nome, e-mail, aniversário ou personalizado).",
+    icone: "UserPen",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
     tipo: "multi_condicional",
     grupo: "condicao",
     nome: "Multi-condicional",
@@ -886,7 +911,7 @@ export const PASSOS: readonly MetaDoPasso[] = [
     tipo: "tem_etiqueta",
     grupo: "condicao",
     nome: "Etiquetas",
-    descricao: "Siga por um caminho se o contato tiver uma etiqueta.",
+    descricao: "Siga por um caminho se o contato ou a conversa tiver uma etiqueta.",
     icone: "Tag",
     cor: "text-orange-500",
     temEntrada: true,
@@ -1157,7 +1182,7 @@ export const PASSOS: readonly MetaDoPasso[] = [
     tipo: "editar_etiquetas",
     grupo: "acao",
     nome: "Editar etiquetas",
-    descricao: "Adicione ou remova etiquetas do contato.",
+    descricao: "Adicione ou remova etiquetas do contato ou da conversa.",
     icone: "Tag",
     cor: "text-slate-300",
     temEntrada: true,
@@ -1412,6 +1437,7 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "nao", rotulo: "Nos outros dias" },
       ];
     case "definir_condicao":
+    case "condicao_campo_contato":
       return [
         { id: "sim", rotulo: "Regra atendida" },
         { id: "nao", rotulo: "Regra não atendida" },

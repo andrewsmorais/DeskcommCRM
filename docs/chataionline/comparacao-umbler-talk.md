@@ -65,12 +65,12 @@ referência estão conferidos em `docs/audits/2026-11-03-chatbot-60-cards.md`.
 | Aguardar intervalo · Aguardar até | ✅ | Na Umbler ficam em Condição; aqui, em Ação |
 | Distribuir fluxo · O contato está ativo? · Etiquetas · Primeira conversa? | ✅ | |
 | O contato é um grupo? | — | Fora por decisão (chatbot não roda em grupo) |
-| **Campo do contato** (condição) | 🟡 | Existe dentro do Definir condição/Multi-condicional (regra "campo do contato"), mas não como card próprio |
+| Campo do contato (condição) | ✅ | Card próprio desde 13/11/2026 (`condicao_campo_contato`) |
 | Setor · Canal · Atendente da conversa · Presença do atendente | ✅ | |
 | Mensagem contém · Valor · Bot paralelo em execução · Status da conversa | ✅ | |
 | Enviar mensagem · Criar uma nota no chat | ✅ | |
 | Transferir para setor | ✅ | Aqui chama "Transferir para a equipe" (equipe toda ou um setor) |
-| **Editar etiquetas — do contato ou da conversa** | 🟡 | Só etiqueta do contato; a conversa tem etiquetas próprias na Inbox, mas o chatbot não mexe nelas |
+| Editar etiquetas — do contato ou da conversa | ✅ | Escolha "Onde mexer" desde 13/11/2026; a condição Etiquetas olha as duas |
 | Transferir p/ atendente · Transferir p/ agentes de IA · Privar ou liberar | ✅ | |
 | Pedir para escolher · Pedir para digitar · Enviar template · Enviar formulário · Acionar outro fluxo | ✅ | Pedir para digitar sem regex próprio (ver acima) |
 | Status esperando | — | Fora por decisão |
@@ -123,8 +123,8 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 | 7 | **Transferir para outro número** | médio | Mexe na cadeia de envio |
 | 8 | **Figurinhas salvas** | pequeno | |
 | 9 | **Webchat** no site | grande | Canal novo inteiro |
-| C1 | Chatbot: **Editar etiquetas da conversa** (além das do contato) | pequeno | Bloco da Umbler |
-| C2 | Chatbot: card **Campo do contato** em Condição | pequeno | Já funciona dentro do Definir condição; falta o card |
+| ~~C1~~ | ~~Chatbot: Editar etiquetas da conversa~~ | feito 13/11 | |
+| ~~C2~~ | ~~Chatbot: card Campo do contato em Condição~~ | feito 13/11 | |
 | C3 | Chatbot: **Visibilidade da conversa** | ? | Depende de saber o que o card da Umbler faz |
 
 ## Fontes

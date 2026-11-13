@@ -73,6 +73,7 @@
 | 03/11 | Chatbot "como a Umbler" (editor, 56 passos, 19 modelos, copiar/colar, salvar automático), setores, conversa privada, e-mail de cancelamento | `docs/audits/2026-11-03-chatbot-60-cards.md` |
 | 04/11 | Auditoria de segurança — 1ª rodada, com correções (planos cobrados em toda porta, suspensão em toda porta, MFA etc.) | `.changes/seguranca-pos-auditoria-novembro.md` |
 | 11/11 | Cliente troca de plano pela tela (Essencial ↔ Impulso); chatbot com rascunho e versões; imagens Docker do fork | `.changes/troca-de-plano-pelo-cliente.md`, `chatbot-rascunho-versoes-e-uma-passagem.md` |
+| 13/11 | Chatbot: "Editar etiquetas" no contato ou na conversa; card "Campo do contato" em Condição (paridade com o menu da Umbler) | `.changes/chatbot-etiquetas-da-conversa-e-campo-do-contato.md`, `evidence/chatbot-etiquetas-e-campo/` |
 | 11–13/11 | Auditoria de segurança — 2ª rodada (telefonia, telemetria, LGPD, prompt, mensagens), 3 verificadores independentes | `.changes/endurecimento-auditoria-rodada-2.md`; migration `0509`; relatório em `/srv/security-audit-skill/chataionline/run-2/REPORT.md` |
 
 ## 5. O que falta / pendências conhecidas
@@ -87,6 +88,7 @@
 - Comparação com a Umbler Talk: ver [`comparacao-umbler-talk.md`](comparacao-umbler-talk.md) —
   9 itens faltando, em ordem (agendar mensagem, finalizar com mensagem/chatbot, assinatura,
   regex no chatbot, baixar histórico, observadores, transferir para outro número, figurinhas, webchat).
+- Chatbot: falta só o card "Visibilidade da conversa" da Umbler — o dono vai mostrar o que ele faz.
 
 ## 6. Dia de subir para a VPS (checklist)
 

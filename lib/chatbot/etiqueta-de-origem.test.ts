@@ -48,7 +48,7 @@ const grafo: Grafo = {
 describe("etiqueta de origem", () => {
   it("a frase da primeira mensagem vira etiqueta (maiúsculas e acentos não importam)", () => {
     const r = iniciarFluxo(grafo, "i", ctx("Oi! VI NO INSTAGRAM o anuncio"));
-    expect(r.efeitos[0]).toEqual({ tipo: "etiquetas", adicionar: ["instagram"], remover: [] });
+    expect(r.efeitos[0]).toEqual({ tipo: "etiquetas", alvo: "contato", adicionar: ["instagram"], remover: [] });
     expect(r.efeitos.at(-1)).toEqual({ tipo: "enviar", texto: "Do Insta!" });
   });
 

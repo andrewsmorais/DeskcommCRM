@@ -37,14 +37,14 @@ import {
   type SessaoDoChatbot,
 } from "./motor";
 import { lerConfig, type Grafo, type ModoDeAtendente, type TipoDeMidia } from "./passos";
-import { contatoVazio, type ContatoDoTurno } from "./regras";
+import { aplicarEtiquetas, contatoVazio, type ContatoDoTurno } from "./regras";
 import { rotuloLocal } from "@/lib/tempo/agora";
 
 /** O que acontece no teste além das mensagens — a tela dá o texto de cada um. */
 export type EventoDoTeste =
   | { tipo: "transferiu_equipe"; setor_id: string | null }
   | { tipo: "transferiu_atendente"; modo: ModoDeAtendente; user_id: string | null }
-  | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
+  | { tipo: "etiquetas"; alvo: "contato" | "conversa"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
   | { tipo: "campo"; campo: string; valor: string }
   | { tipo: "avaliacao"; nota: number }
@@ -330,6 +330,7 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
   const contato: ContatoDoTurno = {
     ...estado.contato,
     tags: [...estado.contato.tags],
+    tags_da_conversa: [...(estado.contato.tags_da_conversa ?? [])],
     personalizados: { ...estado.contato.personalizados },
   };
   for (const e of efeitos) {
@@ -350,10 +351,13 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         });
         break;
       case "etiquetas": {
-        const sai = new Set(e.remover.map(normalizar));
-        contato.tags = contato.tags.filter((t) => !sai.has(normalizar(t)));
-        for (const t of e.adicionar) if (!contato.tags.some((x) => normalizar(x) === normalizar(t))) contato.tags.push(t);
-        bolhas.push({ de: "evento", evento: { tipo: "etiquetas", adicionar: e.adicionar, remover: e.remover } });
+        if (e.alvo === "conversa")
+          contato.tags_da_conversa = aplicarEtiquetas(contato.tags_da_conversa, e.adicionar, e.remover);
+        else contato.tags = aplicarEtiquetas(contato.tags, e.adicionar, e.remover);
+        bolhas.push({
+          de: "evento",
+          evento: { tipo: "etiquetas", alvo: e.alvo, adicionar: e.adicionar, remover: e.remover },
+        });
         break;
       }
       case "nota":

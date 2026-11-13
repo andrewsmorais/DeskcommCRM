@@ -27,6 +27,8 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
     "Quando adicionada essa condição no seu chatbot, ele segue por um caminho nos dias da semana marcados e por outro nos demais.\n\nCombine com “Horários” para montar o expediente: por exemplo, segunda a sexta das 8h às 18h. Usa o fuso horário da empresa.",
   mensagem_contem:
     "Quando adicionada essa condição no seu chatbot, ele olha a última mensagem do contato e segue por “Contém” se ela tiver qualquer uma das palavras escritas, ou por “Não contém”.\n\nMaiúsculas e acentos não importam: “Preço” encontra “preco”. Separe as palavras com vírgula.\n\nÁudio, foto ou figurinha não têm texto, então seguem por “Não contém”.",
+  condicao_campo_contato:
+    "Quando adicionada essa condição no seu chatbot, ele olha um campo do cadastro do contato (nome, e-mail, aniversário ou um campo personalizado) e segue por “Regra atendida” ou “Regra não atendida”.\n\nVocê escolhe a comparação: é igual, contém, está preenchido, está vazio ou, para números, é maior ou menor. Maiúsculas e acentos não importam.\n\nUm valor que o próprio fluxo acabou de gravar (em “Campo do contato”, nas ações) já conta. Use, por exemplo, para só pedir o e-mail a quem ainda não tem.",
   definir_condicao:
     "Quando adicionada essa condição no seu chatbot, ele segue por “Regra atendida” ou “Regra não atendida” conforme uma regra que você monta.\n\nA regra pode olhar uma etiqueta do contato, uma resposta guardada antes no fluxo, um campo do contato (nome, e-mail, aniversário ou campo personalizado) ou a última mensagem.\n\nMaiúsculas e acentos não importam. Para comparar números (por exemplo, uma nota), use “É maior ou igual a”.",
   multi_condicional:
@@ -36,7 +38,7 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
   contato_ativo:
     "Quando adicionada essa condição no seu chatbot, ele verifica se o contato mandou mensagem dentro do tempo escolhido (24 horas por padrão) e segue por “Ativo” ou “Inativo”.\n\n24 horas é a janela do WhatsApp: fora dela, escrever primeiro tem mais risco de bloqueio, e no número oficial só modelo aprovado pode sair.",
   tem_etiqueta:
-    "Quando adicionada essa condição no seu chatbot, ele segue por “Tem” se o contato tiver as etiquetas escritas, ou por “Não tem”.\n\nVocê escolhe se basta uma delas ou se precisa ter todas. Uma etiqueta que o próprio fluxo acabou de pôr (em “Editar etiquetas”) já conta.",
+    "Quando adicionada essa condição no seu chatbot, ele segue por “Tem” se o contato ou a conversa tiver as etiquetas escritas, ou por “Não tem”.\n\nVocê escolhe se basta uma delas ou se precisa ter todas. Valem as etiquetas do contato e as da conversa, como no filtro de Conversas. Uma etiqueta que o próprio fluxo acabou de pôr (em “Editar etiquetas”) já conta.",
   primeira_conversa:
     "Quando adicionada essa condição no seu chatbot, ele segue por “Primeira vez” se o contato nunca tinha mandado mensagem antes deste atendimento, ou por “Já conversou antes”.\n\nUse para dar boas-vindas diferentes a quem é novo e a quem já é cliente.",
   canal_da_conversa:
@@ -80,7 +82,7 @@ export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
   transferir_ia:
     "Quando adicionada essa ação no seu chatbot, a conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar.\n\nSe não houver agente de IA ligado no número, o fluxo segue por “Sem agente de IA”. Ligue ali um “Transferir para a equipe”.\n\nO chatbot em si não usa IA; o agente gasta IA como sempre, dentro do orçamento dele.",
   editar_etiquetas:
-    "Quando adicionada essa ação no seu chatbot, ele adiciona ou remove etiquetas do contato.\n\nAs etiquetas novas disparam as automações de “etiqueta adicionada”, como se uma pessoa as tivesse posto.",
+    "Quando adicionada essa ação no seu chatbot, ele adiciona ou remove etiquetas do contato ou da conversa.\n\nNo contato, as etiquetas seguem com ele em todas as conversas, e as novas disparam as automações de “etiqueta adicionada”, como se uma pessoa as tivesse posto.\n\nNa conversa, valem só para este atendimento: aparecem em “Tags da conversa” e no filtro de Conversas. A conversa guarda até 20 etiquetas; o que passar disso não entra.",
   campo_contato:
     "Quando adicionada essa ação no seu chatbot, ele grava um valor no cadastro do contato: nome, e-mail, aniversário ou um campo personalizado.\n\nO valor costuma ser uma resposta do contato, como {{email}}. Se o valor não servir (e-mail sem @, data que não existe), o fluxo segue por “Valor inválido”, para você pedir de novo.",
   criar_nota:

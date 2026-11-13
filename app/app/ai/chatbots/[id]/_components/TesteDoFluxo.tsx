@@ -269,7 +269,7 @@ function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) 
       return `— ${t("Conversa transferida para")} ${nome} —`;
     }
     case "etiquetas":
-      return `🏷 ${[...e.adicionar.map((x) => `+${x}`), ...e.remover.map((x) => `−${x}`)].join(" ")}`;
+      return `🏷 ${e.alvo === "conversa" ? `${t("Conversa")}: ` : ""}${[...e.adicionar.map((x) => `+${x}`), ...e.remover.map((x) => `−${x}`)].join(" ")}`;
     case "nota":
       return `📝 ${t("Nota interna")}: ${e.texto}`;
     case "campo":

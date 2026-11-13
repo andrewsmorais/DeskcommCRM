@@ -136,7 +136,8 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     }
     case "editar_etiquetas": {
       const c = lerConfig("editar_etiquetas", dados);
-      return [...c.adicionar.map((e) => `+${e}`), ...c.remover.map((e) => `−${e}`)].join(" ");
+      const lista = [...c.adicionar.map((e) => `+${e}`), ...c.remover.map((e) => `−${e}`)].join(" ");
+      return lista && c.alvo === "conversa" ? `${t("Conversa")}: ${lista}` : lista;
     }
     case "transferir_equipe":
     case "transferir_atendente": {
@@ -172,6 +173,8 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     }
     case "definir_condicao":
       return descreverRegra(lerConfig("definir_condicao", dados).regra);
+    case "condicao_campo_contato":
+      return descreverRegra({ ...lerConfig("condicao_campo_contato", dados).regra, fonte: "campo_contato" });
     case "pedir_avaliacao": {
       const c = lerConfig("pedir_avaliacao", dados);
       return `${c.pergunta} (${c.escala === "1_5" ? "1–5" : "0–10"}) → {{avaliacao}}`;

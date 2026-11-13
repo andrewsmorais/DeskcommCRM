@@ -154,6 +154,7 @@ const TERMINAIS = new Set(["completed", "transferred"]);
 /** O contato como o motor o enxerga em "Definir condição". */
 function contatoDoTurno(c: {
   tags: string[] | null;
+  tags_da_conversa?: string[] | null;
   nome: string | null;
   email: string | null;
   aniversario: string | null;
@@ -165,6 +166,7 @@ function contatoDoTurno(c: {
       personalizados[k] = String(v);
   return {
     tags: c.tags ?? [],
+    tags_da_conversa: c.tags_da_conversa ?? [],
     nome: c.nome,
     email: c.email,
     aniversario: c.aniversario,
@@ -221,10 +223,11 @@ export async function atenderPeloChatbot(
     email: string | null;
     aniversario: string | null;
     custom_fields: Record<string, unknown> | null;
+    tags_da_conversa: string[] | null;
   }>(
     `select c.assignee_kind, ct.is_blocked, o.timezone,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
-            ct.birthdate::text as aniversario, ct.custom_fields
+            ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c
        join contacts ct on ct.id = c.contact_id and ct.organization_id = c.organization_id
        join organizations o on o.id = c.organization_id
@@ -791,6 +794,58 @@ async function enviarModeloAprovado(
   return saiu;
 }
 
+/** Teto da tela (`conversationTagsSchema`): uma conversa guarda até 20 etiquetas. */
+const MAXIMO_DE_ETIQUETAS_DA_CONVERSA = 20;
+
+/**
+ * "Editar etiquetas" com alvo na CONVERSA: grava em `conversations.tags` na
+ * mesma forma da tela (minúscula, até 40 letras, sem repetir, até 20) e audita
+ * como a rota da Inbox (`conversation.tags_changed`). Passou do teto, o que
+ * sobra não entra e fica no log — a conversa não perde etiqueta que já tinha.
+ */
+async function editarEtiquetasDaConversa(
+  pool: pg.Pool,
+  e: EntradaDoChatbot,
+  efeito: { adicionar: string[]; remover: string[] },
+  fluxoId: string,
+  requestId: string,
+  log: Log,
+): Promise<void> {
+  const { rows } = await pool.query<{ tags: string[] | null }>(
+    `select tags from conversations where organization_id = $1 and id = $2`,
+    [e.organizationId, e.conversationId],
+  );
+  if (!rows[0]) return;
+  const antes = rows[0].tags ?? [];
+  const remover = new Set(efeito.remover.map(normalizarTag));
+  const ficam = antes.filter((t) => !remover.has(normalizarTag(t)));
+  const novas = [...new Set(efeito.adicionar.map(normalizarTag).filter(Boolean))].filter(
+    (t) => !ficam.some((a) => normalizarTag(a) === t),
+  );
+  const cabem = Math.max(0, MAXIMO_DE_ETIQUETAS_DA_CONVERSA - ficam.length);
+  if (novas.length > cabem)
+    log.warn("chatbot: a conversa chegou ao teto de etiquetas — o excesso não entrou", {
+      flow_id: fluxoId,
+      fora: novas.length - cabem,
+    });
+  const depois = [...ficam, ...novas.slice(0, cabem)];
+  if (depois.length === antes.length && depois.every((t, i) => t === antes[i])) return;
+  await pool.query(
+    `update conversations set tags = $3, updated_at = now() where organization_id = $1 and id = $2`,
+    [e.organizationId, e.conversationId, depois],
+  );
+  void audit({
+    action: "conversation.tags_changed",
+    actorUserId: null,
+    organizationId: e.organizationId,
+    resourceType: "conversation",
+    resourceId: e.conversationId,
+    requestId,
+    bypassedRls: true,
+    metadata: { tags: depois, source: "chatbot", flow_id: fluxoId },
+  });
+}
+
 /** Nota interna do chatbot na conversa (a equipe vê, o contato não), auditada. */
 async function notaDoChatbot(
   pool: pg.Pool,
@@ -898,10 +953,15 @@ async function lerContatoDoTurno(
     email: string | null;
     aniversario: string | null;
     custom_fields: Record<string, unknown> | null;
+    tags_da_conversa: string[] | null;
   }>(
-    `select tags, coalesce(name, display_name) as nome, email, birthdate::text as aniversario, custom_fields
-       from contacts where organization_id = $1 and id = $2`,
-    [e.organizationId, e.contactId],
+    `select ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
+            ct.birthdate::text as aniversario, ct.custom_fields, cv.tags as tags_da_conversa
+       from contacts ct
+       left join conversations cv
+         on cv.organization_id = ct.organization_id and cv.id = $3 and cv.contact_id = ct.id
+      where ct.organization_id = $1 and ct.id = $2`,
+    [e.organizationId, e.contactId, e.conversationId],
   );
   return rows[0] ? contatoDoTurno(rows[0]) : null;
 }
@@ -1439,10 +1499,11 @@ export async function iniciarChatbotPorAutomacao(
     email: string | null;
     aniversario: string | null;
     custom_fields: Record<string, unknown> | null;
+    tags_da_conversa: string[] | null;
   }>(
     `select c.assignee_kind, ct.is_blocked, o.timezone,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
-            ct.birthdate::text as aniversario, ct.custom_fields
+            ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c
        join contacts ct on ct.id = c.contact_id and ct.organization_id = c.organization_id
        join organizations o on o.id = c.organization_id
@@ -1592,10 +1653,11 @@ export async function retomarChatbotPeloRelogio(
     email: string | null;
     aniversario: string | null;
     custom_fields: Record<string, unknown> | null;
+    tags_da_conversa: string[] | null;
   }>(
     `select c.assignee_kind, ct.is_blocked,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
-            ct.birthdate::text as aniversario, ct.custom_fields
+            ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c
        join contacts ct on ct.id = c.contact_id and ct.organization_id = c.organization_id
       where c.organization_id = $1 and c.id = $2 and c.is_group = false`,
@@ -1985,6 +2047,10 @@ async function executarEfeitos(
           break;
         }
         case "etiquetas": {
+          if (efeito.alvo === "conversa") {
+            await editarEtiquetasDaConversa(pool, e, efeito, fluxoId, requestId, log);
+            break;
+          }
           const { rows } = await pool.query<{ tags: string[] | null }>(
             `select tags from contacts where organization_id = $1 and id = $2`,
             [e.organizationId, e.contactId],

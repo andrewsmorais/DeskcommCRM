@@ -43,6 +43,7 @@ import {
   ehTipoDePasso,
 } from "./passos";
 import {
+  aplicarEtiquetas,
   contatoVazio,
   normalizar,
   notaDaResposta,
@@ -50,6 +51,7 @@ import {
   respostaDoFormulario,
   respostaNoFormato,
   valorDoCampo,
+  temEtiqueta,
   valorVale,
   type ContatoDoTurno,
 } from "./regras";
@@ -98,7 +100,8 @@ export type Efeito =
       /** Rodízio e menos conversas: só entre estes (vazio = quem pode receber). */
       atendentes: string[];
     }
-  | { tipo: "etiquetas"; adicionar: string[]; remover: string[] }
+  /** `alvo`: etiquetas do contato ou da conversa ("Editar etiquetas"). */
+  | { tipo: "etiquetas"; alvo: "contato" | "conversa"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
   /** Cartão de contato ("Enviar contato"). */
   | { tipo: "contato"; nome: string; telefone: string }
@@ -488,6 +491,7 @@ function andar(
   const contato: ContatoDoTurno = {
     ...base,
     tags: [...base.tags],
+    tags_da_conversa: [...(base.tags_da_conversa ?? [])],
     personalizados: { ...base.personalizados },
   };
   const fatos = ctx.conversa ?? fatosVazios();
@@ -555,7 +559,7 @@ function andar(
             ].filter((t) => !contato.tags.some((x) => normalizar(x) === normalizar(t)))
           : [];
         if (novas.length > 0) {
-          efeitos.push({ tipo: "etiquetas", adicionar: novas, remover: [] });
+          efeitos.push({ tipo: "etiquetas", alvo: "contato", adicionar: novas, remover: [] });
           contato.tags.push(...novas);
         }
         break;
@@ -583,7 +587,7 @@ function andar(
       }
       case "tem_etiqueta": {
         const c = lerConfig("tem_etiqueta", no.data);
-        const tem = (t: string) => contato.tags.some((x) => normalizar(x) === normalizar(t));
+        const tem = (t: string) => temEtiqueta(contato, t);
         saida =
           c.etiquetas.length > 0 &&
           (c.modo === "todas" ? c.etiquetas.every(tem) : c.etiquetas.some(tem))
@@ -811,11 +815,10 @@ function andar(
       case "editar_etiquetas": {
         const c = lerConfig("editar_etiquetas", no.data);
         if (c.adicionar.length || c.remover.length) {
-          efeitos.push({ tipo: "etiquetas", adicionar: c.adicionar, remover: c.remover });
-          const sai = new Set(c.remover.map(normalizar));
-          contato.tags = contato.tags.filter((t) => !sai.has(normalizar(t)));
-          for (const t of c.adicionar)
-            if (!contato.tags.some((x) => normalizar(x) === normalizar(t))) contato.tags.push(t);
+          efeitos.push({ tipo: "etiquetas", alvo: c.alvo, adicionar: c.adicionar, remover: c.remover });
+          if (c.alvo === "conversa")
+            contato.tags_da_conversa = aplicarEtiquetas(contato.tags_da_conversa, c.adicionar, c.remover);
+          else contato.tags = aplicarEtiquetas(contato.tags, c.adicionar, c.remover);
         }
         break;
       }
@@ -839,6 +842,16 @@ function andar(
       case "definir_condicao": {
         const c = lerConfig("definir_condicao", no.data);
         saida = regraVale(c.regra, { mensagem: ctx.mensagem, dados: sessao.dados, contato })
+          ? "sim"
+          : "nao";
+        break;
+      }
+      case "condicao_campo_contato": {
+        const { regra } = lerConfig("condicao_campo_contato", no.data);
+        saida = regraVale(
+          { ...regra, fonte: "campo_contato" },
+          { mensagem: ctx.mensagem, dados: sessao.dados, contato },
+        )
           ? "sim"
           : "nao";
         break;

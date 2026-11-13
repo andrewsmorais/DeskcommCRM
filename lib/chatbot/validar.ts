@@ -217,6 +217,14 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (p) problemas.push(`no passo "${nome}", ${p}.`);
         break;
       }
+      case "condicao_campo_contato": {
+        const p = problemaDaRegra({
+          ...lerConfig("condicao_campo_contato", no.data).regra,
+          fonte: "campo_contato",
+        });
+        if (p) problemas.push(`no passo "${nome}", ${p}.`);
+        break;
+      }
       case "multi_condicional":
         lerConfig("multi_condicional", no.data).regras.forEach((r, i) => {
           const p = problemaDaRegra(r);

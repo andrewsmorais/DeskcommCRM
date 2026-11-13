@@ -7,6 +7,8 @@ export const PASSOS_AVANCADOS: ReadonlySet<string> = new Set([
   "inicio_automacao",
   "webhook",
   "definir_condicao",
+  // O card da Umbler tem o diamante: avançado, como o "Definir condição".
+  "condicao_campo_contato",
   "multi_condicional",
   "contato_ativo",
   "tem_etiqueta",

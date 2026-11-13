@@ -35,6 +35,27 @@ import type { Idioma } from "./idiomas";
 /** `pt-BR` não aparece: é a chave. Só o que DIFERE precisa de linha. */
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 export const DICIONARIO: Traducoes = {
+  // ─── CHATBOT: etiquetas da conversa e condição "Campo do contato" (13/11/2026) ───
+  "Quando adicionada essa condição no seu chatbot, ele olha um campo do cadastro do contato (nome, e-mail, aniversário ou um campo personalizado) e segue por “Regra atendida” ou “Regra não atendida”.\n\nVocê escolhe a comparação: é igual, contém, está preenchido, está vazio ou, para números, é maior ou menor. Maiúsculas e acentos não importam.\n\nUm valor que o próprio fluxo acabou de gravar (em “Campo do contato”, nas ações) já conta. Use, por exemplo, para só pedir o e-mail a quem ainda não tem.":
+    { es: "Cuando agregues esta condición a tu chatbot, él mira un campo del registro del contacto (nombre, correo, cumpleaños o un campo personalizado) y sigue por “Regla cumplida” o “Regla no cumplida”.\n\nTú eliges la comparación: es igual, contiene, está lleno, está vacío o, para números, es mayor o menor. Mayúsculas y acentos no importan.\n\nUn valor que el propio flujo acaba de guardar (en “Campo del contacto”, en las acciones) ya cuenta. Úsalo, por ejemplo, para pedir el correo solo a quien todavía no lo tiene." },
+  "Siga por um caminho conforme um campo do contato (nome, e-mail, aniversário ou personalizado).":
+    { es: "Sigue por un camino según un campo del contacto (nombre, correo, cumpleaños o personalizado)." },
+  "Siga por um caminho se o contato ou a conversa tiver uma etiqueta.":
+    { es: "Sigue por un camino si el contacto o la conversación tiene una etiqueta." },
+  "Adicione ou remova etiquetas do contato ou da conversa.":
+    { es: "Agrega o quita etiquetas del contacto o de la conversación." },
+  "Onde mexer":
+    { es: "Dónde cambiar" },
+  "Etiquetas do contato":
+    { es: "Etiquetas del contacto" },
+  "Etiquetas da conversa":
+    { es: "Etiquetas de la conversación" },
+  "Valem só para este atendimento. A conversa guarda até 20 etiquetas.":
+    { es: "Valen solo para esta atención. La conversación guarda hasta 20 etiquetas." },
+  "Seguem com o contato em todas as conversas e disparam as automações de etiqueta.":
+    { es: "Acompañan al contacto en todas las conversaciones y disparan las automatizaciones de etiqueta." },
+  "Etiqueta do contato ou da conversa":
+    { es: "Etiqueta del contacto o de la conversación" },
   // ─── EMPRESAS, PESSOAS E IMPORTAÇÃO (metade B2B do #1621, de @renatofortal) ───
   Arquivo: { es: "Archivo" },
   Atualizado: { es: "Actualizado" },
@@ -5898,9 +5919,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta condición a tu chatbot, él verifica si el contacto envió mensaje dentro del tiempo elegido (24 horas por defecto) y sigue por “Activo” o “Inactivo”.\n\n24 horas es la ventana de WhatsApp: fuera de ella, escribir primero tiene más riesgo de bloqueo, y en el número oficial solo puede salir una plantilla aprobada.",
     },
-  "Quando adicionada essa condição no seu chatbot, ele segue por “Tem” se o contato tiver as etiquetas escritas, ou por “Não tem”.\n\nVocê escolhe se basta uma delas ou se precisa ter todas. Uma etiqueta que o próprio fluxo acabou de pôr (em “Editar etiquetas”) já conta.":
+  "Quando adicionada essa condição no seu chatbot, ele segue por “Tem” se o contato ou a conversa tiver as etiquetas escritas, ou por “Não tem”.\n\nVocê escolhe se basta uma delas ou se precisa ter todas. Valem as etiquetas do contato e as da conversa, como no filtro de Conversas. Uma etiqueta que o próprio fluxo acabou de pôr (em “Editar etiquetas”) já conta.":
     {
-      es: "Cuando agregues esta condición a tu chatbot, él sigue por “Tiene” si el contacto tiene las etiquetas escritas, o por “No tiene”.\n\nTú eliges si basta con una de ellas o si debe tenerlas todas. Una etiqueta que el propio flujo acaba de poner (en “Editar etiquetas”) ya cuenta.",
+      es: "Cuando agregues esta condición a tu chatbot, él sigue por “Tiene” si el contacto o la conversación tiene las etiquetas escritas, o por “No tiene”.\n\nTú eliges si basta con una de ellas o si debe tenerlas todas. Valen las etiquetas del contacto y las de la conversación, como en el filtro de Conversaciones. Una etiqueta que el propio flujo acaba de poner (en “Editar etiquetas”) ya cuenta.",
     },
   "Quando adicionada essa condição no seu chatbot, ele segue por “Primeira vez” se o contato nunca tinha mandado mensagem antes deste atendimento, ou por “Já conversou antes”.\n\nUse para dar boas-vindas diferentes a quem é novo e a quem já é cliente.":
     {
@@ -6386,9 +6407,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "Cuando agregues esta acción a tu chatbot, la conversación vuelve a la atención automática: el agente de IA de este número (o el enrutador) responde de ahí en adelante, incluido el mensaje que el contacto acaba de enviar.\n\nSi no hay un agente de IA activado en el número, el flujo sigue por “Sin agente de IA”. Conecta ahí un “Transferir al equipo”.\n\nEl chatbot en sí no usa IA; el agente gasta IA como siempre, dentro de su presupuesto.",
     },
-  "Quando adicionada essa ação no seu chatbot, ele adiciona ou remove etiquetas do contato.\n\nAs etiquetas novas disparam as automações de “etiqueta adicionada”, como se uma pessoa as tivesse posto.":
+  "Quando adicionada essa ação no seu chatbot, ele adiciona ou remove etiquetas do contato ou da conversa.\n\nNo contato, as etiquetas seguem com ele em todas as conversas, e as novas disparam as automações de “etiqueta adicionada”, como se uma pessoa as tivesse posto.\n\nNa conversa, valem só para este atendimento: aparecem em “Tags da conversa” e no filtro de Conversas. A conversa guarda até 20 etiquetas; o que passar disso não entra.":
     {
-      es: "Cuando agregues esta acción a tu chatbot, él agrega o quita etiquetas del contacto.\n\nLas etiquetas nuevas disparan las automatizaciones de “etiqueta agregada”, como si una persona las hubiera puesto.",
+      es: "Cuando agregues esta acción a tu chatbot, él agrega o quita etiquetas del contacto o de la conversación.\n\nEn el contacto, las etiquetas lo acompañan en todas las conversaciones, y las nuevas disparan las automatizaciones de “etiqueta agregada”, como si una persona las hubiera puesto.\n\nEn la conversación, valen solo para esta atención: aparecen en “Etiquetas de la conversación” y en el filtro de Conversaciones. La conversación guarda hasta 20 etiquetas; lo que pase de eso no entra.",
     },
   "Quando adicionada essa ação no seu chatbot, ele grava um valor no cadastro do contato: nome, e-mail, aniversário ou um campo personalizado.\n\nO valor costuma ser uma resposta do contato, como {{email}}. Se o valor não servir (e-mail sem @, data que não existe), o fluxo segue por “Valor inválido”, para você pedir de novo.":
     {
