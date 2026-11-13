@@ -10,10 +10,12 @@ import type {
   CampoDoContato,
   ConfigDe,
   FormatoDeResposta,
+  OpcaoDeResposta,
   PerguntaDoFormulario,
   Regra,
   TipoDeResposta,
 } from "./passos";
+import { casaRegex } from "./regex-segura";
 
 /** O que o motor sabe do contato neste turno (lido pelo executor antes de rodar). */
 export type ContatoDoTurno = {
@@ -498,6 +500,27 @@ export function respostaNoFormato(formato: FormatoDeResposta, bruto: string): st
     case "hora":
       return respostaDoFormulario({ tipo: formato, gravar_em: "" }, bruto)?.valor ?? null;
   }
+}
+
+/**
+ * "Pedir para digitar" com várias respostas aceitas: a PRIMEIRA opção que bate,
+ * com o valor já arrumado como o formato dela pede. Regra própria guarda a
+ * mensagem como veio (aparada). `null` = nenhuma bateu.
+ */
+export function primeiraOpcaoQueBate(
+  opcoes: ReadonlyArray<OpcaoDeResposta>,
+  bruto: string,
+): { indice: number; valor: string } | null {
+  for (let i = 0; i < opcoes.length; i++) {
+    const o = opcoes[i]!;
+    if (o.formato === "regex") {
+      if (casaRegex(o.regex, bruto)) return { indice: i, valor: bruto.trim().slice(0, 1000) };
+      continue;
+    }
+    const valor = respostaNoFormato(o.formato, bruto);
+    if (valor !== null) return { indice: i, valor };
+  }
+  return null;
 }
 
 /**

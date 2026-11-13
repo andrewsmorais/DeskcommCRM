@@ -4,6 +4,7 @@
  * precisa ter por onde começar e cada passo precisa estar preenchido.
  * Mensagens escritas para quem monta o fluxo, não para quem programa.
  */
+import { problemaDaRegex } from "./regex-segura";
 import {
   ehTipoDePasso,
   lerConfig,
@@ -115,10 +116,18 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (!lerConfig("pedir_escolher", no.data).pergunta)
           problemas.push(`escreva a pergunta do passo "${nome}".`);
         break;
-      case "pedir_digitar":
-        if (!lerConfig("pedir_digitar", no.data).pergunta)
-          problemas.push(`escreva a pergunta do passo "${nome}".`);
+      case "pedir_digitar": {
+        const c = lerConfig("pedir_digitar", no.data);
+        if (!c.pergunta) problemas.push(`escreva a pergunta do passo "${nome}".`);
+        // Regra própria: só a que não pode travar o atendimento (regex-segura).
+        c.opcoes.forEach((o, i) => {
+          if (o.formato !== "regex") return;
+          const problema = problemaDaRegex(o.regex);
+          if (problema)
+            problemas.push(`no passo "${nome}", opção ${i + 1} ("${o.nome}"): ${problema.charAt(0).toLowerCase()}${problema.slice(1)}`);
+        });
         break;
+      }
       case "mensagem_contem":
         if (lerConfig("mensagem_contem", no.data).palavras.length === 0)
           problemas.push(`escreva ao menos uma palavra no passo "${nome}".`);

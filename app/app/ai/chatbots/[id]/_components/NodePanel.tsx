@@ -31,12 +31,13 @@ import {
   type Regra,
 } from "@/lib/chatbot/passos";
 
-import { MENSAGEM_FORA_DO_FORMATO } from "@/lib/chatbot/motor";
+import { MENSAGEM_FORA_DO_FORMATO, MENSAGEM_NENHUMA_OPCAO } from "@/lib/chatbot/motor";
 import type { MidiaDaBiblioteca } from "@/lib/chatbot/biblioteca-de-midias";
 import { lerDatasDeFeriado } from "@/lib/chatbot/feriados";
 import { linksDoTexto, type ProblemaDoLink } from "@/lib/chatbot/links";
 import { cabecalhoReservado, corpoPersonalizadoValido } from "@/lib/chatbot/webhook-corpo";
 import { IconeDoPasso } from "./icones";
+import { RespostasAceitas } from "./RespostasAceitas";
 import type { NodeData } from "./node-types";
 
 export type OpcoesDoPainel = {
@@ -819,6 +820,8 @@ function Campos({
             }
             ajuda={t("Depois use {{nome_que_você_escolheu}} numa mensagem.")}
           />
+          <RespostasAceitas opcoes={c.opcoes} onChange={(opcoes) => aplicar({ opcoes })} />
+          {c.opcoes.length > 0 ? null : (
           <div className="space-y-1.5">
             <Label htmlFor="digitar-formato">{t("O que a resposta precisa ser")}</Label>
             <select
@@ -841,19 +844,24 @@ function Campos({
                   )}
             </p>
           </div>
-          {c.formato !== "qualquer" ? (
+          )}
+          {c.formato !== "qualquer" || c.opcoes.length > 0 ? (
             <>
               <Texto
                 id="digitar-invalida"
-                rotulo={t("Se a resposta não estiver no formato")}
+                rotulo={
+                  c.opcoes.length > 0 ? t("Se nenhuma opção bater") : t("Se a resposta não estiver no formato")
+                }
                 valor={c.mensagem_invalida}
                 linhas={2}
-                placeholder={MENSAGEM_FORA_DO_FORMATO[c.formato]}
+                placeholder={c.opcoes.length > 0 ? MENSAGEM_NENHUMA_OPCAO : MENSAGEM_FORA_DO_FORMATO[c.formato]}
                 onCommit={(v) => aplicar({ mensagem_invalida: v })}
               />
               <div className="space-y-1.5">
                 <Label htmlFor="digitar-tentativas">
-                  {t('Tentativas antes de seguir por "Não respondeu certo"')}
+                  {c.opcoes.length > 0
+                    ? t('Tentativas antes de seguir por "Nenhuma opção"')
+                    : t('Tentativas antes de seguir por "Não respondeu certo"')}
                 </Label>
                 <select
                   id="digitar-tentativas"

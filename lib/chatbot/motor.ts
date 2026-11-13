@@ -50,6 +50,7 @@ import {
   regraVale,
   respostaDoFormulario,
   respostaNoFormato,
+  primeiraOpcaoQueBate,
   valorDoCampo,
   temEtiqueta,
   valorVale,
@@ -383,6 +384,9 @@ export function mensagensDoPagamento(
  * está no formato e quem montou o fluxo não escreveu outra mensagem. Vai para
  * o contato, então é texto do fluxo (português), como os padrões dos passos.
  */
+/** "Pedir para digitar" com várias opções: a resposta não bateu com nenhuma. */
+export const MENSAGEM_NENHUMA_OPCAO = "Não entendi a sua resposta. Pode tentar de novo?";
+
 export const MENSAGEM_FORA_DO_FORMATO: Record<FormatoDeResposta, string> = {
   qualquer: "Não consegui ler sua resposta. Pode mandar de novo?",
   email: "Esse e-mail não parece certo. Pode mandar de novo? Exemplo: nome@email.com",
@@ -741,7 +745,17 @@ function andar(
             mensagemLivre &&
             !!ctx.mensagem?.trim() &&
             !efeitos.some((e) => e.tipo === "enviar" || e.tipo === "midia");
-          const pronta = ultima ? respostaNoFormato(c.formato, ctx.mensagem ?? "") : null;
+          if (ultima && c.opcoes.length > 0) {
+            const bateu = primeiraOpcaoQueBate(c.opcoes, ctx.mensagem ?? "");
+            if (bateu) {
+              sessao.dados[c.variavel] = bateu.valor;
+              sessao.tentativas = 0;
+              saida = `opcao-${bateu.indice}`;
+              break;
+            }
+          }
+          const pronta =
+            ultima && c.opcoes.length === 0 ? respostaNoFormato(c.formato, ctx.mensagem ?? "") : null;
           if (pronta !== null) {
             sessao.dados[c.variavel] = pronta;
             sessao.tentativas = 0;
@@ -753,17 +767,30 @@ function andar(
           return esperarResposta(no.id, c.prazo_minutos);
         }
         resposta = false;
-        const valor = respostaNoFormato(c.formato, ctx.mensagem ?? "");
-        if (valor !== null) {
-          sessao.dados[c.variavel] = valor;
-          sessao.tentativas = 0;
-          break;
+        if (c.opcoes.length > 0) {
+          // Várias respostas aceitas: segue pela primeira opção que bate.
+          const bateu = primeiraOpcaoQueBate(c.opcoes, ctx.mensagem ?? "");
+          if (bateu) {
+            sessao.dados[c.variavel] = bateu.valor;
+            sessao.tentativas = 0;
+            saida = `opcao-${bateu.indice}`;
+            break;
+          }
+        } else {
+          const valor = respostaNoFormato(c.formato, ctx.mensagem ?? "");
+          if (valor !== null) {
+            sessao.dados[c.variavel] = valor;
+            sessao.tentativas = 0;
+            break;
+          }
         }
         sessao.tentativas += 1;
         if (sessao.tentativas < c.tentativas) {
           efeitos.push({
             tipo: "enviar",
-            texto: c.mensagem_invalida || MENSAGEM_FORA_DO_FORMATO[c.formato],
+            texto:
+              c.mensagem_invalida ||
+              (c.opcoes.length > 0 ? MENSAGEM_NENHUMA_OPCAO : MENSAGEM_FORA_DO_FORMATO[c.formato]),
           });
           return esperarResposta(no.id, c.prazo_minutos);
         }

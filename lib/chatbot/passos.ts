@@ -130,6 +130,18 @@ export const FORMATOS_DE_RESPOSTA = [
 ] as const;
 export type FormatoDeResposta = (typeof FORMATOS_DE_RESPOSTA)[number];
 
+/** O que uma opção do "Pedir para digitar" aceita: um formato pronto ou uma regra própria. */
+export const FORMATOS_DA_OPCAO = [...FORMATOS_DE_RESPOSTA, "regex"] as const;
+export type FormatoDaOpcao = (typeof FORMATOS_DA_OPCAO)[number];
+
+export const opcaoDeRespostaSchema = z.object({
+  nome: z.string().trim().min(1).max(60).default("Opção"),
+  formato: z.enum(FORMATOS_DA_OPCAO).default("qualquer"),
+  /** Só no formato "regex" (conferida por `lib/chatbot/regex-segura.ts`). */
+  regex: z.string().max(200).default(""),
+});
+export type OpcaoDeResposta = z.infer<typeof opcaoDeRespostaSchema>;
+
 /** Quem recebe a conversa no "Transferir p/ atendente". */
 export const MODOS_DE_ATENDENTE = ["especifico", "rodizio", "menos_conversas", "anterior"] as const;
 export type ModoDeAtendente = (typeof MODOS_DE_ATENDENTE)[number];
@@ -278,6 +290,13 @@ export const configDoPasso = {
      * ela ainda for a última da conversa e estiver no formato. Senão, pergunta.
      */
     usar_mensagem_anterior: z.boolean().default(false),
+    /**
+     * VÁRIAS RESPOSTAS ACEITAS (como a Umbler): cada opção tem um nome, um
+     * formato pronto ou uma regra própria, e uma saída só sua. A resposta segue
+     * pela PRIMEIRA opção que bate, na ordem da lista. Vazia = o modo de sempre,
+     * com o `formato` único acima.
+     */
+    opcoes: z.array(opcaoDeRespostaSchema).max(10).default([]),
     ...PRAZO_DA_RESPOSTA,
   }),
   mensagem_contem: z.object({
@@ -1573,6 +1592,13 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
     case "pedir_digitar": {
       const c = lerConfig("pedir_digitar", dados);
       const prazo = c.prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : [];
+      // Várias respostas aceitas: uma saída por opção, na ordem, e o erro.
+      if (c.opcoes.length > 0)
+        return [
+          ...c.opcoes.map((o, i) => ({ id: `opcao-${i}`, rotulo: o.nome })),
+          { id: "invalida", rotulo: "Nenhuma opção" },
+          ...prazo,
+        ];
       if (c.formato === "qualquer")
         return [{ id: "proximo", rotulo: prazo.length ? "Respondeu" : "" }, ...prazo];
       return [

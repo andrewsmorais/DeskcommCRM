@@ -115,7 +115,10 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
       return lerConfig("pedir_escolher", dados).pergunta;
     case "pedir_digitar": {
       const c = lerConfig("pedir_digitar", dados);
-      return c.pergunta ? `${c.pergunta} → {{${c.variavel}}}` : "";
+      if (!c.pergunta) return "";
+      return c.opcoes.length > 0
+        ? `${c.pergunta} → {{${c.variavel}}} · ${c.opcoes.length} ${t("opções")}`
+        : `${c.pergunta} → {{${c.variavel}}}`;
     }
     case "mensagem_contem":
       return lerConfig("mensagem_contem", dados).palavras.join(", ");

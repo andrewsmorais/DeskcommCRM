@@ -111,6 +111,11 @@ Evidência pela tela da assinatura e de Configurações › Conversas (13/11/202
 
 Diferença deliberada: na Umbler o "Iniciar um chatbot e finalizar" encerra na hora; aqui a conversa fica aberta até o chatbot chegar ao passo "Finalizar conversa", para a pesquisa de satisfação não ser cortada.
 
+Evidência pela tela do Pedir para digitar com várias respostas (13/11/2026, painel de verdade do editor):
+
+- `evidence/pedir-digitar-opcoes/d1-varias-respostas.png` — opções CPF e Placa (regra própria) e "Testar opções" dizendo "Seguiria por: Placa".
+- `evidence/pedir-digitar-opcoes/d2-regra-recusada.png` — regra que travaria o atendimento, recusada com o motivo.
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
@@ -150,7 +155,7 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 | 1 | **Agendar mensagem na conversa** (texto, nota ou chatbot), com aba "Agendadas" | médio | É o recurso mais visível que falta, e destrava o "agendar chatbot" |
 | 2 | ~~Finalizar com mensagem ou chatbot de finalização~~ — feito 13/11 | pequeno | Usado em todo atendimento (pesquisa de satisfação no fim) |
 | 3 | ~~Assinatura do atendente nas mensagens~~ — feito 13/11 | pequeno | Rápido e o cliente nota |
-| 4 | **Regex próprio** no Pedir para digitar | pequeno | Precisa de trava contra regex que trava o servidor |
+| 4 | ~~Regex próprio no Pedir para digitar~~ — feito 13/11 | pequeno | Precisa de trava contra regex que trava o servidor |
 | 5 | **Baixar histórico** da conversa (.txt e .pdf) | pequeno | |
 | 6 | **Observadores** da conversa | médio | Mexe em quem vê a conversa (segurança) |
 | 7 | **Transferir para outro número** | médio | Mexe na cadeia de envio |
@@ -171,7 +176,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | # | Bloco / opção na Umbler | ChatAI hoje |
 |---|---|---|
 | U1 | Visibilidade da conversa: Visível · Oculto · Oculto até a próxima mensagem do contato | ✅ feito 13/11 (migration 0510) |
-| U2 | **Pedir para digitar** com várias opções de resposta, cada uma com formato nativo (telefone, CPF, e-mail…) ou **regex**; botão "Testar opções"; a saída é a primeira opção que bate | 🟡 um formato só por pergunta, sem regex |
+| U2 | Pedir para digitar com várias opções de resposta, cada uma com formato nativo (telefone, CPF, e-mail…) ou regex; botão "Testar opções"; a saída é a primeira opção que bate | ✅ feito 13/11 ("Aceitar várias respostas", com trava contra regra que trava o servidor) |
 | U3 | **Transferir p/ atendente**: também "por variável", "atendente anterior na mesma conversa" e **"Remover"** (tira o atendente) | 🟡 temos fixo, rodízio, menos conversas, quem atendeu antes |
 | U4 | **Transferir para setor**: "setor da conversa anterior", "setor anterior na mesma conversa" e caminho alternativo se falhar | 🟡 só setor fixo |
 | U5 | **Notificar atendente**: escolher atendentes específicos, "somente se disponível" e caminho se ninguém puder ser avisado | 🟡 avisa o atendente da conversa |
@@ -216,7 +221,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 1. ~~Agendar uma MENSAGEM na conversa~~ — feito 13/11 (migration 0511): botão de calendário no campo de mensagem, aba "Agendadas".
 2. ~~**Finalizar** o atendimento enviando mensagem ou chatbot de encerramento~~ — feito 13/11: a janela Fechar oferece Só encerrar, Despedida antes ou Chatbot de encerramento.
 3. ~~**Assinatura do atendente** nas mensagens~~ — feito 13/11, junto com a tela Configurações › Conversas (assinatura sempre/nunca/atendente escolhe; comportamento do Fechar com mensagem e chatbot padrão; despedida pessoal no Perfil).
-4. **Pedir para digitar** com várias opções e regex próprio.
+4. ~~**Pedir para digitar** com várias opções e regex próprio~~ — feito 13/11 ("Aceitar várias respostas", "Testar opções").
 5. Opções dentro de blocos: modos extras de transferir (remover, anterior), Notificar com escolha de quem e "só se disponível", botão de link no Enviar mensagem, "não listado" e perguntas no Iniciar manualmente, "dia útil" no Aguardar até, estatística por bloco.
 6. Conversa: baixar histórico (.txt/.pdf), encaminhar e favoritar mensagem, figurinhas salvas, observadores, esconder telefone por papel, tirar atendente offline.
 7. Maiores: webchat no site, chat interno da equipe, variáveis da empresa, importar .vcf.
