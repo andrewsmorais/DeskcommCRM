@@ -48,7 +48,9 @@ describe("quem recebe no rodízio e em menos conversas", () => {
   });
 
   it("todo modo tem a nota que explica a ida para a fila", () => {
-    for (const m of MODOS_DE_ATENDENTE) expect(notaSemAtendente(m)).toMatch(/fila de atendimento/);
+    // "Remover" não transfere: não há fila para explicar.
+    for (const m of MODOS_DE_ATENDENTE.filter((x) => x !== "remover"))
+      expect(notaSemAtendente(m)).toMatch(/fila de atendimento/);
   });
 });
 

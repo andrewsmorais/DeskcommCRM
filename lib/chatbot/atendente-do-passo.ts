@@ -49,5 +49,11 @@ export function notaSemAtendente(modo: ModoDeAtendente): string {
       return "Ninguém da equipe estava disponível para receber a conversa do chatbot agora: ela ficou na fila de atendimento.";
     case "anterior":
       return "O chatbot procurou quem atendeu este contato antes e não achou ninguém da equipe: a conversa ficou na fila de atendimento.";
+    case "anterior_mesma_conversa":
+      return "O chatbot procurou quem atendeu esta conversa antes e não achou ninguém da equipe: a conversa ficou na fila de atendimento.";
+    case "variavel":
+      return "A variável do chatbot não tinha o id nem o e-mail de alguém da equipe: a conversa foi para a fila de atendimento.";
+    case "remover":
+      return "";
   }
 }

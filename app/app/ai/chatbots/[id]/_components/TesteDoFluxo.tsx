@@ -253,6 +253,9 @@ const TESTE_DO_MODO_DE_ATENDENTE: Record<Exclude<ModoDeAtendente, "especifico">,
   rodizio: "Conversa transferida pelo rodízio para o próximo atendente disponível",
   menos_conversas: "Conversa transferida para o atendente disponível com menos conversas",
   anterior: "Conversa transferida para quem atendeu o contato antes",
+  anterior_mesma_conversa: "Conversa transferida para quem atendeu esta conversa antes",
+  variavel: "Conversa transferida para o atendente da variável",
+  remover: "Atendente removido da conversa",
 };
 
 function textoDoEvento(e: EventoDoTeste, opcoes: OpcoesDoPainel, t: (s: string) => string): string {

@@ -33,6 +33,9 @@ const RESUMO_DO_MODO_DE_ATENDENTE: Record<Exclude<ModoDeAtendente, "especifico">
   rodizio: "Rodízio",
   menos_conversas: "Menos conversas abertas",
   anterior: "Quem atendeu antes",
+  anterior_mesma_conversa: "Quem atendeu esta conversa",
+  variavel: "Atendente da variável",
+  remover: "Remover atendente",
 };
 
 function resumo(tipo: string, dados: unknown, t: (s: string) => string): string {

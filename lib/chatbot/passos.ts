@@ -143,7 +143,18 @@ export const opcaoDeRespostaSchema = z.object({
 export type OpcaoDeResposta = z.infer<typeof opcaoDeRespostaSchema>;
 
 /** Quem recebe a conversa no "Transferir p/ atendente". */
-export const MODOS_DE_ATENDENTE = ["especifico", "rodizio", "menos_conversas", "anterior"] as const;
+export const MODOS_DE_ATENDENTE = [
+  "especifico",
+  "rodizio",
+  "menos_conversas",
+  "anterior",
+  /** Quem atendeu ESTA conversa por último (a Umbler: "anterior na mesma conversa"). */
+  "anterior_mesma_conversa",
+  /** O atendente que está numa variável do fluxo (id ou e-mail de quem é da equipe). */
+  "variavel",
+  /** Tira o atendente da conversa e o fluxo SEGUE (não é transferência). */
+  "remover",
+] as const;
 export type ModoDeAtendente = (typeof MODOS_DE_ATENDENTE)[number];
 
 /** O que cada pergunta do "Enviar formulário" aceita como resposta. */
@@ -360,6 +371,11 @@ export const configDoPasso = {
    */
   transferir_equipe: z.object({
     setor_id: z.string().uuid().nullable().default(null),
+    /**
+     * "Setor da conversa anterior" da Umbler: usa o setor em que a conversa já
+     * estava (do atendimento anterior). Sem setor, vai para a equipe toda.
+     */
+    setor_da_conversa: z.boolean().default(false),
     /** Só para o resumo no quadro; quem decide é o id. */
     nome_do_setor: z.string().max(60).default(""),
     mensagem: z.string().trim().max(1000).default(""),
@@ -373,6 +389,13 @@ export const configDoPasso = {
   transferir_atendente: z.object({
     modo: z.enum(MODOS_DE_ATENDENTE).default("especifico"),
     user_id: z.string().uuid().nullable().default(null),
+    /** Só no modo "variavel": a variável com o id ou o e-mail do atendente. */
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .or(z.literal(""))
+      .default(""),
     /** Rodízio e menos conversas: só entre estes. Vazio = quem pode receber a conversa. */
     atendentes: z.array(z.string().uuid()).max(50).default([]),
     mensagem: z.string().trim().max(1000).default(""),
@@ -579,6 +602,14 @@ export const configDoPasso = {
   /** Abre um aviso na Central de avisos, com link para a conversa. */
   notificar_atendente: z.object({
     mensagem: z.string().trim().max(500).default(""),
+    /**
+     * Quem avisar (a Umbler: "atendentes específicos"). Vazio = a equipe, pela
+     * Central de avisos, como sempre foi. Com nomes, o aviso vai ao celular de
+     * cada um e fica como nota na conversa.
+     */
+    atendentes: z.array(z.string().uuid()).max(50).default([]),
+    /** Só quem está "Disponível" agora. Se ninguém estiver, vai para a Central. */
+    so_disponiveis: z.boolean().default(false),
   }),
   /**
    * Chama um endereço de fora (n8n, Make, o sistema do cliente) e guarda
@@ -1669,8 +1700,10 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "sim", rotulo: "Está" },
         { id: "nao", rotulo: "Não está" },
       ];
-    case "transferir_equipe":
     case "transferir_atendente":
+      // "Remover" não transfere: tira o atendente e o fluxo segue.
+      return lerConfig("transferir_atendente", dados).modo === "remover" ? [{ id: "proximo", rotulo: "" }] : [];
+    case "transferir_equipe":
     case "finalizar_conversa":
     case "acionar_fluxo":
     case "bloquear_contato":

@@ -18330,6 +18330,28 @@ export const DICIONARIO: Traducoes = {
   "Pular feriados nacionais": { es: "Saltar feriados nacionales" },
   "Em feriado o fluxo espera o próximo dia marcado.": { es: "En feriado el flujo espera el próximo día marcado." },
   "Responda antes de iniciar o chatbot.": { es: "Responde antes de iniciar el chatbot." },
+  // Chatbot: modos de transferir e Notificar com escolha (Umbler)
+  "O setor em que a conversa já estava": { es: "El sector en el que ya estaba la conversación" },
+  "A conversa volta para o setor do atendimento anterior. Se ela nunca esteve num setor, vai para a equipe toda.": { es: "La conversación vuelve al sector de la atención anterior. Si nunca estuvo en un sector, va a todo el equipo." },
+  "Quem atendeu esta conversa antes": { es: "Quien atendió esta conversación antes" },
+  "O atendente de uma variável": { es: "El agente de una variable" },
+  "Remover o atendente da conversa": { es: "Quitar al agente de la conversación" },
+  "A conversa volta para o último atendente desta mesma conversa. Se não houver ninguém, ela vai para a fila da equipe.": { es: "La conversación vuelve al último agente de esta misma conversación. Si no hay nadie, va a la cola del equipo." },
+  "A conversa vai para o atendente cujo id ou e-mail está na variável (por exemplo, vindo de um WebHook). Se não for alguém da equipe, ela vai para a fila.": { es: "La conversación va al agente cuyo id o correo está en la variable (por ejemplo, desde un WebHook). Si no es alguien del equipo, va a la cola." },
+  "Tira o atendente da conversa, que fica sem dono, e o fluxo continua no próximo passo.": { es: "Quita al agente de la conversación, que queda sin dueño, y el flujo sigue en el próximo paso." },
+  "Variável com o atendente": { es: "Variable con el agente" },
+  "O id ou o e-mail de alguém da equipe, guardado antes no fluxo (por exemplo, por um WebHook).": { es: "El id o el correo de alguien del equipo, guardado antes en el flujo (por ejemplo, por un WebHook)." },
+  "Mensagem antes de remover (opcional)": { es: "Mensaje antes de quitar (opcional)" },
+  "Avisar só estes atendentes (opcional)": { es: "Avisar solo a estos agentes (opcional)" },
+  "Somente se estiver disponível": { es: "Solo si está disponible" },
+  "Quem estiver indisponível não é avisado. Se ninguém puder ser avisado, o aviso vai para a Central de avisos.": { es: "Quien esté no disponible no recibe el aviso. Si nadie puede ser avisado, el aviso va a la Central de avisos." },
+  "Com nomes marcados, o aviso vai ao celular de cada um e fica como nota na conversa. Sem ninguém marcado, vai para a equipe toda pela Central.": { es: "Con nombres marcados, el aviso va al celular de cada uno y queda como nota en la conversación. Sin nadie marcado, va a todo el equipo por la Central." },
+  "Conversa transferida para quem atendeu esta conversa antes": { es: "Conversación transferida a quien atendió esta conversación antes" },
+  "Conversa transferida para o atendente da variável": { es: "Conversación transferida al agente de la variable" },
+  "Atendente removido da conversa": { es: "Agente quitado de la conversación" },
+  "Quem atendeu esta conversa": { es: "Quien atendió esta conversación" },
+  "Atendente da variável": { es: "Agente de la variable" },
+  "Remover atendente": { es: "Quitar agente" },
 };
 /**
  * Traduz, ou devolve o próprio texto.

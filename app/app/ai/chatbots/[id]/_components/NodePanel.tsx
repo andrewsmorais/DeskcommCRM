@@ -1054,13 +1054,18 @@ function Campos({
             <select
               id="equipe-setor"
               className={SELECT}
-              value={c.setor_id ?? ""}
+              value={c.setor_da_conversa ? "__da_conversa" : (c.setor_id ?? "")}
               onChange={(e) => {
+                if (e.target.value === "__da_conversa") {
+                  aplicar({ setor_da_conversa: true, setor_id: null, nome_do_setor: "" });
+                  return;
+                }
                 const s = opcoes.setores.find((x) => x.id === e.target.value);
-                aplicar({ setor_id: s?.id ?? null, nome_do_setor: s?.nome ?? "" });
+                aplicar({ setor_da_conversa: false, setor_id: s?.id ?? null, nome_do_setor: s?.nome ?? "" });
               }}
             >
               <option value="">{t("Equipe toda")}</option>
+              <option value="__da_conversa">{t("O setor em que a conversa já estava")}</option>
               {opcoes.setores.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.nome}
@@ -1069,7 +1074,9 @@ function Campos({
             </select>
           </div>
           <p className="text-xs text-muted-foreground">
-            {c.setor_id
+            {c.setor_da_conversa
+              ? t("A conversa volta para o setor do atendimento anterior. Se ela nunca esteve num setor, vai para a equipe toda.")
+              : c.setor_id
               ? t(
                   "A conversa vai para a fila do setor e fica como Aguardando até alguém pegar. A Distribuição de atendimento só a entrega a quem é do setor.",
                 )
@@ -1134,6 +1141,18 @@ function Campos({
               </select>
             </div>
           ) : null}
+          {c.modo === "variavel" ? (
+            <Texto
+              id="atendente-variavel"
+              rotulo={t("Variável com o atendente")}
+              valor={c.variavel}
+              placeholder="atendente"
+              onCommit={(v) =>
+                aplicar({ variavel: v.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^[0-9]/, "_$&").slice(0, 40) })
+              }
+              ajuda={t("O id ou o e-mail de alguém da equipe, guardado antes no fluxo (por exemplo, por um WebHook).")}
+            />
+          ) : null}
           {comLista && opcoes.atendentes.length > 0 ? (
             <div className="space-y-1.5" data-testid="atendentes-do-rodizio">
               <Label>{t("Só entre estes (opcional)")}</Label>
@@ -1164,12 +1183,14 @@ function Campos({
           ) : null}
           <Texto
             id="atendente-msg"
-            rotulo={t("Mensagem antes de transferir (opcional)")}
+            rotulo={c.modo === "remover" ? t("Mensagem antes de remover (opcional)") : t("Mensagem antes de transferir (opcional)")}
             valor={c.mensagem}
             linhas={3}
             onCommit={(v) => aplicar({ mensagem: v })}
           />
-          <EsperaDoAtendente dados={dados} tipo="transferir_atendente" aplicar={aplicar} />
+          {c.modo === "remover" ? null : (
+            <EsperaDoAtendente dados={dados} tipo="transferir_atendente" aplicar={aplicar} />
+          )}
         </>
       );
     }
@@ -1351,17 +1372,61 @@ function Campos({
     case "notificar_atendente": {
       const c = lerConfig("notificar_atendente", dados);
       return (
-        <Texto
-          id="notificar-msg"
-          rotulo={t("Motivo do aviso")}
-          valor={c.mensagem}
-          linhas={3}
-          placeholder={t("Ex.: Cliente quer falar sobre cancelamento")}
-          onCommit={(v) => aplicar({ mensagem: v })}
-          ajuda={t(
-            "Abre um aviso na Central de avisos, com som e notificação para a equipe, que leva à conversa. As respostas do contato ({{nome}}) entram só na nota da conversa, não no aviso.",
-          )}
-        />
+        <>
+          <Texto
+            id="notificar-msg"
+            rotulo={t("Motivo do aviso")}
+            valor={c.mensagem}
+            linhas={3}
+            placeholder={t("Ex.: Cliente quer falar sobre cancelamento")}
+            onCommit={(v) => aplicar({ mensagem: v })}
+            ajuda={t(
+              "Abre um aviso na Central de avisos, com som e notificação para a equipe, que leva à conversa. As respostas do contato ({{nome}}) entram só na nota da conversa, não no aviso.",
+            )}
+          />
+          {opcoes.atendentes.length > 0 ? (
+            <div className="space-y-1.5" data-testid="notificar-quem">
+              <Label>{t("Avisar só estes atendentes (opcional)")}</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {opcoes.atendentes.map((a) => (
+                  <label key={a.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={c.atendentes.includes(a.id)}
+                      onChange={(e) =>
+                        aplicar({
+                          atendentes: e.target.checked
+                            ? [...c.atendentes, a.id]
+                            : c.atendentes.filter((x) => x !== a.id),
+                        })
+                      }
+                    />
+                    {a.nome}
+                  </label>
+                ))}
+              </div>
+              {c.atendentes.length > 0 ? (
+                <label className="flex items-start gap-2 pt-1 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={c.so_disponiveis}
+                    onChange={(e) => aplicar({ so_disponiveis: e.target.checked })}
+                  />
+                  <span>
+                    {t("Somente se estiver disponível")}
+                    <span className="block text-xs text-muted-foreground">
+                      {t("Quem estiver indisponível não é avisado. Se ninguém puder ser avisado, o aviso vai para a Central de avisos.")}
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                {t("Com nomes marcados, o aviso vai ao celular de cada um e fica como nota na conversa. Sem ninguém marcado, vai para a equipe toda pela Central.")}
+              </p>
+            </div>
+          ) : null}
+        </>
       );
     }
     case "aguardar_intervalo":
@@ -3672,6 +3737,9 @@ const NOMES_DO_MODO_DE_ATENDENTE: Record<ModoDeAtendente, string> = {
   rodizio: "Rodízio entre a equipe",
   menos_conversas: "Quem tem menos conversas abertas",
   anterior: "Quem atendeu o contato antes",
+  anterior_mesma_conversa: "Quem atendeu esta conversa antes",
+  variavel: "O atendente de uma variável",
+  remover: "Remover o atendente da conversa",
 };
 
 const EXPLICACAO_DO_MODO_DE_ATENDENTE: Record<ModoDeAtendente, string> = {
@@ -3682,6 +3750,12 @@ const EXPLICACAO_DO_MODO_DE_ATENDENTE: Record<ModoDeAtendente, string> = {
     "A conversa vai para o atendente disponível com menos conversas abertas no momento. Se ninguém estiver disponível, ela vai para a fila da equipe.",
   anterior:
     "A conversa volta para quem atendeu este contato da última vez neste número. Se não houver ninguém, ela vai para a fila da equipe.",
+  anterior_mesma_conversa:
+    "A conversa volta para o último atendente desta mesma conversa. Se não houver ninguém, ela vai para a fila da equipe.",
+  variavel:
+    "A conversa vai para o atendente cujo id ou e-mail está na variável (por exemplo, vindo de um WebHook). Se não for alguém da equipe, ela vai para a fila.",
+  remover:
+    "Tira o atendente da conversa, que fica sem dono, e o fluxo continua no próximo passo.",
 };
 
 const NOMES_DO_TIPO_DE_RESPOSTA: Record<PerguntaDoFormulario["tipo"], string> = {

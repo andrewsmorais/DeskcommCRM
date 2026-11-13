@@ -345,6 +345,9 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
       case "transferir_equipe":
         bolhas.push({ de: "evento", evento: { tipo: "transferiu_equipe", setor_id: e.setor_id } });
         break;
+      case "remover_atendente":
+        bolhas.push({ de: "evento", evento: { tipo: "transferiu_atendente", modo: "remover", user_id: null } });
+        break;
       case "transferir_atendente":
         bolhas.push({
           de: "evento",

@@ -289,3 +289,142 @@ describe("Transferir p/ atendente — rodízio e menos conversas", () => {
     expect(atribuicoes).toEqual([{ conversa: c.conversa, para: ANA }]);
   });
 });
+
+/** Desenho livre (para os modos que precisam de um passo antes ou depois). */
+async function fluxoCom(nodes: unknown[], edges: unknown[]) {
+  await pool.query(
+    `update chatbot_flows set is_active = false where organization_id = $1 and id <> $2`,
+    [ORG, FLUXO],
+  );
+  await pool.query(
+    `insert into chatbot_flows (id, organization_id, name, status, is_active, grafo)
+     values ($1, $2, 'Transferir por modo', 'active', true, $3::jsonb)
+     on conflict (id) do update set grafo = excluded.grafo, is_active = true`,
+    [FLUXO, ORG, JSON.stringify({ nodes, edges })],
+  );
+}
+const no = (id: string, type: string, data: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, data });
+
+describe("Transferir p/ atendente — modos novos (paridade Umbler)", () => {
+  it("quem atendeu ESTA conversa: o último da própria conversa, não de outra do contato", async () => {
+    await passo({ modo: "anterior_mesma_conversa" });
+    const c = await conversaNova();
+    await atendidaPor(c.conversa, ANA, 20);
+    await chega(c);
+    expect(atribuicoes).toEqual([{ conversa: c.conversa, para: ANA }]);
+  });
+
+  it("quem atendeu esta conversa, sem ninguém nela: fila e nota", async () => {
+    await passo({ modo: "anterior_mesma_conversa" });
+    const c = await conversaNova();
+    await chega(c);
+    expect(atribuicoes).toEqual([]);
+    expect(await naFila(c.conversa)).toBe(true);
+    expect((await notas(c.conversa)).join(" ")).toMatch(/quem atendeu esta conversa antes/);
+  });
+
+  it("por variável: o e-mail de alguém da equipe recebe a conversa", async () => {
+    await fluxoCom(
+      [
+        no("i", "inicio_canal"),
+        no("g", "guardar_valor", { variavel: "atendente", valor: `modos-${ANA.slice(-1)}@invariant.test` }),
+        no("t", "transferir_atendente", { modo: "variavel", variavel: "atendente" }),
+      ],
+      [
+        { id: "a", source: "i", target: "g", sourceHandle: "proximo" },
+        { id: "b", source: "g", target: "t", sourceHandle: "proximo" },
+      ],
+    );
+    const c = await conversaNova();
+    await chega(c);
+    expect(atribuicoes).toEqual([{ conversa: c.conversa, para: ANA }]);
+  });
+
+  it("por variável: quem saiu da equipe (ou valor estranho) não recebe — fila e nota", async () => {
+    await fluxoCom(
+      [
+        no("i", "inicio_canal"),
+        no("g", "guardar_valor", { variavel: "atendente", valor: BETO }),
+        no("t", "transferir_atendente", { modo: "variavel", variavel: "atendente" }),
+      ],
+      [
+        { id: "a", source: "i", target: "g", sourceHandle: "proximo" },
+        { id: "b", source: "g", target: "t", sourceHandle: "proximo" },
+      ],
+    );
+    const c = await conversaNova();
+    await chega(c);
+    expect(atribuicoes).toEqual([]);
+    expect(await naFila(c.conversa)).toBe(true);
+    expect((await notas(c.conversa)).join(" ")).toMatch(/variável do chatbot/);
+  });
+
+  it("Remover: tira o atendente e o fluxo SEGUE para o próximo passo", async () => {
+    await fluxoCom(
+      [
+        no("i", "inicio_canal"),
+        no("t", "transferir_atendente", { modo: "remover" }),
+        no("n", "criar_nota", { texto: "seguiu depois de remover" }),
+      ],
+      [
+        { id: "a", source: "i", target: "t", sourceHandle: "proximo" },
+        { id: "b", source: "t", target: "n", sourceHandle: "proximo" },
+      ],
+    );
+    const c = await conversaNova();
+    await chega(c);
+    expect(atribuicoes).toEqual([{ conversa: c.conversa, para: undefined }].map((x) => ({ ...x, para: null as never })));
+    const n = await notas(c.conversa);
+    expect(n.join(" ")).toMatch(/tirou o atendente/);
+    expect(n.join(" ")).toMatch(/seguiu depois de remover/);
+  });
+});
+
+describe("Notificar atendente — escolher quem avisar (paridade Umbler)", () => {
+  const avisosDaCentral = async (conversa: string) =>
+    Number(
+      (
+        await pool.query<{ n: string }>(
+          `select count(*)::text as n from agent_inbox_items
+            where organization_id = $1 and kind = 'chatbot_aviso' and ref_id = $2`,
+          [ORG, conversa],
+        )
+      ).rows[0]?.n ?? 0,
+    );
+  const notificar = (data: Record<string, unknown>) =>
+    fluxoCom(
+      [no("i", "inicio_canal"), no("n", "notificar_atendente", { mensagem: "Cliente VIP", ...data })],
+      [{ id: "a", source: "i", target: "n", sourceHandle: "proximo" }],
+    );
+
+  it("com atendentes escolhidos: avisa só eles (nota com o nome), sem aviso para a equipe toda", async () => {
+    await notificar({ atendentes: [ANA] });
+    const c = await conversaNova();
+    await chega(c);
+    expect((await notas(c.conversa)).join(" ")).toMatch(/Aviso do chatbot para .*Cliente VIP/);
+    expect(await avisosDaCentral(c.conversa)).toBe(0);
+  });
+
+  it("só disponíveis e ninguém disponível: o aviso cai na Central, com o porquê", async () => {
+    await pool.query(`delete from attendant_availability where organization_id = $1 and user_id = $2`, [ORG, ANA]);
+    await notificar({ atendentes: [ANA], so_disponiveis: true });
+    const c = await conversaNova();
+    await chega(c);
+    expect((await notas(c.conversa)).join(" ")).toMatch(/estava disponível/);
+    expect(await avisosDaCentral(c.conversa)).toBe(1);
+  });
+
+  it("atendente que saiu da equipe não é avisado: Central", async () => {
+    await notificar({ atendentes: [BETO] });
+    const c = await conversaNova();
+    await chega(c);
+    expect(await avisosDaCentral(c.conversa)).toBe(1);
+  });
+
+  it("sem ninguém escolhido: a Central, como sempre foi", async () => {
+    await notificar({});
+    const c = await conversaNova();
+    await chega(c);
+    expect(await avisosDaCentral(c.conversa)).toBe(1);
+  });
+});

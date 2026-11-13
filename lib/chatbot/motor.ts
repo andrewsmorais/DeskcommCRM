@@ -93,14 +93,18 @@ export type Efeito =
   | { tipo: "midia"; storage_path: string; midia: TipoDeMidia; mime: string; legenda: string }
   | { tipo: "negocio"; pipeline_id: string; stage_id: string; titulo: string }
   /** `setor_id` null = equipe toda. */
-  | { tipo: "transferir_equipe"; setor_id: string | null }
+  | { tipo: "transferir_equipe"; setor_id: string | null; setor_da_conversa?: boolean }
   | {
       tipo: "transferir_atendente";
       modo: ModoDeAtendente;
       user_id: string | null;
       /** Rodízio e menos conversas: só entre estes (vazio = quem pode receber). */
       atendentes: string[];
+      /** Modo "variavel": o que estava na variável (id ou e-mail). */
+      quem?: string;
     }
+  /** "Transferir p/ atendente" no modo Remover: a conversa fica sem atendente. */
+  | { tipo: "remover_atendente" }
   /** `alvo`: etiquetas do contato ou da conversa ("Editar etiquetas"). */
   | { tipo: "etiquetas"; alvo: "contato" | "conversa"; adicionar: string[]; remover: string[] }
   | { tipo: "nota"; texto: string }
@@ -113,7 +117,14 @@ export type Efeito =
   | { tipo: "followup"; pointer_id: string }
   | { tipo: "feedback"; texto: string }
   /** `texto` com as respostas do contato; `modelo` é o que quem montou o fluxo escreveu, sem elas. */
-  | { tipo: "notificar"; texto: string; modelo: string }
+  | {
+      tipo: "notificar";
+      texto: string;
+      modelo: string;
+      /** Só estes atendentes (vazio/ausente = a equipe pela Central). */
+      atendentes?: string[];
+      so_disponiveis?: boolean;
+    }
   /** Bloqueia o contato (`contacts.is_blocked`). Vem antes de "finalizar". */
   | { tipo: "bloquear" }
   /** Abre o pedido de exclusão dos dados (LGPD), que um admin aprova. */
@@ -900,18 +911,30 @@ function andar(
         const c = lerConfig("transferir_equipe", no.data);
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
-        efeitos.push({ tipo: "transferir_equipe", setor_id: c.setor_id });
+        efeitos.push({
+          tipo: "transferir_equipe",
+          setor_id: c.setor_da_conversa ? null : c.setor_id,
+          ...(c.setor_da_conversa ? { setor_da_conversa: true } : {}),
+        });
         return transferido(no.id, c);
       }
       case "transferir_atendente": {
         const c = lerConfig("transferir_atendente", no.data);
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
+        if (c.modo === "remover") {
+          // Tira o atendente e segue o fluxo (o chatbot continua com a conversa).
+          efeitos.push({ tipo: "remover_atendente" });
+          break;
+        }
         efeitos.push({
           tipo: "transferir_atendente",
           modo: c.modo,
           user_id: c.modo === "especifico" ? c.user_id : null,
           atendentes: c.modo === "rodizio" || c.modo === "menos_conversas" ? c.atendentes : [],
+          ...(c.modo === "variavel"
+            ? { quem: (sessao.dados[c.variavel] ?? "").trim().slice(0, 200) }
+            : {}),
         });
         return transferido(no.id, c);
       }
@@ -1166,10 +1189,15 @@ function andar(
         break;
       }
       case "notificar_atendente": {
-        const { mensagem } = lerConfig("notificar_atendente", no.data);
+        const { mensagem, atendentes, so_disponiveis } = lerConfig("notificar_atendente", no.data);
         const texto = preencher(mensagem, sessao.dados).trim();
         const modelo = mensagem.replace(/\{\{[^}]*\}\}/g, "…").trim();
-        efeitos.push({ tipo: "notificar", texto, modelo });
+        efeitos.push({
+          tipo: "notificar",
+          texto,
+          modelo,
+          ...(atendentes.length > 0 ? { atendentes, so_disponiveis } : {}),
+        });
         break;
       }
       case "webhook":

@@ -31,6 +31,7 @@ import type { ContatoDoTurno } from "./regras";
 import { randomUUID } from "node:crypto";
 import { insertInboxItem } from "@/lib/agent-engine/db/repository";
 import { loadEligibleAttendants, type RoutingScope } from "@/lib/routing/eligibles";
+import { enviarPushAoUsuario } from "@/lib/notifications/web_push";
 import { escolherAtendente, notaSemAtendente } from "./atendente-do-passo";
 import { enrollFollowupFlow } from "@/lib/followup/enroll";
 import { horariosLivresDaOrg } from "@/lib/agenda/consulta";
@@ -562,6 +563,39 @@ async function atendenteDoPasso(
     );
     return rows[0] ? efeito.user_id : null;
   }
+  if (efeito.modo === "anterior_mesma_conversa") {
+    // Quem atendeu ESTA conversa por último (e ainda é da equipe).
+    const { rows } = await pool.query<{ user_id: string }>(
+      `select ev.to_user_id as user_id
+         from conversation_assignment_events ev
+         join user_organizations uo
+           on uo.organization_id = ev.organization_id and uo.user_id = ev.to_user_id
+          and uo.revoked_at is null and uo.role in ('agent', 'manager', 'admin')
+        where ev.organization_id = $1 and ev.conversation_id = $2 and ev.to_user_id is not null
+        order by ev.created_at desc
+        limit 1`,
+      [e.organizationId, e.conversationId],
+    );
+    return rows[0]?.user_id ?? null;
+  }
+  if (efeito.modo === "variavel") {
+    // Id ou e-mail de alguém da equipe DESTA organização; o resto vai para a fila.
+    const quem = (efeito.quem ?? "").trim();
+    if (!quem) return null;
+    const ehId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(quem);
+    const { rows } = await pool.query<{ user_id: string }>(
+      `select uo.user_id
+         from user_organizations uo
+         join auth.users u on u.id = uo.user_id
+        where uo.organization_id = $1 and uo.revoked_at is null
+          and uo.role in ('agent', 'manager', 'admin')
+          and ${ehId ? "uo.user_id = $2::uuid" : "lower(u.email) = lower($2)"}
+        limit 1`,
+      [e.organizationId, quem],
+    );
+    return rows[0]?.user_id ?? null;
+  }
+  if (efeito.modo === "remover") return null;
   if (efeito.modo === "anterior") {
     const { rows } = await pool.query<{ user_id: string }>(
       `select ev.to_user_id as user_id
@@ -612,7 +646,9 @@ async function atendenteDoPasso(
         };
   try {
     const candidatos = await loadEligibleAttendants(admin, e.organizationId, new Date(), escopo);
-    return escolherAtendente(efeito.modo, candidatos, efeito.atendentes);
+    return efeito.modo === "rodizio" || efeito.modo === "menos_conversas"
+      ? escolherAtendente(efeito.modo, candidatos, efeito.atendentes)
+      : null;
   } catch (err) {
     log.warn("chatbot: não deu para ler quem está disponível — conversa na fila", {
       modo: efeito.modo,
@@ -2083,6 +2119,14 @@ async function executarEfeitos(
           break;
         }
         case "transferir_equipe": {
+          if (efeito.setor_da_conversa && !efeito.setor_id) {
+            // "Setor da conversa anterior": o setor em que a conversa já estava.
+            const { rows } = await pool.query<{ setor_id: string | null }>(
+              `select setor_id from conversations where organization_id = $1 and id = $2`,
+              [e.organizationId, e.conversationId],
+            );
+            efeito.setor_id = rows[0]?.setor_id ?? null;
+          }
           if (efeito.setor_id) {
             // Fila do setor: a mesma sequência da rota da Inbox (IA calada,
             // dono de fora do setor solta, distribuição só entre membros).
@@ -2157,6 +2201,23 @@ async function executarEfeitos(
           }
           break;
         }
+        case "remover_atendente": {
+          // "Remover": a conversa fica sem dono e o chatbot continua com ela.
+          const { error } = await admin.rpc("fn_conversation_assign", {
+            p_organization_id: e.organizationId,
+            p_conversation_id: e.conversationId,
+            p_to_user_id: null as unknown as string,
+            p_reason: "release",
+            p_enforce_expected: false,
+          });
+          if (error)
+            log.warn("chatbot: não deu para remover o atendente", {
+              flow_id: fluxoId,
+              erro: error.message.slice(0, 120),
+            });
+          else await notaInterna("O chatbot tirou o atendente desta conversa.");
+          break;
+        }
         case "nota":
           // Nota interna: a equipe vê na conversa, o contato nunca.
           await notaInterna(efeito.texto);
@@ -2213,6 +2274,43 @@ async function executarEfeitos(
           break;
         }
         case "notificar": {
+          // Atendentes escolhidos: aviso no celular de cada um (e nota na
+          // conversa com os nomes). Ninguém alcançável → cai na Central, para a
+          // conversa não ficar sem ninguém olhando.
+          if (efeito.atendentes && efeito.atendentes.length > 0) {
+            const { rows: alvo } = await pool.query<{ user_id: string; nome: string | null }>(
+              `select uo.user_id,
+                      coalesce(u.raw_user_meta_data->>'full_name', u.email) as nome
+                 from user_organizations uo
+                 join auth.users u on u.id = uo.user_id
+                 left join attendant_availability aa
+                   on aa.organization_id = uo.organization_id and aa.user_id = uo.user_id
+                where uo.organization_id = $1 and uo.revoked_at is null
+                  and uo.role in ('agent', 'manager', 'admin')
+                  and uo.user_id = any($2::uuid[])
+                  and ($3 = false or coalesce(aa.is_available, false))`,
+              [e.organizationId, efeito.atendentes, efeito.so_disponiveis === true],
+            );
+            if (alvo.length > 0) {
+              const nomes = alvo.map((a) => a.nome ?? "atendente").join(", ");
+              await notaInterna(`Aviso do chatbot para ${nomes}${efeito.texto ? `: ${efeito.texto}` : "."}`);
+              for (const a of alvo)
+                await enviarPushAoUsuario(e.organizationId, a.user_id, {
+                  title: (efeito.modelo || "O chatbot pediu atenção nesta conversa").slice(0, 200),
+                  body: "O chatbot pediu que você olhe esta conversa.",
+                  tag: `chatbot:${e.conversationId}`,
+                  href: `/app/inbox?id=${e.conversationId}`,
+                }).catch((err: unknown) =>
+                  log.warn("chatbot: aviso no celular falhou", { erro: (err as Error).message.slice(0, 120) }),
+                );
+              break;
+            }
+            await notaInterna(
+              efeito.so_disponiveis
+                ? "Nenhum dos atendentes escolhidos estava disponível: o aviso do chatbot foi para a Central de avisos."
+                : "Nenhum dos atendentes escolhidos faz mais parte da equipe: o aviso do chatbot foi para a Central de avisos.",
+            );
+          }
           // O aviso da Central leva só o texto que quem montou o fluxo
           // escreveu, sem as respostas do contato (o título do aviso sai do
           // CRM em push); o texto preenchido fica na conversa, como nota.
