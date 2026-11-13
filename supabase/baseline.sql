@@ -46354,3 +46354,10 @@ comment on column public.messages.favoritada_em is
 create index if not exists messages_favoritas_da_conversa
   on public.messages (organization_id, conversation_id, favoritada_em desc)
   where favoritada_em is not null;
+
+-- ---- reatribuição do atendente (migration 0514) ----
+alter table public.attendant_availability
+  add column if not exists reatribuicao text not null default 'desligada'
+  check (reatribuicao in ('desligada', 'offline', 'sempre'));
+comment on column public.attendant_availability.reatribuicao is
+  'Reatribuição automática (paridade Umbler): desligada | offline (sai da conversa se o contato escreve e ele está indisponível) | sempre. Migration 0514.';

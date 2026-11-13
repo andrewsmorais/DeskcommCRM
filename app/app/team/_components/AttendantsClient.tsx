@@ -492,6 +492,7 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
                 <TableHead>{t("Carga")}</TableHead>
                 <TableHead>{t("Capacidade")}</TableHead>
                 <TableHead>{t("Horário")}</TableHead>
+                {canManage ? <TableHead>{t("Reatribuição")}</TableHead> : null}
                 {canManage ? <TableHead className="w-[120px]">{t("Disponível")}</TableHead> : null}
               </TableRow>
             </TableHeader>
@@ -555,6 +556,28 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
                         ) : null}
                       </div>
                     </TableCell>
+                    {canManage ? (
+                      <TableCell>
+                        {/* Reatribuição automática (Umbler): quando o contato
+                            escreve, o atendente sai da conversa. */}
+                        <select
+                          className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                          aria-label={`${t("Reatribuição")} — ${a.name}`}
+                          value={a.availability?.reatribuicao ?? "desligada"}
+                          title={t("Quando o contato escreve numa conversa deste atendente: desligada não faz nada; offline tira o atendente se ele estiver indisponível; sempre tira a cada mensagem nova.")}
+                          onChange={(e) =>
+                            patch.mutate({
+                              userId: a.userId,
+                              patch: { reatribuicao: e.target.value as "desligada" | "offline" | "sempre" },
+                            })
+                          }
+                        >
+                          <option value="desligada">{t("Desligada")}</option>
+                          <option value="offline">{t("Quando estiver offline")}</option>
+                          <option value="sempre">{t("Sempre")}</option>
+                        </select>
+                      </TableCell>
+                    ) : null}
                     {canManage ? (
                       <TableCell>
                         <Switch

@@ -35,6 +35,10 @@ export const ASSINATURA_MAX = 75;
 /** Tamanho máximo de uma mensagem de WhatsApp aceita pelo envio. */
 export const MENSAGEM_MAX = 4096;
 
+/** O que acontece depois que a reatribuição tira o atendente da conversa. */
+export const ACOES_DA_REATRIBUICAO = ["liberar", "chatbot"] as const;
+export type AcaoDaReatribuicao = (typeof ACOES_DA_REATRIBUICAO)[number];
+
 export const preferenciasDeConversaSchema = z.object({
   assinatura: z.enum(COMPORTAMENTOS_DA_ASSINATURA).default("atendente_escolhe"),
   finalizar: z
@@ -44,6 +48,17 @@ export const preferenciasDeConversaSchema = z.object({
       chatbot_padrao: z.string().uuid().nullable().default(null),
     })
     .default({ comportamento: "atendente_escolhe", mensagem_padrao: null, chatbot_padrao: null }),
+  /**
+   * Reatribuição automática (Umbler): quando a regra do atendente o tira da
+   * conversa, ela fica disponível para outro (`liberar`, padrão) ou um chatbot
+   * de início manual começa (`chatbot`).
+   */
+  reatribuicao: z
+    .object({
+      acao: z.enum(ACOES_DA_REATRIBUICAO).default("liberar"),
+      chatbot_id: z.string().uuid().nullable().default(null),
+    })
+    .default({ acao: "liberar", chatbot_id: null }),
 });
 export type PreferenciasDeConversa = z.infer<typeof preferenciasDeConversaSchema>;
 

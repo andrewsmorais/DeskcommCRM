@@ -170,6 +170,8 @@ export const AUDIT_ACTIONS = [
   "message.favorite_changed",
   /** Mensagem encaminhada para outra conversa. */
   "message.forwarded",
+  /** Reatribuição automática (migration 0514): o atendente saiu da conversa sozinho. */
+  "conversation.reassigned_automatically",
   "signature.changed",
   /** A conversa foi posta num setor (ou tirada dele) — Inbox ou chatbot. */
   "conversation.setor_changed",

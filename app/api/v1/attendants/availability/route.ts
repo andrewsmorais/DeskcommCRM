@@ -109,7 +109,20 @@ export async function GET(_req: NextRequest): Promise<Response> {
     }),
   );
 
+  // Reatribuição automática (migration 0514). Leitura à parte e tolerante: num
+  // banco que ainda não recebeu a 0514, a lista da equipe continua abrindo.
+  const reatribuicoes = new Map<string, string>();
+  {
+    const { data: regras } = await admin
+      .from("attendant_availability")
+      .select("user_id, reatribuicao")
+      .eq("organization_id", activeOrg.orgId);
+    for (const r of (regras ?? []) as { user_id: string; reatribuicao: string }[])
+      reatribuicoes.set(r.user_id, r.reatribuicao);
+  }
+
   const rows = roster.map((m) => ({
+    reatribuicao: reatribuicoes.get(m.userId) ?? "desligada",
     user_id: m.userId,
     role: m.papel,
     name: names.get(m.userId)?.name ?? null,

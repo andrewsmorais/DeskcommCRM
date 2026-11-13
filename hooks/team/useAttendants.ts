@@ -33,6 +33,8 @@ export interface AttendantAvailability {
    * `is_available` + jornada (`estaDePlantao`), e nada aqui desliga a chave.
    */
   present: boolean;
+  /** Reatribuição automática (migration 0514). Ausente = "desligada". */
+  reatribuicao?: "desligada" | "offline" | "sempre";
 }
 
 const ATTENDANTS_KEY = ["team", "attendants"] as const;
@@ -51,6 +53,7 @@ export function useAttendants() {
 export interface AvailabilityUpdate {
   is_available?: boolean;
   capacity?: number;
+  reatribuicao?: "desligada" | "offline" | "sempre";
   schedule?: AvailabilitySchedule;
 }
 

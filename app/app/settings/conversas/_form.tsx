@@ -46,6 +46,8 @@ export function ConversasForm({ initial }: { initial: PreferenciasDeConversa }) 
   const [finalizar, setFinalizar] = useState(initial.finalizar.comportamento);
   const [mensagem, setMensagem] = useState(initial.finalizar.mensagem_padrao ?? "");
   const [chatbot, setChatbot] = useState(initial.finalizar.chatbot_padrao ?? "");
+  const [reatribuicao, setReatribuicao] = useState(initial.reatribuicao.acao);
+  const [chatbotDaReatribuicao, setChatbotDaReatribuicao] = useState(initial.reatribuicao.chatbot_id ?? "");
   const [salvando, startTransition] = useTransition();
 
   function salvar() {
@@ -58,6 +60,7 @@ export function ConversasForm({ initial }: { initial: PreferenciasDeConversa }) 
             mensagem_padrao: mensagem.trim() || null,
             chatbot_padrao: chatbot || null,
           },
+          reatribuicao: { acao: reatribuicao, chatbot_id: chatbotDaReatribuicao || null },
         });
         toast.success(t("Configurações de conversas salvas."));
       } catch (err) {
@@ -143,6 +146,48 @@ export function ConversasForm({ initial }: { initial: PreferenciasDeConversa }) 
             )}
           </p>
         </div>
+      </Card>
+
+      <Card className="space-y-3 p-6">
+        <h2 className="font-semibold">{t("Reatribuição automática")}</h2>
+        <p className="text-sm text-muted-foreground">
+          {t(
+            "A regra de cada atendente fica em Equipe › Atendimento: desligada, quando estiver offline ou sempre. Aqui você define o que acontece com a conversa quando o atendente sai dela.",
+          )}
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="radio"
+            name="reatribuicao"
+            checked={reatribuicao === "liberar"}
+            onChange={() => setReatribuicao("liberar")}
+          />
+          {t("O atendente é removido da conversa e ela fica disponível para outro atendente")}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="radio"
+            name="reatribuicao"
+            checked={reatribuicao === "chatbot"}
+            onChange={() => setReatribuicao("chatbot")}
+          />
+          {t("Um chatbot é iniciado na conversa")}
+        </label>
+        {reatribuicao === "chatbot" ? (
+          <select
+            aria-label={t("Chatbot da reatribuição")}
+            className={`${CAMPO} h-9 py-0`}
+            value={chatbotDaReatribuicao}
+            onChange={(e) => setChatbotDaReatribuicao(e.target.value)}
+          >
+            <option value="">{t("Escolha…")}</option>
+            {(chatbots ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
       </Card>
 
       <div className="flex justify-end">

@@ -18378,6 +18378,18 @@ export const DICIONARIO: Traducoes = {
   "encaminhada": { es: "reenviado" },
   "Esta mensagem não pode ser encaminhada.": { es: "Este mensaje no se puede reenviar." },
   "Escolha para onde encaminhar.": { es: "Elige a dónde reenviar." },
+  // Reatribuição automática
+  "Reatribuição automática": { es: "Reasignación automática" },
+  "A regra de cada atendente fica em Equipe › Atendimento: desligada, quando estiver offline ou sempre. Aqui você define o que acontece com a conversa quando o atendente sai dela.": { es: "La regla de cada agente está en Equipo › Atención: desactivada, cuando esté desconectado o siempre. Aquí defines lo que pasa con la conversación cuando el agente sale de ella." },
+  "O atendente é removido da conversa e ela fica disponível para outro atendente": { es: "El agente se quita de la conversación y queda disponible para otro agente" },
+  "Um chatbot é iniciado na conversa": { es: "Se inicia un chatbot en la conversación" },
+  "Chatbot da reatribuição": { es: "Chatbot de la reasignación" },
+  "Reatribuição": { es: "Reasignación" },
+  "Quando o contato escreve numa conversa deste atendente: desligada não faz nada; offline tira o atendente se ele estiver indisponível; sempre tira a cada mensagem nova.": { es: "Cuando el contacto escribe en una conversación de este agente: desactivada no hace nada; desconectado quita al agente si no está disponible; siempre lo quita en cada mensaje nuevo." },
+  "Quando estiver offline": { es: "Cuando esté desconectado" },
+  "Escolha o chatbot da reatribuição.": { es: "Elige el chatbot de la reasignación." },
+  'O chatbot da reatribuição precisa ter o passo "Iniciar manualmente".': { es: 'El chatbot de la reasignación necesita tener el paso "Iniciar manualmente".' },
+  "Só um gerente ou administrador muda a reatribuição.": { es: "Solo un gerente o administrador cambia la reasignación." },
 };
 /**
  * Traduz, ou devolve o próprio texto.

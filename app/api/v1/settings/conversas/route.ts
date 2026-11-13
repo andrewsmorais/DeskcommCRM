@@ -112,6 +112,25 @@ export async function PATCH(req: NextRequest): Promise<Response> {
       { requestId },
     );
 
+  if (input.reatribuicao.acao === "chatbot") {
+    if (!input.reatribuicao.chatbot_id)
+      return fail("validation_failed", t("Escolha o chatbot da reatribuição."), 422, { requestId });
+    const { data: fluxoR } = await admin
+      .from("chatbot_flows")
+      .select("id, grafo")
+      .eq("id", input.reatribuicao.chatbot_id)
+      .eq("organization_id", authz.org.orgId)
+      .maybeSingle();
+    const gR = grafoSchema.safeParse((fluxoR as { grafo?: unknown } | null)?.grafo);
+    if (!fluxoR || !gR.success || !inicioManual(gR.data))
+      return fail(
+        "validation_failed",
+        t('O chatbot da reatribuição precisa ter o passo "Iniciar manualmente".'),
+        422,
+        { requestId },
+      );
+  }
+
   const { data: orgRow, error: readErr } = await admin
     .from("organizations")
     .select("settings")
