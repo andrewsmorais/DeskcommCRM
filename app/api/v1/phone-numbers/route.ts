@@ -104,7 +104,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   } else if (!(await troncoDaInstalacaoLiberado())) {
     return fail(
       "tronco_nao_compartilhado",
-      "O troncal de voz do servidor não está liberado para esta organização. Configure o trunk próprio em Configurações › Telefonia.",
+      "O troncal de voz do servidor não está liberado para esta organização. Peça a um administrador para configurar o trunk SIP próprio (Configurações › Trunk SIP).",
       422,
       { requestId },
     );

@@ -67,11 +67,14 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   }
   const { decision, approved_seq } = parsed.data;
 
-  // O lead vem pela RLS do caller — é ele que prova a org, nunca o body.
+  // O lead vem pela RLS do caller E da organização ATIVA — a única onde o
+  // papel acima foi conferido. Só a RLS não basta: ela deixa o leitor de outra
+  // organização ver o lead, e a decisão abaixo é gravada pela service role.
   const { data: lead, error: leadErr } = await supabase
     .from("crm_leads")
     .select("id, organization_id, contact_id, status")
     .eq("id", leadId)
+    .eq("organization_id", authz.org.orgId)
     .maybeSingle();
   if (leadErr) return fail("internal_error", leadErr.message, 500, { requestId });
   if (!lead) return fail("not_found", t("Lead não encontrado."), 404, { requestId });

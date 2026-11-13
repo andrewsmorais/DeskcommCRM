@@ -43296,7 +43296,11 @@ revoke execute on function public.fn_contato_colunas_de_controle() from public, 
 -- a conversa nem o número de uma mensagem e não a devolve para `queued`. O
 -- texto (e a mídia, e a transcrição) só muda pelo login na mensagem que a
 -- própria equipe enviou: o que o cliente escreveu e o que a IA ou a automação
--- mandou é o histórico que o agente lê como fala de cada um. Editar a própria
+-- mandou é o histórico que o agente lê como fala de cada um — e a ordem e o
+-- atendimento de cada mensagem (sent_at, service_revision, demanda_id) decidem
+-- quais delas o agente lê, então também não mudam pelo login fora das
+-- próprias; nem o autor exibido (sent_by, em nome de, remetente do grupo).
+-- Editar a própria
 -- (body + edited_at), apagar (revoked_at), ocultar (metadata) e os desfechos do
 -- envio humano (sent/failed) seguem com o atendente; a anonimização (LGPD)
 -- roda como dona e passa.
@@ -43314,17 +43318,54 @@ begin
      or old.contact_id is distinct from new.contact_id
      or old.conversation_id is distinct from new.conversation_id
      or old.channel_session_id is distinct from new.channel_session_id
+     or old.sent_by_user_id is distinct from new.sent_by_user_id
+     or old.sent_on_behalf_of_user_id is distinct from new.sent_on_behalf_of_user_id
+     or old.metadata -> 'group_sender' is distinct from new.metadata -> 'group_sender'
      or (new.status = 'queued' and old.status is distinct from 'queued')
      or ((old.body is distinct from new.body
           or old.media_url is distinct from new.media_url
           or old.media_storage_path is distinct from new.media_storage_path
-          or old.media_derived_text is distinct from new.media_derived_text)
+          or old.media_derived_text is distinct from new.media_derived_text
+          or old.type is distinct from new.type
+          or old.sent_at is distinct from new.sent_at
+          or old.service_revision is distinct from new.service_revision
+          or old.demanda_id is distinct from new.demanda_id)
          and not (old.direction = 'outbound' and old.sent_via in ('user', 'crm'))) then
     raise exception 'colunas_de_envio_da_mensagem' using errcode = '42501';
   end if;
   return new;
 end $$;
 revoke execute on function public.fn_mensagem_colunas_de_envio() from public, anon, authenticated;
+
+-- ---- colunas do atendimento da conversa (migration 0509) ----
+-- O que o agente lê de uma conversa depende de ela ser de grupo (grupo nunca
+-- vai para a IA, e a mensagem de entrada de grupo não é reservada ao
+-- servidor), de qual contato ela é e de qual atendimento está aberto
+-- (service_revision / current_demanda_id filtram o histórico). Pelo login nada
+-- disso muda: virar a conversa em "grupo" por um instante era o caminho para
+-- gravar uma fala falsa do cliente. As funções do atendimento (security
+-- definer) e a ingestão (service role) seguem mudando. O nome do gatilho o faz
+-- rodar ANTES do carimbo de status (trg_service_stamp_status), que aumenta o
+-- service_revision na reabertura — o guarda vê só o que o login mandou.
+create or replace function public.fn_conversa_colunas_do_atendimento()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if old.is_group is distinct from new.is_group
+     or old.group_chat_id is distinct from new.group_chat_id
+     or old.contact_id is distinct from new.contact_id
+     or old.service_revision is distinct from new.service_revision
+     or old.current_demanda_id is distinct from new.current_demanda_id then
+    raise exception 'colunas_do_atendimento_da_conversa' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_conversa_colunas_do_atendimento() from public, anon, authenticated;
 
 -- ---- colunas do tronco do número (migration 0509) ----
 -- Cadastrar número é reivindicar as ligações que chegam nele, e o tronco do
@@ -45886,6 +45927,9 @@ create policy messages_insert_de_atendente on public.messages
   with check (
     public.fn_role_at_least(organization_id, 'agent')
     and sent_via not in ('ai', 'automation', 'system')
+    -- O que o CLIENTE disse só entra pela ingestão (service role): pelo login
+    -- não nasce mensagem de entrada, nem em conversa de grupo.
+    and direction = 'outbound'
   );
 drop policy if exists messages_update_de_atendente on public.messages;
 create policy messages_update_de_atendente on public.messages
@@ -45922,6 +45966,10 @@ drop trigger if exists trg_mensagem_colunas_de_envio on public.messages;
 create trigger trg_mensagem_colunas_de_envio
   before update on public.messages
   for each row execute function public.fn_mensagem_colunas_de_envio();
+drop trigger if exists trg_conversa_colunas_do_atendimento on public.conversations;
+create trigger trg_conversa_colunas_do_atendimento
+  before update on public.conversations
+  for each row execute function public.fn_conversa_colunas_do_atendimento();
 
 -- Barramento de eventos: a prévia de toda mensagem (até 280 caracteres) mora
 -- no payload, e a leitura era de qualquer membro — inclusive da conversa que

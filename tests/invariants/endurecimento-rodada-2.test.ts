@@ -401,6 +401,38 @@ describe("0509 — mensagens: leitor não escreve; ninguém grava em nome da IA 
     tenta(`update public.messages set media_derived_text = 'transcrição forjada' where body = 'r2-fala-do-cliente'`);
   });
 
+  it("fala falsa do cliente: nem mensagem de entrada pelo login, nem virar a conversa em grupo, nem reordenar o histórico", () => {
+    expect(
+      recusado(
+        GOV_AGENT_B,
+        `insert into public.messages (organization_id, conversation_id, channel_session_id, contact_id, type, direction, status, sent_via, body)
+           values ('${GOV_ORG}','${GOV_CONV_AGENT_B}','${GOV_SESSION}','${GOV_CONTACT_2}','text','inbound','received','crm','sim, pode cobrar no cartão')`,
+      ),
+    ).toBe(true);
+    const comoB = (dml: string, erro: RegExp) =>
+      expect(() =>
+        sql(`
+          set role authenticated;
+          select set_config('request.jwt.claims', '{"sub":"${GOV_AGENT_B}"}', false);
+          ${dml};`),
+      ).toThrow(erro);
+    comoB(`update public.conversations set is_group = true where id = '${GOV_CONV_AGENT_B}'`, /colunas_do_atendimento_da_conversa/);
+    comoB(
+      `update public.conversations set service_revision = coalesce(service_revision, 0) + 7 where id = '${GOV_CONV_AGENT_B}'`,
+      /colunas_do_atendimento_da_conversa/,
+    );
+    comoB(`update public.messages set sent_at = now() + interval '1 day' where body = 'r2-fala-do-cliente'`, /colunas_de_envio_da_mensagem/);
+    comoB(
+      `update public.messages set metadata = coalesce(metadata, '{}'::jsonb) || '{"group_sender":{"name":"Joana"}}' where body = 'r2-fala-do-cliente'`,
+      /colunas_de_envio_da_mensagem/,
+    );
+  });
+
+  it("CONTROLE: atendente encerra e reabre a conversa (o carimbo do atendimento roda depois do guarda)", () => {
+    expect(escreveComo(GOV_AGENT_B, `update public.conversations set status = 'closed' where id = '${GOV_CONV_AGENT_B}'`)).toBe(1);
+    expect(escreveComo(GOV_AGENT_B, `update public.conversations set status = 'open' where id = '${GOV_CONV_AGENT_B}'`)).toBe(1);
+  });
+
   it("CONTROLE: atendente edita a mensagem enviada e registra o desfecho do envio humano", () => {
     expect(
       escreveComo(
