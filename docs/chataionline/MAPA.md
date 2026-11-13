@@ -84,7 +84,9 @@
   e o cartão atrás do proxy da VPS.
 - O último commit de segurança (`57e7229`) não teve verificador independente.
 - Chatbot: carrossel e cupom bloqueados por decisão; ver a comparação com a Umbler para o resto.
-- Comparação com a Umbler Talk: ver [`comparacao-umbler-talk.md`](comparacao-umbler-talk.md).
+- Comparação com a Umbler Talk: ver [`comparacao-umbler-talk.md`](comparacao-umbler-talk.md) —
+  9 itens faltando, em ordem (agendar mensagem, finalizar com mensagem/chatbot, assinatura,
+  regex no chatbot, baixar histórico, observadores, transferir para outro número, figurinhas, webchat).
 
 ## 6. Dia de subir para a VPS (checklist)
 
