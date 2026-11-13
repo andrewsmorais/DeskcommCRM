@@ -156,7 +156,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | U5 | **Notificar atendente**: escolher atendentes específicos, "somente se disponível" e caminho se ninguém puder ser avisado | 🟡 avisa o atendente da conversa |
 | U6 | **Enviar mensagem** com **botão de link** (vira texto no QR code) e "seguir outro caminho se a mensagem não sair" | ❌ |
 | U7 | **Iniciar manualmente**: "Não listado" e **variáveis perguntadas ao atendente** na hora de iniciar | ❌ |
-| U8 | **Fluxo de inatividade** (bloco + configuração da empresa): roda quando o **contato** some; pode finalizar ou rodar um chatbot | ❌ (temos "fluxo de espera", que é a demora do atendente, e follow-up) |
+| U8 | Fluxo de inatividade: roda quando o contato some | ✅ coberto por follow-up de silêncio e automação (ver seção 9) |
 | U9 | **Aguardar até** com "dia útil", "próximo dia" e expressão de agenda (CRON) | 🟡 data/hora fixa ou de uma resposta |
 | U10 | **Bot paralelo**: iniciar sem encerrar o fluxo que já roda | ❌ |
 | U11 | **Finalizar conversa**: escolher quem aparece como quem fechou | ❌ |
@@ -178,6 +178,29 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | G8 | **Variáveis da organização** (chaves e valores guardados uma vez, usados nos fluxos) | |
 | G9 | Importar contatos de **.vcf** com mapeamento de colunas | temos planilha |
 | G10 | **Assinatura do atendente** e **mensagem de encerramento** por perfil/empresa | já estava na lista (itens 2 e 3) |
+
+## 9. Correção da lista (13/11/2026, depois de reler o CRM inteiro)
+
+A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTRO caminho. Conferido no código:
+
+| Item da seção 8 | O que o CRM já tem | Situação |
+|---|---|---|
+| U8 Fluxo de inatividade | **Follow-ups** com gatilho de **silêncio do contato em minutos** (`lib/followup/silence-sweep.ts`), automação "N dias sem mensagem" (`lead.silent_for`, do cliente/da equipe) com as ações Iniciar chatbot e Iniciar fluxo, e o **prazo de resposta** nas perguntas do chatbot | ✅ coberto (sai da lista) |
+| Agendamento | Chatbot **Agendar / Reagendar / Cancelar horário** na Agenda do CRM; o **agente de IA agenda sozinho**; tipos de agendamento | ✅ já existia — não confundir com "agendar uma MENSAGEM" (abaixo) |
+| Transferir para outro número | "Continuar por outro número" na conversa (`hooks/inbox/useContinuarPorOutroNumero.ts`) | ✅ coberto |
+| G4 Atalhos de chatbot | Botão do robô no topo da conversa (chatbots com Iniciar manualmente) | ✅ coberto (lá fica no rodapé; aqui, no topo) |
+| G7 Kanban de contatos | Funis (Kanban de negócios), Contatos, Empresas, Pessoas | ✅ coberto na prática |
+
+**O que de fato falta**, depois da correção:
+1. **Agendar uma MENSAGEM** na conversa para depois (texto, nota ou chatbot), com aba "Agendadas".
+2. **Finalizar** o atendimento enviando mensagem ou chatbot de encerramento.
+3. **Assinatura do atendente** nas mensagens.
+4. **Pedir para digitar** com várias opções e regex próprio.
+5. Opções dentro de blocos: modos extras de transferir (remover, anterior), Notificar com escolha de quem e "só se disponível", botão de link no Enviar mensagem, "não listado" e perguntas no Iniciar manualmente, "dia útil" no Aguardar até, estatística por bloco.
+6. Conversa: baixar histórico (.txt/.pdf), encaminhar e favoritar mensagem, figurinhas salvas, observadores, esconder telefone por papel, tirar atendente offline.
+7. Maiores: webchat no site, chat interno da equipe, variáveis da empresa, importar .vcf.
+
+**O que o ChatAI tem e a Umbler não** (para a oferta): agente de IA com agenda, follow-ups visuais com IA e gatilhos (silêncio, etapa, caso, retorno), roteadores entre agentes, memória e casos, propostas e comandas, prospecção e radar, chamadas por telefone (SIP), Nuvemshop, Kiwify, Cakto e Hotmart, conversões do Meta Ads, LGPD completa, auditoria, API e MCP, marca própria, Empresas/Pessoas (B2B), tarefas, honorários e faturamento.
 
 ## Fontes
 
