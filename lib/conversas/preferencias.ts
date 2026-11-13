@@ -59,6 +59,11 @@ export const preferenciasDeConversaSchema = z.object({
       chatbot_id: z.string().uuid().nullable().default(null),
     })
     .default({ acao: "liberar", chatbot_id: null }),
+  /**
+   * "Ocultar administradores da lista de quem está visualizando a conversa"
+   * (Umbler): o administrador vê a conversa sem aparecer para a equipe.
+   */
+  ocultar_administradores_vendo: z.boolean().default(false),
 });
 export type PreferenciasDeConversa = z.infer<typeof preferenciasDeConversaSchema>;
 

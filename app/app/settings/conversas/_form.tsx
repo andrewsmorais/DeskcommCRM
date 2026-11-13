@@ -47,6 +47,7 @@ export function ConversasForm({ initial }: { initial: PreferenciasDeConversa }) 
   const [mensagem, setMensagem] = useState(initial.finalizar.mensagem_padrao ?? "");
   const [chatbot, setChatbot] = useState(initial.finalizar.chatbot_padrao ?? "");
   const [reatribuicao, setReatribuicao] = useState(initial.reatribuicao.acao);
+  const [ocultarAdmins, setOcultarAdmins] = useState(initial.ocultar_administradores_vendo);
   const [chatbotDaReatribuicao, setChatbotDaReatribuicao] = useState(initial.reatribuicao.chatbot_id ?? "");
   const [salvando, startTransition] = useTransition();
 
@@ -61,6 +62,7 @@ export function ConversasForm({ initial }: { initial: PreferenciasDeConversa }) 
             chatbot_padrao: chatbot || null,
           },
           reatribuicao: { acao: reatribuicao, chatbot_id: chatbotDaReatribuicao || null },
+          ocultar_administradores_vendo: ocultarAdmins,
         });
         toast.success(t("Configurações de conversas salvas."));
       } catch (err) {
@@ -188,6 +190,17 @@ export function ConversasForm({ initial }: { initial: PreferenciasDeConversa }) 
             ))}
           </select>
         ) : null}
+      </Card>
+
+      <Card className="space-y-3 p-6">
+        <h2 className="font-semibold">{t("Defina o comportamento de administradores ao visualizar conversas")}</h2>
+        <p className="text-sm text-muted-foreground">
+          {t("No topo da conversa aparece quem mais da equipe está com ela aberta agora.")}
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={ocultarAdmins} onChange={(e) => setOcultarAdmins(e.target.checked)} />
+          {t("Ocultar administradores da lista de quem está visualizando a conversa")}
+        </label>
       </Card>
 
       <div className="flex justify-end">

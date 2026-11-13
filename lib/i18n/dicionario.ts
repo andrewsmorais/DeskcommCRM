@@ -18390,6 +18390,12 @@ export const DICIONARIO: Traducoes = {
   "Escolha o chatbot da reatribuição.": { es: "Elige el chatbot de la reasignación." },
   'O chatbot da reatribuição precisa ter o passo "Iniciar manualmente".': { es: 'El chatbot de la reasignación necesita tener el paso "Iniciar manualmente".' },
   "Só um gerente ou administrador muda a reatribuição.": { es: "Solo un gerente o administrador cambia la reasignación." },
+  // Quem está vendo a conversa
+  "Defina o comportamento de administradores ao visualizar conversas": { es: "Define el comportamiento de los administradores al ver conversaciones" },
+  "No topo da conversa aparece quem mais da equipe está com ela aberta agora.": { es: "En la parte superior de la conversación aparece quién más del equipo la tiene abierta ahora." },
+  "Ocultar administradores da lista de quem está visualizando a conversa": { es: "Ocultar administradores de la lista de quién está viendo la conversación" },
+  "Alguém da equipe": { es: "Alguien del equipo" },
+  "Também vendo esta conversa agora": { es: "También viendo esta conversación ahora" },
 };
 /**
  * Traduz, ou devolve o próprio texto.
