@@ -164,6 +164,8 @@ export const AUDIT_ACTIONS = [
   // Configurações › Conversas (assinatura e comportamento do Fechar) e a
   // assinatura do próprio atendente, editada pelo campo de mensagem.
   "conversation_settings.changed",
+  /** "Baixar histórico" da conversa (.txt/.pdf): sai dado pessoal do sistema. */
+  "conversation.history_exported",
   "signature.changed",
   /** A conversa foi posta num setor (ou tirada dele) — Inbox ou chatbot. */
   "conversation.setor_changed",

@@ -18359,6 +18359,11 @@ export const DICIONARIO: Traducoes = {
   "Baixar CSV do fluxo": { es: "Descargar CSV del flujo" },
   "Ninguém passou por este bloco no período.": { es: "Nadie pasó por este bloque en el período." },
   "Conta cada vez que o bloco foi concluído e por qual saída seguiu. Conta a partir desta versão do sistema.": { es: "Cuenta cada vez que el bloque se concluyó y por qué salida siguió. Cuenta a partir de esta versión del sistema." },
+  // Baixar histórico da conversa
+  "Baixar histórico": { es: "Descargar historial" },
+  "Baixar histórico da conversa": { es: "Descargar historial de la conversación" },
+  "Texto (.txt)": { es: "Texto (.txt)" },
+  "PDF (.pdf)": { es: "PDF (.pdf)" },
 };
 /**
  * Traduz, ou devolve o próprio texto.
