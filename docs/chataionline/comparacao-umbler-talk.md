@@ -121,6 +121,10 @@ Evidência pela tela das opções extras dos blocos (13/11/2026, painel de verda
 - `evidence/chatbot-opcoes-extras/e1-estatistica-do-bloco.png` — estatística de um menu: conclusões, % por saída e "Baixar CSV do fluxo".
 - `evidence/chatbot-opcoes-extras/e2-notificar-quem.png` — Notificar atendente com atendente escolhida e "Somente se estiver disponível".
 
+Evidência do histórico baixado em PDF (13/11/2026, gerado pelo código de verdade):
+
+- `evidence/historico-da-conversa/h1-pdf-do-historico.png` — topo da primeira página do PDF do histórico.
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.

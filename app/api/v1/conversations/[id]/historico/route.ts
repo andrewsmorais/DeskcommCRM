@@ -21,6 +21,7 @@ import {
   type MensagemDoHistorico,
 } from "@/lib/conversas/historico";
 import { historicoEmPdf } from "@/lib/conversas/historico-pdf";
+import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const { data: org } = await supabase.from("organizations").select("timezone").eq("id", authz.org.orgId).maybeSingle();
   const fuso = (org as { timezone?: string | null } | null)?.timezone || "America/Sao_Paulo";
-  const nomeDoContato = contato?.display_name || contato?.name || t("Contato");
+  const nomeDoContato = rotuloDoContato(contato, t);
   const linhas = linhasDoHistorico(lista, { nomeDoContato, nomesDaEquipe, fuso });
   const geradoEm = quandoNoFuso(new Date().toISOString(), fuso);
   const truncado = lista.length >= LIMITE;

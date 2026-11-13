@@ -51,6 +51,7 @@ vi.mock("@/components/kanban/OwnerBadge", () => ({ OwnerBadge: () => null }));
 vi.mock("@/components/inbox/ReassignDialog", () => ({ ReassignDialog: () => null }));
 vi.mock("@/components/inbox/SnoozeButton", () => ({ SnoozeButton: () => null }));
 vi.mock("@/components/inbox/IniciarChatbotButton", () => ({ IniciarChatbotButton: () => null }));
+vi.mock("@/components/inbox/FavoritasButton", () => ({ FavoritasButton: () => null }));
 // Configurações › Conversas: o comportamento do Fechar muda por teste.
 let comportamentoDoFechar = "atendente_escolhe";
 vi.mock("@/hooks/inbox/usePreferenciasDeConversa", () => ({

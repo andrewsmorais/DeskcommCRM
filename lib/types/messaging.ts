@@ -121,6 +121,8 @@ export interface Message {
    * combinado sem saber que ele mudou é como o erro começa.
    */
   edited_at: string | null;
+  /** Marcada com estrela na conversa (migration 0513); null = não favorita. */
+  favoritada_em?: string | null;
   /** Quando o AUTOR apagou para todos. A linha fica; o texto não é mostrado. */
   revoked_at: string | null;
   /** A mensagem que esta responde (citação). `null` = envio solto. */

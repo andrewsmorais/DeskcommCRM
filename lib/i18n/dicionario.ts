@@ -18364,6 +18364,20 @@ export const DICIONARIO: Traducoes = {
   "Baixar histórico da conversa": { es: "Descargar historial de la conversación" },
   "Texto (.txt)": { es: "Texto (.txt)" },
   "PDF (.pdf)": { es: "PDF (.pdf)" },
+  // Encaminhar e favoritar mensagens
+  "Mensagem encaminhada.": { es: "Mensaje reenviado." },
+  "Encaminhar mensagem": { es: "Reenviar mensaje" },
+  "Escolha até 5 conversas. A mensagem sai em seu nome.": { es: "Elige hasta 5 conversaciones. El mensaje sale en tu nombre." },
+  "Buscar conversa": { es: "Buscar conversación" },
+  "Nome ou telefone do contato": { es: "Nombre o teléfono del contacto" },
+  "Encaminhar": { es: "Reenviar" },
+  "Mensagens favoritas": { es: "Mensajes favoritos" },
+  "Tirar dos favoritos": { es: "Quitar de favoritos" },
+  "Favoritar": { es: "Marcar como favorito" },
+  "Favorita": { es: "Favorito" },
+  "encaminhada": { es: "reenviado" },
+  "Esta mensagem não pode ser encaminhada.": { es: "Este mensaje no se puede reenviar." },
+  "Escolha para onde encaminhar.": { es: "Elige a dónde reenviar." },
 };
 /**
  * Traduz, ou devolve o próprio texto.

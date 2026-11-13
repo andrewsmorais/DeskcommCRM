@@ -166,6 +166,10 @@ export const AUDIT_ACTIONS = [
   "conversation_settings.changed",
   /** "Baixar histórico" da conversa (.txt/.pdf): sai dado pessoal do sistema. */
   "conversation.history_exported",
+  /** Estrela numa mensagem (migration 0513). */
+  "message.favorite_changed",
+  /** Mensagem encaminhada para outra conversa. */
+  "message.forwarded",
   "signature.changed",
   /** A conversa foi posta num setor (ou tirada dele) — Inbox ou chatbot. */
   "conversation.setor_changed",

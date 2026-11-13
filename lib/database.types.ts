@@ -7462,6 +7462,8 @@ export type Database = {
           demanda_revision: number | null
           direction: string
           edited_at: string | null
+          favoritada_em: string | null
+          favoritada_por: string | null
           error_code: string | null
           error_message: string | null
           external_id: string | null
@@ -7501,6 +7503,8 @@ export type Database = {
           demanda_revision?: number | null
           direction: string
           edited_at?: string | null
+          favoritada_em?: string | null
+          favoritada_por?: string | null
           error_code?: string | null
           error_message?: string | null
           external_id?: string | null
@@ -7540,6 +7544,8 @@ export type Database = {
           demanda_revision?: number | null
           direction?: string
           edited_at?: string | null
+          favoritada_em?: string | null
+          favoritada_por?: string | null
           error_code?: string | null
           error_message?: string | null
           external_id?: string | null

@@ -3,7 +3,7 @@
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { format } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { ArrowBendUpLeft, CaretDown, Check, Checks, PencilSimple, Robot, Trash, WarningOctagon } from "@/lib/ui/icons";
+import { ArrowBendUpLeft, ArrowBendUpRight, CaretDown, Check, Checks, PencilSimple, Robot, Star, Trash, WarningOctagon } from "@/lib/ui/icons";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -48,6 +48,11 @@ interface Props {
   onApagar?: () => Promise<void>;
   onOcultar?: () => Promise<void>;
   onRestaurar?: () => Promise<void>;
+  /** Estrela na mensagem (migration 0513). */
+  favorita?: boolean;
+  onFavoritar?: (favorita: boolean) => void;
+  /** Abre a escolha de conversas para encaminhar. */
+  onEncaminhar?: () => void;
 }
 
 function AckIndicator({ status, t }: { status: string; t: (texto: string) => string }) {
@@ -74,6 +79,9 @@ export function MessageBubble({
   onApagar,
   onOcultar,
   onRestaurar,
+  favorita = false,
+  onFavoritar,
+  onEncaminhar,
 }: Props) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(message.body ?? "");
@@ -119,7 +127,10 @@ export function MessageBubble({
     && agora - new Date(message.sent_at).getTime() <= 15 * 60 * 1000;
   const podeApagar = enviadaPeloAtendente && Boolean(onApagar);
   const podeOcultar = !isOutbound && !apagada && Boolean(ocultaNoCrm ? onRestaurar : onOcultar);
-  const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar);
+  const podeEncaminhar = !apagada && Boolean(onEncaminhar)
+    && (message.type === "text" ? Boolean(message.body) : ["image", "video", "audio", "document"].includes(message.type) && Boolean(message.media_storage_path));
+  const podeFavoritar = !apagada && Boolean(onFavoritar);
+  const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar || podeEncaminhar || podeFavoritar);
   const aiGenerated = isAiGeneratedMessage(message.metadata);
   const citations = extractCitations(message.metadata);
   const showCitationButton =
@@ -252,6 +263,17 @@ export function MessageBubble({
               {onResponder && (
                 <DropdownMenuItem onSelect={() => onResponder(message)}>
                   <ArrowBendUpLeft size={16} aria-hidden />{t("Responder a esta mensagem")}
+                </DropdownMenuItem>
+              )}
+              {podeFavoritar && onFavoritar && (
+                <DropdownMenuItem onSelect={() => onFavoritar(!favorita)}>
+                  <Star size={16} weight={favorita ? "fill" : "regular"} aria-hidden />
+                  {favorita ? t("Tirar dos favoritos") : t("Favoritar")}
+                </DropdownMenuItem>
+              )}
+              {podeEncaminhar && onEncaminhar && (
+                <DropdownMenuItem onSelect={() => onEncaminhar()}>
+                  <ArrowBendUpRight size={16} aria-hidden />{t("Encaminhar")}
                 </DropdownMenuItem>
               )}
               {podeEditar && onEditar && (
@@ -405,6 +427,8 @@ export function MessageBubble({
             // divergência só aparece quando alguém cobra o que não foi.
             <span title={t("O autor editou esta mensagem")}>{t("editada")}</span>
           )}
+          {favorita && <Star size={11} weight="fill" aria-label={t("Favorita")} data-testid="estrela" />}
+          {Boolean(message.metadata?.encaminhada_de) && <span>{t("encaminhada")}</span>}
           <span>{time}</span>
           {showCitationButton && (
             <CitationButton citations={citations} messageId={message.id} />

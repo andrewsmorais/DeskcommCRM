@@ -46,6 +46,8 @@ export {
   Dot,
   // actions
   ArrowBendUpLeft,
+  ArrowBendUpRight,
+  Star,
   List,
   Bell,
   BellSlash,

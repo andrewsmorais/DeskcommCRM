@@ -46345,3 +46345,12 @@ revoke all on table public.chatbot_estatisticas from anon, authenticated;
 grant select on table public.chatbot_estatisticas to authenticated;
 grant all on table public.chatbot_estatisticas to service_role;
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
+
+-- ---- favoritar mensagem (migration 0513) ----
+alter table public.messages add column if not exists favoritada_em timestamptz;
+alter table public.messages add column if not exists favoritada_por uuid references auth.users(id) on delete set null;
+comment on column public.messages.favoritada_em is
+  'Quando a mensagem foi marcada com estrela na conversa (null = não favorita). Migration 0513.';
+create index if not exists messages_favoritas_da_conversa
+  on public.messages (organization_id, conversation_id, favoritada_em desc)
+  where favoritada_em is not null;

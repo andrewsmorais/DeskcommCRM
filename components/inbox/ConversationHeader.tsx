@@ -34,6 +34,7 @@ import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { IniciarChatbotButton } from "@/components/inbox/IniciarChatbotButton";
 import { BaixarHistoricoButton } from "@/components/inbox/BaixarHistoricoButton";
+import { FavoritasButton } from "@/components/inbox/FavoritasButton";
 import { PrivacidadeButton } from "@/components/inbox/PrivacidadeButton";
 import { VisibilidadeButton } from "@/components/inbox/VisibilidadeButton";
 import {
@@ -287,6 +288,7 @@ export function ConversationHeader({
             <MagnifyingGlass size={16} aria-hidden />
           </Button>
         )}
+        <FavoritasButton conversationId={conversation.id} />
         <BaixarHistoricoButton conversationId={conversation.id} />
         {/* A chamada usa o telefone da ficha, mesmo quando o contato chegou por
             outro canal. Grupos não representam uma pessoa para ligar. */}

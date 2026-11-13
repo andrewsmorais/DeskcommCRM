@@ -1,9 +1,11 @@
 "use client";
 
+import { EncaminharDialog } from "@/components/inbox/EncaminharDialog";
+import { useFavoritar, useFavoritas } from "@/hooks/inbox/useMensagemFavoritaEncaminhar";
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 
 import type { Locale } from "date-fns";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { format, isToday, isYesterday } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -111,6 +113,12 @@ export function ChatThread({
   const deleteNote = useDeleteNote(conversationId ?? "");
   const { editar, apagar, ocultar, restaurar } = useAlterarMensagem(conversationId);
   const canManage = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
+  // Favoritar e encaminhar (paridade Umbler): atendente para cima.
+  const podeAgir = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent;
+  const listaDeFavoritas = useFavoritas(conversationId);
+  const favoritas = useMemo(() => new Set((listaDeFavoritas.data ?? []).map((f) => f.id)), [listaDeFavoritas.data]);
+  const favoritar = useFavoritar(conversationId ?? "");
+  const [encaminhando, setEncaminhando] = useState<string | null>(null);
   const canalAlteraEnviada = transportaMensagem(provider)
     && capabilitiesOf(provider as ChannelProvider).alteraMensagemEnviada;
   const { enabled: debugCitations } = useDebugToggle(activeOrg?.role ?? null);
@@ -409,6 +417,9 @@ export function ChatThread({
                   onRestaurar={canManage && item.data.direction === "inbound"
                     ? () => restaurar.mutateAsync(item.data.id).then(() => undefined)
                     : undefined}
+                  favorita={favoritas.has(item.data.id)}
+                  onFavoritar={podeAgir ? (f) => favoritar.mutate({ id: item.data.id, favorita: f }) : undefined}
+                  onEncaminhar={podeAgir ? () => setEncaminhando(item.data.id) : undefined}
                 />
               ),
             )}
@@ -417,6 +428,13 @@ export function ChatThread({
 
         <div ref={bottomRef} />
       </div>
+      {conversationId ? (
+        <EncaminharDialog
+          mensagemId={encaminhando}
+          conversaAtual={conversationId}
+          onClose={() => setEncaminhando(null)}
+        />
+      ) : null}
     </div>
   );
 }
