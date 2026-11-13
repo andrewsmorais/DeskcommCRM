@@ -133,6 +133,46 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 | ~~C2~~ | ~~Chatbot: card Campo do contato em Condição~~ | feito 13/11 | |
 | C3 | Chatbot: **Visibilidade da conversa** | ? | Depende de saber o que o card da Umbler faz |
 
+## 8. Levantamento direto no app da Umbler (13/11/2026)
+
+Feito no navegador do dono, logado na conta de teste dele: os textos de tela e de ajuda saíram dos
+arquivos do próprio app (Blazor), e o card "Visibilidade da conversa" foi aberto no editor. Nada
+foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
+
+### Chatbot — o que os blocos da Umbler fazem e o nosso não
+
+| # | Bloco / opção na Umbler | ChatAI hoje |
+|---|---|---|
+| U1 | **Visibilidade da conversa**: Visível · Oculto · Oculto até a próxima mensagem do contato. Conversa oculta sai da caixa de entrada e fica num filtro "ocultas" | ❌ não existe ocultar conversa (nem o filtro) |
+| U2 | **Pedir para digitar** com várias opções de resposta, cada uma com formato nativo (telefone, CPF, e-mail…) ou **regex**; botão "Testar opções"; a saída é a primeira opção que bate | 🟡 um formato só por pergunta, sem regex |
+| U3 | **Transferir p/ atendente**: também "por variável", "atendente anterior na mesma conversa" e **"Remover"** (tira o atendente) | 🟡 temos fixo, rodízio, menos conversas, quem atendeu antes |
+| U4 | **Transferir para setor**: "setor da conversa anterior", "setor anterior na mesma conversa" e caminho alternativo se falhar | 🟡 só setor fixo |
+| U5 | **Notificar atendente**: escolher atendentes específicos, "somente se disponível" e caminho se ninguém puder ser avisado | 🟡 avisa o atendente da conversa |
+| U6 | **Enviar mensagem** com **botão de link** (vira texto no QR code) e "seguir outro caminho se a mensagem não sair" | ❌ |
+| U7 | **Iniciar manualmente**: "Não listado" e **variáveis perguntadas ao atendente** na hora de iniciar | ❌ |
+| U8 | **Fluxo de inatividade** (bloco + configuração da empresa): roda quando o **contato** some; pode finalizar ou rodar um chatbot | ❌ (temos "fluxo de espera", que é a demora do atendente, e follow-up) |
+| U9 | **Aguardar até** com "dia útil", "próximo dia" e expressão de agenda (CRON) | 🟡 data/hora fixa ou de uma resposta |
+| U10 | **Bot paralelo**: iniciar sem encerrar o fluxo que já roda | ❌ |
+| U11 | **Finalizar conversa**: escolher quem aparece como quem fechou | ❌ |
+| U12 | **Estatística por bloco**: "% de quem passou por aqui saiu por esta saída" e nº de execuções, com exportar CSV | ❌ |
+| U13 | **Resumo por IA** do último atendimento, salvo como nota | ❌ (gasta IA — decisão do dono) |
+| U14 | Integrações em bloco: **Pipedrive**, **Asaas** (cobranças/Pix) | ❌ |
+
+### Fora do chatbot — o que a Umbler tem e o ChatAI não
+
+| # | Recurso | Observação |
+|---|---|---|
+| G1 | **Ocultar conversa** na caixa de entrada + filtro "ocultas" | par do U1 |
+| G2 | **Mascarar o telefone** dos contatos por papel/atendente (busca e exportação também mascaram) | privacidade da base |
+| G3 | **Reatribuição de chats**: tira o atendente offline quando o contato escreve | |
+| G4 | **Atalhos de chatbot** fixados no rodapé do campo de mensagem | temos o botão do robô no topo |
+| G5 | **Chat interno da equipe** | |
+| G6 | **Encaminhar** e **favoritar** mensagens | editar e apagar já temos |
+| G7 | **Kanban de contatos** por etiqueta, com resumo por coluna | temos funil de negócios |
+| G8 | **Variáveis da organização** (chaves e valores guardados uma vez, usados nos fluxos) | |
+| G9 | Importar contatos de **.vcf** com mapeamento de colunas | temos planilha |
+| G10 | **Assinatura do atendente** e **mensagem de encerramento** por perfil/empresa | já estava na lista (itens 2 e 3) |
+
 ## Fontes
 
 - [Umbler Talk — página oficial](https://a.umbler.com/br/talk/)
