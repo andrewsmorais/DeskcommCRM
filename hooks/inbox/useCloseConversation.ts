@@ -7,6 +7,14 @@ import type { Conversation } from "@/lib/types/messaging";
 interface CloseArgs {
   conversation_id: string;
   expected_revision?: number;
+  /**
+   * Como encerrar (rota /close): só encerrar (ausente), mandar uma despedida
+   * antes, ou acionar um chatbot de encerramento — que encerra sozinho no passo
+   * "Finalizar conversa".
+   */
+  encerramento?:
+    | { tipo: "mensagem"; texto: string }
+    | { tipo: "chatbot"; chatbot_flow_id: string };
 }
 
 export function useCloseConversation() {
@@ -16,7 +24,9 @@ export function useCloseConversation() {
     mutationFn: async (args: CloseArgs) =>
       apiClient.post<{ data: Conversation }>(
         `/api/v1/conversations/${args.conversation_id}/close`,
-        { expected_revision: args.expected_revision },
+        args.encerramento
+          ? { expected_revision: args.expected_revision, encerramento: args.encerramento }
+          : { expected_revision: args.expected_revision },
       ),
     onError: (err, args) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });

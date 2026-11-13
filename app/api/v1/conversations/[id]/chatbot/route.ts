@@ -22,10 +22,8 @@ import { z } from "zod";
 
 import { audit } from "@/lib/audit";
 import { ok, fail } from "@/lib/api/wrappers";
-import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
 import { requireRole } from "@/lib/auth/require-role";
-import { inicioManual } from "@/lib/chatbot/motor";
-import { grafoSchema } from "@/lib/chatbot/passos";
+import { pedirChatbotManual } from "@/lib/chatbot/iniciar-manual";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -55,77 +53,16 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
 
   // Client do REQUEST: a policy de conversas aplica o `visibility_mode` — quem
   // não enxerga a conversa não aciona chatbot nela.
-  const supabase = await createClient();
-  const { data: conv, error: convErr } = await supabase
-    .from("conversations")
-    .select("id, contact_id, channel_session_id, status, is_group, contacts:contact_id(is_blocked)")
-    .eq("id", id)
-    .eq("organization_id", org.orgId)
-    .maybeSingle();
-  if (convErr) return fail("internal_error", convErr.message, 500, { requestId });
-  if (!conv) return fail("not_found", t("Conversa não encontrada."), 404, { requestId });
-  const c = conv as unknown as {
-    id: string;
-    contact_id: string;
-    channel_session_id: string | null;
-    status: string;
-    is_group: boolean;
-    contacts: { is_blocked: boolean | null } | null;
-  };
-  if (c.is_group)
-    return fail("validation_failed", t("O chatbot não atende grupos."), 422, { requestId });
-  if (c.contacts?.is_blocked)
-    return fail("validation_failed", t("Este contato está bloqueado e não recebe mensagens."), 422, {
-      requestId,
-    });
-  if (!c.channel_session_id)
-    return fail("validation_failed", t("Esta conversa não tem número de WhatsApp."), 422, { requestId });
-
-  const { data: fluxo } = await supabase
-    .from("chatbot_flows")
-    .select("id, name, is_active, grafo")
-    .eq("id", corpo.data.flow_id)
-    .eq("organization_id", org.orgId)
-    .maybeSingle();
-  const g = grafoSchema.safeParse(fluxo?.grafo);
-  if (!fluxo || !fluxo.is_active || !g.success || !inicioManual(g.data)) {
-    return fail(
-      "validation_failed",
-      t('O chatbot precisa estar ligado e ter o passo "Iniciar manualmente".'),
-      422,
-      { requestId },
-    );
-  }
-
-  const admin = createAdminClient();
-  let boundary;
-  try {
-    // O clique é a ORIGEM autorizadora deste atendimento (como mandar mensagem
-    // pela tela): conversa fechada volta a ter atendimento.
-    boundary = await beginServiceAtOrigin(admin, org.orgId, c.contact_id, c.channel_session_id);
-  } catch {
-    return fail("conflict", t("A conversa mudou enquanto você clicava. Tente de novo."), 409, { requestId });
-  }
-
-  const { error: erroDoEvento } = await admin.rpc("emit_event", {
-    p_event_type: "chatbot.inicio_requested",
-    p_entity_kind: "contact",
-    p_entity_id: c.contact_id,
-    p_payload: {
-      flow_id: fluxo.id,
-      contact_id: c.contact_id,
-      conversation_id: boundary.conversation_id,
-      channel_session_id: c.channel_session_id,
-      boundary,
-      variaveis: {},
-      regra_id: null,
-      manual: true,
-      iniciado_por: user.id,
-    },
-    p_metadata: { source: "inbox", request_id: requestId, user_id: user.id },
-    p_organization_id: org.orgId,
+  const r = await pedirChatbotManual(await createClient(), createAdminClient(), {
+    orgId: org.orgId,
+    conversationId: id,
+    flowId: corpo.data.flow_id,
+    userId: user.id,
+    requestId,
   });
-  if (erroDoEvento) return fail("internal_error", t("Não foi possível iniciar o chatbot."), 500, { requestId });
+  if (!r.ok) return fail(r.code, t(r.mensagem), r.status, { requestId });
+  const c = { id: r.conversationId };
+  const fluxo = { id: r.flowId };
 
   await audit({
     action: "chatbot_flow.started_manually",

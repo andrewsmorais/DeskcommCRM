@@ -26,7 +26,7 @@ Legenda: ✅ tem igual ou melhor · 🟡 tem parecido (diferença anotada) · �
 | **Observadores** da conversa | ❌ | |
 | **Baixar o histórico** da conversa em .txt ou .pdf | ❌ | Existe exportar a conta inteira (ZIP), não uma conversa |
 | Chatbots executados e log de atividade da conversa | ✅ | Linha do tempo e passagens |
-| **Finalizar enviando uma mensagem** ou **acionando um chatbot de finalização** | 🟡 | Finalizar só encerra; o chatbot pode finalizar, mas o botão Finalizar não manda mensagem nem chama chatbot |
+| **Finalizar enviando uma mensagem** ou **acionando um chatbot de finalização** | ✅ | Feito 13/11: a janela Fechar oferece Só encerrar, Despedida antes ou Chatbot de encerramento (este precisa ter o passo Finalizar conversa) |
 | Notas internas | ✅ | Notas em tempo real |
 | **Assinar mensagens** com o nome do atendente | ❌ | |
 | Anexar arquivo, emojis, áudio | ✅ | |
@@ -95,6 +95,13 @@ Evidência pela tela do agendamento de mensagem (13/11/2026, componente de verda
 - `evidence/mensagens-agendadas/g1-agendar-mensagem.png` — janela de agendar com o texto já escrito no campo.
 - `evidence/mensagens-agendadas/g3-agendadas.png` — aba Agendadas: agendada (editar/cancelar), chatbot enviado e uma que não saiu, com o motivo.
 
+Evidência pela tela do Fechar com despedida ou chatbot (13/11/2026, cabeçalho de verdade, API simulada):
+
+- `evidence/fechar-com-despedida/f1-fechar-opcoes.png` — a janela Fechar com as três escolhas.
+- `evidence/fechar-com-despedida/f2-despedida.png` — despedida escrita antes de fechar.
+- `evidence/fechar-com-despedida/f3-chatbot-de-encerramento.png` — chatbot de encerramento escolhido; o botão vira "Acionar chatbot".
+- `evidence/fechar-com-despedida/f4-chatbot-acionado.png` — aviso de que o chatbot encerra no passo "Finalizar conversa".
+
 Só no ChatAI: Enviar mídia, Enviar produto, Enviar localização, Enviar contato, Enviar oferta,
 Enviar link de pagamento, Guardar em variável, Etapa do funil, Negócio no funil, Agendar /
 Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
@@ -132,7 +139,7 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 | # | O quê | Tamanho | Por quê nesta ordem |
 |---|---|---|---|
 | 1 | **Agendar mensagem na conversa** (texto, nota ou chatbot), com aba "Agendadas" | médio | É o recurso mais visível que falta, e destrava o "agendar chatbot" |
-| 2 | **Finalizar com mensagem ou chatbot de finalização** | pequeno | Usado em todo atendimento (pesquisa de satisfação no fim) |
+| 2 | ~~Finalizar com mensagem ou chatbot de finalização~~ — feito 13/11 | pequeno | Usado em todo atendimento (pesquisa de satisfação no fim) |
 | 3 | **Assinatura do atendente** nas mensagens | pequeno | Rápido e o cliente nota |
 | 4 | **Regex próprio** no Pedir para digitar | pequeno | Precisa de trava contra regex que trava o servidor |
 | 5 | **Baixar histórico** da conversa (.txt e .pdf) | pequeno | |
@@ -198,7 +205,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 
 **O que de fato falta**, depois da correção:
 1. ~~Agendar uma MENSAGEM na conversa~~ — feito 13/11 (migration 0511): botão de calendário no campo de mensagem, aba "Agendadas".
-2. **Finalizar** o atendimento enviando mensagem ou chatbot de encerramento.
+2. ~~**Finalizar** o atendimento enviando mensagem ou chatbot de encerramento~~ — feito 13/11: a janela Fechar oferece Só encerrar, Despedida antes ou Chatbot de encerramento.
 3. **Assinatura do atendente** nas mensagens.
 4. **Pedir para digitar** com várias opções e regex próprio.
 5. Opções dentro de blocos: modos extras de transferir (remover, anterior), Notificar com escolha de quem e "só se disponível", botão de link no Enviar mensagem, "não listado" e perguntas no Iniciar manualmente, "dia útil" no Aguardar até, estatística por bloco.

@@ -18231,6 +18231,28 @@ export const DICIONARIO: Traducoes = {
   "Não foi possível falar com o sistema de cobrança agora. Tente de novo em alguns minutos.": {
     es: "No fue posible comunicarse con el sistema de cobro ahora. Inténtalo de nuevo en unos minutos.",
   },
+  // Fechar com despedida ou chatbot de encerramento
+  'Chatbot de encerramento acionado. Ele encerra a conversa no passo "Finalizar conversa".': {
+    es: 'Chatbot de cierre activado. Él cierra la conversación en el paso "Finalizar conversación".',
+  },
+  "Acionar chatbot": { es: "Activar chatbot" },
+  "Só encerrar": { es: "Solo cerrar" },
+  "Enviar uma mensagem de despedida antes": { es: "Enviar un mensaje de despedida antes" },
+  "Mensagem de despedida": { es: "Mensaje de despedida" },
+  "Ex.: Obrigado pelo contato! Qualquer coisa, é só chamar.": {
+    es: "Ej.: ¡Gracias por el contacto! Cualquier cosa, solo escríbenos.",
+  },
+  "Acionar um chatbot de encerramento": { es: "Activar un chatbot de cierre" },
+  "Chatbot de encerramento": { es: "Chatbot de cierre" },
+  'A conversa continua aberta até o chatbot chegar ao passo "Finalizar conversa", que encerra o atendimento.': {
+    es: 'La conversación sigue abierta hasta que el chatbot llegue al paso "Finalizar conversación", que cierra la atención.',
+  },
+  "A mensagem de despedida não saiu, e a conversa continua aberta.": {
+    es: "El mensaje de despedida no salió, y la conversación sigue abierta.",
+  },
+  'O chatbot de encerramento precisa ter o passo "Finalizar conversa", que é quem encerra o atendimento.': {
+    es: 'El chatbot de cierre necesita tener el paso "Finalizar conversación", que es el que cierra la atención.',
+  },
 };
 /**
  * Traduz, ou devolve o próprio texto.

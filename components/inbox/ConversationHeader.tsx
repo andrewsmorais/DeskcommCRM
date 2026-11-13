@@ -35,6 +35,12 @@ import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { IniciarChatbotButton } from "@/components/inbox/IniciarChatbotButton";
 import { PrivacidadeButton } from "@/components/inbox/PrivacidadeButton";
 import { VisibilidadeButton } from "@/components/inbox/VisibilidadeButton";
+import {
+  EncerramentoDoFechar,
+  lembrarDespedida,
+  type EscolhaDoEncerramento,
+} from "@/components/inbox/EncerramentoDoFechar";
+import { toast } from "sonner";
 import { useSetores } from "@/hooks/inbox/useSetores";
 import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
@@ -109,6 +115,7 @@ export function ConversationHeader({
   const automaticoDaOrg = useAutomaticoAtivo();
   const [reassignOpen, setReassignOpen] = useState(false);
   const [confirmFecharOpen, setConfirmFecharOpen] = useState(false);
+  const [encerramento, setEncerramento] = useState<EscolhaDoEncerramento>({ tipo: "nenhum" });
   const [confirmArquivarOpen, setConfirmArquivarOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
@@ -469,17 +476,42 @@ export function ConversationHeader({
               {t("O atendimento é encerrado. Se o cliente escrever de novo, você pode reabrir.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* Como o "Finalizar" da Umbler: despedida antes, ou chatbot de
+              encerramento. Grupo não tem chatbot nem despedida automática. */}
+          {!conversation.is_group && (
+            <EncerramentoDoFechar valor={encerramento} onChange={setEncerramento} />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() =>
-                close.mutate({
+              disabled={
+                (encerramento.tipo === "mensagem" && !encerramento.texto.trim()) ||
+                (encerramento.tipo === "chatbot" && !encerramento.chatbot_flow_id)
+              }
+              onClick={() => {
+                const escolha = encerramento;
+                if (escolha.tipo === "mensagem") lembrarDespedida(escolha.texto.trim());
+                const pedido = {
                   conversation_id: conversation.id,
                   expected_revision: conversation.service_revision,
-                })
-              }
+                  ...(escolha.tipo === "mensagem"
+                    ? { encerramento: { tipo: "mensagem" as const, texto: escolha.texto.trim() } }
+                    : escolha.tipo === "chatbot"
+                      ? { encerramento: { tipo: "chatbot" as const, chatbot_flow_id: escolha.chatbot_flow_id } }
+                      : {}),
+                };
+                if (escolha.tipo === "chatbot")
+                  close.mutate(pedido, {
+                    onSuccess: () =>
+                      toast.success(
+                        t('Chatbot de encerramento acionado. Ele encerra a conversa no passo "Finalizar conversa".'),
+                      ),
+                  });
+                else close.mutate(pedido);
+                setEncerramento({ tipo: "nenhum" });
+              }}
             >
-              {t("Fechar")}
+              {encerramento.tipo === "chatbot" ? t("Acionar chatbot") : t("Fechar")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
