@@ -910,6 +910,17 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
   {
+    // Configurações › Variáveis da empresa (paridade com a Umbler Talk):
+    // {{empresa.chave}} nos chatbots e nas respostas rápidas.
+    href: "/app/settings/variaveis",
+    label: "Variáveis da empresa",
+    description: "Endereço, Pix, horário e links guardados uma vez e usados em todas as mensagens.",
+    icon: "Buildings",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "manager",
+  },
+  {
     // Setores de atendimento (migration 0496): grupos de atendentes. A conversa
     // posta num setor só é distribuída a membros dele. Mesmo papel e mesma
     // vizinhança da Distribuição de atendimento, que é a regra que o setor afina.

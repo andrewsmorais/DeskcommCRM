@@ -10328,6 +10328,36 @@ export const DICIONARIO: Traducoes = {
   "Nenhuma atividade registrada ainda.": { es: "Aún no hay actividad registrada." },
   "Todas as origens": { es: "Todos los orígenes" },
   "Importado (CSV)": { es: "Importado (CSV)" },
+  "Importado (vCard)": { es: "Importado (vCard)" },
+  "Variáveis da empresa": { es: "Variables de la empresa" },
+  "Nenhuma ainda. Guarde endereço, Pix ou horário uma vez e use em todos os fluxos.": {
+    es: "Ninguna todavía. Guarda dirección, Pix u horario una vez y úsalos en todos los flujos.",
+  },
+  "Editar variáveis da empresa": { es: "Editar variables de la empresa" },
+  "Dê um nome a todas as variáveis antes de salvar.": { es: "Ponle nombre a todas las variables antes de guardar." },
+  "Duas variáveis estão com o mesmo nome.": { es: "Dos variables tienen el mismo nombre." },
+  "Variáveis salvas.": { es: "Variables guardadas." },
+  "Nenhuma variável ainda. Exemplo: nome endereco, valor “Rua das Flores, 120 — Centro”.": {
+    es: "Ninguna variable todavía. Ejemplo: nombre direccion, valor “Calle de las Flores, 120 — Centro”.",
+  },
+  nome_da_variavel: { es: "nombre_de_la_variable" },
+  "Copiar para usar na mensagem": { es: "Copiar para usar en el mensaje" },
+  "Nome repetido": { es: "Nombre repetido" },
+  "Remover variável": { es: "Quitar variable" },
+  "Valor que vai na mensagem": { es: "Valor que va en el mensaje" },
+  "Adicionar variável": { es: "Agregar variable" },
+  "Guarde uma vez o que se repete nas mensagens — endereço, chave Pix, horário, link do catálogo — e use {{empresa.nome_da_variavel}} nos chatbots e nas respostas rápidas. Mudou o valor aqui, muda em todas as mensagens.": {
+    es: "Guarda una vez lo que se repite en los mensajes — dirección, clave Pix, horario, enlace del catálogo — y usa {{empresa.nome_da_variavel}} en los chatbots y las respuestas rápidas. Si cambias el valor aquí, cambia en todos los mensajes.",
+  },
+  "Endereço, Pix, horário e links guardados uma vez e usados em todas as mensagens.": {
+    es: "Dirección, Pix, horario y enlaces guardados una vez y usados en todos los mensajes.",
+  },
+  "Importar contatos": { es: "Importar contactos" },
+  "Arquivo .csv ou .vcf": { es: "Archivo .csv o .vcf" },
+  "Também aceita o arquivo de contatos do celular (.vcf): no Android, Contatos › Exportar; no Google Contatos, Exportar › vCard.": {
+    es: "También acepta el archivo de contactos del celular (.vcf): en Android, Contactos › Exportar; en Google Contactos, Exportar › vCard.",
+  },
+  "Nenhum contato encontrado no arquivo .vcf.": { es: "No se encontró ningún contacto en el archivo .vcf." },
   "Anúncio da Meta": { es: "Anuncio de Meta" },
   "Anúncio do Google": { es: "Anuncio de Google" },
   // ─── Settings: painel de atualização — histórico multi-versão (merge upstream) ───
@@ -13710,6 +13740,9 @@ export const DICIONARIO: Traducoes = {
   },
   "linha recusada pelo banco": { es: "fila rechazada por la base de datos" },
   // Mensagens de erro de app/api/v1/products/import/route.ts
+  "Formato não suportado — envie um arquivo .csv ou .vcf. No Excel use 'Salvar como' → 'CSV UTF-8'.": {
+    es: "Formato no compatible — envía un archivo .csv o .vcf. En Excel usa 'Guardar como' → 'CSV UTF-8'.",
+  },
   "Formato não suportado — envie um arquivo .csv. No Excel use 'Salvar como' → 'CSV UTF-8'.": {
     es: "Formato no compatible — envía un archivo .csv. En Excel usa 'Guardar como' → 'CSV UTF-8'.",
   },

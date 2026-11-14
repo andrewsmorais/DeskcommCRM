@@ -29,6 +29,7 @@
  *   - no máximo `LIMITE_DE_PASSOS` passos por mensagem: um desenho em círculo
  *     sem pergunta no meio não pode prender o worker nem inundar o contato.
  */
+import { PREFIXO_DA_EMPRESA, reVariavel } from "@/lib/empresa/variaveis";
 import {
   lerConfig,
   lerConfigOuNada,
@@ -188,6 +189,12 @@ export type ContextoDoTurno = {
   conversa?: FatosDaConversa;
   /** Sorteio do "Distribuir fluxo", entre 0 e 1. Ausente = Math.random. */
   sorteio?: () => number;
+  /**
+   * Variáveis da empresa já com o prefixo (`{"empresa.endereco": "…"}`), de
+   * `comPrefixoDaEmpresa`. Valem só durante o turno: quem grava a sessão as
+   * tira (`semVariaveisDaEmpresa`), para a troca de um valor valer na hora.
+   */
+  empresa?: Record<string, string>;
 };
 
 /** O que o executor precisa fazer FORA do motor (rede, banco) antes de o fluxo seguir. */
@@ -247,9 +254,12 @@ export type RespostaDoWebhook = { ok: boolean; status: number | null; corpo: unk
 
 type No = Grafo["nodes"][number];
 
-/** Troca {{variavel}} pelo que o contato respondeu em "Pedir para digitar". */
+/**
+ * Troca {{variavel}} pelo que o contato respondeu em "Pedir para digitar", e
+ * {{empresa.chave}} pela variável da empresa (o turno as põe nos dados).
+ */
 export function preencher(texto: string, dados: Record<string, string>): string {
-  return texto.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/g, (_, nome: string) => dados[nome] ?? "");
+  return texto.replace(reVariavel(), (_, nome: string) => dados[nome] ?? "");
 }
 
 function horaLocal(agora: Date, fuso: string): { minutos: number; diaDaSemana: number } {
@@ -435,7 +445,9 @@ export function ofertasGuardadas(dados: Record<string, string>): OfertaDeHorario
 
 /** As respostas guardadas sem as chaves internas (as que começam com "_"). */
 export function respostasVisiveis(dados: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(dados).filter(([k]) => !k.startsWith("_")));
+  return Object.fromEntries(
+    Object.entries(dados).filter(([k]) => !k.startsWith("_") && !k.startsWith(PREFIXO_DA_EMPRESA)),
+  );
 }
 
 function proximo(grafo: Grafo, deNo: string, saida: string): string | null {
@@ -507,7 +519,10 @@ function andar(
   mensagemLivre = !respondendo,
 ): ResultadoDoTurno {
   const efeitos: Efeito[] = [];
-  const sessao: SessaoDoChatbot = { ...sessaoInicial, dados: { ...sessaoInicial.dados } };
+  const sessao: SessaoDoChatbot = {
+    ...sessaoInicial,
+    dados: { ...sessaoInicial.dados, ...(ctx.empresa ?? {}) },
+  };
   const porId = new Map(grafo.nodes.map((n) => [n.id, n]));
   // Cópia do contato que acompanha o que o próprio fluxo grava neste turno:
   // "Editar etiquetas" seguido de "Definir condição" enxerga a etiqueta nova.

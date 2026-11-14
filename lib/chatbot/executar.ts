@@ -14,6 +14,7 @@
  * as mesmas guardas do contato. Falha ao ler o fluxo devolve `nao_atende`
  * (fail-open): um erro do chatbot não pode calar a conversa.
  */
+import { comPrefixoDaEmpresa, lerVariaveisDaEmpresa, semVariaveisDaEmpresa } from "@/lib/empresa/variaveis";
 import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -175,6 +176,11 @@ function contatoDoTurno(c: {
   };
 }
 
+/** As variáveis da empresa (`organizations.settings.variaveis`) prontas para o motor. */
+function variaveisDoTurno(bruto: unknown): Record<string, string> {
+  return comPrefixoDaEmpresa(lerVariaveisDaEmpresa({ variaveis: bruto }));
+}
+
 function dadosDeTexto(v: Record<string, unknown> | null): Record<string, string> {
   const saida: Record<string, string> = {};
   for (const [k, val] of Object.entries(v ?? {})) if (typeof val === "string") saida[k] = val;
@@ -225,8 +231,9 @@ export async function atenderPeloChatbot(
     aniversario: string | null;
     custom_fields: Record<string, unknown> | null;
     tags_da_conversa: string[] | null;
+    variaveis_da_empresa: unknown;
   }>(
-    `select c.assignee_kind, ct.is_blocked, o.timezone,
+    `select c.assignee_kind, ct.is_blocked, o.timezone, o.settings->'variaveis' as variaveis_da_empresa,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
             ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c
@@ -368,6 +375,7 @@ export async function atenderPeloChatbot(
     agora: new Date(),
     fuso: conversa.timezone || "America/Sao_Paulo",
     contato: contatoDoTurno(conversa),
+    empresa: variaveisDoTurno(conversa.variaveis_da_empresa),
     conversa: await lerFatosDaConversa(pool, e, fluxoId, grafo),
   };
   const resultado: ResultadoDoTurno = !sessaoAnterior
@@ -1370,6 +1378,7 @@ async function fazerWebhook(
       contato: { id: e.contactId, ...(rows[0] ?? { nome: null, telefone: null, email: null }) },
       mensagem: ctx.mensagem,
       respostas: respostasVisiveis(resultado.sessao.dados),
+      variaveisDaEmpresa: ctx.empresa,
     },
     segredos,
   );
@@ -1579,8 +1588,9 @@ export async function iniciarChatbotPorAutomacao(
     aniversario: string | null;
     custom_fields: Record<string, unknown> | null;
     tags_da_conversa: string[] | null;
+    variaveis_da_empresa: unknown;
   }>(
-    `select c.assignee_kind, ct.is_blocked, o.timezone,
+    `select c.assignee_kind, ct.is_blocked, o.timezone, o.settings->'variaveis' as variaveis_da_empresa,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
             ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c
@@ -1638,6 +1648,7 @@ export async function iniciarChatbotPorAutomacao(
     agora: new Date(),
     fuso: conversa.timezone || "America/Sao_Paulo",
     contato: contatoDoTurno(conversa),
+    empresa: variaveisDoTurno(conversa.variaveis_da_empresa),
     conversa: await lerFatosDaConversa(pool, e, fluxo.id, g.data),
   };
   const resultado = iniciarFluxo(g.data, inicio, ctx, {
@@ -1694,13 +1705,14 @@ export async function retomarChatbotPeloRelogio(
     SessaoGravada & {
       retomar_em: string | null;
       timezone: string | null;
+      variaveis_da_empresa: unknown;
       ended_at: string | null;
       started_at: string;
     }
   >(
     `select s.id, s.flow_id, s.status, s.no_atual, s.tentativas, s.collected_data, s.retomar_em,
             s.ended_at::text as ended_at, s.started_at::text as started_at,
-            f.grafo, f.is_active, o.timezone
+            f.grafo, f.is_active, o.timezone, o.settings->'variaveis' as variaveis_da_empresa
        from chatbot_sessions s
        join chatbot_flows f on f.id = s.flow_id and f.organization_id = s.organization_id
        join organizations o on o.id = s.organization_id
@@ -1776,6 +1788,7 @@ export async function retomarChatbotPeloRelogio(
     agora: new Date(),
     fuso: sessao.timezone || "America/Sao_Paulo",
     contato: contatoDoTurno(conversa),
+    empresa: variaveisDoTurno(sessao.variaveis_da_empresa),
     conversa: await lerFatosDaConversa(pool, e, sessao.flow_id, g.data),
   };
   const resultado = retomarFluxo(
@@ -1955,7 +1968,9 @@ async function gravarSessao(
       s.status,
       s.no_atual,
       s.tentativas,
-      JSON.stringify(s.dados),
+      // As variáveis da empresa valem só no turno: gravadas, um valor trocado
+      // em Configurações não chegaria às sessões que já estavam esperando.
+      JSON.stringify(semVariaveisDaEmpresa(s.dados)),
       terminal,
       sessaoId,
       temRelogio(s) ? (s.retomar_em ?? null) : null,

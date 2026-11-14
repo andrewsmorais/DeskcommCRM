@@ -7,6 +7,7 @@
  * marcado; o que vem de fora do motor (WebHook, horários da Agenda, outro
  * fluxo) é imitado e a tela diz isso.
  */
+import { useVariaveisDaEmpresaPrefixadas } from "@/hooks/inbox/useVariaveisDaEmpresa";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FlaskConical, Paperclip, RotateCcw, Send, SlidersHorizontal, X } from "lucide-react";
 
@@ -43,7 +44,12 @@ const FUSO =
 
 export function TesteDoFluxo({ fotoDoDesenho, opcoes, onFechar, onPasso }: Props) {
   const t = useT();
-  const o: OpcoesDoTeste = useMemo(() => ({ fluxoAtual: opcoes.fluxoAtual, fuso: FUSO }), [opcoes.fluxoAtual]);
+  const empresa = useVariaveisDaEmpresaPrefixadas();
+  const chaveDaEmpresa = JSON.stringify(empresa);
+  const o: OpcoesDoTeste = useMemo(
+    () => ({ fluxoAtual: opcoes.fluxoAtual, fuso: FUSO, empresa: JSON.parse(chaveDaEmpresa) as Record<string, string> }),
+    [opcoes.fluxoAtual, chaveDaEmpresa],
+  );
   const [grafo, setGrafo] = useState<Grafo>(fotoDoDesenho);
   const [estado, setEstado] = useState<EstadoDoTeste>(() => comecarTeste(grafo));
   const [texto, setTexto] = useState("");

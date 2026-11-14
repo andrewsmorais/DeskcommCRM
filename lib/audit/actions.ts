@@ -164,6 +164,8 @@ export const AUDIT_ACTIONS = [
   // Configurações › Conversas (assinatura e comportamento do Fechar) e a
   // assinatura do próprio atendente, editada pelo campo de mensagem.
   "conversation_settings.changed",
+  /** Configurações › Variáveis da empresa ({{empresa.chave}}); a auditoria guarda só os nomes. */
+  "organization_variables.changed",
   /** "Baixar histórico" da conversa (.txt/.pdf): sai dado pessoal do sistema. */
   "conversation.history_exported",
   /** Estrela numa mensagem (migration 0513). */

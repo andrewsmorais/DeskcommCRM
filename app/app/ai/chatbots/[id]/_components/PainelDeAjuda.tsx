@@ -20,6 +20,7 @@ import {
 import { ehTipoDePasso, metaDoPasso } from "@/lib/chatbot/passos";
 
 import { IconeDoPasso } from "./icones";
+import { VariaveisDaEmpresaNaAjuda } from "./VariaveisDaEmpresaNaAjuda";
 import type { NodeData } from "./node-types";
 
 export function PainelDeAjuda({
@@ -93,6 +94,7 @@ export function PainelDeAjuda({
             ) : null}
           </div>
         ) : null}
+        <VariaveisDaEmpresaNaAjuda />
       </div>
       <div className="border-t border-border p-4">
         <Button type="button" variant="outline" className="w-full" onClick={onClose}>

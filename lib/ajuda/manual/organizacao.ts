@@ -208,6 +208,24 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
     ],
   },
 
+  "/app/settings/variaveis": {
+    oQueE:
+      "Guarda uma vez o que se repete nas mensagens da empresa — endereço, chave Pix, horário de funcionamento, link do catálogo — para usar em qualquer chatbot ou resposta rápida.",
+    comoUsar: [
+      "Clique em “Adicionar variável”, escreva o nome (por exemplo endereco) e o valor (por exemplo “Rua das Flores, 120 — Centro”). Se quiser, diga “Para que serve”.",
+      "Clique em “Salvar”.",
+      "Clique no {{empresa.endereco}} ao lado do nome para copiar e cole onde quiser que o valor apareça: numa mensagem do chatbot, num link, no WebHook ou numa resposta rápida.",
+      "Mudou o endereço? Troque o valor aqui e salve: todas as mensagens passam a mandar o novo na hora.",
+    ],
+    cuidados: [
+      "O nome usa só letras minúsculas sem acento, números e _. Ao digitar “Pix da Loja”, ele vira pix_da_loja.",
+      "Escreva sempre com “empresa.” na frente: {{empresa.pix}}. Sem o prefixo, {{pix}} é uma resposta guardada do contato, não a variável da empresa.",
+      "Variável apagada some das mensagens: no chatbot, nada sai no lugar dela; na resposta rápida, o {{empresa.…}} fica no texto para o atendente corrigir antes de enviar.",
+      "Até 50 variáveis, com até 1000 letras cada.",
+      "Qualquer atendente pode usar as variáveis; só gerente ou administrador abre esta tela.",
+    ],
+  },
+
   "/app/settings/setores": {
     oQueE:
       "Divide a equipe em setores, como Vendas, Suporte e Financeiro. A conversa posta num setor só é entregue a quem é do setor, e aparece marcada com o setor na Inbox.",

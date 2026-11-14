@@ -1,3 +1,5 @@
+import { reVariavel } from "@/lib/empresa/variaveis";
+
 /**
  * As partes PURAS do passo WebHook (sem rede, sem cripto): cabeçalhos que o
  * produto reserva e o corpo JSON montável. Ficam fora de `webhook.ts` para o
@@ -14,7 +16,7 @@ export function cabecalhoReservado(nome: string): boolean {
 /** `{{variavel}}` num texto livre (valor de cabeçalho), sem quebra de linha. */
 export function textoComVariaveis(texto: string, dados: Record<string, string>): string {
   return texto
-    .replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/g, (_, nome: string) => dados[nome] ?? "")
+    .replace(reVariavel(), (_, nome: string) => dados[nome] ?? "")
     .replace(/[\r\n]+/g, " ")
     .trim();
 }
@@ -26,7 +28,7 @@ export function textoComVariaveis(texto: string, dados: Record<string, string>):
  * é JSON válido, e a chamada não sai.
  */
 export function corpoPersonalizado(modelo: string, dados: Record<string, string>): string | null {
-  const texto = modelo.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/g, (_, nome: string) =>
+  const texto = modelo.replace(reVariavel(), (_, nome: string) =>
     JSON.stringify(dados[nome] ?? "").slice(1, -1),
   );
   try {
@@ -41,7 +43,7 @@ export function corpoPersonalizado(modelo: string, dados: Record<string, string>
 export function corpoPersonalizadoValido(modelo: string): boolean {
   if (!modelo.trim()) return false;
   try {
-    JSON.parse(modelo.replace(/\{\{\s*[a-z_][a-z0-9_]*\s*\}\}/g, "0"));
+    JSON.parse(modelo.replace(reVariavel(), "0"));
     return true;
   } catch {
     return false;

@@ -28,6 +28,7 @@ import { useSendMessage } from "@/hooks/inbox/useSendMessage";
 import { useUploadMedia } from "@/hooks/inbox/useUploadMedia";
 import { imagemDoClipboard } from "@/lib/inbox/clipboard-image";
 import { interpolateTemplate } from "@/lib/inbox/template-vars";
+import { useVariaveisDaEmpresaPrefixadas } from "@/hooks/inbox/useVariaveisDaEmpresa";
 import {
   type AvisoDeRascunho,
   type MotivoDeRecusa,
@@ -121,6 +122,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   ref,
 ) {
   const t = useT();
+  const variaveisDaEmpresa = useVariaveisDaEmpresaPrefixadas();
   const [text, setText] = useState(initialDraft);
   // O aviso some no primeiro ENVIO: depois do clique o rascunho foi usado, e
   // deixar a faixa prometendo texto que já saiu seria mentira de tela.
@@ -222,7 +224,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }
 
   function applyTemplate(t: MessageTemplate) {
-    const filled = interpolateTemplate(t.body, { name: contactName ?? null });
+    const filled = interpolateTemplate(t.body, { name: contactName ?? null }, variaveisDaEmpresa);
     setText(filled);
     setMenuDismissed(true);
     const ta = taRef.current;

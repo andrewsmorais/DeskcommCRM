@@ -32,6 +32,7 @@ const SOURCE_OPTIONS = [
   { value: "site", label: "Site (landing page)" },
   { value: "nuvemshop", label: "Nuvemshop" },
   { value: "import_csv", label: "Importado (CSV)" },
+  { value: "import_vcf", label: "Importado (vCard)" },
   // Os dois valores que a atribuição de anúncio grava em `contacts.source`
   // (`PlataformaDeAnuncio` em lib/leads/atribuicao-de-anuncio.ts). Sem eles, o
   // contato que veio de um clique em anúncio existe no banco e não é

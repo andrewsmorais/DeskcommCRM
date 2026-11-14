@@ -106,7 +106,13 @@ export type EstadoDoTeste = {
   fatos: FatosDaConversa;
 };
 
-export type OpcoesDoTeste = { fluxoAtual: string; fuso: string; agora?: () => Date };
+export type OpcoesDoTeste = {
+  fluxoAtual: string;
+  fuso: string;
+  agora?: () => Date;
+  /** As variáveis da empresa, já com o prefixo — o teste manda o mesmo texto que o WhatsApp. */
+  empresa?: Record<string, string>;
+};
 
 const LIMITE_DE_IDAS = 8;
 
@@ -117,6 +123,7 @@ function ctxDe(estado: EstadoDoTeste, mensagem: string | null, o: OpcoesDoTeste)
     fuso: o.fuso,
     contato: estado.contato,
     conversa: estado.fatos,
+    empresa: o.empresa,
   };
 }
 

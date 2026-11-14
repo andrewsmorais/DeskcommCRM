@@ -282,3 +282,36 @@ describe("POST /api/v1/contacts/import — a planilha segue o PAÍS da organiza�
     expect(db.tentativas).toHaveLength(0);
   });
 });
+
+describe("POST /api/v1/contacts/import — arquivo .vcf do celular", () => {
+  async function importarVcf(conteudo: string) {
+    const form = new FormData();
+    form.set("file", new File([conteudo], "contatos.vcf", { type: "text/vcard" }));
+    return POST(new NextRequest("http://localhost/api/v1/contacts/import", { method: "POST", body: form }));
+  }
+
+  it("cria os contatos pelo mesmo caminho da planilha, com origem import_vcf", async () => {
+    const { tentativas } = banco();
+    const resposta = await importarVcf(
+      [
+        "BEGIN:VCARD", "VERSION:3.0", "FN:Ana Vcf", `TEL;TYPE=CELL:${PHONE}`, "END:VCARD",
+        "BEGIN:VCARD", "VERSION:3.0", "FN:Sem Contato", "END:VCARD",
+      ].join("\r\n"),
+    );
+    expect(resposta.status).toBe(200);
+    const { data } = (await resposta.json()) as { data: Resumo };
+    expect(data.total_linhas).toBe(2);
+    expect(data.imported).toBe(1);
+    expect(data.errors).toHaveLength(1);
+    expect(tentativas[0]).toMatchObject({ name: "Ana Vcf", phone_number: PHONE, source: "import_vcf" });
+  });
+
+  it("arquivo .vcf sem cartão é recusado com mensagem própria", async () => {
+    banco();
+    const resposta = await importarVcf("vazio");
+    expect(resposta.status).toBe(422);
+    const corpo = (await resposta.json()) as { error: { message: string } };
+    expect(corpo.error.message).toMatch(/Nenhum contato encontrado no arquivo \.vcf/);
+  });
+});
+

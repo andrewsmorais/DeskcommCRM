@@ -15,6 +15,7 @@ import {
 } from "./passos";
 import { linksDoTexto, linksQueBloqueiam } from "./links";
 import { problemaDaRegra, problemaDoValor } from "./regras";
+import { ehSoUmaVariavel } from "@/lib/empresa/variaveis";
 import { cabecalhoReservado, corpoPersonalizadoValido } from "./webhook-corpo";
 
 export function problemasDoGrafo(grafo: Grafo): string[] {
@@ -101,7 +102,7 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         // Botão de link: endereço que abre página (ou vem de uma variável).
         if (c.botao_texto && !c.botao_url)
           problemas.push(`no passo "${nome}", escreva o endereço do botão de link.`);
-        if (c.botao_url && !/^\{\{[a-z_][a-z0-9_]*\}\}$/.test(c.botao_url) && !/^https?:\/\/\S+$/i.test(c.botao_url))
+        if (c.botao_url && !ehSoUmaVariavel(c.botao_url) && !/^https?:\/\/\S+$/i.test(c.botao_url))
           problemas.push(`no passo "${nome}", o endereço do botão precisa começar com https://.`);
         for (const l of linksQueBloqueiam(texto))
           problemas.push(
@@ -290,7 +291,7 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
         if (!c.link && !c.pix) problemas.push(`escreva o link ou o Pix do passo "${nome}".`);
         // O link inteiro numa variável ({{link_checkout}}) só existe na hora do
         // envio; escrito à mão, precisa ser endereço de página.
-        if (c.link && !/^\{\{\s*[a-z_][a-z0-9_]*\s*\}\}$/.test(c.link)) {
+        if (c.link && !ehSoUmaVariavel(c.link)) {
           const [l] = linksDoTexto(c.link);
           if (
             !l ||

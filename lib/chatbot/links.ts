@@ -9,6 +9,7 @@
  * `{{link_checkout}}` de uma venda) não existe ainda e não é conferido aqui.
  * Não é filtro de golpe: um https:// para um site ruim passa.
  */
+import { reVariavel } from "@/lib/empresa/variaveis";
 export type ProblemaDoLink = "protocolo_perigoso" | "sem_https" | "malformado";
 export type LinkDoTexto = { link: string; problema: ProblemaDoLink | null };
 
@@ -23,7 +24,7 @@ export function linksDoTexto(texto: string): LinkDoTexto[] {
     const link = m[0].replace(/[).,;!?]+$/, "");
     let problema: ProblemaDoLink | null = null;
     try {
-      const u = new URL(link.replace(/\{\{\s*[a-z_][a-z0-9_]*\s*\}\}/g, "x"));
+      const u = new URL(link.replace(reVariavel(), "x"));
       if (!u.hostname.includes(".") && u.hostname !== "localhost") problema = "malformado";
       else if (u.protocol === "http:") problema = "sem_https";
     } catch {

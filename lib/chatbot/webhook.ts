@@ -25,6 +25,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { assertDestinoResolvidoSeguro } from "@/lib/automation/outbound-ip";
 import { assertSafeOutboundUrl } from "@/lib/automation/outbound-url";
 import type { ConfigDe } from "./passos";
+import { reVariavel } from "@/lib/empresa/variaveis";
 import { cabecalhoReservado, corpoPersonalizado, textoComVariaveis } from "./webhook-corpo";
 import type { RespostaDoWebhook } from "./motor";
 
@@ -38,11 +39,16 @@ export type EnvioDoWebhook = {
   contato: { id: string; nome: string | null; telefone: string | null; email: string | null };
   mensagem: string | null;
   respostas: Record<string, string>;
+  /**
+   * As variáveis da empresa (`empresa.chave`), para a URL, os cabeçalhos e o
+   * corpo personalizado. Ficam FORA do corpo padrão: ali vão só as respostas.
+   */
+  variaveisDaEmpresa?: Record<string, string>;
 };
 
 /** `{{variavel}}` na URL, codificada (a resposta do contato nunca muda a estrutura da URL). */
 export function urlComVariaveis(url: string, dados: Record<string, string>): string {
-  return url.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/g, (_, nome: string) =>
+  return url.replace(reVariavel(), (_, nome: string) =>
     encodeURIComponent(dados[nome] ?? ""),
   );
 }
@@ -66,7 +72,8 @@ export async function chamarWebhookDoChatbot(
   opts: { fetch?: typeof fetch; agora?: Date; pularChecagemDeRede?: boolean } = {},
 ): Promise<RespostaDoWebhook & { erro?: string }> {
   const agora = opts.agora ?? new Date();
-  const url = urlComVariaveis(c.url, envio.respostas);
+  const vars = { ...envio.respostas, ...(envio.variaveisDaEmpresa ?? {}) };
+  const url = urlComVariaveis(c.url, vars);
   try {
     assertSafeOutboundUrl(url);
     if (!opts.pularChecagemDeRede) await assertDestinoResolvidoSeguro(new URL(url).hostname);
@@ -85,7 +92,7 @@ export async function chamarWebhookDoChatbot(
   let corpo = "";
   if (comCorpo) {
     if (c.corpo_modo === "personalizado") {
-      const montado = corpoPersonalizado(c.corpo, envio.respostas);
+      const montado = corpoPersonalizado(c.corpo, vars);
       if (montado === null) return { ok: false, status: null, corpo: null, erro: "corpo_invalido" };
       corpo = montado;
     } else {
@@ -96,7 +103,7 @@ export async function chamarWebhookDoChatbot(
   // Os do passo primeiro; os do produto por cima (e os reservados nem entram).
   for (const h of c.cabecalhos) {
     if (cabecalhoReservado(h.nome)) continue;
-    const valor = textoComVariaveis(h.valor, envio.respostas);
+    const valor = textoComVariaveis(h.valor, vars);
     if (valor) cabecalhos[h.nome] = valor;
   }
   cabecalhos.Accept = "application/json";
