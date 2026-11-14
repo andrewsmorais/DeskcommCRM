@@ -18736,6 +18736,18 @@ export const DICIONARIO: Traducoes = {
   "A resposta rápida substitui o texto do campo. Envie ou apague o rascunho antes.": { es: "La respuesta rápida reemplaza el texto del campo. Envía o borra el borrador antes." },
   "Prepara no compositor — você revisa e envia": { es: "Prepara en el compositor — tú revisas y envías" },
   "Não foi possível carregar a mídia da resposta rápida. O texto foi para o campo.": { es: "No fue posible cargar el archivo de la respuesta rápida. El texto fue al campo." },
+  // Painel de atendimento (vindo do produto original)
+  "há {tempo}": { es: "hace {tempo}" },
+  "Painel de atendimento": { es: "Panel de atención" },
+  "Casos da IA": { es: "Casos de la IA" },
+  "Não deu para carregar as conversas agora.": { es: "No se pudieron cargar las conversaciones ahora." },
+  "Há mais de 100 conversas em alguma lista. Quem espera sem dono são as 100 com mais tempo de espera; as demais são as 100 com a mensagem mais recente.": { es: "Hay más de 100 conversaciones en alguna lista. Quienes esperan sin responsable son las 100 con más tiempo de espera; las demás son las 100 con el mensaje más reciente." },
+  "Aguardando atendimento": { es: "Esperando atención" },
+  "Ninguém esperando.": { es: "Nadie esperando." },
+  "esperando há {tempo}": { es: "esperando hace {tempo}" },
+  "Nenhuma conversa em andamento.": { es: "Ninguna conversación en curso." },
+  "Atendidos hoje": { es: "Atendidos hoy" },
+  "Nada encerrado hoje ainda.": { es: "Nada cerrado hoy todavía." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

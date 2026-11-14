@@ -331,6 +331,11 @@ export const listConversationsQuerySchema = z.object({
    * significar "meu trabalho" para virar "tudo que já toquei".
    */
   exclude_finished: z.boolean().optional(),
+  /**
+   * Só as ENCERRADAS a partir deste instante (`service_closed_at >= …`). É a
+   * coluna "Atendidos hoje" do Painel de atendimento (vindo do produto original).
+   */
+  closed_since: z.string().datetime({ offset: true }).optional(),
   assigned_to: z.union([z.string().uuid(), z.literal("me"), z.literal("unassigned")]).optional(),
   channel_session_id: z.string().uuid().optional(),
   /** Só as do setor (migration 0496). Igualdade em `conversations.setor_id`. */

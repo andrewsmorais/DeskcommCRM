@@ -824,6 +824,18 @@ export const NAV_CATALOG = [
     sidebar: true,
   },
   {
+    // Painel de atendimento (vindo do produto original; paridade com a Umbler):
+    // quem espera resposta, quem está em atendimento e quem foi atendido hoje.
+    // Aqui sempre ligado — no produto original é módulo opcional.
+    href: "/app/painel",
+    label: "Painel de atendimento",
+    description: "Quem espera resposta, quem está em atendimento e quem foi atendido hoje, por número.",
+    icon: "ListChecks",
+    group: "analise",
+    section: "Os números do período",
+    sidebar: true,
+  },
+  {
     // Logo abaixo de Desempenho porque responde a metade da MESMA pergunta: lá
     // está o que aconteceu depois que a pessoa chegou; aqui, quanto custou
     // trazê-la. Ler as duas juntas é o que fecha a conta do custo por cliente.

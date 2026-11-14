@@ -197,6 +197,7 @@ export async function listConversationsHandler(
   if (q.exclude_finished) {
     query = query.not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`);
   }
+  if (q.closed_since) query = query.gte("service_closed_at", q.closed_since);
   if (q.channel_session_id) query = query.eq("channel_session_id", q.channel_session_id);
   // O setor (migration 0496) é igualdade numa coluna, como o número: a contagem
   // aplica o MESMO par em `filtrosAuxiliaresDaContagem`.

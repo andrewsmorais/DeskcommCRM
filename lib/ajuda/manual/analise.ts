@@ -59,6 +59,20 @@ export const MANUAL_ANALISE: ManualDoGrupo = {
     ],
   },
 
+  "/app/painel": {
+    oQueE:
+      "Mostra a operação de atendimento agora, em três colunas: quem está esperando resposta, quem está em atendimento e quem já foi atendido hoje. Atualiza sozinha a cada poucos segundos.",
+    comoUsar: [
+      'Em "Aguardando atendimento" ficam os clientes que falaram por último, ou que a IA passou para a equipe e ninguém assumiu. Quem espera há mais tempo aparece em cima, com o tempo de espera em vermelho.',
+      '"Em atendimento" são as conversas em que a equipe ou a IA respondeu por último. "Atendidos hoje" são as encerradas desde a meia-noite, no fuso da empresa.',
+      'Escolha um número no seletor do alto para ver só as conversas dele. Clique em uma conversa para abri-la no Inbox.',
+      'O botão "Casos da IA" leva aos casos que a IA abriu e ainda estão abertos.',
+    ],
+    cuidados: [
+      "Cada lista mostra no máximo 100 conversas; quando há mais, a tela avisa.",
+    ],
+  },
+
   "/app/ads/meta": {
     oQueE:
       'Mostra o desempenho das campanhas do Meta Ads que trazem gente para o CRM: quanto foi gasto, quantos resultados e quanto custou cada um. Os números são lidos da Meta na hora em que você clica em "Atualizar"; nada fica guardado aqui.',
