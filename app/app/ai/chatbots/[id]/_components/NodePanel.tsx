@@ -21,6 +21,9 @@ import {
   metaDoPasso,
   PRAZOS_DE_RESPOSTA,
   MODOS_DE_ATENDENTE,
+  NOMES_DE_QUEM_FECHA,
+  QUEM_FECHA,
+  type QuemFecha,
   perguntaDoFormularioSchema,
   problemaDaConfig,
   regraSchema,
@@ -30,6 +33,8 @@ import {
   type PerguntaDoFormulario,
   type Regra,
 } from "@/lib/chatbot/passos";
+import { MODELOS_DE_WEBHOOK } from "@/lib/chatbot/modelos-de-webhook";
+import { AGENDA_MAX, descreverAgenda, lerAgenda } from "@/lib/chatbot/agenda";
 
 import { MENSAGEM_FORA_DO_FORMATO, MENSAGEM_NENHUMA_OPCAO } from "@/lib/chatbot/motor";
 import type { MidiaDaBiblioteca } from "@/lib/chatbot/biblioteca-de-midias";
@@ -653,6 +658,21 @@ function Campos({
               {t("No WhatsApp por QR code não existe botão: vai como texto embaixo da mensagem, assim: Texto do botão: endereço.")}
             </p>
           </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={c.caminho_se_falhar}
+              onChange={(e) => aplicar({ caminho_se_falhar: e.target.checked })}
+              data-testid="msg-caminho-se-falhar"
+            />
+            <span>
+              {t("Seguir outro caminho se a mensagem não sair")}
+              <span className="block text-xs text-muted-foreground">
+                {t('O passo ganha a saída "Não saiu" (número desconectado, contato bloqueado). Ligue-a ao que fazer nesse caso.')}
+              </span>
+            </span>
+          </label>
         </>
       );
     }
@@ -1102,6 +1122,23 @@ function Campos({
             linhas={3}
             onCommit={(v) => aplicar({ mensagem: v })}
           />
+          {c.setor_id || c.setor_da_conversa ? (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={c.caminho_se_falhar}
+                onChange={(e) => aplicar({ caminho_se_falhar: e.target.checked })}
+                data-testid="setor-caminho-se-falhar"
+              />
+              <span>
+                {t("Seguir outro caminho se não der para transferir")}
+                <span className="block text-xs text-muted-foreground">
+                  {t('O passo ganha a saída "Não transferiu" (o setor foi apagado, ou a conversa nunca esteve num setor). Sem isto, a conversa vai para a equipe toda.')}
+                </span>
+              </span>
+            </label>
+          ) : null}
           <EsperaDoAtendente dados={dados} tipo="transferir_equipe" aplicar={aplicar} />
         </>
       );
@@ -1250,13 +1287,35 @@ function Campos({
     case "finalizar_conversa": {
       const c = lerConfig("finalizar_conversa", dados);
       return (
-        <Texto
-          id="fim-msg"
-          rotulo={t("Mensagem de despedida (opcional)")}
-          valor={c.mensagem}
-          linhas={3}
-          onCommit={(v) => aplicar({ mensagem: v })}
-        />
+        <>
+          <Texto
+            id="fim-msg"
+            rotulo={t("Mensagem de despedida (opcional)")}
+            valor={c.mensagem}
+            linhas={3}
+            onCommit={(v) => aplicar({ mensagem: v })}
+          />
+          <div className="space-y-1.5">
+            <Label htmlFor="fim-quem">{t("Quem aparece como quem fechou")}</Label>
+            <select
+              id="fim-quem"
+              className={SELECT}
+              value={c.quem_fecha}
+              onChange={(e) => aplicar({ quem_fecha: e.target.value as QuemFecha })}
+            >
+              {QUEM_FECHA.map((q) => (
+                <option key={q} value={q}>
+                  {t(NOMES_DE_QUEM_FECHA[q])}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Fica no histórico da conversa e no registro de auditoria. Se a conversa não tiver atendente, aparece o chatbot.",
+              )}
+            </p>
+          </div>
+        </>
       );
     }
     case "criar_nota": {
@@ -1526,8 +1585,10 @@ function Campos({
             >
               <option value="dias">{t("No próximo horário, nos dias da semana marcados")}</option>
               <option value="data">{t("Numa data")}</option>
+              <option value="agenda">{t("Por uma agenda avançada (dia do mês, mês, vários horários)")}</option>
             </select>
           </div>
+          {c.quando === "agenda" ? null : (
           <div className="space-y-1.5">
             <Label htmlFor="ate-hora">{t("Horário")}</Label>
             <Input
@@ -1537,7 +1598,10 @@ function Campos({
               onChange={(e) => e.target.value && aplicar({ hora: e.target.value })}
             />
           </div>
-          {c.quando === "data" ? (
+          )}
+          {c.quando === "agenda" ? (
+            <AguardarAteAgenda valor={c.agenda} aplicar={aplicar} />
+          ) : c.quando === "data" ? (
             <AguardarAteData dados={dados} aplicar={aplicar} />
           ) : (
           <div className="space-y-1.5">
@@ -1712,11 +1776,31 @@ function Campos({
               {t("Esse fluxo está desligado: ligue-o, senão o contato fica sem resposta neste ponto.")}
             </p>
           ) : null}
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={c.paralelo}
+              disabled={c.flow_id === opcoes.fluxoAtual}
+              onChange={(e) => aplicar({ paralelo: e.target.checked })}
+              data-testid="acionar-em-paralelo"
+            />
+            <span>
+              {t("Abrir em paralelo (este fluxo continua)")}
+              <span className="block text-xs text-muted-foreground">
+                {t(
+                  "O outro fluxo começa e este segue para o próximo passo, sem esperar. Se os dois fizerem uma pergunta, a resposta do contato vai para quem perguntou por último.",
+                )}
+              </span>
+            </span>
+          </label>
+          {c.paralelo ? null : (
           <p className="text-xs text-muted-foreground">
             {t(
               'Este fluxo termina aqui e o escolhido começa do início, com as respostas já guardadas ({{nome}}…). Para um submenu, crie o outro fluxo com "Iniciar por automação": ele pode ficar ligado junto com este. Escolha este mesmo fluxo para voltar ao menu.',
             )}
           </p>
+          )}
         </>
       );
     }
@@ -2050,6 +2134,62 @@ const NOMES_DO_DESLOCAMENTO: Record<(typeof DESLOCAMENTOS_DA_DATA)[number], stri
   3: "3 dias depois",
   7: "7 dias depois",
 };
+
+/** Exemplos prontos da agenda avançada: o leigo clica e ajusta. */
+const EXEMPLOS_DE_AGENDA = [
+  { rotulo: "Dias úteis às 9h", valor: "0 9 * * 1-5" },
+  { rotulo: "Todo dia 5 às 10h", valor: "0 10 5 * *" },
+  { rotulo: "Dias 1 e 15 às 8h30", valor: "30 8 1,15 * *" },
+  { rotulo: "Sábados às 9h e às 14h", valor: "0 9,14 * * 6" },
+] as const;
+
+/** "Aguardar até" por expressão de agenda (cinco campos), com a leitura em português embaixo. */
+function AguardarAteAgenda({
+  valor,
+  aplicar,
+}: {
+  valor: string;
+  aplicar: (p: Record<string, unknown>) => void;
+}) {
+  const t = useT();
+  const lida = valor.trim() ? lerAgenda(valor) : null;
+  const erro = typeof lida === "string" ? lida : null;
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="ate-agenda">{t("Agenda")}</Label>
+      <Input
+        id="ate-agenda"
+        value={valor}
+        maxLength={AGENDA_MAX}
+        placeholder="0 9 * * 1-5"
+        className="font-mono"
+        aria-invalid={erro ? true : undefined}
+        aria-describedby="ate-agenda-leitura"
+        onChange={(e) => aplicar({ agenda: e.target.value })}
+      />
+      <p
+        id="ate-agenda-leitura"
+        role={erro ? "alert" : undefined}
+        data-testid="leitura-da-agenda"
+        className={erro ? "text-xs text-destructive" : "text-xs font-medium text-foreground"}
+      >
+        {erro ? t(erro) : valor.trim() ? `${descreverAgenda(valor)}.` : t("Escolha um exemplo abaixo ou escreva a agenda.")}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "Cinco partes separadas por espaço: minuto, hora, dia do mês, mês e dia da semana (0 = domingo). O asterisco (*) quer dizer qualquer. O fluxo segue na próxima vez que a agenda marcar, no fuso horário da empresa.",
+        )}
+      </p>
+      <div className="flex flex-wrap gap-2 pt-1">
+        {EXEMPLOS_DE_AGENDA.map((ex) => (
+          <Button key={ex.valor} type="button" size="sm" variant="outline" onClick={() => aplicar({ agenda: ex.valor })}>
+            {t(ex.rotulo)}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function AguardarAteData({
   dados,
@@ -2642,9 +2782,41 @@ function WebhookDoChatbot({
       .slice(0, 10);
     aplicar({ campos: limpa });
   };
+  const modeloEmUso = MODELOS_DE_WEBHOOK.find((m) => m.config.url === c.url && m.config.corpo === c.corpo) ?? null;
   const textoPendente = (k: string) => typeof dados[k] === "string" && (dados[k] as string).length > 0;
   return (
     <>
+      <div className="space-y-1.5 rounded-md border border-border p-3">
+        <Label htmlFor="webhook-modelo">{t("Começar por um modelo pronto (opcional)")}</Label>
+        <select
+          id="webhook-modelo"
+          className={SELECT}
+          value=""
+          onChange={(e) => {
+            const m = MODELOS_DE_WEBHOOK.find((x) => x.id === e.target.value);
+            if (!m) return;
+            setCampos(m.config.campos);
+            aplicar({ ...m.config });
+          }}
+        >
+          <option value="">{t("Escolha: Asaas ou Pipedrive")}</option>
+          {MODELOS_DE_WEBHOOK.map((m) => (
+            <option key={m.id} value={m.id}>
+              {t(m.nome)}
+            </option>
+          ))}
+        </select>
+        {modeloEmUso ? (
+          <p className="text-xs text-foreground" data-testid="explicacao-do-modelo">
+            {t(modeloEmUso.explicacao)}{" "}
+            {t("Depois cole a chave da sua conta no campo da chave, lá embaixo.")}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {t("O modelo preenche o endereço, o corpo e o que guardar da resposta. A chave é a da sua conta e você cola no campo cifrado.")}
+          </p>
+        )}
+      </div>
       <div className="space-y-1.5">
         <Label htmlFor="webhook-metodo">{t("Método")}</Label>
         <select
@@ -2735,14 +2907,27 @@ function WebhookDoChatbot({
       />
       <SegredoDoWebhook
         id="webhook-autorizacao"
-        rotulo={t("Cabeçalho Authorization (opcional)")}
-        placeholder="Bearer abc123"
-        ajuda={t("Para APIs que pedem chave: o valor vai inteiro no cabeçalho Authorization.")}
+        rotulo={t("Chave da API (opcional)")}
+        placeholder={c.autorizacao_cabecalho === "Authorization" ? "Bearer abc123" : ""}
+        ajuda={t("Para APIs que pedem chave: o valor vai inteiro no cabeçalho escolhido abaixo, e fica guardado cifrado.")}
         definido={Boolean(c.autorizacao_enc)}
         pendente={textoPendente("autorizacao")}
         aoDigitar={(v) => aplicar({ autorizacao: v })}
         aoRemover={() => aplicar({ autorizacao: "", autorizacao_enc: "" })}
       />
+      <div className="space-y-1.5">
+        <Label htmlFor="webhook-cabecalho-da-chave">{t("Em qual cabeçalho a chave vai")}</Label>
+        <select
+          id="webhook-cabecalho-da-chave"
+          className={SELECT}
+          value={c.autorizacao_cabecalho}
+          onChange={(e) => aplicar({ autorizacao_cabecalho: e.target.value })}
+        >
+          <option value="Authorization">{t("Authorization (o mais comum)")}</option>
+          <option value="access_token">access_token (Asaas)</option>
+          <option value="x-api-token">x-api-token (Pipedrive)</option>
+        </select>
+      </div>
       <p className="text-xs text-muted-foreground">
         {t(
           'No corpo padrão vão o id da conversa, nome, telefone e e-mail do contato, a última mensagem e as respostas guardadas no fluxo. Resposta 2xx segue por "Deu certo"; erro, demora de mais de 8 segundos, corpo inválido ou endereço recusado seguem por "Falhou". Sem ligação em "Falhou", o fluxo termina ali.',

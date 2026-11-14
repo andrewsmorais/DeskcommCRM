@@ -100,7 +100,15 @@ export async function chamarWebhookDoChatbot(
   opts: { fetch?: typeof fetch; agora?: Date; pularChecagemDeRede?: boolean } = {},
 ): Promise<RespostaDoWebhook & { erro?: string }> {
   const agora = opts.agora ?? new Date();
-  const vars = { ...envio.respostas, ...(envio.variaveisDaEmpresa ?? {}) };
+  // A ficha do contato entra como {{contato_nome}}, {{contato_telefone}} e
+  // {{contato_email}} — por baixo das respostas, que continuam valendo.
+  const vars = {
+    contato_nome: envio.contato.nome ?? "",
+    contato_telefone: envio.contato.telefone ?? "",
+    contato_email: envio.contato.email ?? "",
+    ...envio.respostas,
+    ...(envio.variaveisDaEmpresa ?? {}),
+  };
   const url = urlComVariaveis(c.url, vars);
   try {
     assertSafeOutboundUrl(url);
@@ -144,7 +152,7 @@ export async function chamarWebhookDoChatbot(
       .digest("hex");
     cabecalhos["X-Webhook-Signature"] = `t=${carimbo},v1=${v1}`;
   }
-  if (segredos.autorizacao) cabecalhos.Authorization = segredos.autorizacao;
+  if (segredos.autorizacao) cabecalhos[c.autorizacao_cabecalho] = segredos.autorizacao;
 
   try {
     const res = await (opts.fetch ?? fetch)(url, {

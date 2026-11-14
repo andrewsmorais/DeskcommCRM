@@ -14,6 +14,7 @@ import {
   type Grafo,
 } from "./passos";
 import { linksDoTexto, linksQueBloqueiam } from "./links";
+import { lerAgenda } from "./agenda";
 import { problemaDaRegra, problemaDoValor } from "./regras";
 import { ehSoUmaVariavel } from "@/lib/empresa/variaveis";
 import { cabecalhoReservado, corpoPersonalizadoValido } from "./webhook-corpo";
@@ -264,6 +265,10 @@ export function problemasDoGrafo(grafo: Grafo): string[] {
           problemas.push(`escolha a data do passo "${nome}".`);
         if (c.quando === "data" && c.fonte_da_data === "resposta" && !c.variavel)
           problemas.push(`no passo "${nome}", escreva o nome da resposta que tem a data.`);
+        if (c.quando === "agenda") {
+          const lida = lerAgenda(c.agenda);
+          if (typeof lida === "string") problemas.push(`no passo "${nome}": ${lida}`);
+        }
         break;
       }
       case "enviar_localizacao": {

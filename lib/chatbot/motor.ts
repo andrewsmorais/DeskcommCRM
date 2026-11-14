@@ -42,6 +42,7 @@ import {
   type TipoDeMidia,
   type TipoDePasso,
   ehTipoDePasso,
+  type QuemFecha,
 } from "./passos";
 import {
   aplicarEtiquetas,
@@ -57,7 +58,7 @@ import {
   valorVale,
   type ContatoDoTurno,
 } from "./regras";
-import { fimDoIntervalo, instanteDaData, proximoHorario } from "./relogio";
+import { fimDoIntervalo, instanteDaData, proximoDaAgenda, proximoHorario } from "./relogio";
 import { ehFeriado } from "./feriados";
 
 export { normalizar };
@@ -136,7 +137,9 @@ export type Efeito =
   | { tipo: "privacidade"; privada: boolean }
   /** "Visibilidade da conversa" (migration 0510). */
   | { tipo: "visibilidade"; visibilidade: "visivel" | "oculta" | "oculta_ate_mensagem" }
-  | { tipo: "finalizar" };
+  | { tipo: "finalizar"; quem?: QuemFecha }
+  /** "Acionar outro fluxo" em paralelo: começa o outro sem encerrar este. */
+  | { tipo: "fluxo_paralelo"; flow_id: string };
 
 /**
  * O que as condições "da conversa" leem — o executor busca no banco uma vez
@@ -217,7 +220,11 @@ export type Pendente =
   /** Devolver a conversa ao agente de IA e dizer se deu certo em `continuarAposAcao`. */
   | { tipo: "ia"; no: string; agent_id: string | null }
   /** Mandar o modelo aprovado e dizer se saiu em `continuarAposAcao`. */
-  | { tipo: "template"; no: string; template_id: string };
+  | { tipo: "template"; no: string; template_id: string }
+  /** "Enviar mensagem" com caminho de falha: mandar AGORA e dizer se saiu. */
+  | { tipo: "mensagem"; no: string; texto: string }
+  /** "Transferir" com caminho de falha: dizer se o setor existe antes de transferir. */
+  | { tipo: "setor"; no: string; setor_id: string | null; setor_da_conversa: boolean };
 
 export type ResultadoDoTurno = {
   sessao: SessaoDoChatbot;
@@ -245,6 +252,10 @@ export type ResultadoDaMarcacao =
 
 /** Chave interna (não é variável de quem monta o fluxo): os horários oferecidos. */
 export const CHAVE_DOS_HORARIOS = "_horarios";
+/** O "Transferir" com caminho de falha já teve o setor conferido neste passo (id do passo). */
+export const CHAVE_DO_SETOR_CONFERIDO = "_setor_conferido";
+/** Passos que param para o executor agir e voltam por `continuarAposAcao`. */
+const PASSOS_QUE_ESPERAM_ACAO = new Set(["transferir_ia", "enviar_template", "enviar_mensagem", "transferir_equipe"]);
 
 /** Chave interna: qual pergunta do "Enviar formulário" está esperando resposta (0, 1, 2…). */
 export const CHAVE_DO_FORMULARIO = "_formulario";
@@ -705,6 +716,14 @@ function andar(
         // Botão de link: vira texto embaixo da mensagem (QR code não tem botão).
         const url = preencher(c.botao_url, sessao.dados).trim();
         if (url) texto = `${texto}\n\n${c.botao_texto ? `${c.botao_texto}: ` : ""}${url}`.trim();
+        if (texto && c.caminho_se_falhar) {
+          // O executor manda e responde em `continuarAposAcao`: só então se
+          // sabe se o fluxo segue por "Enviada" ou por "Não saiu".
+          sessao.no_atual = no.id;
+          sessao.status = "running";
+          sessao.tentativas = 0;
+          return { sessao, efeitos, passos, pendente: { tipo: "mensagem", no: no.id, texto } };
+        }
         if (texto) efeitos.push({ tipo: "enviar", texto });
         break;
       }
@@ -942,6 +961,21 @@ function andar(
       }
       case "transferir_equipe": {
         const c = lerConfig("transferir_equipe", no.data);
+        // Com caminho de falha e um setor em jogo, primeiro se pergunta ao
+        // executor se o setor existe. A resposta volta por `continuarAposAcao`,
+        // que marca este passo como conferido e o roda de novo.
+        if (c.caminho_se_falhar && (c.setor_id || c.setor_da_conversa) && sessao.dados[CHAVE_DO_SETOR_CONFERIDO] !== no.id) {
+          sessao.no_atual = no.id;
+          sessao.status = "running";
+          sessao.tentativas = 0;
+          return {
+            sessao,
+            efeitos,
+            passos,
+            pendente: { tipo: "setor", no: no.id, setor_id: c.setor_da_conversa ? null : c.setor_id, setor_da_conversa: c.setor_da_conversa },
+          };
+        }
+        delete sessao.dados[CHAVE_DO_SETOR_CONFERIDO];
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
         efeitos.push({
@@ -996,6 +1030,11 @@ function andar(
       }
       case "acionar_fluxo": {
         const c = lerConfig("acionar_fluxo", no.data);
+        if (c.paralelo) {
+          // Bot paralelo: o outro começa por conta própria e ESTE segue.
+          if (c.flow_id) efeitos.push({ tipo: "fluxo_paralelo", flow_id: c.flow_id });
+          break;
+        }
         const r = fim("completed");
         return c.flow_id ? { ...r, pendente: { tipo: "fluxo", no: no.id, flow_id: c.flow_id } } : r;
       }
@@ -1169,7 +1208,7 @@ function andar(
         const c = lerConfig("finalizar_conversa", no.data);
         if (c.mensagem)
           efeitos.push({ tipo: "enviar", texto: preencher(c.mensagem, sessao.dados) });
-        efeitos.push({ tipo: "finalizar" });
+        efeitos.push(c.quem_fecha === "responsavel" ? { tipo: "finalizar", quem: "responsavel" } : { tipo: "finalizar" });
         return fim("completed");
       }
       case "pedir_avaliacao": {
@@ -1243,6 +1282,12 @@ function andar(
       case "aguardar_ate": {
         const c = lerConfig("aguardar_ate", no.data);
         if (c.quando === "dias") return esperarRelogio(no.id, proximoHorario(c, ctx.agora, ctx.fuso));
+        if (c.quando === "agenda") {
+          const proxima = proximoDaAgenda(c.agenda, ctx.agora, ctx.fuso);
+          // Agenda que não marca nada (o salvar já recusa): não segura o fluxo.
+          if (!proxima) break;
+          return esperarRelogio(no.id, proxima);
+        }
         const quando = instanteDaData(c, sessao.dados, ctx.agora, ctx.fuso);
         // Sem data válida (passou, faltou, fora do formato): não espera nada.
         if (!quando) {
@@ -1527,8 +1572,17 @@ export function continuarAposAcao(
     efeitos,
     passos: 0,
   });
-  if (!parada || (parada.type !== "transferir_ia" && parada.type !== "enviar_template"))
-    return encerrado("completed");
+  if (!parada || !PASSOS_QUE_ESPERAM_ACAO.has(parada.type ?? "")) return encerrado("completed");
+  if (parada.type === "transferir_equipe" && deuCerto)
+    // O setor existe: o passo roda de novo, agora como transferência de verdade.
+    return andar(
+      grafo,
+      { ...sessao, status: "running", tentativas: 0, dados: { ...sessao.dados, [CHAVE_DO_SETOR_CONFERIDO]: parada.id } },
+      parada.id,
+      ctx,
+      false,
+      false,
+    );
   if (parada.type === "transferir_ia" && deuCerto) {
     const texto = preencher(lerConfig("transferir_ia", parada.data).mensagem, sessao.dados).trim();
     return encerrado("transferred", texto ? [{ tipo: "enviar", texto }] : []);

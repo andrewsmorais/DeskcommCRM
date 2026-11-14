@@ -3,6 +3,7 @@
  * andar — PURO, sem banco. O executor grava o instante na sessão e agenda a
  * retomada no `event_log` (`chatbot.retomada_requested`), que o worker drena.
  */
+import { diaNaAgenda, lerAgenda } from "./agenda";
 import { ehFeriado } from "./feriados";
 import type { ConfigDe } from "./passos";
 
@@ -153,4 +154,24 @@ export function proximoHorario(c: ConfigDe<"aguardar_ate">, agora: Date, fuso: s
   }
   // `dias` vazio não passa no schema; isto só cobre fuso quebrado.
   return new Date(agora.getTime() + 86_400_000);
+}
+
+/**
+ * A próxima vez (estritamente depois de `agora`) que a expressão de agenda
+ * marca, no relógio da empresa. null = expressão inválida ou nada em um ano.
+ */
+export function proximoDaAgenda(expressao: string, agora: Date, fuso: string): Date | null {
+  const a = lerAgenda(expressao);
+  if (typeof a === "string") return null;
+  for (let k = 0; k <= 366; k++) {
+    // Meio-dia de cada dia: longe das viradas de horário de verão.
+    const noDia = partesLocais(new Date(agora.getTime() + k * 86_400_000), fuso);
+    if (!diaNaAgenda(a, noDia.mes, noDia.dia, noDia.diaDaSemana)) continue;
+    for (const h of a.horas)
+      for (const m of a.minutos) {
+        const candidato = instanteLocal(noDia.ano, noDia.mes, noDia.dia, h, m, fuso);
+        if (candidato.getTime() > agora.getTime() + ESPERA_MINIMA_MS) return candidato;
+      }
+  }
+  return null;
 }

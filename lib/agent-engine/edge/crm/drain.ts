@@ -619,6 +619,10 @@ const pedidoDeInicioSchema = z.object({
   // por automação e era descartado — o botão nunca fazia nada.
   manual: z.boolean().optional(),
   iniciado_por: z.string().uuid().nullable().optional(),
+  // "Acionar outro fluxo" em paralelo (lib/chatbot/executar.ts, efeito
+  // `fluxo_paralelo`): começa sem encerrar o fluxo que chamou.
+  paralelo: z.boolean().optional(),
+  paralelos: z.number().int().min(0).max(10).optional(),
 });
 
 /**

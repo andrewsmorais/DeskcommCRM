@@ -213,6 +213,17 @@ const CONFIG_DA_AGENDA = z.object({
 /** Métodos do passo WebHook. GET e DELETE não levam corpo. */
 export const METODOS_DO_WEBHOOK = ["POST", "GET", "PUT", "PATCH", "DELETE"] as const;
 
+/** Os cabeçalhos em que a chave cifrada do passo WebHook pode viajar. */
+export const CABECALHOS_DA_CHAVE = ["Authorization", "access_token", "x-api-token"] as const;
+
+/** Quem aparece como quem fechou a conversa no passo "Finalizar conversa". */
+export const QUEM_FECHA = ["chatbot", "responsavel"] as const;
+export type QuemFecha = (typeof QUEM_FECHA)[number];
+export const NOMES_DE_QUEM_FECHA: Record<QuemFecha, string> = {
+  chatbot: "O chatbot",
+  responsavel: "O atendente responsável pela conversa",
+};
+
 export const configDoPasso = {
   /**
    * Começa quando uma AUTOMAÇÃO manda (ação "Iniciar chatbot"): compra aprovada
@@ -283,6 +294,12 @@ export const configDoPasso = {
     botao_texto: z.string().trim().max(40).default(""),
     /** Aceita {{variavel}}. */
     botao_url: z.string().trim().max(2000).default(""),
+    /**
+     * "Seguir outro caminho se a mensagem não sair" da Umbler: ligado, o passo
+     * ganha a saída "Não saiu" e o fluxo ESPERA o envio para decidir por onde
+     * segue. Desligado (padrão), a mensagem sai junto com as outras do turno.
+     */
+    caminho_se_falhar: z.boolean().default(false),
   }),
   pedir_escolher: z.object({
     pergunta: z.string().trim().max(2000).default(""),
@@ -379,6 +396,12 @@ export const configDoPasso = {
     /** Só para o resumo no quadro; quem decide é o id. */
     nome_do_setor: z.string().max(60).default(""),
     mensagem: z.string().trim().max(1000).default(""),
+    /**
+     * "Caminho alternativo se falhar" da Umbler: ligado, o passo ganha a saída
+     * "Não transferiu" (o setor foi apagado, ou a conversa nunca esteve num
+     * setor) em vez de cair na equipe toda com uma nota.
+     */
+    caminho_se_falhar: z.boolean().default(false),
     ...ESPERA_DO_ATENDENTE,
   }),
   /**
@@ -413,6 +436,11 @@ export const configDoPasso = {
   }),
   finalizar_conversa: z.object({
     mensagem: z.string().trim().max(1000).default(""),
+    /**
+     * Quem fica registrado como quem fechou: o próprio chatbot (padrão) ou o
+     * atendente responsável pela conversa. Sem responsável, vale o chatbot.
+     */
+    quem_fecha: z.enum(QUEM_FECHA).default("chatbot"),
   }),
   /** Nota interna na conversa (`conversation_notes`): a equipe vê, o contato não. */
   criar_nota: z.object({
@@ -480,7 +508,12 @@ export const configDoPasso = {
      * em dd/mm/aaaa, AAAA-MM-DD ou o instante do Agendar horário) — com
      * `deslocamento_dias` (-1 = véspera). É o "agendar envio" e o lembrete.
      */
-    quando: z.enum(["dias", "data"]).default("dias"),
+    quando: z.enum(["dias", "data", "agenda"]).default("dias"),
+    /**
+     * Modo "agenda": expressão de cinco campos (minuto hora dia-do-mês mês
+     * dia-da-semana), lida por `lib/chatbot/agenda.ts`. Ex.: "0 9 1,15 * *".
+     */
+    agenda: z.string().trim().max(80).default(""),
     hora: HORA.default("09:00"),
     /** 0 = domingo … 6 = sábado. */
     dias: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([0, 1, 2, 3, 4, 5, 6]),
@@ -656,6 +689,12 @@ export const configDoPasso = {
       .default([]),
     segredo_enc: z.string().max(4000).nullable().default(null),
     autorizacao_enc: z.string().max(4000).nullable().default(null),
+    /**
+     * Em qual cabeçalho a chave cifrada viaja. A maioria das APIs usa
+     * `Authorization`; o Asaas usa `access_token` e o Pipedrive `x-api-token`.
+     * Lista fechada: o nome do cabeçalho nunca é texto livre.
+     */
+    autorizacao_cabecalho: z.enum(CABECALHOS_DA_CHAVE).default("Authorization"),
   }),
   bloco_de_notas: z.object({
     texto: z.string().max(4000).default(""),
@@ -758,6 +797,11 @@ export const configDoPasso = {
     flow_id: z.string().uuid().nullable().default(null),
     /** Só para o resumo no quadro; quem decide é o id. */
     nome_do_fluxo: z.string().max(120).default(""),
+    /**
+     * "Bot paralelo" da Umbler: o outro fluxo começa SEM encerrar este, que
+     * segue para o próximo passo. Desligado (padrão), este termina aqui.
+     */
+    paralelo: z.boolean().default(false),
   }),
   /**
    * "Valor" da Umbler: compara uma resposta guardada, um campo do contato ou a
@@ -1633,6 +1677,13 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
         { id: "proximo", rotulo: "Enviado" },
         { id: "falha", rotulo: "Não enviado" },
       ];
+    case "enviar_mensagem":
+      return lerConfig("enviar_mensagem", dados).caminho_se_falhar
+        ? [
+            { id: "proximo", rotulo: "Enviada" },
+            { id: "falha", rotulo: "Não saiu" },
+          ]
+        : [{ id: "proximo", rotulo: "" }];
     case "enviar_pagamento":
       return [
         { id: "proximo", rotulo: "Enviado" },
@@ -1704,8 +1755,13 @@ export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; 
       // "Remover" não transfere: tira o atendente e o fluxo segue.
       return lerConfig("transferir_atendente", dados).modo === "remover" ? [{ id: "proximo", rotulo: "" }] : [];
     case "transferir_equipe":
+      return lerConfig("transferir_equipe", dados).caminho_se_falhar
+        ? [{ id: "falha", rotulo: "Não transferiu" }]
+        : [];
     case "finalizar_conversa":
     case "acionar_fluxo":
+      // Em paralelo este fluxo continua: o passo tem saída.
+      return lerConfig("acionar_fluxo", dados).paralelo ? [{ id: "proximo", rotulo: "" }] : [];
     case "bloquear_contato":
     case "bloco_de_notas":
       return [];

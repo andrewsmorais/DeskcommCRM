@@ -133,7 +133,12 @@ export type EntradaDoChatbot = {
   proativo?: boolean;
   /** Para o requestId quando não há mensagem (id do pedido de início). */
   referencia?: string;
+  /** Quantos "em paralelo" encadeados trouxeram até aqui (trava de laço). */
+  paralelos?: number;
 };
+
+/** Um fluxo em paralelo pode abrir outro, que pode abrir outro — até aqui. */
+export const PARALELOS_ENCADEADOS_MAX = 3;
 
 type Log = {
   info: (m: string, f?: Record<string, unknown>) => void;
@@ -535,8 +540,53 @@ async function conduzir(
         resultado = continuarAposAcao(grafo, resultado.sessao, saiu, ctx);
         break;
       }
+      case "mensagem": {
+        // "Enviar mensagem" com caminho de falha: manda agora e segue pela
+        // saída do que ACONTECEU (a mensagem comum sai com as outras do turno).
+        const requestId = `chatbot:${fluxoId}:${e.inboundMessageId ?? e.referencia ?? gravada.id}:${pendente.no}`;
+        const { enviar } = await prepararEnvio(pool, admin, e, fluxoId, requestId, log);
+        const saiu = await enviar({ type: "text", body: pendente.texto }).catch((err: unknown) => {
+          log.warn("chatbot: mensagem com caminho de falha não saiu", {
+            flow_id: fluxoId,
+            erro: String(err).slice(0, 160),
+          });
+          return false;
+        });
+        resultado = continuarAposAcao(grafo, resultado.sessao, saiu, ctx);
+        break;
+      }
+      case "setor": {
+        const existe = await setorParaTransferir(pool, e, pendente.setor_id, pendente.setor_da_conversa);
+        if (!existe)
+          log.info("chatbot: transferência sem setor — fluxo segue por 'Não transferiu'", { flow_id: fluxoId });
+        resultado = continuarAposAcao(grafo, resultado.sessao, existe, ctx);
+        break;
+      }
     }
   }
+}
+
+/**
+ * O "Transferir" com caminho de falha tem para onde ir? O setor do passo
+ * existe NESTA empresa — ou, no modo "o setor em que a conversa já estava", a
+ * conversa tem um setor que ainda existe.
+ */
+async function setorParaTransferir(
+  pool: pg.Pool,
+  e: EntradaDoChatbot,
+  setorId: string | null,
+  daConversa: boolean,
+): Promise<boolean> {
+  const { rows } = await pool.query<{ existe: boolean }>(
+    daConversa
+      ? `select exists (
+           select 1 from conversations c join setores s
+             on s.organization_id = c.organization_id and s.id = c.setor_id
+            where c.organization_id = $1 and c.id = $2) as existe`
+      : `select exists (select 1 from setores where organization_id = $1 and id = $2) as existe`,
+    [e.organizationId, daConversa ? e.conversationId : setorId],
+  );
+  return rows[0]?.existe === true;
 }
 
 /**
@@ -1539,6 +1589,10 @@ export type PedidoDeInicio = {
   manual?: boolean;
   /** Quem começou (manual). */
   iniciado_por?: string | null;
+  /** "Acionar outro fluxo" em paralelo: começa sem encerrar o que já roda. */
+  paralelo?: boolean;
+  /** Quantos paralelos encadeados já houve (trava de laço). */
+  paralelos?: number;
 };
 
 export type DesfechoDoInicio = "iniciou" | "descartado" | { adiarAte: string };
@@ -1569,7 +1623,9 @@ export async function iniciarChatbotPorAutomacao(
   const inicio = g.success
     ? pedido.manual
       ? inicioManual(g.data)
-      : inicioPorAutomacao(g.data)
+      : pedido.paralelo
+        ? inicioParaAcionar(g.data)
+        : inicioPorAutomacao(g.data)
     : null;
   if (!fluxo?.is_active || !g.success || !inicio) {
     log.info("chatbot: automação pediu fluxo desligado ou sem 'Iniciar por automação'", {
@@ -1614,6 +1670,8 @@ export async function iniciarChatbotPorAutomacao(
   const abre = await adiarAteAJanelaAbrir(admin, organizationId, pedido.channel_session_id);
   if (abre) return { adiarAte: abre };
 
+  // Em PARALELO nada disto: o fluxo que chamou continua de onde está.
+  if (!pedido.paralelo) {
   // O fato mais novo vence: quem estava parado em outro fluxo sai dele.
   await pool.query(
     `update chatbot_sessions
@@ -1630,6 +1688,7 @@ export async function iniciarChatbotPorAutomacao(
         and status = 'transferred' and retomada_token is not null`,
     [organizationId, pedido.conversation_id],
   );
+  }
 
   const e: EntradaDoChatbot = {
     organizationId,
@@ -1641,7 +1700,10 @@ export async function iniciarChatbotPorAutomacao(
     proativo: true,
     referencia: pedido.manual
       ? `manual:${pedido.iniciado_por ?? "?"}`
-      : `regra:${pedido.regra_id ?? "?"}`,
+      : pedido.paralelo
+        ? `paralelo:${pedido.flow_id}`
+        : `regra:${pedido.regra_id ?? "?"}`,
+    paralelos: pedido.paralelos ?? 0,
   };
   const ctx: ContextoDoTurno = {
     mensagem: null,
@@ -2607,9 +2669,54 @@ async function executarEfeitos(
           await notaInterna("O chatbot ligou de novo as mensagens de espera desta conversa.");
           break;
         }
+        case "fluxo_paralelo": {
+          // Bot paralelo: o outro fluxo começa por um pedido próprio no
+          // barramento (o mesmo da automação), e este segue. Travas: não abre
+          // a si mesmo (as duas rodadas dividiriam a mesma sessão) e não
+          // encadeia sem fim.
+          const encadeados = (e.paralelos ?? 0) + 1;
+          if (efeito.flow_id === fluxoId || encadeados > PARALELOS_ENCADEADOS_MAX || !e.channelSessionId || !boundary) {
+            await notaInterna(
+              efeito.flow_id === fluxoId
+                ? "O chatbot não abriu o fluxo em paralelo: um fluxo não pode abrir a si mesmo em paralelo."
+                : encadeados > PARALELOS_ENCADEADOS_MAX
+                  ? "O chatbot não abriu mais um fluxo em paralelo: já havia fluxos demais abrindo um ao outro."
+                  : "O chatbot não abriu o fluxo em paralelo: a conversa não tem número ou atendimento.",
+            );
+            break;
+          }
+          const { error } = await admin.rpc("emit_event", {
+            p_event_type: "chatbot.inicio_requested",
+            p_entity_kind: "contact",
+            p_entity_id: e.contactId,
+            p_payload: {
+              flow_id: efeito.flow_id,
+              contact_id: e.contactId,
+              conversation_id: e.conversationId,
+              channel_session_id: e.channelSessionId,
+              boundary,
+              variaveis: {},
+              regra_id: null,
+              paralelo: true,
+              paralelos: encadeados,
+            },
+            p_metadata: { source: "chatbot", flow_id: fluxoId, request_id: requestId },
+            p_organization_id: e.organizationId,
+          });
+          if (error) log.warn("chatbot: pedido de fluxo em paralelo falhou", { erro: error.message.slice(0, 120) });
+          break;
+        }
         case "finalizar": {
-          const { rows } = await pool.query<{ service_revision: number }>(
-            `select service_revision::float8 as service_revision from conversations where organization_id = $1 and id = $2`,
+          const { rows } = await pool.query<{ service_revision: number; responsavel: string | null; nome: string | null }>(
+            `select c.service_revision::float8 as service_revision,
+                    uo.user_id as responsavel,
+                    nullif(trim(coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', '')), '') as nome
+               from conversations c
+               -- Só conta como responsável quem AINDA é da equipe desta empresa.
+               left join user_organizations uo
+                 on uo.organization_id = c.organization_id and uo.user_id = c.assigned_to_user_id and uo.revoked_at is null
+               left join auth.users u on u.id = uo.user_id
+              where c.organization_id = $1 and c.id = $2`,
             [e.organizationId, e.conversationId],
           );
           const { error } = await admin.rpc("fn_service_status", {
@@ -2618,8 +2725,29 @@ async function executarEfeitos(
             p_status: "closed",
             p_expected: rows[0]?.service_revision,
           });
-          if (error)
+          if (error) {
             log.warn("chatbot: finalizar conversa falhou", { erro: error.message.slice(0, 120) });
+            break;
+          }
+          // Quem fechou: o chatbot, ou — se o passo pediu e a conversa tem
+          // responsável — o atendente. Fica no registro de auditoria (ator) e
+          // numa nota que a equipe lê na conversa.
+          const emNomeDe = efeito.quem === "responsavel" ? (rows[0]?.responsavel ?? null) : null;
+          void audit({
+            action: "conversation.closed",
+            actorUserId: emNomeDe,
+            organizationId: e.organizationId,
+            resourceType: "conversation",
+            resourceId: e.conversationId,
+            requestId,
+            bypassedRls: true,
+            metadata: { source: "chatbot", flow_id: fluxoId, fechada_por: emNomeDe ? "responsavel" : "chatbot" },
+          });
+          await notaInterna(
+            emNomeDe
+              ? `Conversa fechada pelo chatbot em nome de ${rows[0]?.nome ?? "quem estava atendendo"}.`
+              : "Conversa fechada pelo chatbot.",
+          );
           break;
         }
       }

@@ -132,6 +132,17 @@ describe("pedir para escolher", () => {
     expect(r2.efeitos).toEqual([{ tipo: "enviar", texto: "Até logo." }, { tipo: "finalizar" }]);
     expect(r2.sessao.status).toBe("completed");
   });
+  it("finalizar em nome do responsável leva o pedido no efeito; o padrão não leva nada", () => {
+    const grafo = (quem?: string) => ({
+      nodes: [no("ini", "inicio_canal"), no("f", "finalizar_conversa", quem ? { quem_fecha: quem } : {})],
+      edges: [liga("ini", "f")],
+    });
+    const fim = (g: ReturnType<typeof grafo>) => iniciarFluxo(g as never, "ini", ctx("oi")).efeitos.at(-1);
+    expect(fim(grafo("responsavel"))).toEqual({ tipo: "finalizar", quem: "responsavel" });
+    expect(fim(grafo())).toEqual({ tipo: "finalizar" });
+    expect(fim(grafo("qualquer-coisa"))).toEqual({ tipo: "finalizar" });
+  });
+
 });
 
 describe("pedir para digitar e variáveis", () => {

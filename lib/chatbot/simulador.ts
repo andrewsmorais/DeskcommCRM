@@ -314,6 +314,14 @@ function aplicar(
         estado = comEvento(estado, { tipo: "modelo_de_exemplo", template_id: p.template_id });
         r = continuarAposAcao(grafo, r.sessao, true, c);
         break;
+      case "mensagem":
+        // No teste a mensagem sempre "sai": o caminho de falha só existe no envio de verdade.
+        estado = comEfeitos(estado, [{ tipo: "enviar", texto: p.texto }]);
+        r = continuarAposAcao(grafo, r.sessao, true, c);
+        break;
+      case "setor":
+        r = continuarAposAcao(grafo, r.sessao, true, c);
+        break;
       case "fluxo": {
         const inicio = p.flow_id === o.fluxoAtual ? inicioParaAcionar(grafo) : null;
         if (!inicio) {
@@ -408,6 +416,10 @@ function comEfeitos(estado: EstadoDoTeste, efeitos: Efeito[]): EstadoDoTeste {
         break;
       case "finalizar":
         bolhas.push({ de: "evento", evento: { tipo: "finalizou" } });
+        break;
+      case "fluxo_paralelo":
+        // No teste o outro fluxo não roda: fica o aviso de que ele abriria.
+        bolhas.push({ de: "evento", evento: { tipo: "abriria_fluxo", flow_id: e.flow_id } });
         break;
       case "bloquear":
         bolhas.push({ de: "evento", evento: { tipo: "bloqueou" } });

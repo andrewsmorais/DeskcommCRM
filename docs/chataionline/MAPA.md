@@ -88,6 +88,7 @@
 | 13/11 | Variáveis da empresa (`{{empresa.chave}}` em chatbots, WebHook e respostas rápidas; sem tabela nova, em `organizations.settings.variaveis`) e importar contatos de .vcf | `.changes/variaveis-da-empresa.md`, `importar-contatos-vcf.md`, `evidence/variaveis-e-vcf/` |
 | 13/11 | Conversa: baixar histórico (.txt/.pdf), encaminhar e favoritar mensagens (migration 0513), quem está vendo a conversa (presença ao vivo), reatribuição automática do atendente offline (migration 0514) | `.changes/baixar-historico-da-conversa.md`, `encaminhar-e-favoritar-mensagens.md`, `quem-esta-vendo-a-conversa.md`, `reatribuicao-automatica.md`, `evidence/historico-da-conversa/` |
 | 11–13/11 | Auditoria de segurança — 2ª rodada (telefonia, telemetria, LGPD, prompt, mensagens), 3 verificadores independentes | `.changes/endurecimento-auditoria-rodada-2.md`; migration `0509`; relatório em `/srv/security-audit-skill/chataionline/run-2/REPORT.md` |
+| 14/11 | Chatbot, os seis itens que faltavam da Umbler: quem aparece como quem fechou; "Aguardar até" por agenda avançada (CRON, `lib/chatbot/agenda.ts`); "seguir outro caminho se falhar" em Enviar mensagem e Transferir para a equipe; "Acionar outro fluxo" em paralelo; modelos prontos de Asaas e Pipedrive no passo WebHook (`lib/chatbot/modelos-de-webhook.ts`, **sem teste com conta real**); tempo de espera do cliente já existia na tela Métricas ("1ª resposta (média)"). Sem migration. Provas em `evidence/chatbot-paridade-umbler/`. | `chataionline/seguranca-auditoria` |
 
 ## 5. O que falta / pendências conhecidas
 

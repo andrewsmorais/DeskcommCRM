@@ -140,7 +140,7 @@ Reagendar / Cancelar horário, Iniciar follow-up, Iniciar por automação.
 | Filtros por setor, atendente e etiqueta | ✅ | |
 | Permissões de gestor, permissões avançadas | ✅ | 4 papéis + setores |
 | Logs e auditoria | ✅ | |
-| Relatórios por atendente, tempo de espera, volume | 🟡 | Tela Métricas tem números por atendente (últimos 30 dias); "tempo de espera do cliente" não foi conferido |
+| Relatórios por atendente, tempo de espera, volume | ✅ | Tela Métricas: por atendente, a coluna **"1ª resposta (média)"** é o tempo que o cliente esperou até a primeira resposta (conferido no código em 14/11) |
 | Multimarca | ✅ | Marca própria |
 
 ## 5. Agentes de IA
@@ -189,17 +189,17 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | U1 | Visibilidade da conversa: Visível · Oculto · Oculto até a próxima mensagem do contato | ✅ feito 13/11 (migration 0510) |
 | U2 | Pedir para digitar com várias opções de resposta, cada uma com formato nativo (telefone, CPF, e-mail…) ou regex; botão "Testar opções"; a saída é a primeira opção que bate | ✅ feito 13/11 ("Aceitar várias respostas", com trava contra regra que trava o servidor) |
 | U3 | Transferir p/ atendente: também "por variável", "atendente anterior na mesma conversa" e "Remover" | ✅ feito 13/11 |
-| U4 | Transferir para setor: "setor da conversa anterior", "setor anterior na mesma conversa" e caminho alternativo se falhar | 🟡 feito "o setor em que a conversa já estava" (13/11); sem caminho alternativo — falha vai para a equipe toda, com nota |
+| U4 | Transferir para setor: "setor da conversa anterior", "setor anterior na mesma conversa" e caminho alternativo se falhar | ✅ 14/11: "o setor em que a conversa já estava" e a opção **"Seguir outro caminho se não der para transferir"** (saída "Não transferiu"). Prova: `evidence/chatbot-paridade-umbler/4-setor-se-falhar.png` |
 | U5 | Notificar atendente: escolher atendentes específicos, "somente se disponível" e caminho se ninguém puder ser avisado | ✅ feito 13/11 (ninguém alcançável → Central de avisos, em vez de outro caminho) |
-| U6 | Enviar mensagem com botão de link (vira texto no QR code) e "seguir outro caminho se a mensagem não sair" | 🟡 botão de link feito 13/11; "outro caminho se não sair" não (o motor decide o caminho antes de enviar) |
+| U6 | Enviar mensagem com botão de link (vira texto no QR code) e "seguir outro caminho se a mensagem não sair" | ✅ 14/11: botão de link e a opção **"Seguir outro caminho se a mensagem não sair"** (saída "Não saiu"). Prova: `evidence/chatbot-paridade-umbler/3-mensagem-se-falhar.png` |
 | U7 | Iniciar manualmente: "Não listado" e variáveis perguntadas ao atendente na hora de iniciar | ✅ feito 13/11 |
 | U8 | Fluxo de inatividade: roda quando o contato some | ✅ coberto por follow-up de silêncio e automação (ver seção 9) |
-| U9 | Aguardar até com "dia útil", "próximo dia" e expressão de agenda (CRON) | 🟡 dia útil (pula feriado) e próximo dia feitos 13/11; CRON não |
-| U10 | **Bot paralelo**: iniciar sem encerrar o fluxo que já roda | ❌ |
-| U11 | **Finalizar conversa**: escolher quem aparece como quem fechou | ❌ |
+| U9 | Aguardar até com "dia útil", "próximo dia" e expressão de agenda (CRON) | ✅ 14/11: dia útil, próximo dia e **agenda avançada** (as cinco partes do CRON, com exemplos prontos e a leitura em português). Prova: `evidence/chatbot-paridade-umbler/2-aguardar-agenda.png` |
+| U10 | **Bot paralelo**: iniciar sem encerrar o fluxo que já roda | ✅ 14/11: "Acionar outro fluxo" ganhou **"Abrir em paralelo"** — o outro fluxo começa e este continua (até 3 em cadeia). Prova: `evidence/chatbot-paridade-umbler/5-fluxo-paralelo.png` |
+| U11 | **Finalizar conversa**: escolher quem aparece como quem fechou | ✅ 14/11: "Finalizar conversa" escolhe **o chatbot** ou **o atendente responsável**; fica no histórico e na auditoria. Prova: `evidence/chatbot-paridade-umbler/1-quem-fechou.png` |
 | U12 | Estatística por bloco: % por saída e nº de execuções, com exportar CSV | ✅ feito 13/11 (migration 0512) |
 | U13 | **Resumo por IA** do último atendimento, salvo como nota | ❌ (gasta IA — decisão do dono) |
-| U14 | Integrações em bloco: **Pipedrive**, **Asaas** (cobranças/Pix) | ❌ |
+| U14 | Integrações em bloco: **Pipedrive**, **Asaas** (cobranças/Pix) | 🟡 14/11: **modelos prontos** de Asaas (cadastrar cliente, criar cobrança com link de pagamento) e Pipedrive (pessoa, negócio) dentro do passo WebHook; a chave da conta fica cifrada. **Não testado com conta real** do Asaas nem do Pipedrive. Prova: `evidence/chatbot-paridade-umbler/6-modelo-asaas.png`, `evidence/chatbot-paridade-umbler/7-modelo-pipedrive.png` |
 
 ### Fora do chatbot — o que a Umbler tem e o ChatAI não
 

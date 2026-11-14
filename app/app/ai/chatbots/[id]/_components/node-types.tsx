@@ -5,6 +5,7 @@
  * (`lib/chatbot/passos.ts`) — ícone, cor, nome, entradas e saídas. Passo novo
  * no catálogo aparece no quadro sem mexer aqui.
  */
+import { descreverAgenda } from "@/lib/chatbot/agenda";
 import { memo } from "react";
 import { Handle, NodeToolbar, Position, type NodeProps } from "@xyflow/react";
 import { CircleHelp, Copy, Hash, Trash2 } from "lucide-react";
@@ -205,6 +206,7 @@ function resumo(tipo: string, dados: unknown, t: (s: string) => string): string 
     }
     case "aguardar_ate": {
       const c = lerConfig("aguardar_ate", dados);
+      if (c.quando === "agenda") return descreverAgenda(c.agenda);
       if (c.quando === "data") {
         const dia =
           c.fonte_da_data === "fixa"
