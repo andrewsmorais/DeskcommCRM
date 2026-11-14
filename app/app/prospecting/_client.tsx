@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { apiClient } from "@/lib/api/client";
 import { useT } from "@/hooks/i18n/useT";
 import { safePublicLink, type CampaignConfig, type Prospect } from "@/lib/prospecting/schema";
+import { naoAbordada } from "@/lib/prospecting/exportar";
+import type { PersonalizacaoProspeccao } from "@/lib/prospecting/personalizar";
 import { ProspectingAgentBuilder, type CreatedProspectingAgent } from "./_create-agent";
 import type { ProspectingAgentSetupInput } from "@/lib/prospecting/agent-setup-schema";
 
@@ -22,6 +24,8 @@ type Campaign = {
   search_status: string;
   error: string | null;
   config: CampaignConfig | null;
+  /** Quando foi arquivada (o servidor tira o marcador de `config`); `null` = na lista. */
+  arquivada_em?: string | null;
   result_count: number;
   skipped_count: number;
   cost_usd: string | null;
@@ -31,6 +35,8 @@ type Candidate = {
   id: string;
   campaign_id: string;
   data: Prospect;
+  status: string;
+  attempted_at: string | null;
   progress: string;
   message_status: string | null;
   error: string | null;
@@ -87,6 +93,19 @@ export function ProspectingClient() {
     refetchInterval: 10000,
   });
   const data = query.data;
+  // A VOZ DE QUEM ENVIA é da organização, não da campanha: vale para todas, e não
+  // precisa ser reescrita a cada prospecção. O formulário só aparece com o valor
+  // gravado em mãos — abrir vazio e salvar apagaria a voz.
+  const voz = useQuery({
+    queryKey: ["prospecting", "voz"],
+    queryFn: async () =>
+      (
+        await apiClient.get<{ data: { personalizacao: PersonalizacaoProspeccao } }>(
+          "/api/v1/settings/prospeccao",
+        )
+      ).data.personalizacao,
+  });
+  const [vozRev, setVozRev] = useState(0);
   const searchAttempt = useRef<{ fingerprint: string; id: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +121,14 @@ export function ProspectingClient() {
   const [campaignDrafts, setCampaignDrafts] = useState<Record<string, CampaignConfig>>({});
   const [manualCampaigns, setManualCampaigns] = useState<Record<string, boolean>>({});
   const [createdAgents, setCreatedAgents] = useState<{ id: string; name: string }[]>([]);
-  const campaign = data?.campaigns.find((c) => c.id === selected) ?? data?.campaigns[0];
+  // ARQUIVADAS (vindo do produto original, #4359): campanha que falhou ou veio
+  // zerada sai da lista — nada é apagado. Uma campanha nunca aparece nos dois
+  // lugares, e nunca some dos dois.
+  const [verArquivadas, setVerArquivadas] = useState(false);
+  const [baixando, setBaixando] = useState(false);
+  const arquivadas = data?.campaigns.filter((c) => !!c.arquivada_em) ?? [];
+  const visiveis = data?.campaigns.filter((c) => !!c.arquivada_em === verArquivadas) ?? [];
+  const campaign = visiveis.find((c) => c.id === selected) ?? visiveis[0];
   // A stored config is frozen by activation; unsaved choices belong to one campaign.
   const config = campaign?.config ?? (campaign && campaignDrafts[campaign.id]) ?? emptyConfig;
   const funil = config.pipeline_id;
@@ -171,6 +197,38 @@ export function ProspectingClient() {
   const update = <K extends keyof CampaignConfig>(field: K, value: CampaignConfig[K]) =>
     setConfig((c) => ({ ...c, [field]: value }));
   const count = (states: string[]) => candidates.filter((c) => states.includes(c.progress)).length;
+  // A MESMA régua da rota do arquivo: o botão nunca diz "12" com o arquivo levando 9.
+  const paraBaixar = candidates.filter(naoAbordada).length;
+  /** "Baixar lista": `fetch` cru porque a resposta é o arquivo, não JSON. */
+  async function baixarLista(id: string) {
+    setBaixando(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/v1/prospecting/${id}/exportar`, { credentials: "same-origin" });
+      if (!res.ok) {
+        const corpo = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(corpo?.error?.message ?? t("Não foi possível baixar a lista agora."));
+        return;
+      }
+      const nome =
+        /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ??
+        "lista-prospeccao.csv";
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = nome;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setNotice(t("Lista baixada. Só vieram as empresas que ainda não receberam mensagem."));
+    } catch {
+      setError(t("Não foi possível baixar a lista agora."));
+    } finally {
+      setBaixando(false);
+    }
+  }
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -234,6 +292,83 @@ export function ProspectingClient() {
             </div>
             <Button disabled={busy || !key} type="submit">
               {t("Salvar chave")}
+            </Button>
+          </form>
+        </Card>
+      )}
+      {voz.data && (
+        <Card className="p-5" data-secao="voz-do-vendedor">
+          <h2 className="text-lg font-semibold">{t("Sua voz nas mensagens")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t(
+              "Quem a IA diz que é na primeira mensagem. Vale para todas as campanhas — preencha uma vez.",
+            )}
+          </p>
+          <form
+            key={vozRev}
+            className="mt-4 space-y-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setError(null);
+              setNotice(null);
+              try {
+                const fd = new FormData(e.currentTarget);
+                const texto = (name: string) => String(fd.get(name) ?? "").trim() || undefined;
+                await apiClient.patch("/api/v1/settings/prospeccao", {
+                  vendedor_nome: texto("vendedor_nome"),
+                  vendedor_apresentacao: texto("vendedor_apresentacao"),
+                  vendedor_diferencial: texto("vendedor_diferencial"),
+                });
+                await voz.refetch();
+                setVozRev((r) => r + 1);
+                setNotice(t("Sua voz foi salva. As próximas mensagens já saem com ela."));
+              } catch (err) {
+                setError(
+                  err instanceof Error ? err.message : t("Não foi possível concluir a operação."),
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <Label htmlFor="prospecting-vendedor-nome">{t("Seu nome")}</Label>
+                <Input
+                  id="prospecting-vendedor-nome"
+                  name="vendedor_nome"
+                  defaultValue={voz.data.vendedor_nome ?? ""}
+                  maxLength={80}
+                  placeholder={t("Ex.: Ana, da Agência Norte")}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="prospecting-vendedor-apresentacao">{t("O que você faz")}</Label>
+                <Input
+                  id="prospecting-vendedor-apresentacao"
+                  name="vendedor_apresentacao"
+                  defaultValue={voz.data.vendedor_apresentacao ?? ""}
+                  maxLength={300}
+                  placeholder={t("Ex.: atendimento por WhatsApp com IA para clínicas")}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="prospecting-vendedor-diferencial">{t("Diferencial")}</Label>
+                <Input
+                  id="prospecting-vendedor-diferencial"
+                  name="vendedor_diferencial"
+                  defaultValue={voz.data.vendedor_diferencial ?? ""}
+                  maxLength={300}
+                  placeholder={t("Ex.: responde em segundos, 24 horas")}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <Button disabled={busy} type="submit" variant="outline">
+              {t("Salvar minha voz")}
             </Button>
           </form>
         </Card>
@@ -345,9 +480,31 @@ export function ProspectingClient() {
             </form>
           </Card>
           <section>
-            <h2 className="mb-3 text-sm font-semibold">{t("Suas campanhas")}</h2>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold">
+                {verArquivadas ? t("Campanhas arquivadas") : t("Suas campanhas")}
+              </h2>
+              {(verArquivadas || arquivadas.length > 0) && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  onClick={() => {
+                    setVerArquivadas((v) => !v);
+                    setSelected(null);
+                    setNotice(null);
+                  }}
+                >
+                  {verArquivadas
+                    ? t("Voltar às campanhas")
+                    : `${t("Ver arquivadas")} (${arquivadas.length})`}
+                </button>
+              )}
+            </div>
             <div className="space-y-2">
-              {data?.campaigns.map((c) => (
+              {verArquivadas && visiveis.length === 0 && (
+                <p className="text-xs text-muted-foreground">{t("Nenhuma campanha arquivada.")}</p>
+              )}
+              {visiveis.map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -390,7 +547,54 @@ export function ProspectingClient() {
                         : ""}
                     </p>
                   </div>
-                  <Badge variant="outline">{t(labels[campaign.status] ?? campaign.status)}</Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {campaign.arquivada_em && <Badge variant="secondary">{t("Arquivada")}</Badge>}
+                    <Badge variant="outline">{t(labels[campaign.status] ?? campaign.status)}</Badge>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {paraBaixar > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={baixando}
+                      onClick={() => void baixarLista(campaign.id)}
+                      title={t("Planilha com as empresas que ainda não receberam mensagem.")}
+                    >
+                      {baixando ? t("Aguarde…") : `${t("Baixar lista")} (${paraBaixar})`}
+                    </Button>
+                  )}
+                  {campaign.arquivada_em ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        perform(
+                          { action: "desarquivar", id: campaign.id },
+                          t("Campanha de volta à lista. Ela continua pausada: retome quando quiser."),
+                        )
+                      }
+                    >
+                      {t("Desarquivar")}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        perform(
+                          { action: "arquivar", id: campaign.id },
+                          campaign.status === "running"
+                            ? t("Campanha arquivada e pausada. Nada foi apagado: veja em Ver arquivadas.")
+                            : t("Campanha arquivada. Nada foi apagado: veja em Ver arquivadas."),
+                        )
+                      }
+                    >
+                      {t("Arquivar")}
+                    </Button>
+                  )}
                 </div>
                 {campaign.error && (
                   <p role="alert" className="mt-4 rounded-md bg-destructive/10 p-3 text-sm">
@@ -436,7 +640,7 @@ export function ProspectingClient() {
                       >
                         {t("Pausar abordagens")}
                       </Button>
-                    ) : campaign.status === "paused" ? (
+                    ) : campaign.status === "paused" && !campaign.arquivada_em ? (
                       <Button
                         disabled={busy}
                         onClick={() =>
@@ -450,6 +654,7 @@ export function ProspectingClient() {
                 )}
               </Card>
               {campaign.status === "draft" &&
+                !campaign.arquivada_em &&
                 campaign.search_status === "succeeded" &&
                 candidates.length > 0 && (
                   <Card className="p-5">

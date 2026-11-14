@@ -18,6 +18,12 @@ import {
   type Prospect,
 } from "./schema";
 import {
+  ARQUIVAR_CAMPANHA_SQL,
+  DESARQUIVAR_CAMPANHA_SQL,
+  arquivadaEm,
+  semMarcadorDeArquivamento,
+} from "./arquivamento";
+import {
   ProspectingError,
   providerRequest,
   readResults,
@@ -269,7 +275,7 @@ export async function activateCampaign(
   input: CampaignConfig,
 ) {
   return withProspectingLock(pool, org, async (db) => {
-    const config = await validateConfig(db, org, input);
+    const config = await validateConfig(db, org, semMarcadorDeArquivamento(input));
     const c = (
       await db.query<Campaign>(
         "select * from prospecting_campaigns where organization_id=$1 and id=$2",
@@ -277,6 +283,9 @@ export async function activateCampaign(
       )
     ).rows[0];
     if (!c) throw new ProspectingError("Campanha não encontrada.", 404);
+    // Rascunho arquivado que inicia ficaria invisível na lista e enviando.
+    if (arquivadaEm(c.config))
+      throw new ProspectingError("Desarquive a campanha antes de iniciar.", 409);
     if (c.status !== "draft" || c.search_status !== "succeeded")
       throw new ProspectingError(
         "Aguarde a busca terminar; uma campanha já iniciada deve ser retomada.",
@@ -403,5 +412,57 @@ export async function activateCampaign(
       [org, id, config],
     );
     return { started: true };
+  });
+}
+
+export interface ResultadoDoArquivamento {
+  arquivada: boolean;
+  /** A campanha já estava no estado pedido: nada foi escrito. */
+  ja_estava: boolean;
+  /** Estado DEPOIS do gesto. Arquivar campanha rodando devolve `paused`. */
+  status: string;
+  arquivada_em: string | null;
+}
+
+async function lerArquivamento(
+  db: pg.PoolClient,
+  org: string,
+  id: string,
+): Promise<{ status: string; arquivada_em: string | null }> {
+  const { rows } = await db.query<{ status: string; arquivada_em: string | null }>(
+    "select status, config->>'arquivada_em' as arquivada_em from prospecting_campaigns where organization_id=$1 and id=$2",
+    [org, id],
+  );
+  // Sem linha = não é desta organização: 404, nunca "arquivei a de outro cliente".
+  if (!rows[0]) throw new ProspectingError("Campanha não encontrada.", 404);
+  return rows[0];
+}
+
+export async function arquivarCampanha(
+  pool: pg.Pool,
+  org: string,
+  id: string,
+): Promise<ResultadoDoArquivamento> {
+  return withProspectingLock(pool, org, async (db) => {
+    const agora = new Date().toISOString();
+    const mudou = await db.query<{ status: string }>(ARQUIVAR_CAMPANHA_SQL, [org, id, agora]);
+    if (mudou.rows.length)
+      return { arquivada: true, ja_estava: false, status: mudou.rows[0]!.status, arquivada_em: agora };
+    const atual = await lerArquivamento(db, org, id);
+    return { arquivada: true, ja_estava: true, status: atual.status, arquivada_em: atual.arquivada_em };
+  });
+}
+
+export async function desarquivarCampanha(
+  pool: pg.Pool,
+  org: string,
+  id: string,
+): Promise<ResultadoDoArquivamento> {
+  return withProspectingLock(pool, org, async (db) => {
+    const mudou = await db.query<{ status: string }>(DESARQUIVAR_CAMPANHA_SQL, [org, id]);
+    if (mudou.rows.length)
+      return { arquivada: false, ja_estava: false, status: mudou.rows[0]!.status, arquivada_em: null };
+    const atual = await lerArquivamento(db, org, id);
+    return { arquivada: false, ja_estava: true, status: atual.status, arquivada_em: atual.arquivada_em };
   });
 }

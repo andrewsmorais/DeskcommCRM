@@ -281,6 +281,15 @@ export const AUDIT_ACTIONS = [
   // Emitida pelo worker quando houve EFEITO (tentativa de envio), nunca em
   // rodada de cron vazia.
   "prospecting.approach_sent",
+  // A lista não abordada saiu em CSV (vindo do produto original, #4360). Leva só
+  // a contagem, nunca o conteúdo.
+  "prospecting.exported",
+  // Campanha tirada da lista / devolvida à lista. Arquivar NÃO apaga nada, e
+  // campanha rodando é pausada no mesmo gesto (#4359).
+  "prospecting.archived",
+  "prospecting.unarchived",
+  // A voz de quem envia a prospecção (nome, o que faz, diferencial).
+  "prospecting.settings_updated",
   "channel.pairing_code_requested",
   "channel.social_configured",
   "channel.webchat_created",

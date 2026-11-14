@@ -12,6 +12,12 @@ export const campaignConfigSchema = z
     daily_limit: z.number().int().min(1).max(50).default(10),
     interval_minutes: z.number().int().min(5).max(1440).default(15),
     legal_basis_ref: z.string().trim().min(3).max(500),
+    // MARCADOR DE ARQUIVAMENTO (vindo do produto original, #4359): quando
+    // presente, a campanha saiu da lista principal — nada foi apagado. É do
+    // SERVIDOR, nunca da pessoa: o Iniciar o descarta (`semMarcadorDeArquivamento`).
+    // Precisa estar aqui porque o schema é estrito, e a conversa de uma campanha
+    // arquivada continua lendo a configuração dela.
+    arquivada_em: z.string().datetime().optional(),
   })
   .strict();
 export const searchSchema = z
@@ -36,6 +42,9 @@ export const prospectingInputSchema = z.discriminatedUnion("action", [
     .strict(),
   z.object({ action: z.literal("pause"), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal("resume"), id: z.string().uuid() }).strict(),
+  // ARQUIVAR tira da lista a campanha que falhou ou veio zerada; NÃO exclui.
+  z.object({ action: z.literal("arquivar"), id: z.string().uuid() }).strict(),
+  z.object({ action: z.literal("desarquivar"), id: z.string().uuid() }).strict(),
 ]);
 export type CampaignConfig = z.infer<typeof campaignConfigSchema>;
 export type SearchInput = z.infer<typeof searchSchema>;

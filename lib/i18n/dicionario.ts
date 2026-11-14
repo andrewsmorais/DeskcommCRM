@@ -18636,12 +18636,49 @@ export const DICIONARIO: Traducoes = {
   },
   "Prévia com um contato de exemplo": { es: "Vista previa con un contacto de ejemplo" },
   "Outros": { es: "Otros" },
-  "Negócio": { es: "Negocio" },
   "Telefone do contato": { es: "Teléfono del contacto" },
   "E-mail do contato": { es: "Correo del contacto" },
   "Título do negócio": { es: "Título del negocio" },
   "Outro dado do negócio ou do contato: {{lead.nome_do_campo}} ou {{contact.nome_da_coluna}}.": { es: "Otro dato del negocio o del contacto: {{lead.nome_do_campo}} o {{contact.nome_da_coluna}}." },
   "As variáveis da empresa entram como {{empresa.nome_da_variavel}} (Configurações › Variáveis da empresa).": { es: "Las variables de la empresa entran como {{empresa.nome_da_variavel}} (Configuración › Variables de la empresa)." },
+  // Prospecção: arquivar, baixar lista e voz de quem envia (vindo do produto original)
+  "Não foi possível baixar a lista agora.": { es: "No fue posible descargar la lista ahora." },
+  "Lista baixada. Só vieram as empresas que ainda não receberam mensagem.": {
+    es: "Lista descargada. Solo vinieron las empresas que aún no recibieron mensaje.",
+  },
+  "Sua voz nas mensagens": { es: "Tu voz en los mensajes" },
+  "Quem a IA diz que é na primeira mensagem. Vale para todas as campanhas — preencha uma vez.": {
+    es: "Quién dice la IA que es en el primer mensaje. Vale para todas las campañas: complétalo una vez.",
+  },
+  "Sua voz foi salva. As próximas mensagens já saem com ela.": {
+    es: "Tu voz se guardó. Los próximos mensajes ya salen con ella.",
+  },
+  "Ex.: Ana, da Agência Norte": { es: "Ej.: Ana, de Agencia Norte" },
+  "O que você faz": { es: "Qué haces" },
+  "Ex.: atendimento por WhatsApp com IA para clínicas": {
+    es: "Ej.: atención por WhatsApp con IA para clínicas",
+  },
+  "Diferencial": { es: "Diferencial" },
+  "Ex.: responde em segundos, 24 horas": { es: "Ej.: responde en segundos, 24 horas" },
+  "Salvar minha voz": { es: "Guardar mi voz" },
+  "Campanhas arquivadas": { es: "Campañas archivadas" },
+  "Voltar às campanhas": { es: "Volver a las campañas" },
+  "Ver arquivadas": { es: "Ver archivadas" },
+  "Nenhuma campanha arquivada.": { es: "Ninguna campaña archivada." },
+  "Planilha com as empresas que ainda não receberam mensagem.": {
+    es: "Planilla con las empresas que aún no recibieron mensaje.",
+  },
+  "Baixar lista": { es: "Descargar lista" },
+  "Campanha de volta à lista. Ela continua pausada: retome quando quiser.": {
+    es: "Campaña de vuelta en la lista. Sigue pausada: reanúdala cuando quieras.",
+  },
+  "Desarquivar": { es: "Desarchivar" },
+  "Campanha arquivada e pausada. Nada foi apagado: veja em Ver arquivadas.": {
+    es: "Campaña archivada y pausada. No se borró nada: mírala en Ver archivadas.",
+  },
+  "Campanha arquivada. Nada foi apagado: veja em Ver arquivadas.": {
+    es: "Campaña archivada. No se borró nada: mírala en Ver archivadas.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

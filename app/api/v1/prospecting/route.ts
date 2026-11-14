@@ -7,11 +7,14 @@ import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { capabilitiesOf } from "@/lib/channels/capabilities";
 import type { ChannelProvider } from "@/lib/channels/types";
+import { arquivadaEm } from "@/lib/prospecting/arquivamento";
 import { ProspectingError } from "@/lib/prospecting/provider";
 import { prospectingInputSchema } from "@/lib/prospecting/schema";
 import {
   activateCampaign,
+  arquivarCampanha,
   configureCredential,
+  desarquivarCampanha,
   createSearch,
   validateConfig,
   withProspectingLock,
@@ -44,7 +47,10 @@ export async function GET() {
     const [settings, campaigns, candidates, agents, channels, stages] = await Promise.all([
       db.query("select organization_id from prospecting_settings where organization_id=$1", [org]),
       db.query(
-        "select id,name,search,config,status,search_status,run_id,cost_usd,result_count,skipped_count,error,next_send_at,created_at from prospecting_campaigns where organization_id=$1 order by created_at desc limit 50",
+        // ARQUIVAMENTO (#4359): o marcador sai da `config` e vem em campo próprio —
+        // a tela continua lendo `config` como "a configuração da campanha" — e as
+        // NÃO arquivadas vêm primeiro, para uma arquivada não roubar uma das 50 vagas.
+        "select id,name,search,nullif(config - 'arquivada_em','{}'::jsonb) as config,config->>'arquivada_em' as arquivada_em,status,search_status,run_id,cost_usd,result_count,skipped_count,error,next_send_at,created_at from prospecting_campaigns where organization_id=$1 order by (config->>'arquivada_em' is null) desc, created_at desc limit 50",
         [org],
       ),
       db.query(
@@ -114,7 +120,24 @@ export async function POST(req: Request) {
       result = await createSearch(pool, admin, org, body.request_id, body.search);
     else if (body.action === "start")
       result = await activateCampaign(pool, admin, org, body.id, body.config);
-    else if (body.action === "pause") {
+    else if (body.action === "arquivar" || body.action === "desarquivar") {
+      // ARQUIVAR NÃO EXCLUI: só o marcador e, se rodava, a pausa. O estado
+      // DEPOIS do gesto vai para a auditoria abaixo.
+      const arquivamento =
+        body.action === "arquivar"
+          ? await arquivarCampanha(pool, org, body.id)
+          : await desarquivarCampanha(pool, org, body.id);
+      await audit({
+        action: body.action === "arquivar" ? "prospecting.archived" : "prospecting.unarchived",
+        organizationId: org,
+        actorUserId: auth.user.id,
+        resourceType: "prospecting",
+        resourceId: body.id,
+        metadata: { ja_estava: arquivamento.ja_estava, status: arquivamento.status },
+        requestId,
+      });
+      return ok(arquivamento, { requestId, headers });
+    } else if (body.action === "pause") {
       // Pause does not wait for the worker lock; the delivery guard sees it before sending.
       const changed = await pool.query(
         "update prospecting_campaigns set status='paused',updated_at=now() where organization_id=$1 and id=$2 and status='running' returning id",
@@ -132,6 +155,10 @@ export async function POST(req: Request) {
           )
         ).rows[0];
         if (!c?.config) throw new ProspectingError("Campanha pausada não encontrada.", 404);
+        // Campanha ARQUIVADA não retoma: sairia da lista e voltaria a enviar
+        // escondida. Desarquivar primeiro.
+        if (arquivadaEm(c.config))
+          throw new ProspectingError("Desarquive a campanha antes de retomar.", 409);
         await validateConfig(db, org, c.config);
         if (
           (

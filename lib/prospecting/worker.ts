@@ -24,6 +24,8 @@ import { logger } from "@/lib/logger";
 import { assertProspectingDelivery } from "./guard";
 import { campaignConfigSchema } from "./schema";
 import { ProspectingError } from "./provider";
+import { blocoVozVendedor, personalizacaoDaOrganizacao } from "./personalizar";
+import { sinaisDaEmpresa } from "./sinais-da-empresa";
 import {
   withProspectingLock,
   synchronizeSearch,
@@ -205,11 +207,14 @@ export async function sendNextCandidate(
     ).rows[0];
     if (!agent?.published_version_id)
       throw new ProspectingError("Agente pausado ou sem versão publicada.");
+    // A voz de quem envia (Prospecção › "Sua voz nas mensagens"): da ORGANIZAÇÃO,
+    // vale para toda campanha. Vazia, a instrução fica como sempre foi.
+    const vozDoVendedor = blocoVozVendedor(await personalizacaoDaOrganizacao(db, c.organization_id));
     const generated = await gerarAbordagemDeFormulario(pool, llmEdgeConfigFromEnv(env), {
       tenantId: c.organization_id,
       agentId: cfg.agent_id,
       leadId: p.contact_id,
-      instrucao: `${cfg.instruction}\nFaça uma primeira abordagem curta e transparente. Os dados vieram de pesquisa pública, não de um formulário preenchido pela pessoa. Não invente familiaridade, resultados ou interesse. Uma pergunta por vez. Critérios a confirmar durante a conversa: ${cfg.qualification}`,
+      instrucao: `${cfg.instruction}\nFaça uma primeira abordagem curta e transparente. Os dados vieram de pesquisa pública, não de um formulário preenchido pela pessoa. Não invente familiaridade, resultados ou interesse. Uma pergunta por vez. Critérios a confirmar durante a conversa: ${cfg.qualification}${vozDoVendedor ? `\n\n${vozDoVendedor}` : ""}`,
       origem: "Pesquisa de empresas",
       // NÃO é `automacao`: a pessoa não entrou em funil nenhum. O prompt do
       // ramo frio é o único que proíbe afirmar preenchimento — ver blocoDeModo.
@@ -219,8 +224,14 @@ export async function sendNextCandidate(
         Segmento: p.data.category ?? "",
         Endereço: p.data.address ?? "",
         Site: p.data.website ?? "",
-        Avaliação: String(p.data.rating ?? ""),
-        Redes: p.data.socials.join(", "),
+        // A nota COM o número de avaliações, as redes pelo nome e o tipo do
+        // telefone — cada linha só existe quando a busca trouxe o dado.
+        ...sinaisDaEmpresa({
+          rating: p.data.rating,
+          reviews: p.data.reviews,
+          socials: p.data.socials,
+          phone: p.phone,
+        }),
       },
     });
     if (!generated.ok)

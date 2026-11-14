@@ -166,7 +166,15 @@ export function blocoDeModo(
       "- Diga em uma frase quem é você e por que está falando com ela, SEM sugerir que ela procurou vocês.",
       "- Os dados são públicos e comerciais (nome do negócio, ramo, endereço). NÃO diga nem insinue que ela preencheu, pediu, baixou ou se cadastrou em qualquer coisa.",
       "- NÃO invente histórico, interesse, indicação ou contato anterior. Não existe nenhum.",
-      "- NÃO repita os dados em forma de lista de volta para ela, e não demonstre saber mais do que o nome do negócio e o ramo.",
+      "- NÃO repita os dados em forma de lista de volta para ela.",
+      // O MOTIVO sai dos sinais que a busca coletou (vindo do produto original,
+      // #4459). Antes a regra fechava tudo em "não demonstre saber mais do que o
+      // nome e o ramo": a nota, o número de avaliações, as redes e o tipo de
+      // telefone chegavam à ficha e o modelo não podia usá-los — e a mensagem saía
+      // igual à da empresa seguinte. Mensagem fria parecida em sequência é o que
+      // mais leva a denúncia e a banimento de número.
+      "- Motivo do contato: escolha UM fato da ficha — `Ficha do Google` (nota e número de avaliações), `Redes` publicadas ou `Telefone` — e diga como quem notou (\"vi que…\"), nunca como auditoria nem como lista. Um só, o mais forte para esta empresa: dado que não está na ficha não existe.",
+      "- Se a ficha não trouxer `Ficha do Google` nem `Redes`, NÃO invente um achado: abra pela rotina do negócio (o que ele faz, onde fica) e ofereça a conversa sem fingir que pesquisou.",
       "- Termine com UMA pergunta aberta e fácil de recusar, para ela ter o que responder.",
     ],
   };
