@@ -721,7 +721,14 @@ type CategoriaDeHost =
   /** Identificador de fio que gravamos; quem reconhece é código de fora. */
   | "PROTOCOLO"
   /** Página comercial da marca deste fork, aprovada pelo dono do produto. */
-  | "PRODUTO";
+  | "PRODUTO"
+  /**
+   * Assinatura de reconhecimento (vinda do produto original): domínio de terceiro
+   * que o código COMPARA sem nunca chamar nem exibir — o nome da rede social na
+   * 1ª mensagem da prospecção sai do host da URL. Cresce por decisão escrita,
+   * como as demais fechadas.
+   */
+  | "RECONHECIMENTO";
 
 type EntradaDeHost = { categoria: CategoriaDeHost; motivo: string };
 
@@ -925,6 +932,40 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "placeholder do campo de client id do Google: exibe o FORMATO do identificador (e o host que ele carrega) para quem vai criar a credencial no console.",
   },
+  // Decisão escrita (vinda do produto original, #4459): os hosts das redes que
+  // `lib/prospecting/sinais-da-empresa.ts` reconhece para dar NOME à rede na 1ª
+  // mensagem ("Instagram: <url>"). O produto nunca chama nem exibe estes hosts:
+  // compara o host da URL que a busca trouxe.
+  "facebook.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `Facebook` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "fb.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "apelido curto do Facebook publicado em `socials`: vira o rótulo `Facebook` nos sinais da 1ª mensagem. Nunca chamado, nunca exibido como endereço.",
+  },
+  "instagram.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `Instagram` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "linkedin.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `LinkedIn` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "tiktok.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `TikTok` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "youtube.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `YouTube` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
   // ── entrada conferida e identificador de fio ─────────────────────────────
   "meet.google.com": {
     categoria: "PLATAFORMA",
@@ -1051,6 +1092,7 @@ describe("catraca de host de terceiro no código que embarca", () => {
       "PLATAFORMA",
       "PROTOCOLO",
       "PRODUTO",
+      "RECONHECIMENTO",
     ];
     for (const [host, entrada] of Object.entries(HOSTS_DECLARADOS)) {
       expect(categorias, `${host}: categoria desconhecida`).toContain(entrada.categoria);
@@ -1087,6 +1129,12 @@ describe("catraca de host de terceiro no código que embarca", () => {
       // Decisão escrita: é o painel de chaves do Jev, o mesmo caso dos outros
       // CONSOLE — o link "Onde pegar a chave" da tela de Credenciais.
       "console.typesafe.ai",
+      // Decisão escrita: RECONHECIMENTO dos sinais da prospecção (vindo do
+      // produto original) — o host só dá NOME à rede, nunca é chamado.
+      "facebook.com",
+      "fb.com",
+      "instagram.com",
+      "linkedin.com",
       // Link que abre o pino que o CLIENTE mandou (`lib/messaging/localizacao.ts`).
       // Mesma natureza do `wa.me` abaixo: o produto não fala com o host, quem
       // abre é o celular do atendente. Crescimento escrito, como a regra pede.
@@ -1104,11 +1152,13 @@ describe("catraca de host de terceiro no código que embarca", () => {
       // protocolo manda. Entrou aqui porque a régua nova do #914 passou a
       // enxergá-lo, e não porque o produto ganhou host novo.
       "s.whatsapp.net",
+      "tiktok.com",
       "tusitio.com",
       // Exemplo de link do WhatsApp gerado pela tela de Conversões (#924). Está
       // aqui, e não em FORNECEDOR, porque o produto NÃO fala com esse host: quem
       // abre o link é o visitante do site. Crescimento escrito, como a regra pede.
       "wa.me",
+      "youtube.com",
     ]);
   });
 
