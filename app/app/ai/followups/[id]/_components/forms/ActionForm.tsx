@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,7 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { actionConfigSchema } from "@/lib/followup/graph-schema";
+import { actionConfigSchema, MAX_VARIACOES_DO_PASSO } from "@/lib/followup/graph-schema";
+import { Plus, Trash } from "@/lib/ui/icons";
 import { MODOS_DA_ACAO, opcoes, type ModoDaAcao } from "@/lib/followup/vocabulario";
 import { useMessageTemplates } from "@/hooks/inbox/useMessageTemplates";
 import { useModelosAprovadosDoFluxo } from "@/hooks/followup/useModelosAprovadosDoFluxo";
@@ -127,6 +129,12 @@ export function ActionForm({
   const t = useT();
   const [mode, setMode] = useState(config.mode);
   const [body, setBody] = useState(config.mode === "text" ? config.body : "");
+  // As OUTRAS redações do mesmo passo. A primeira continua sendo o `body`; o
+  // motor alterna entre elas a cada envio. O estado local guarda a caixa vazia
+  // recém-aberta (o config só recebe as preenchidas).
+  const [variacoes, setVariacoes] = useState<string[]>(
+    config.mode === "text" ? (config.variacoes ?? []) : [],
+  );
   const [promptHint, setPromptHint] = useState(config.mode === "ai_message" ? config.prompt_hint : "");
   const [fallbackTemplateId, setFallbackTemplateId] = useState(
     config.mode === "ai_message" ? (config.fallback_template_id ?? "") : "",
@@ -137,13 +145,21 @@ export function ActionForm({
   const commit = (next: {
     mode: ModoDaAcao;
     body: string;
+    variacoes: string[];
     promptHint: string;
     fallbackTemplateId: string;
     templateId: string;
   }) => {
     const candidate =
       next.mode === "text"
-        ? { mode: "text" as const, body: next.body }
+        ? {
+            mode: "text" as const,
+            body: next.body,
+            // Caixa vazia não vira variação: mandá-la reprovaria o schema inteiro.
+            ...(next.variacoes.some((v) => v.trim().length > 0)
+              ? { variacoes: next.variacoes.map((v) => v.trim()).filter((v) => v.length > 0) }
+              : {}),
+          }
         : next.mode === "ai_message"
           ? {
               mode: "ai_message" as const,
@@ -160,7 +176,7 @@ export function ActionForm({
     onChange(parsed.data);
   };
 
-  const fields = { body, promptHint, fallbackTemplateId, templateId };
+  const fields = { body, variacoes, promptHint, fallbackTemplateId, templateId };
 
   return (
     <div className="space-y-3">
@@ -202,6 +218,53 @@ export function ActionForm({
           <p className="text-xs text-text-muted">
             {t("Sai exatamente assim, sem IA. No laço,")} {t("{{volta}}")} e {t("{{voltas}}")} {t("viram o número da volta.")}
           </p>
+          <div className="space-y-2 rounded-sm border border-border p-2" data-testid="action-variacoes">
+            <Label>{t("Outras redações do mesmo passo (opcional)")}</Label>
+            <p className="text-xs text-text-muted">
+              {t("O motor alterna entre o texto acima e as redações abaixo a cada envio — assim o contato não recebe a mesma frase duas vezes seguidas.")}
+            </p>
+            {variacoes.map((redacao, idx) => (
+              <div key={idx} className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Label htmlFor={`action-variacao-${idx}`}>{`${t("Redação")} ${idx + 2}`}</Label>
+                  <Textarea
+                    id={`action-variacao-${idx}`}
+                    maxLength={4000}
+                    rows={3}
+                    value={redacao}
+                    placeholder={t("Outra forma de dizer a mesma coisa")}
+                    onChange={(e) => {
+                      const proximas = variacoes.map((atual, i) => (i === idx ? e.target.value : atual));
+                      setVariacoes(proximas);
+                      commit({ mode, ...fields, variacoes: proximas });
+                    }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("Remover redação")}
+                  onClick={() => {
+                    const proximas = variacoes.filter((_, i) => i !== idx);
+                    setVariacoes(proximas);
+                    commit({ mode, ...fields, variacoes: proximas });
+                  }}
+                >
+                  <Trash size={14} aria-hidden />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={variacoes.length >= MAX_VARIACOES_DO_PASSO}
+              onClick={() => setVariacoes([...variacoes, ""])}
+            >
+              <Plus size={14} aria-hidden className="mr-1" /> {t("Redação")}
+            </Button>
+          </div>
         </div>
       ) : mode === "ai_message" ? (
         <>

@@ -1,4 +1,5 @@
 import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
+import { enviosJaFeitos, redacoesDoPasso, redacoesNaOrdemDaVez } from "./variacoes-do-passo";
 import type { JobClaim } from "@/lib/agent-engine/queue/claim";
 import { assertAgendaEffectSupabase } from "@/lib/agenda/efeito";
 import { AgendaDeferredError } from "@/lib/agenda/protecao-followup";
@@ -287,6 +288,8 @@ function turnPayloadExtras(
   node: FlowNode,
   smartWaits: EsperaAdaptativa[],
   events: EnrollmentEventRef[] = [],
+  /** O contato: semente estável do ponto de partida da rotação de redações. */
+  semente?: string,
 ): Partial<FollowupJobRequest["payload"]> {
   if (node.type === "action" && node.config.mode === "ai_message") {
     return {
@@ -295,7 +298,12 @@ function turnPayloadExtras(
     };
   }
   if (node.type === "action" && node.config.mode === "text") {
-    return { fixed_body: interpolarVolta(node.config.body, events) };
+    // QUAL REDAÇÃO SAI: a rotação anda um passo por mensagem já enviada nesta
+    // inscrição, partindo de um ponto diferente por contato. Passo com uma
+    // redação só — o de hoje — sai exatamente o `body`.
+    const redacoes = redacoesDoPasso(node.config);
+    const ordem = redacoesNaOrdemDaVez(redacoes, semente ?? "", enviosJaFeitos(events));
+    return { fixed_body: interpolarVolta(ordem[0]!, events) };
   }
   if (node.type === "action" && node.config.mode === "template") {
     const volta = latestRepeatIndex(events);
@@ -525,7 +533,7 @@ async function applyResult(
             node_id: node.id,
             source_step_key: idemKey,
             purpose: result.purpose,
-            ...turnPayloadExtras(node, smartWaits, events),
+            ...turnPayloadExtras(node, smartWaits, events, enrollment.contact_id),
             ...(result.fixed_body ? { fixed_body: result.fixed_body } : {}),
           },
         });

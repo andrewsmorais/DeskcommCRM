@@ -231,6 +231,12 @@ export const aiClassifyConfigSchema = z
   );
 
 /**
+ * Quantas redações EXTRAS um passo de texto aceita (além do `body`). A tela usa
+ * o mesmo número para parar de oferecer "adicionar".
+ */
+export const MAX_VARIACOES_DO_PASSO = 5;
+
+/**
  * Action node configuration schema.
  * - text: send this body as-is (no model)
  * - ai_message: generate a message using AI with a prompt hint
@@ -240,6 +246,13 @@ export const actionConfigSchema = z.discriminatedUnion('mode', [
   z.strictObject({
     mode: z.literal('text'),
     body: z.string().min(1).max(4000),
+    /**
+     * OUTRAS REDAÇÕES DO MESMO PASSO. O `body` continua sendo a primeira; o
+     * motor alterna entre `[body, ...variacoes]` a cada envio
+     * (`lib/followup/variacoes-do-passo.ts`). Opcional: passo de texto único —
+     * o de hoje — continua válido byte a byte, sem migration.
+     */
+    variacoes: z.array(z.string().trim().min(1).max(4000)).max(MAX_VARIACOES_DO_PASSO).optional(),
   }),
   z.strictObject({
     mode: z.literal('ai_message'),

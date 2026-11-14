@@ -18619,6 +18619,14 @@ export const DICIONARIO: Traducoes = {
   "Sem conexão com o servidor. Verifique a rede e tente de novo.": {
     es: "Sin conexión con el servidor. Verifica la red e intenta de nuevo.",
   },
+  // Follow-up: várias redações do mesmo passo (produto original)
+  "Outras redações do mesmo passo (opcional)": { es: "Otras redacciones del mismo paso (opcional)" },
+  "O motor alterna entre o texto acima e as redações abaixo a cada envio — assim o contato não recebe a mesma frase duas vezes seguidas.": {
+    es: "El motor alterna entre el texto de arriba y las redacciones de abajo en cada envío, así el contacto no recibe la misma frase dos veces seguidas.",
+  },
+  "Redação": { es: "Redacción" },
+  "Outra forma de dizer a mesma coisa": { es: "Otra forma de decir lo mismo" },
+  "Remover redação": { es: "Eliminar redacción" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
