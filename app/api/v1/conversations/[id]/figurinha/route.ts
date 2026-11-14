@@ -7,9 +7,11 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * arquivo é copiado para a pasta da conversa no Storage (o envio só aceita
  * arquivo da própria conversa) e sai pelo mesmo caminho da tela
  * (`sendMessageHandler`, tipo `sticker`). Só pelo WhatsApp conectado por QR
- * code: é o WAHA que tem `sendSticker`.
+ * code: é o único canal que tem envio de figurinha.
  */
 import { randomUUID } from "node:crypto";
+
+import { DEFAULT_CHANNEL_PROVIDER } from "@/lib/channels";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
@@ -46,8 +48,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .maybeSingle();
   if (!conversa) return fail("not_found", t("Conversa não encontrada."), 404, { requestId });
   const provedor =
-    (conversa as { channel_sessions?: { provider?: string | null } | null }).channel_sessions?.provider ?? "waha";
-  if (provedor !== "waha")
+    (conversa as { channel_sessions?: { provider?: string | null } | null }).channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER;
+  if (provedor !== DEFAULT_CHANNEL_PROVIDER)
     return fail(
       "validation_failed",
       t("Figurinha só sai pelo WhatsApp conectado por QR code."),

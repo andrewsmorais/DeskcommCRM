@@ -81,6 +81,7 @@
 | 13/11 | Chatbot: "Pedir para digitar" com várias respostas aceitas (formato pronto ou regra própria, uma saída por opção, "Testar opções", trava contra regra que trava o servidor em `lib/chatbot/regex-segura.ts`) | `.changes/pedir-digitar-varias-respostas.md`, `evidence/pedir-digitar-opcoes/` |
 | 13/11 | Chatbot: opções extras dos blocos (dia útil, botão de link, Iniciar manualmente não listado e com perguntas, modos de transferir, Notificar com escolha) e estatística por bloco com CSV (migration 0512) | `.changes/chatbot-opcoes-extras-dos-blocos.md`, `chatbot-transferir-e-notificar-como-a-umbler.md`, `chatbot-estatistica-por-bloco.md`, `evidence/chatbot-opcoes-extras/` |
 | 14/11 | Telefone oculto por atendente (migration 0517): o cliente do Supabase do servidor mascara `phone_number`/`wa_identity` para quem o gerente marcou; limite conhecido: o token do tempo real no navegador | `.changes/telefone-oculto.md` |
+| 14/11 | Chat no site (migration 0518): provider `webchat`, rotas públicas em `/api/v1/webhooks/webchat/[chave]`, balão em `public/webchat/v1.js`, gestão em Conexões › Chat no site; só texto | `.changes/chat-no-site.md` |
 | 14/11 | Figurinhas salvas (migration 0516) e WAHA padrão 2026.7.2 → 2026.9.2 (o `update.sh` leva quem estava no padrão anterior); segurança: Next 16.4, CSP mínima, imagens sem npm/pnpm, guarda de texto com NULO, bateria `seguranca.yml` (Playwright, schemathesis, ZAP, garak) e `trivy.yml` | `.changes/figurinhas-salvas.md`, `evidence/figurinhas/` |
 | 13/11 | Chat da equipe: sala Geral e conversas diretas (só as duas pessoas leem), ao vivo, com não lidas no menu e aviso no celular (migration 0515) | `.changes/chat-da-equipe.md`, `evidence/chat-da-equipe/` |
 | 13/11 | Variáveis da empresa (`{{empresa.chave}}` em chatbots, WebHook e respostas rápidas; sem tabela nova, em `organizations.settings.variaveis`) e importar contatos de .vcf | `.changes/variaveis-da-empresa.md`, `importar-contatos-vcf.md`, `evidence/variaveis-e-vcf/` |
@@ -97,7 +98,7 @@
 - O último commit de segurança (`57e7229`) não teve verificador independente.
 - Chatbot: carrossel e cupom bloqueados por decisão; ver a comparação com a Umbler para o resto.
 - Comparação com a Umbler Talk: ver [`comparacao-umbler-talk.md`](comparacao-umbler-talk.md) —
-  faltando (seção 9 de lá): webchat no site. Agendar mensagem, Fechar com despedida/chatbot, assinatura, Pedir para digitar com várias respostas e opções dos blocos já foram feitos.
+  faltando (seção 9 de lá): nada da lista — o webchat entrou em 14/11. Agendar mensagem, Fechar com despedida/chatbot, assinatura, Pedir para digitar com várias respostas e opções dos blocos já foram feitos.
 - Chatbot: blocos e opções da Umbler feitos; ficaram de fora "outro caminho se falhar" no Enviar mensagem/Transferir e o CRON no Aguardar até.
 
 ## 6. Dia de subir para a VPS (checklist)

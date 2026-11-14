@@ -182,12 +182,12 @@ describe("rodada 2 da auditoria: campos que o SDK preenche fora da lista", () =>
   it("limpa contexts.nextjs.request_path e o valor do referer", () => {
     const ev = sentryScrubHooks.beforeSend({
       request: { headers: { referer: "https://crm.exemplo/team/accept-invite/tok123" } },
-      contexts: { nextjs: { request_path: "/api/v1/webhooks/waha/seg123?sig=abc" } },
+      contexts: { nextjs: { request_path: "/api/v1/webhooks/channel/seg123?sig=abc" } },
     } as never) as unknown as {
       request: { headers: Record<string, string> };
       contexts: { nextjs: { request_path: string } };
     };
-    expect(ev.contexts.nextjs.request_path).toBe("/api/v1/webhooks/waha/[TOKEN]?sig=[REDACTED]");
+    expect(ev.contexts.nextjs.request_path).toBe("/api/v1/webhooks/channel/[TOKEN]?sig=[REDACTED]");
     expect(ev.request.headers.referer).toBe("https://crm.exemplo/team/accept-invite/[TOKEN]");
   });
 

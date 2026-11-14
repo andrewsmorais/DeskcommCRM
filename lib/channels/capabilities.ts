@@ -110,6 +110,21 @@ export const CHANNEL_CAPABILITIES: Record<ProviderDeMensagem, ChannelCapabilitie
     costPerMessage: true,
     alteraMensagemEnviada: false,
   },
+  // Chat no site (migration 0518): o canal é NOSSO de ponta a ponta — o balão
+  // no site do cliente lê a conversa do nosso banco. Não há plataforma para
+  // banir, cobrar, impor janela ou aprovar modelo. Texto só, por enquanto: o
+  // adapter recusa mídia com uma frase clara em vez de entregar link quebrado.
+  webchat: {
+    freeformOutsideWindow: true,
+    requiresTemplates: false,
+    canManageTemplates: false,
+    banRisk: false,
+    minIntervalMs: null,
+    voiceNote: "server-convert",
+    groups: "none",
+    costPerMessage: false,
+    alteraMensagemEnviada: false,
+  },
 };
 
 /**
@@ -136,6 +151,8 @@ export const CHANNEL_PROVIDER_ZERNIO: ChannelProvider = "zernio";
 export const CHANNEL_PROVIDER_DATAFY: ChannelProvider = "datafy";
 /** Chamada de voz WhatsApp (spec 18). Não transporta mensagem — ver abaixo. */
 export const CHANNEL_PROVIDER_WACALLS: ChannelProvider = "wacalls";
+/** Chat no site (migration 0518): o balão que o cliente cola no próprio site. */
+export const CHANNEL_PROVIDER_WEBCHAT: ChannelProvider = "webchat";
 
 /**
  * Os providers por onde MENSAGEM entra e sai — a única lista que responde
@@ -158,6 +175,7 @@ export const PROVIDERS_DE_MENSAGEM = [
   "zernio",
   "zernio_social",
   "datafy",
+  "webchat",
 ] as const satisfies readonly ProviderDeMensagem[];
 
 /**

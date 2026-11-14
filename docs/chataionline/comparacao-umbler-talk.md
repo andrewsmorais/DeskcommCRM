@@ -40,7 +40,7 @@ Legenda: ✅ tem igual ou melhor · 🟡 tem parecido (diferença anotada) · �
 | WhatsApp por QR code (vários números) | ✅ | Caminho principal |
 | API oficial do WhatsApp | ✅ | Opção à parte (decisão do dono) |
 | Instagram e Messenger | ✅ | Pelo conector social (Zernio) |
-| **Webchat** (chat no site do cliente) | ❌ | Não existe nada de webchat no código |
+| **Webchat** (chat no site do cliente) | ✅ | Feito 14/11 (migration 0518): Conexões › Chat no site. Só texto por enquanto. Fotos: `evidence/chat-no-site/b1-balao-fechado.png`, `evidence/chat-no-site/b2-conversa-no-balao.png`, `evidence/chat-no-site/b3-balao-no-celular.png` (balão numa página de exemplo), `evidence/chat-no-site/a1-conexoes-vazio.png` e `evidence/chat-no-site/a2-chat-criado-com-codigo.png` (tela de Conexões); telas montadas com respostas simuladas, sem banco — a ponta a ponta com banco é `tests/seguranca/chat-no-site.spec.ts`, que roda no CI |
 
 ## 3. Chatbot
 
@@ -171,7 +171,7 @@ Kiwify, Cakto e Hotmart, chat de ajuda com IA dentro do CRM.
 | 6 | **Observadores** da conversa | médio | Mexe em quem vê a conversa (segurança) |
 | 7 | **Transferir para outro número** | médio | Mexe na cadeia de envio |
 | 8 | **Figurinhas salvas** | pequeno | |
-| 9 | **Webchat** no site | grande | Canal novo inteiro |
+| 9 | ~~**Webchat** no site~~ | grande | ✅ feito 14/11 (migration 0518): balão por uma linha de código, conversa na Inbox, IA pausada por padrão. Só texto |
 | ~~C1~~ | ~~Chatbot: Editar etiquetas da conversa~~ | feito 13/11 | |
 | ~~C2~~ | ~~Chatbot: card Campo do contato em Condição~~ | feito 13/11 | |
 | ~~C3~~ | ~~Chatbot: Visibilidade da conversa~~ | feito 13/11 | |
@@ -235,7 +235,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 4. ~~**Pedir para digitar** com várias opções e regex próprio~~ — feito 13/11 ("Aceitar várias respostas", "Testar opções").
 5. ~~Opções dentro de blocos~~ — feito 13/11: modos de transferir (variável, mesma conversa, remover, setor da conversa), Notificar com escolha e "só se disponível", botão de link, "não listado" e perguntas no Iniciar manualmente, dia útil no Aguardar até e estatística por bloco com CSV. Ficaram de fora o "outro caminho se falhar" (o motor decide antes de enviar) e o CRON.
 6. ~~Conversa~~ — feito 13/11: baixar histórico (.txt/.pdf), encaminhar e favoritar, quem está vendo a conversa, reatribuição do atendente offline. Ficaram de fora: figurinhas salvas (o WAHA fixado não envia figurinha) e mascarar telefone (tarefa grande e própria).
-7. Maiores — feito 13/11: variáveis da empresa e importar .vcf (fotos em `evidence/variaveis-e-vcf/v1-importar-aceita-vcf.png`, `evidence/variaveis-e-vcf/v2-resumo-da-importacao.png`, `evidence/variaveis-e-vcf/v3-variaveis-da-empresa.png` e `evidence/variaveis-e-vcf/v4-ajuda-do-chatbot.png`; telas montadas com respostas simuladas, sem banco). Chat interno da equipe feito 13/11 (migration 0515). Falta o webchat no site.
+7. Maiores — feito 13/11: variáveis da empresa e importar .vcf (fotos em `evidence/variaveis-e-vcf/v1-importar-aceita-vcf.png`, `evidence/variaveis-e-vcf/v2-resumo-da-importacao.png`, `evidence/variaveis-e-vcf/v3-variaveis-da-empresa.png` e `evidence/variaveis-e-vcf/v4-ajuda-do-chatbot.png`; telas montadas com respostas simuladas, sem banco). Chat interno da equipe feito 13/11 (migration 0515). Webchat no site feito 14/11 (migration 0518).
 
 **O que o ChatAI tem e a Umbler não** (para a oferta): agente de IA com agenda, follow-ups visuais com IA e gatilhos (silêncio, etapa, caso, retorno), roteadores entre agentes, memória e casos, propostas e comandas, prospecção e radar, chamadas por telefone (SIP), Nuvemshop, Kiwify, Cakto e Hotmart, conversões do Meta Ads, LGPD completa, auditoria, API e MCP, marca própria, Empresas/Pessoas (B2B), tarefas, honorários e faturamento.
 

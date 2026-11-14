@@ -9250,6 +9250,11 @@ alter table public.channel_sessions
   add column if not exists datafy_waba_id text,
   add column if not exists datafy_token_encrypted bytea;
 
+-- webchat (migration 0518, chat no site) — chave pública do balão, nullable e
+-- antes das constraints que a referenciam.
+alter table public.channel_sessions
+  add column if not exists webchat_key text;
+
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_check;
 
@@ -9257,7 +9262,8 @@ alter table public.channel_sessions
   add constraint channel_sessions_provider_check
   -- 'wacalls' (0233), 'zernio_social' (0368) e 'datafy' (0387) somados AQUI —
   -- UM bloco só por constraint (não duplicar drop+add por migration).
-  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text, 'zernio_social'::text, 'datafy'::text]));
+  -- 'webchat' (0518, chat no site) também AQUI.
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text, 'zernio_social'::text, 'datafy'::text, 'webchat'::text]));
 
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_ref_check;
@@ -9270,7 +9276,9 @@ alter table public.channel_sessions
     -- é o mesmo intermediário, com outra superfície de canal.
     (provider in ('zernio', 'zernio_social') and zernio_account_id is not null) or
     (provider = 'wacalls'    and wacalls_session_id    is not null) or
-    (provider = 'datafy'     and datafy_phone_number_id is not null)
+    (provider = 'datafy'     and datafy_phone_number_id is not null) or
+    -- chat no site (migration 0518): endereçado pela chave pública do balão.
+    (provider = 'webchat'    and webchat_key           is not null)
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -35009,7 +35017,8 @@ comment on column public.contacts.social_identity is
 -- primeira conexão de rede social.
 alter table public.conversations drop constraint if exists conversations_channel_check;
 alter table public.conversations add constraint conversations_channel_check
-  check (channel in ('whatsapp', 'instagram', 'facebook'));
+  -- 'webchat' (migration 0518, chat no site) somado AQUI, no bloco único.
+  check (channel in ('whatsapp', 'instagram', 'facebook', 'webchat'));
 
 
 -- APÊNDICE 20260921030100_0369_prospeccao_nativa.sql
@@ -43634,6 +43643,17 @@ as $f$
 $f$;
 revoke execute on function public.fn_eu_oculto_telefone(uuid) from public, anon;
 grant execute on function public.fn_eu_oculto_telefone(uuid) to authenticated, service_role;
+
+-- ---- chat no site (migration 0518) ----
+-- A coluna `webchat_key` e as três constraints (provider, provider_ref e
+-- conversations.channel) estão nos blocos ÚNICOS de cada uma, lá em cima. Aqui
+-- só o que depende de `archived_at` (0106) já existir. Idempotente.
+comment on column public.channel_sessions.webchat_key is
+  'Chave PÚBLICA do chat no site (provider webchat): vai no <script> que o cliente cola no site. Não é segredo. Migration 0518.';
+create unique index if not exists channel_sessions_webchat_key_unique
+  on public.channel_sessions (webchat_key)
+  where webchat_key is not null and archived_at is null;
+notify pgrst, 'reload schema';
 
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --

@@ -277,6 +277,8 @@ export const AUDIT_ACTIONS = [
   "prospecting.approach_sent",
   "channel.pairing_code_requested",
   "channel.social_configured",
+  "channel.webchat_created",
+  "channel.webchat_updated",
   "channel.ai_access_updated",
   "channel.reconnected",
   // Duas ações distintas de propósito: `deleted` apagou a linha (canal virgem),

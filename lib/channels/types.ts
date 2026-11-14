@@ -10,7 +10,14 @@ import type { Escolhas } from "./escolhas";
 
 export type { OutboundMedia };
 
-export type ChannelProvider = "waha" | "meta_cloud" | "zernio" | "zernio_social" | "wacalls" | "datafy";
+export type ChannelProvider =
+  | "waha"
+  | "meta_cloud"
+  | "zernio"
+  | "zernio_social"
+  | "wacalls"
+  | "datafy"
+  | "webchat";
 
 /**
  * Os providers que transportam MENSAGEM — o subconjunto sobre o qual a matriz

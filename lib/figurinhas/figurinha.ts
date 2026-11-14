@@ -2,7 +2,7 @@
  * FIGURINHAS SALVAS — o "Figurinhas" da Umbler Talk (migration 0516).
  *
  * O WhatsApp só aceita figurinha WebP, 512×512, de até 100 KB (as estáticas), e
- * o WAHA NÃO converte ("PNG e JPEG não são convertidos" — WAHA 2026.8). Então
+ * o canal por QR code NÃO converte ("PNG e JPEG não são convertidos"). Então
  * toda figurinha entra na biblioteca já no formato certo: a que veio do
  * computador (PNG, JPG, WebP ou GIF) e a que o contato mandou.
  *
