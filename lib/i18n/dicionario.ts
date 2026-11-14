@@ -18554,6 +18554,34 @@ export const DICIONARIO: Traducoes = {
   "Voz do agente": { es: "Voz del agente" },
   "Voz salva:": { es: "Voz guardada:" },
   "escolha da lista": { es: "elija de la lista" },
+  // Pessoas relacionadas e números do negócio (produto original)
+  "Atendida": { es: "Atendida" },
+  "Feita": { es: "Realizada" },
+  "Recebida": { es: "Recibida" },
+  "+ telefone": { es: "+ teléfono" },
+  "Adicionar participante": { es: "Agregar participante" },
+  "Comprador, loja…": { es: "Comprador, tienda…" },
+  "Conversas e ligações dos números": { es: "Conversaciones y llamadas de los números" },
+  "Digite o telefone.": { es: "Escribe el teléfono." },
+  "Ligar ao negócio": { es: "Vincular al negocio" },
+  "Nenhuma conversa ou ligação nos outros números ainda.": {
+    es: "Todavía no hay conversaciones ni llamadas en los otros números.",
+  },
+  "Nenhuma pessoa relacionada ainda.": { es: "Todavía no hay personas relacionadas." },
+  "Não consegui carregar as conversas e ligações.": {
+    es: "No pude cargar las conversaciones y llamadas.",
+  },
+  "Não consegui carregar as pessoas relacionadas.": {
+    es: "No pude cargar las personas relacionadas.",
+  },
+  "O contato que já tinha este número foi ligado ao negócio.": {
+    es: "El contacto que ya tenía este número fue vinculado al negocio.",
+  },
+  "Participante removido.": { es: "Participante eliminado." },
+  "Pessoas relacionadas": { es: "Personas relacionadas" },
+  "Telefone ligado ao negócio.": { es: "Teléfono vinculado al negocio." },
+  // Pessoas relacionadas e números do negócio (produto original)
+  // Pessoas relacionadas e números do negócio (produto original)
   // Cold Call (vindo do produto original)
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
   "A ligação pelo CRM ainda não está ligada. Por enquanto, o botão abre o discador do seu aparelho.": { es: "La llamada por el CRM aún no está activa. Por ahora, el botón abre el marcador de tu dispositivo." },

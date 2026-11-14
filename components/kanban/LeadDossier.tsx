@@ -8,8 +8,11 @@ import { useActiveOrg, useUser } from "@/hooks/auth/AuthProvider";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLeadTimeline } from "@/hooks/leads/useLeadTimeline";
+import { useContatosRelacionados } from "@/hooks/leads/useContatosRelacionados";
 import type { Lead } from "@/lib/types/leads";
 import { ContatoDoNegocio } from "./ContatoDoNegocio";
+import { ConversasDosNumeros } from "./ConversasDosNumeros";
+import { PessoasRelacionadas } from "./PessoasRelacionadas";
 import { ConversaNoDossie } from "./ConversaNoDossie";
 import { LeadFieldsForm } from "./LeadFieldsForm";
 import { ScoreSlot } from "./ScoreSlot";
@@ -62,6 +65,11 @@ export function LeadDossier({
   const t = useT();
   const campos = useRef<HTMLDivElement | null>(null);
   const timeline = useLeadTimeline(open ? lead.id : null, lead.contact_id);
+  // As pessoas relacionadas decidem se a seção dos números existe. É o MESMO
+  // hook (mesma chave de cache) que a lista de "Pessoas relacionadas" usa:
+  // não é consulta a mais. Negócio de um número só fica igual ao de antes.
+  const relacionadas = useContatosRelacionados(open ? lead.id : null);
+  const temPessoaRelacionada = (relacionadas.data?.data.length ?? 0) > 0;
   const owner = resolveLeadOwner(lead, ownerNames);
   const score = lead.score ?? null;
   // N1 — o atalho "Nova proposta" é manager+ (mesmo gate do envio, mesma
@@ -144,7 +152,19 @@ export function LeadDossier({
             {t("Contato")}
           </h3>
           <ContatoDoNegocio contactId={lead.contact_id} pipelineId={pipelineId} />
+          <PessoasRelacionadas leadId={open ? lead.id : null} />
         </section>
+
+        {/* Os OUTROS NÚMEROS DO CLIENTE: as conversas e as ligações das
+            "Pessoas relacionadas". Só aparece quando há relacionado. */}
+        {temPessoaRelacionada && (
+          <section className="border-b border-border py-3" data-secao="numeros-do-negocio">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+              {t("Conversas e ligações dos números")}
+            </h3>
+            <ConversasDosNumeros leadId={open ? lead.id : null} />
+          </section>
+        )}
 
         {/* ② timeline */}
         <section className="flex-1 py-3">

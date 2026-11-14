@@ -3316,17 +3316,15 @@ async function executarTurnoDoAgente(
                 });
               };
               // Cada foto é uma mensagem física: só vão as que cabem no que resta do teto
-              // do turno (a checagem de `max_sends_per_turn` acima roda uma vez, antes).
-              // O resto é medido ANTES DE CADA FOTO, depois do texto: o texto acima do
-              // teto de legenda sai à parte e também gasta o teto.
+              // do turno, medido ANTES DE CADA FOTO, depois do texto. O texto acima do
+              // teto de legenda sai à parte e também gasta o teto. Com voz: UMA
+              // nota de voz (`enviarVoz`).
               return enviarComFotos(finalBody, fotosDoProduto, {
                 sleep,
                 jitter,
                 restantes: () => maxSendsPerTurn - seq,
                 enviarFoto: (foto, legenda) => enviar(legenda, foto),
-                enviarTexto: (texto) =>
-                  enviarVoz(texto) ??
-                  sendInBubbles(texto, {
+                enviarTexto: (texto) => enviarVoz(texto) ?? sendInBubbles(texto, {
                     enabled: agentConfig?.splitMessages ?? false,
                     maxChars: agentConfig?.splitMaxChars ?? 600,
                     // O teto do turno vale para as bolhas: o que passa dele vai junto na última.
