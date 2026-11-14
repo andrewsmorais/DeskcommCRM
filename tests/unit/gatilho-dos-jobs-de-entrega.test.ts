@@ -65,6 +65,20 @@ const DIR = join(process.cwd(), ".github/workflows");
  */
 const GATILHO_ESPERADO: Record<string, { condicao: string | null; efeito: string }> = {
   // --- a cadeia que leva o conserto até a VPS ---------------------------------
+  // --- segurança (informam; não entregam nada ao parque) -----------------------
+  "seguranca.yml::seguranca": {
+    condicao: null,
+    efeito:
+      "A bateria de segurança (Playwright, schemathesis, ZAP e garak) contra a instalação " +
+      "limpa do job. Pulada, a varredura semanal some sem aviso e a falha nova só aparece " +
+      "quando alguém de fora a achar.",
+  },
+  "trivy.yml::trivy": {
+    condicao: null,
+    efeito:
+      "A varredura do Trivy no código e nas três imagens. Pulada, biblioteca com falha " +
+      "conhecida (como a RCE do Next.js 16.3) volta a passar sem ninguém ver.",
+  },
   "release.yml::abrir-pr-de-release": {
     condicao: "github.event_name == 'workflow_dispatch'",
     efeito:

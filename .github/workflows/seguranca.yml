@@ -1,0 +1,268 @@
+name: seguranca
+# Bateria de segurança contra uma instalação LIMPA do app, de pé dentro do
+# próprio job: o mesmo Supabase local, o mesmo baseline.sql e o mesmo build de
+# produção do e2e. Nunca aponta para site no ar — o alvo é sempre
+# http://localhost:3001 deste runner, e as contas são as de teste.
+#
+#   1. Playwright (tests/seguranca/): cabeçalhos, cookie de sessão, isolamento
+#      entre empresas, papel, XSS e redirecionamento do login, pela tela e pela API;
+#   2. schemathesis: bombardeia as rotas mais expostas (a especificação sai dos
+#      mesmos esquemas Zod das rotas — scripts/seguranca/openapi.ts) atrás de 500;
+#   3. ZAP, duas passadas: de fora, sem login, e logado como atendente;
+#   4. garak: tenta enganar o AGENTE DE IA (injeção de prompt, vazamento das
+#      instruções, jailbreak, link que vaza dado) pela rota "Testar agente". Só
+#      roda se o repositório tiver o segredo ANTHROPIC_API_KEY (custo limitado
+#      pela configuração em scripts/seguranca/garak/config.yaml).
+#
+# Nada aqui reprova o job: as ferramentas informam, e quem decide o que é
+# defeito é a triagem do relatório. Resumo na página da execução; relatórios
+# completos como artefato.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [chataionline/seguranca-auditoria]
+    paths:
+      - .github/workflows/seguranca.yml
+      - .zap/**
+      - scripts/zap/**
+      - scripts/seguranca/**
+      - tests/seguranca/**
+  schedule:
+    - cron: "17 6 * * 1" # segunda, 03:17 em Brasília
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seguranca-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  seguranca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    env:
+      # O garak só roda com a chave do modelo; o segredo não entra em `if:` direto.
+      TEM_CHAVE: ${{ secrets.ANTHROPIC_API_KEY != '' && 'sim' || 'nao' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/preparar-node
+        timeout-minutes: 5
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.117.0
+
+      - name: Subir Supabase local (sem a cadeia de migrations)
+        run: |
+          set -o pipefail
+          mv supabase/migrations /tmp/migrations-off
+          mkdir -p supabase/migrations
+          for tentativa in 1 2 3; do
+            supabase start -x studio,postgres-meta && break
+            supabase stop --no-backup || true
+            sleep $((tentativa * 30))
+          done
+          supabase status
+
+      - name: Aplicar o baseline.sql (o mesmo que o install.sh aplica)
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q <<'SQL'
+          create schema if not exists extensions;
+          create extension if not exists "uuid-ossp" with schema extensions;
+          create extension if not exists pgcrypto with schema extensions;
+          create extension if not exists vector with schema public;
+          create extension if not exists citext with schema public;
+          create extension if not exists pg_trgm with schema public;
+          SQL
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q -f supabase/baseline.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q \
+            -c "insert into private.app_secrets (name, value) values ('nuvemshop_oauth_key', '$(openssl rand -hex 32)') on conflict (name) do nothing;"
+          docker restart $(docker ps -q --filter name=supabase_realtime)
+
+      - name: Credenciais do stack local e ambiente do app
+        run: |
+          supabase status -o env > /tmp/sb.env
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' /tmp/sb.env | cut -d'"' -f2)"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' /tmp/sb.env | cut -d'"' -f2)"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' /tmp/sb.env | cut -d'"' -f2)"
+          } >> "$GITHUB_ENV"
+
+      - name: Gerar e publicar o .env.e2e
+        run: |
+          pnpm e2e:env
+          grep -vE '^[[:space:]]*(#|$)' .env.e2e >> "$GITHUB_ENV"
+
+      - name: Build de produção
+        run: pnpm e2e:build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          SENTRY_DSN: "off"
+
+      - name: Semear as contas e o agente de IA de teste
+        run: |
+          cp .env.e2e .env.local
+          pnpm exec tsx scripts/seed-e2e-credentials.ts
+          pnpm exec tsx scripts/seed-e2e-followup-agent.ts
+          pnpm exec tsx scripts/seed-e2e-capacidades.ts
+
+      - name: Subir o app (next start) e esperar responder
+        env:
+          # Só para o garak falar com o modelo de verdade. Sem o segredo, vazio:
+          # o app sobe igual e o passo do garak é pulado.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          nohup pnpm exec next start -p 3001 > /tmp/app.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/login || true)
+            [ "$code" = "200" ] && { echo "app de pé em ~$((i*2))s"; exit 0; }
+            sleep 2
+          done
+          tail -50 /tmp/app.log
+          exit 1
+
+      - name: Instalar o navegador e gravar as sessões de teste
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          node scripts/zap/sessao.mjs http://localhost:3001 /tmp/cookie-agent.txt agent
+          node scripts/zap/sessao.mjs http://localhost:3001 /tmp/cookie-manager.txt manager
+          # O cabeçalho entra numa regra do "Replacer" do ZAP (adiciona Cookie em
+          # toda requisição). Vai num arquivo de opções, nunca na linha de comando
+          # de um log público.
+          {
+            echo "replacer.full_list(0).description=sessao-de-teste"
+            echo "replacer.full_list(0).enabled=true"
+            echo "replacer.full_list(0).matchtype=REQ_HEADER"
+            echo "replacer.full_list(0).matchstr=Cookie"
+            echo "replacer.full_list(0).regex=false"
+            echo "replacer.full_list(0).replacement=$(cat /tmp/cookie-agent.txt)"
+          } > zap-logado.prop
+          chmod a+r zap-logado.prop
+          mkdir -p seguranca-relatorios
+
+      - name: "1/4 Playwright — testes de segurança pela tela e pela API"
+        continue-on-error: true
+        run: pnpm exec playwright test -c tests/seguranca/playwright.config.ts
+        env:
+          SEG_BASE_URL: http://localhost:3001
+
+      - name: "2/4 schemathesis — entradas estranhas nas rotas expostas"
+        continue-on-error: true
+        run: |
+          python3 -m pip install -q "schemathesis>=4.3,<5"
+          pnpm exec tsx scripts/seguranca/openapi.ts > /tmp/openapi.json
+          schemathesis run /tmp/openapi.json -u http://localhost:3001 \
+            -H "Cookie: $(cat /tmp/cookie-manager.txt)" \
+            -c not_a_server_error -n 30 -w 1 --request-timeout 30 \
+            --report junit,har --report-dir seguranca-relatorios/schemathesis
+
+      - name: "3/4 ZAP — de fora, sem login (varredura completa)"
+        uses: zaproxy/action-full-scan@v0.13.0
+        continue-on-error: true
+        with:
+          target: http://localhost:3001
+          rules_file_name: .zap/regras.tsv
+          cmd_options: "-a -j -m 5 -T 45"
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-de-fora
+
+      - name: Guardar o relatório de fora
+        if: always()
+        run: |
+          mkdir -p seguranca-relatorios/zap-de-fora
+          mv report_html.html report_json.json report_md.md seguranca-relatorios/zap-de-fora/ 2>/dev/null || true
+
+      - name: "3/4 ZAP — logado como atendente (varredura completa)"
+        uses: zaproxy/action-full-scan@v0.13.0
+        continue-on-error: true
+        with:
+          target: http://localhost:3001/app
+          rules_file_name: .zap/regras.tsv
+          cmd_options: "-a -j -m 5 -T 45 -z \"-configfile /zap/wrk/zap-logado.prop\""
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-logado
+
+      - name: Guardar o relatório logado
+        if: always()
+        run: |
+          mkdir -p seguranca-relatorios/zap-logado
+          mv report_html.html report_json.json report_md.md seguranca-relatorios/zap-logado/ 2>/dev/null || true
+          rm -f zap-logado.prop
+
+      - name: "4/4 garak — tentar enganar o agente de IA"
+        if: ${{ env.TEM_CHAVE == 'sim' }}
+        continue-on-error: true
+        run: |
+          python3 -m pip install -q "garak>=0.17,<0.18"
+          node scripts/zap/sessao.mjs http://localhost:3001 /tmp/cookie-admin.txt admin
+          export GARAK_ALVO="http://localhost:3001/api/v1/ai/agents/$(jq -r .capacidades.agent_id .e2e-creds.json)/versions/$(jq -r .capacidades.version_id .e2e-creds.json)/test"
+          export GARAK_COOKIE="$(cat /tmp/cookie-admin.txt)"
+          python3 - <<'PY2'
+          import os, re
+          t = open("scripts/seguranca/garak/config.yaml").read()
+          open("/tmp/garak.yaml", "w").write(re.sub(r"\$\{(\w+)\}", lambda m: os.environ[m.group(1)], t))
+          PY2
+          python3 -m garak --config /tmp/garak.yaml
+          rm -f /tmp/garak.yaml
+          mkdir -p seguranca-relatorios/garak
+          cp ~/.local/share/garak/garak_runs/garak-agente* seguranca-relatorios/garak/ 2>/dev/null || true
+
+      - name: Resumo
+        if: always()
+        run: |
+          # Também no log: o artefato fica num armazenamento que nem todo
+          # leitor alcança, e o log da execução sim.
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import glob, json, os, re
+          risco = {"3": "Alto", "2": "Médio", "1": "Baixo", "0": "Informativo"}
+          print("# Bateria de segurança\n")
+          for nome, titulo in (("zap-de-fora", "ZAP — de fora, sem login"), ("zap-logado", "ZAP — logado como atendente")):
+              caminho = f"seguranca-relatorios/{nome}/report_json.json"
+              print(f"## {titulo}\n")
+              if not os.path.exists(caminho):
+                  print("_Sem relatório (a passada não terminou — veja o log do passo)._\n")
+                  continue
+              alertas = [a for s in json.load(open(caminho)).get("site", []) for a in s.get("alerts", [])]
+              alertas.sort(key=lambda a: -int(a.get("riskcode", "0")))
+              print("| Risco | Alerta | Ocorrências | Regra |\n|---|---|---|---|")
+              for a in alertas:
+                  print(f"| {risco.get(a.get('riskcode','0'), '?')} | {a.get('name','')} | {a.get('count','')} | {a.get('pluginid','')} |")
+              print()
+          print("## schemathesis\n")
+          junit = glob.glob("seguranca-relatorios/schemathesis/*.xml")
+          if junit:
+              x = open(junit[0]).read()
+              fal = re.findall(r'<testcase[^>]*name="([^"]+)"[^>]*>\s*<failure', x)
+              print(f"{len(fal)} rota(s) com falha:\n" + "\n".join(f"- `{n}`" for n in fal) if fal else "Nenhuma rota respondeu 500.")
+          else:
+              print("_Sem relatório._")
+          print("\n## garak (agente de IA)\n")
+          rel = glob.glob("seguranca-relatorios/garak/*.report.jsonl")
+          if not rel:
+              print("_Não rodou (sem o segredo ANTHROPIC_API_KEY, ou falhou — veja o log)._")
+          else:
+              print("| Ataque | Detector | Resistiu | Total |\n|---|---|---|---|")
+              for linha in open(rel[0]):
+                  e = json.loads(linha)
+                  if e.get("entry_type") == "eval":
+                      print(f"| {e.get('probe')} | {e.get('detector')} | {e.get('passed')} | {e.get('total')} |")
+          PY
+
+      - name: Publicar os relatórios
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: seguranca-relatorios
+          path: |
+            seguranca-relatorios/
+            seguranca-playwright/
+          retention-days: 30
+
+      - name: Log do app (se algo deu errado)
+        if: failure()
+        run: tail -200 /tmp/app.log || true

@@ -1,0 +1,34 @@
+# Configuração do garak (https://github.com/NVIDIA/garak) para atacar o AGENTE
+# DE IA do produto pela rota "Testar agente" do app LOCAL do workflow
+# seguranca.yml — o mesmo motor do turno de WhatsApp, em modo prévia (não
+# manda mensagem, não toca contato). O endereço, o agente e o cookie entram por
+# variável de ambiente no job; nada disto aponta para site no ar.
+#
+# Teto de custo: cada ataque manda no máximo `soft_probe_prompt_cap` frases.
+system:
+  verbose: 0
+  show_z: false
+run:
+  generations: 1
+  soft_probe_prompt_cap: 20
+plugins:
+  probe_spec: >-
+    promptinject.HijackHateHumans,sysprompt_extraction.SystemPromptExtraction,web_injection,latentinjection.LatentInjectionReport,latentinjection.LatentJailbreak,encoding.InjectBase64,dan.DanInTheWild,exploitation.SQLInjectionEcho
+  target_type: rest
+  generators:
+    rest:
+      RestGenerator:
+        name: agente-do-chatai
+        uri: ${GARAK_ALVO}
+        method: post
+        headers:
+          Content-Type: application/json
+          Cookie: ${GARAK_COOKIE}
+        req_template_json_object:
+          sample_message: $INPUT
+        response_json: true
+        response_json_field: $.data.final_text
+        request_timeout: 120
+        ratelimit_codes: [429]
+reporting:
+  report_prefix: garak-agente

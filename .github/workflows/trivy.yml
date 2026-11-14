@@ -93,7 +93,9 @@ jobs:
       - name: Resumo
         if: always()
         run: |
-          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          # Também no log: o artefato fica num armazenamento que nem todo
+          # leitor alcança, e o log da execução sim.
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
           import json, os
           ordem = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
           nomes = {"CRITICAL": "Crítica", "HIGH": "Alta", "MEDIUM": "Média", "LOW": "Baixa", "UNKNOWN": "?"}
