@@ -731,6 +731,16 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "domínio da página de vendas ChatAI Online indicada pelo proprietário deste fork. Os links de Plano e cobrança, aviso de assinatura e cancelamento levam à oferta aprovada; não é domínio de contribuidor nem destino de dados da organização.",
   },
+  "api.elevenlabs.io": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint da API do ElevenLabs: validar a chave da empresa, listar as vozes e sintetizar a nota de voz do agente (lib/ai/voz). A chave é a da organização, cadastrada em Credenciais.",
+  },
+  "elevenlabs.io": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "painel do ElevenLabs onde a empresa pega a chave da API (link 'onde pegar a chave' em lib/ai/pontos/provedores-de-servico.ts).",
+  },
   "api.asaas.com": {
     categoria: "FORNECEDOR",
     motivo:

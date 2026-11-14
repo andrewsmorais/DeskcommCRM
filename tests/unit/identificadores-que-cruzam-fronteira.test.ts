@@ -179,6 +179,9 @@ const SITES: { arquivo: string; fronteira: string; papel?: "gerador" | "validado
   // A figurinha salva (migration 0516): `<org>/figurinhas/<sha256>.webp` — um
   // uuid, um segmento fixo e 64 hex gerados no servidor.
   { arquivo: "app/api/v1/figurinhas/route.ts", fronteira: "storage.chave-de-objeto" },
+  // A nota de voz do agente (migration 0520): `<org>/<conversa>/voz-agente-<job>-<seq>.<mp3|ogg>`,
+  // três uuids, um inteiro e um segmento fixo — abaixo do teto da chave.
+  { arquivo: "lib/agent-engine/agent/inbound-turn.ts", fronteira: "storage.chave-de-objeto" },
   // Chave de idempotência: os geradores (manda UUID) e os validadores (exige UUID).
   { arquivo: "app/onboarding/connect-whatsapp/_client.tsx", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "components/extensions/ExtensionsManager.tsx", fronteira: "api.idempotency-key", papel: "gerador" },

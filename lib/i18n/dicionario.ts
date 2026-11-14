@@ -18555,6 +18555,20 @@ export const DICIONARIO: Traducoes = {
   "Voz salva:": { es: "Voz guardada:" },
   "escolha da lista": { es: "elija de la lista" },
   // Pessoas relacionadas e números do negócio (produto original)
+  "Participante adicionado.": { es: "Participante agregado." },
+  "Pagante, passageiro…": { es: "Pagador, pasajero…" },
+  "Responder o cliente falando": {
+    es: "Responder al cliente hablando",
+  },
+  "Transforma a resposta do agente em nota de voz, nas organizações e versões que ligaram essa opção.": {
+    es: "Convierte la respuesta del agente en nota de voz, en las organizaciones y versiones que activaron esa opción.",
+  },
+  "A organização ligou a resposta em voz e o agente continua respondendo só em texto.": {
+    es: "La organización activó la respuesta en voz y el agente sigue respondiendo solo en texto.",
+  },
+  "Usa o ElevenLabs — não é um modelo de conversa, e hoje não há um segundo serviço de síntese para escolher entre.": {
+    es: "Usa ElevenLabs — no es un modelo de conversación, y hoy no hay un segundo servicio de síntesis entre el cual elegir.",
+  },
   "Atendida": { es: "Atendida" },
   "Feita": { es: "Realizada" },
   "Recebida": { es: "Recibida" },

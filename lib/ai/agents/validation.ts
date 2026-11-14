@@ -255,6 +255,9 @@ export const versionPatchSchema = versionShapeSchema
     operator_tool_ids: versionShapeSchema.shape.operator_tool_ids.removeDefault(),
     pipeline_ids: versionShapeSchema.shape.pipeline_ids.removeDefault(),
     knowledge_source_ids: versionShapeSchema.shape.knowledge_source_ids.removeDefault(),
+    // Sem `removeDefault`, um PATCH de outro campo gravaria a voz como desligada.
+    voz_enabled: versionShapeSchema.shape.voz_enabled.removeDefault(),
+    voz_quando: versionShapeSchema.shape.voz_quando.removeDefault(),
   })
   .partial();
 
