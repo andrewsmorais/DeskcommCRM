@@ -199,7 +199,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | U11 | **Finalizar conversa**: escolher quem aparece como quem fechou | ✅ 14/11: "Finalizar conversa" escolhe **o chatbot** ou **o atendente responsável**; fica no histórico e na auditoria. Prova: `evidence/chatbot-paridade-umbler/1-quem-fechou.png` |
 | U12 | Estatística por bloco: % por saída e nº de execuções, com exportar CSV | ✅ feito 13/11 (migration 0512) |
 | U13 | **Resumo por IA** do último atendimento, salvo como nota | ❌ (gasta IA — decisão do dono) |
-| U14 | Integrações em bloco: **Pipedrive**, **Asaas** (cobranças/Pix) | 🟡 14/11: **modelos prontos** de Asaas (cadastrar cliente, criar cobrança com link de pagamento) e Pipedrive (pessoa, negócio) dentro do passo WebHook; a chave da conta fica cifrada. **Não testado com conta real** do Asaas nem do Pipedrive. Prova: `evidence/chatbot-paridade-umbler/6-modelo-asaas.png`, `evidence/chatbot-paridade-umbler/7-modelo-pipedrive.png` |
+| U14 | Integrações em bloco: **Pipedrive**, **Asaas** (cobranças/Pix) | ➖ Decisão do dono em 14/11: **não entra**. Quem vende manda o link do checkout (Hotmart etc.) pelo "Enviar mensagem" com botão de link, e o pixel fica na página do checkout. O WebHook comum segue para quem quiser ligar n8n/Make |
 
 ### Fora do chatbot — o que a Umbler tem e o ChatAI não
 

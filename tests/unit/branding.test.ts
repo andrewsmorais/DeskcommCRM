@@ -731,11 +731,6 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "domínio da página de vendas ChatAI Online indicada pelo proprietário deste fork. Os links de Plano e cobrança, aviso de assinatura e cancelamento levam à oferta aprovada; não é domínio de contribuidor nem destino de dados da organização.",
   },
-  "api.pipedrive.com": {
-    categoria: "FORNECEDOR",
-    motivo:
-      "endpoint da API do Pipedrive, usado só nos modelos prontos do passo WebHook do chatbot (`lib/chatbot/modelos-de-webhook.ts`). O modelo preenche o endereço na tela; a empresa cola a própria chave e pode trocar o endereço.",
-  },
   "api.asaas.com": {
     categoria: "FORNECEDOR",
     motivo:

@@ -33,7 +33,6 @@ import {
   type PerguntaDoFormulario,
   type Regra,
 } from "@/lib/chatbot/passos";
-import { MODELOS_DE_WEBHOOK } from "@/lib/chatbot/modelos-de-webhook";
 import { AGENDA_MAX, descreverAgenda, lerAgenda } from "@/lib/chatbot/agenda";
 
 import { MENSAGEM_FORA_DO_FORMATO, MENSAGEM_NENHUMA_OPCAO } from "@/lib/chatbot/motor";
@@ -2782,41 +2781,9 @@ function WebhookDoChatbot({
       .slice(0, 10);
     aplicar({ campos: limpa });
   };
-  const modeloEmUso = MODELOS_DE_WEBHOOK.find((m) => m.config.url === c.url && m.config.corpo === c.corpo) ?? null;
   const textoPendente = (k: string) => typeof dados[k] === "string" && (dados[k] as string).length > 0;
   return (
     <>
-      <div className="space-y-1.5 rounded-md border border-border p-3">
-        <Label htmlFor="webhook-modelo">{t("Começar por um modelo pronto (opcional)")}</Label>
-        <select
-          id="webhook-modelo"
-          className={SELECT}
-          value=""
-          onChange={(e) => {
-            const m = MODELOS_DE_WEBHOOK.find((x) => x.id === e.target.value);
-            if (!m) return;
-            setCampos(m.config.campos);
-            aplicar({ ...m.config });
-          }}
-        >
-          <option value="">{t("Escolha: Asaas ou Pipedrive")}</option>
-          {MODELOS_DE_WEBHOOK.map((m) => (
-            <option key={m.id} value={m.id}>
-              {t(m.nome)}
-            </option>
-          ))}
-        </select>
-        {modeloEmUso ? (
-          <p className="text-xs text-foreground" data-testid="explicacao-do-modelo">
-            {t(modeloEmUso.explicacao)}{" "}
-            {t("Depois cole a chave da sua conta no campo da chave, lá embaixo.")}
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            {t("O modelo preenche o endereço, o corpo e o que guardar da resposta. A chave é a da sua conta e você cola no campo cifrado.")}
-          </p>
-        )}
-      </div>
       <div className="space-y-1.5">
         <Label htmlFor="webhook-metodo">{t("Método")}</Label>
         <select
