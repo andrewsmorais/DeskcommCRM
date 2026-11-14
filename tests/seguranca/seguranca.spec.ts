@@ -66,14 +66,15 @@ test.describe("2. sem login, nada sai", () => {
 
 test("3. o cookie de sessão é HttpOnly e SameSite", async ({ page }) => {
   await entrar(page, "agent");
-  const sessao = (await page.context().cookies()).filter((c) => c.name.startsWith("sb-") && c.name.includes("auth-token"));
+  // O app usa nome próprio (`sb-deskcomm-auth`, em pedaços .0/.1 quando grande).
+  const sessao = (await page.context().cookies()).filter((c) => c.name.startsWith("sb-deskcomm-auth"));
   expect(sessao.length, "o login não deixou o cookie de sessão").toBeGreaterThan(0);
   for (const c of sessao) {
     expect(c.httpOnly, `${c.name} legível por script`).toBe(true);
     expect(["Strict", "Lax"]).toContain(c.sameSite);
   }
   const lidoPorScript = await page.evaluate(() => document.cookie);
-  expect(lidoPorScript).not.toContain("auth-token");
+  expect(lidoPorScript).not.toContain("sb-deskcomm-auth");
 });
 
 test("4. o atendente de uma empresa não alcança o contato de outra", async ({ page }) => {
@@ -148,5 +149,33 @@ test("7. o retorno do login não leva para site de fora", async ({ request }) =>
     const para = r.headers()["location"] ?? "";
     expect(para, `redirecionou para ${para}`).not.toMatch(/evil\.example/);
     expect(await r.text()).not.toMatch(/evil\.example/);
+  }
+});
+
+test("8. texto com caractere NULO é recusado com 422, não derruba a rota", async ({ page }) => {
+  await entrar(page, "manager");
+  for (const corpo of [
+    '{"variaveis":[{"chave":"pix","valor":"a\\u0000b"}]}',
+    '{"variaveis":[{"chave":"pix","valor":"\\ud80f"}]}',
+  ]) {
+    const r = await api(page).patch("/api/v1/settings/variaveis", {
+      data: corpo,
+      headers: { "content-type": "application/json" },
+    });
+    expect(r.status(), await r.text()).toBe(422);
+  }
+});
+
+test("9. login com injeção de SQL não entra", async ({ page }) => {
+  for (const [email, senha] of [
+    ["zaproxy@example.com' OR 1=1 -- ", "x"],
+    [creds.users.agent!.email, "ZAP' OR '1'='1' -- "],
+  ]) {
+    await page.goto("/login");
+    await page.locator("#email").fill(email!);
+    await page.locator("#password").fill(senha!);
+    await page.getByRole("button", { name: "Entrar", exact: true }).click();
+    await page.waitForTimeout(2_000);
+    await expect(page).toHaveURL(/\/login/);
   }
 });

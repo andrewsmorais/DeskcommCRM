@@ -5,12 +5,23 @@ import { env } from "@/lib/env";
 import { fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
 import { urlDoSupabaseNoServidor } from "@/lib/supabase/url-do-servidor";
 import { isPublicPath } from "@/lib/auth/public-paths";
+import { motivoDeRecusaDoJson } from "@/lib/seguranca/entrada";
 import {
   verifyImpersonateCookieEdge,
   IMPERSONATE_COOKIE_NAME_EDGE,
 } from "@/lib/impersonate/cookie-edge";
 
 const COOKIE_NAME = "sb-deskcomm-auth";
+
+/** Corpo JSON maior que isto não é conferido aqui (a rota tem o próprio teto). */
+const MAX_CORPO_CONFERIDO = 2 * 1024 * 1024;
+
+function recusa(status: number, code: string, message: string, extra: Record<string, string> = {}) {
+  return new NextResponse(JSON.stringify({ error: { code, message } }), {
+    status,
+    headers: { "content-type": "application/json", ...extra },
+  });
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -119,6 +130,28 @@ export async function proxy(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname + search);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Texto que o banco não guarda (caractere NULO, par Unicode partido) virava
+  // 500 no meio da gravação em qualquer rota (schemathesis, 14/11/2026). Só
+  // nas rotas de sessão — as públicas (webhooks, bearer) decidem por si e não
+  // podem perder um evento de fora por causa desta guarda.
+  if (
+    pathname.startsWith("/api/") &&
+    ["POST", "PUT", "PATCH", "DELETE"].includes(request.method.toUpperCase()) &&
+    (request.headers.get("content-type") ?? "").toLowerCase().includes("application/json") &&
+    Number(request.headers.get("content-length") ?? "0") <= MAX_CORPO_CONFERIDO
+  ) {
+    const corpo = await request.clone().text().catch(() => "");
+    const motivo = corpo.length <= MAX_CORPO_CONFERIDO ? motivoDeRecusaDoJson(corpo) : null;
+    if (motivo) {
+      return recusa(
+        422,
+        "validation_failed",
+        "O texto enviado tem um caractere que não pode ser guardado (nulo ou Unicode incompleto).",
+        { "x-request-id": requestId },
+      );
+    }
   }
 
   // EPIC-11 S-11.07: validate impersonate cookie on /app/* paths. Middleware

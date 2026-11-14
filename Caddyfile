@@ -14,6 +14,10 @@
 	# POST sem assinatura ainda respondia 200). Dentro de `route`, vale a ordem
 	# escrita.
 	route {
+		# TRACE/TRACK/CONNECT: o Next responde 500 a eles antes de qualquer rota
+		# (achado do schemathesis, 14/11/2026). Ninguém usa; aqui viram 405.
+		@metodo_de_sonda method TRACE TRACK CONNECT
+		respond @metodo_de_sonda 405
 		# O webhook GLOBAL do WAHA (sem token na URL) não é publicado na internet.
 		#
 		# Nesta stack o WAHA fala com o app pela rede interna do Docker
