@@ -1,36 +1,28 @@
 -- ============================================================================
--- 0253 — O AGENTE APRENDE A FALAR: `voz_enabled` + `voz_quando` por versão.
---
--- Fase 6b do plano de voz (docs/superpowers/plans/2026-10-29-voz-elevenlabs.md).
--- Precedente: `video_frames_enabled` (migration 0058) — feature que custa
--- dinheiro nasce DESLIGADA e por versão publicada, nunca por organização
--- inteira (um agente de teste e um de produção na mesma org podem discordar).
---
--- `voz_quando` tem o vocabulário FECHADO de propósito (ao contrário da maioria
--- das colunas novas deste repo, que nascem abertas): são três comportamentos
--- de PRODUTO com código dedicado para cada um
--- (`lib/agent-engine/agent/voz-do-turno.ts`), não um rótulo livre que o
--- operador inventa — mais parecido com `send_ledger.status` do que com
--- `agent_cases.kind`. Nenhum clone tem linha com valor fora da lista (coluna
--- nova), então o CHECK não arrisca quebrar o `update.sh` de ninguém.
---
--- ⚠️ NINGUÉM CONSEGUE LIGAR ISTO PELA TELA AINDA — não há UI (Fase 7). As duas
--- colunas nascem com DEFAULT que preserva o comportamento de hoje para toda
--- organização, em toda versão, publicada ou não. Quem ligar `voz_enabled` por
--- SQL direto precisa TAMBÉM configurar `organizations.settings.voz.voice_id`
--- e cadastrar a credencial ElevenLabs — sem os três, `resolverVozDoTurno`
--- cai em texto e loga um aviso (nunca trava o turno).
---
--- `fn_ai_agent_version_content_immutable` (trigger `trg_ai_agent_versions_
--- content_immutable`) precisa conhecer as duas colunas — é o MESMO trigger
--- que as migrations 0125 e 0181 estenderam para fechar o buraco de colunas
--- novas "esquecidas" (ficar editável numa versão JÁ PUBLICADA, sem virar
--- draft novo e sem deixar trilha). O corpo abaixo é DERIVADO da versão em
--- vigor (lida em supabase/baseline.sql, a autoridade sobre o estado atual —
--- não da migration 0125 nem da 0181 isoladas, que são só snapshots
--- históricos): partir de uma cópia velha apagaria `knowledge_source_ids`
--- (0181) silenciosamente, reabrindo um buraco já fechado.
+-- 0520 — o agente aprende a falar (nota de voz pelo ElevenLabs)
 -- ============================================================================
+-- O agente responde por nota de voz (ElevenLabs), por VERSÃO do agente.
+-- Trazido do produto original (migrations 0252/0253/9338 de lá), numa só.
+--
+-- 1. `send_ledger.media_storage_path`: o áudio JÁ sintetizado para aquele
+--    (job_id, seq). Um retry reusa o arquivo em vez de pagar a síntese de novo.
+-- 2. `ai_agent_versions.voz_enabled` (padrão FALSE: nada muda para ninguém) e
+--    `voz_quando` ('nunca' | 'espelhar' | 'sempre' | 'quando_pede', padrão
+--    'espelhar'). Vocabulário fechado: são quatro comportamentos com código
+--    próprio em `lib/agent-engine/agent/voz-do-turno.ts`. Coluna nova, então o
+--    CHECK não quebra o `update.sh` de ninguém.
+-- 3. `fn_ai_agent_version_content_immutable` passa a conhecer as duas colunas:
+--    sem isso uma versão JÁ publicada ficaria editável nelas. Corpo copiado da
+--    última definição em vigor no baseline, mais as duas linhas.
+-- A voz escolhida mora em `organizations.settings.voz.voice_id` (organização) e
+-- em `ai_agents.config.voz_voice_id` (por agente) — jsonb que já existe.
+
+alter table public.send_ledger
+  add column if not exists media_storage_path text;
+
+comment on column public.send_ledger.media_storage_path is
+  'Migration 0520. Caminho no Storage do áudio JÁ sintetizado para este (job_id, seq) — '
+  'um retry reusa em vez de sintetizar (e pagar) de novo. NULL para mensagem que não é voz.';
 
 alter table public.ai_agent_versions
   add column if not exists voz_enabled boolean not null default false;
@@ -38,27 +30,23 @@ alter table public.ai_agent_versions
 alter table public.ai_agent_versions
   add column if not exists voz_quando text not null default 'espelhar';
 
-do $$
+do $voz_quando$
 begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'ai_agent_versions_voz_quando_check'
-  ) then
-    alter table public.ai_agent_versions
-      add constraint ai_agent_versions_voz_quando_check
-      check (voz_quando in ('nunca', 'espelhar', 'sempre'));
-  end if;
-end $$;
+  alter table public.ai_agent_versions
+    drop constraint if exists ai_agent_versions_voz_quando_check;
+  alter table public.ai_agent_versions
+    add constraint ai_agent_versions_voz_quando_check
+    check (voz_quando in ('nunca', 'espelhar', 'sempre', 'quando_pede'));
+end
+$voz_quando$;
 
 comment on column public.ai_agent_versions.voz_enabled is
-  'Migration 0253. A resposta do agente pode saír como nota de voz nesta versão. '
-  'Default FALSE preserva o comportamento de toda organização existente. '
-  'Sem UI ainda (Fase 7) — quem liga por SQL direto também precisa configurar '
-  'organizations.settings.voz.voice_id e a credencial ElevenLabs.';
+  'Migration 0520. A resposta do agente pode sair como nota de voz nesta versão. '
+  'Padrão FALSE. Também precisa da voz escolhida e da credencial ElevenLabs.';
 
 comment on column public.ai_agent_versions.voz_quando is
-  'Migration 0253. ''nunca'' (nunca fala, mesmo com voz_enabled=true — existe '
-  'para desligar sem apagar a config), ''espelhar'' (fala só quando o CLIENTE '
-  'mandou áudio nesta mensagem — o default) ou ''sempre''. Decidido em '
+  'Migration 0520. nunca | espelhar (fala quando o cliente mandou áudio) | sempre | '
+  'quando_pede (também quando o cliente pede áudio por escrito). Decidido em '
   'lib/agent-engine/agent/voz-do-turno.ts.';
 
 create or replace function fn_ai_agent_version_content_immutable() returns trigger
@@ -90,7 +78,6 @@ begin
     or new.operator_tool_ids      is distinct from old.operator_tool_ids
     or new.pipeline_ids           is distinct from old.pipeline_ids
     or new.knowledge_source_ids   is distinct from old.knowledge_source_ids
-    -- ↓ as duas desta migration
     or new.voz_enabled            is distinct from old.voz_enabled
     or new.voz_quando             is distinct from old.voz_quando
     or new.version_number         is distinct from old.version_number

@@ -46,18 +46,20 @@ describe("o bloco da resposta falada", () => {
 describe("no turno, a voz é resolvida antes do `system` — e o bloco entra nele", () => {
   const fonte = readFileSync(join(process.cwd(), "lib/agent-engine/agent/inbound-turn.ts"), "utf8");
 
-  it("resolve a voz → monta o bloco → junta o `system`, nessa ordem", () => {
+  // Nesta instalação o `system` é montado antes de a voz ser resolvida (o
+  // contexto da conversa, que decide 'quando_pede', é lido depois), e o bloco é
+  // acrescentado no FIM dele — o prefixo dos turnos em texto continua o mesmo.
+  it("resolve a voz → monta o bloco → acrescenta ao `system`, nessa ordem", () => {
+    const junta = fonte.indexOf("let system = blocosResidentes.join(");
     const resolve = fonte.indexOf("await resolverVozDoTurno({");
     const bloco = fonte.indexOf("blocoDaRespostaFalada(vozParaEsteTurno)");
-    const junta = fonte.indexOf("const system = blocosResidentes.join(");
-    expect(resolve).toBeGreaterThan(-1);
+    expect(junta).toBeGreaterThan(-1);
+    expect(resolve).toBeGreaterThan(junta);
     expect(bloco).toBeGreaterThan(resolve);
-    expect(junta).toBeGreaterThan(bloco);
-    // Um `system` só: um segundo, montado antes, voltaria a não ter o bloco.
-    expect(fonte.split("const system = blocosResidentes.join(").length).toBe(2);
+    expect(fonte.split("blocosResidentes.join(").length).toBe(2);
   });
 
-  it("o bloco vai para os blocos do `system`, não só é calculado", () => {
-    expect(fonte).toMatch(/const blocoDaVoz = blocoDaRespostaFalada\(vozParaEsteTurno\);\s*if \(blocoDaVoz\) blocosResidentes\.push\(blocoDaVoz\);/);
+  it("o bloco vai para o `system`, não só é calculado", () => {
+    expect(fonte).toMatch(/const blocoDaVoz = blocoDaRespostaFalada\(vozParaEsteTurno\);\s*if \(blocoDaVoz\) system = `\$\{system\}\\n\\n\$\{blocoDaVoz\}`;/);
   });
 });

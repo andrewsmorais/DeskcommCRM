@@ -100,7 +100,6 @@ describe("POST /api/v1/ai/voz/preview — orçamento de IA", () => {
         purpose: "sintese_de_voz",
         provider: "elevenlabs",
         chave: "on",
-        origemDaChave: "credencial_da_organizacao",
       }),
     );
     expect(deps.aplicarOrcamento.mock.invocationCallOrder[0]).toBeLessThan(

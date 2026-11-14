@@ -48,6 +48,7 @@ import {
 import { rotuloDoEstadoDoCanal } from "@/lib/channels/estado";
 import { bloqueioDePublicacao } from "@/lib/ai/agents/bloqueio-de-publicacao";
 import { mesmoRascunho } from "@/lib/ai/agents/mesmo-rascunho";
+import { VozDoAgente } from "./VozDoAgente";
 import { ToolPicker } from "./ToolPicker";
 import { ObjetivoDoAgente } from "./ObjetivoDoAgente";
 import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
@@ -291,6 +292,8 @@ export function buildState(args: {
     cases_enabled: version?.cases_enabled ?? false,
     split_messages: version?.split_messages ?? false,
     split_max_chars: version?.split_max_chars ?? 600,
+    voz_enabled: version?.voz_enabled ?? false,
+    voz_quando: version?.voz_quando ?? "espelhar",
     followup: version?.followup
       ? {
           ...DEFAULT_FOLLOWUP,
@@ -1254,7 +1257,7 @@ export function AgentForm(props: Props) {
                       {t("Só quando o cliente mandar áudio")}
                     </SelectItem>
                     <SelectItem value="quando_pede">
-                      {t("Quando o cliente mandar áudio ou pedir por escrito")}
+                      {t("Quando o cliente mandar ou pedir áudio")}
                     </SelectItem>
                     <SelectItem value="sempre">{t("Sempre")}</SelectItem>
                     <SelectItem value="nunca">
@@ -1272,6 +1275,16 @@ export function AgentForm(props: Props) {
               </div>
             ) : null}
           </Card>
+
+          {/* A voz DESTE agente: grava em `ai_agents.config.voz_voice_id`, por
+              isso só em edição. Sem escolha, herda a voz da organização. */}
+          {isEdit && (
+            <VozDoAgente
+              agentId={props.agent.id}
+              inicial={(props.agent.config ?? {}).voz_voice_id}
+              disabled={disabled}
+            />
+          )}
 
           {/* Capacidades */}
           <Card className="space-y-2 p-4">

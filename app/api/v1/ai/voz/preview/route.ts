@@ -91,7 +91,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       orcamentoDaConfig: elevenlabs.orcamento,
       orcamentoIndisponivelPorque: elevenlabs.orcamentoIndisponivelPorque,
       chave: chaveDeOrcamentoDaInstalacao(cfg.budgetEnforcement ?? "on"),
-      origemDaChave: elevenlabs.origemDaChave,
       purpose: "sintese_de_voz",
       provider: "elevenlabs",
       model: modelId,

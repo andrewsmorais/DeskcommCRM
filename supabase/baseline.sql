@@ -43666,24 +43666,96 @@ create unique index if not exists channel_sessions_webchat_key_unique
   where webchat_key is not null and archived_at is null;
 notify pgrst, 'reload schema';
 
--- ---- o cliente pode PEDIR voz: voz_quando = 'quando_pede' (migration 9338, #4345) ----
--- Espelho idêntico da 9338 (o porquê está no cabeçalho dela). Só o vocabulário
--- do CHECK muda: nenhum valor renomeado, default continua 'espelhar'.
-alter table public.ai_agent_versions
-  drop constraint if exists ai_agent_versions_voz_quando_check;
+-- ---- o agente responde por nota de voz (migration 0520) ----
+-- O agente responde por nota de voz (ElevenLabs), por VERSÃO do agente.
+-- Trazido do produto original (migrations 0252/0253/9338 de lá), numa só.
+--
+-- 1. `send_ledger.media_storage_path`: o áudio JÁ sintetizado para aquele
+--    (job_id, seq). Um retry reusa o arquivo em vez de pagar a síntese de novo.
+-- 2. `ai_agent_versions.voz_enabled` (padrão FALSE: nada muda para ninguém) e
+--    `voz_quando` ('nunca' | 'espelhar' | 'sempre' | 'quando_pede', padrão
+--    'espelhar'). Vocabulário fechado: são quatro comportamentos com código
+--    próprio em `lib/agent-engine/agent/voz-do-turno.ts`. Coluna nova, então o
+--    CHECK não quebra o `update.sh` de ninguém.
+-- 3. `fn_ai_agent_version_content_immutable` passa a conhecer as duas colunas:
+--    sem isso uma versão JÁ publicada ficaria editável nelas. Corpo copiado da
+--    última definição em vigor no baseline, mais as duas linhas.
+-- A voz escolhida mora em `organizations.settings.voz.voice_id` (organização) e
+-- em `ai_agents.config.voz_voice_id` (por agente) — jsonb que já existe.
+
+alter table public.send_ledger
+  add column if not exists media_storage_path text;
+
+comment on column public.send_ledger.media_storage_path is
+  'Migration 0520. Caminho no Storage do áudio JÁ sintetizado para este (job_id, seq) — '
+  'um retry reusa em vez de sintetizar (e pagar) de novo. NULL para mensagem que não é voz.';
 
 alter table public.ai_agent_versions
-  add constraint ai_agent_versions_voz_quando_check
-  check (voz_quando in ('nunca', 'espelhar', 'sempre', 'quando_pede'));
+  add column if not exists voz_enabled boolean not null default false;
+
+alter table public.ai_agent_versions
+  add column if not exists voz_quando text not null default 'espelhar';
+
+do $voz_quando$
+begin
+  alter table public.ai_agent_versions
+    drop constraint if exists ai_agent_versions_voz_quando_check;
+  alter table public.ai_agent_versions
+    add constraint ai_agent_versions_voz_quando_check
+    check (voz_quando in ('nunca', 'espelhar', 'sempre', 'quando_pede'));
+end
+$voz_quando$;
+
+comment on column public.ai_agent_versions.voz_enabled is
+  'Migration 0520. A resposta do agente pode sair como nota de voz nesta versão. '
+  'Padrão FALSE. Também precisa da voz escolhida e da credencial ElevenLabs.';
 
 comment on column public.ai_agent_versions.voz_quando is
-  'Migration 9338 (a coluna nasceu na 9052). ''nunca'' (nunca fala, mesmo com '
-  'voz_enabled=true — existe para desligar sem apagar a config), ''espelhar'' '
-  '(fala só quando o CLIENTE mandou áudio nesta mensagem — o default), '
-  '''sempre'', ou ''quando_pede'' (fala quando o cliente mandou áudio OU pediu '
-  'áudio por escrito / avisou que não consegue ler; quem pede texto continua '
-  'recebendo texto). Decidido em lib/agent-engine/agent/voz-do-turno.ts, com a '
-  'leitura do turno em lib/agent-engine/agent/pedido-de-audio.ts.';
+  'Migration 0520. nunca | espelhar (fala quando o cliente mandou áudio) | sempre | '
+  'quando_pede (também quando o cliente pede áudio por escrito). Decidido em '
+  'lib/agent-engine/agent/voz-do-turno.ts.';
+
+create or replace function fn_ai_agent_version_content_immutable() returns trigger
+language plpgsql as $fn$
+begin
+  if old.status <> 'draft' and (
+       new.system_prompt          is distinct from old.system_prompt
+    or new.provider               is distinct from old.provider
+    or new.model                  is distinct from old.model
+    or new.credential_id          is distinct from old.credential_id
+    or new.tool_ids               is distinct from old.tool_ids
+    or new.trigger_config         is distinct from old.trigger_config
+    or new.channel_session_id     is distinct from old.channel_session_id
+    or new.max_steps              is distinct from old.max_steps
+    or new.token_budget           is distinct from old.token_budget
+    or new.cost_budget_cents      is distinct from old.cost_budget_cents
+    or new.history_message_window is distinct from old.history_message_window
+    or new.history_token_window   is distinct from old.history_token_window
+    or new.handoff_keywords       is distinct from old.handoff_keywords
+    or new.handoff_tool_enabled   is distinct from old.handoff_tool_enabled
+    or new.followup               is distinct from old.followup
+    or new.multimodal_input       is distinct from old.multimodal_input
+    or new.video_frames_enabled   is distinct from old.video_frames_enabled
+    or new.split_messages         is distinct from old.split_messages
+    or new.split_max_chars        is distinct from old.split_max_chars
+    or new.cases_enabled          is distinct from old.cases_enabled
+    or new.operator_enabled       is distinct from old.operator_enabled
+    or new.operator_model         is distinct from old.operator_model
+    or new.operator_tool_ids      is distinct from old.operator_tool_ids
+    or new.pipeline_ids           is distinct from old.pipeline_ids
+    or new.knowledge_source_ids   is distinct from old.knowledge_source_ids
+    or new.voz_enabled            is distinct from old.voz_enabled
+    or new.voz_quando             is distinct from old.voz_quando
+    or new.version_number         is distinct from old.version_number
+    or new.agent_id               is distinct from old.agent_id
+    or new.organization_id        is distinct from old.organization_id
+  ) then
+    raise exception 'ai_agent_versions % é imutável (status=%): mudança de conteúdo = versão draft nova; rollback = revert (clona + publica)',
+      old.id, old.status;
+  end if;
+  return new;
+end;
+$fn$;
 
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --

@@ -18498,6 +18498,62 @@ export const DICIONARIO: Traducoes = {
   "Authorization (o mais comum)": { es: "Authorization (el más común)" },
   "O chatbot": { es: "El chatbot" },
   "O atendente responsável pela conversa": { es: "El agente responsable de la conversación" },
+  // Voz do agente (ElevenLabs), vindo do produto original
+  "Quando o cliente mandar ou pedir áudio": { es: "Cuando el cliente envíe o pida audio" },
+  "Cadastrar em Credenciais": { es: "Registrar en Credenciales" },
+  "Enviar nota de voz, não só texto": { es: "Enviar nota de voz, no solo texto" },
+  "Escolha da lista ou cole o ID de qualquer voz da sua conta, inclusive uma que não apareça aqui.":
+    {
+      es: "Elija de la lista o pegue el ID de cualquier voz de su cuenta, incluso una que no aparezca aquí.",
+    },
+  "Escolher da lista": { es: "Elegir de la lista" },
+  "Informe um Voice ID.": { es: "Indique un Voice ID." },
+  "Nunca (desligado, sem apagar a configuração)": {
+    es: "Nunca (desactivado, sin borrar la configuración)",
+  },
+  "Não consegui listar as vozes no ElevenLabs agora. A lista abaixo é a da última validação da credencial — e colar um Voice ID continua funcionando.":
+    {
+      es: "No pude listar las voces en ElevenLabs ahora. La lista de abajo es la de la última validación de la credencial — y pegar un Voice ID sigue funcionando.",
+    },
+  "O provedor recusou esta voz:": { es: "El proveedor rechazó esta voz:" },
+  "Ouvir prévia": { es: "Escuchar vista previa" },
+  "Precisa de uma credencial do ElevenLabs cadastrada e de uma voz escolhida em Agente de IA → Provedores. Sem os dois, o agente continua respondendo em texto — ligar aqui não quebra nada.":
+    {
+      es: "Necesita una credencial de ElevenLabs registrada y una voz elegida en Agente de IA → Proveedores. Sin los dos, el agente sigue respondiendo en texto — activar esto no rompe nada.",
+    },
+  "Qual voz este agente usa": { es: "Qué voz usa este agente" },
+  "Qual voz sai quando um agente responde em áudio — ligado por versão, no editor do agente. Precisa de uma credencial do ElevenLabs validada.":
+    {
+      es: "Qué voz se usa cuando un agente responde en audio — se activa por versión, en el editor del agente. Necesita una credencial de ElevenLabs validada.",
+    },
+  "Quando falar": { es: "Cuándo hablar" },
+  "Responde em áudio quando o cliente manda áudio, pede áudio por escrito ou avisa que não consegue ler. Quem pede para continuar no texto segue recebendo texto.":
+    {
+      es: "Responde en audio cuando el cliente envía audio, pide audio por escrito o avisa que no puede leer. Quien pide seguir por texto sigue recibiendo texto.",
+    },
+  "Responder falando": { es: "Responder hablando" },
+  "Salvar voz": { es: "Guardar voz" },
+  "Sem credencial do ElevenLabs validada ainda.": {
+    es: "Aún no hay una credencial de ElevenLabs validada.",
+  },
+  "Só quando o cliente mandar áudio": { es: "Solo cuando el cliente envíe audio" },
+  "Só vale com “Enviar nota de voz” ligado. Sem escolha própria, o agente fala com a voz da organização.":
+    {
+      es: "Solo vale con “Enviar nota de voz” activado. Sin elección propia, el agente habla con la voz de la organización.",
+    },
+  "Voice ID": { es: "Voice ID" },
+  "Voice ID inválido: use só letras, números, hífen e sublinhado (8 a 64 caracteres).":
+    {
+      es: "Voice ID inválido: use solo letras, números, guion y guion bajo (8 a 64 caracteres).",
+    },
+  "Voz da organização": { es: "Voz de la organización" },
+  "Voz deste agente": { es: "Voz de este agente" },
+  "Voz deste agente salva:": { es: "Voz de este agente guardada:" },
+  "Voz deste agente: passa a usar a voz da organização.":
+    { es: "Voz de este agente: pasa a usar la voz de la organización." },
+  "Voz do agente": { es: "Voz del agente" },
+  "Voz salva:": { es: "Voz guardada:" },
+  "escolha da lista": { es: "elija de la lista" },
   // Cold Call (vindo do produto original)
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
   "A ligação pelo CRM ainda não está ligada. Por enquanto, o botão abre o discador do seu aparelho.": { es: "La llamada por el CRM aún no está activa. Por ahora, el botón abre el marcador de tu dispositivo." },

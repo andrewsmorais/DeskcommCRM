@@ -1,4 +1,5 @@
 import type { AgentOperationContext } from '@/lib/ai/agents/operation';
+import type { SendMessageInput } from './edge/crm/send-message';
 import type { JobClaim } from './queue/claim';
 /**
  * Contrato agnóstico de canal (F2-25; blueprint risco nº 1 + veredito executivo).
