@@ -55,6 +55,19 @@ jobs:
           docker build -q -f Dockerfile.worker -t deskcomm-worker:scan --build-arg APP_VERSION=scan .
           docker build -q -f Dockerfile.scheduler -t deskcomm-scheduler:scan --build-arg APP_VERSION=scan .
 
+      - name: As imagens ainda ligam sem npm e pnpm dentro
+        run: |
+          # O worker roda pelo tsx de node_modules (sem pnpm): o atalho tem de
+          # funcionar sozinho. E nenhuma das imagens pode ter sobrado com npm,
+          # npx, corepack ou pnpm — eles é que traziam as falhas conhecidas.
+          docker run --rm --entrypoint node_modules/.bin/tsx deskcomm-worker:scan -e "console.log('tsx do worker: ok')"
+          docker run --rm --entrypoint node deskcomm-app:scan -e "console.log('node do app: ok')"
+          for img in deskcomm-app:scan deskcomm-worker:scan; do
+            sobra=$(docker run --rm --entrypoint sh "$img" -c 'for b in npm npx corepack pnpm; do command -v $b; done' || true)
+            if [ -n "$sobra" ]; then echo "::error::$img ainda tem: $sobra"; exit 1; fi
+            echo "$img: sem npm/npx/corepack/pnpm"
+          done
+
       - name: "Trivy 2/2 — imagem do app"
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         continue-on-error: true

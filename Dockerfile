@@ -112,7 +112,17 @@ ENV NODE_ENV=production \
 # ffmpeg: a derivação de vídeo (Onda 3.1) roda no processo do app — o cron
 # event-log-drain executa o media_derive handler, que chama `ffmpeg` via spawn
 # pra extrair áudio+frames. Sem o binário, todo vídeo recebido falha a derivação.
-RUN apk add --no-cache ffmpeg
+# Na mesma camada do ffmpeg: as atualizações de segurança do Alpine (o Trivy
+# achou zlib com falha conhecida na base) e a retirada do npm, do npx e do
+# corepack. O processo deste contêiner é `node server.js` e nada mais — nem o
+# healthcheck nem o update.sh chamam npm aqui —, e o npm embutido na imagem do
+# Node traz tar, sigstore, pacote, glob e brace-expansion com falhas conhecidas
+# (relatório do Trivy, 13/11/2026). Ferramenta que não roda não precisa estar lá.
+RUN apk add --no-cache ffmpeg \
+ && apk upgrade --no-cache \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 # non-root
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 # A versão que /api/v1/health reporta (invariante 7). Precisa vir por ARG: a

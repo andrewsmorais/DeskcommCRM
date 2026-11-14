@@ -15,7 +15,16 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile \
+ && apk upgrade --no-cache \
+ # Depois de instalar, o pnpm e o npm não rodam mais: o processo é o `tsx` de
+ # node_modules (CMD abaixo). O npm embutido na imagem do Node e o pnpm 9 do
+ # corepack trazem tar, glob, minimatch e o próprio pnpm com falhas conhecidas
+ # (relatório do Trivy, 13/11/2026) — saem da imagem.
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+           /opt/yarn-* /root/.cache/node/corepack /root/.local/share/pnpm
 
 COPY . .
 
@@ -29,4 +38,6 @@ ENV APP_VERSION=$APP_VERSION
 # Healthz do worker (bind 0.0.0.0 dentro do container).
 EXPOSE 8787
 
-CMD ["pnpm", "exec", "tsx", "workers/agent-worker/main.ts"]
+# O `tsx` direto de node_modules — o mesmo que `pnpm exec tsx` resolvia, sem
+# precisar do pnpm dentro da imagem.
+CMD ["node_modules/.bin/tsx", "workers/agent-worker/main.ts"]
