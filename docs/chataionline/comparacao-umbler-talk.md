@@ -209,7 +209,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | G2 | Mascarar o telefone dos contatos por papel/atendente (busca e exportação também mascaram) | ❌ não feito: o telefone aparece em ~45 telas e chega ao navegador pela leitura direta do banco; esconder de verdade pede mudar a permissão da coluna e todas essas leituras — tarefa própria |
 | G3 | Reatribuição de chats: tira o atendente offline quando o contato escreve | ✅ feito 13/11 (migration 0514) |
 | G4 | **Atalhos de chatbot** fixados no rodapé do campo de mensagem | temos o botão do robô no topo |
-| G5 | **Chat interno da equipe** | |
+| G5 | Chat interno da equipe | ✅ feito 13/11 (migration 0515): sala Geral e conversas diretas, ao vivo, com não lidas no menu e aviso no celular; fotos em `evidence/chat-da-equipe/c1-sala-geral.png` e `evidence/chat-da-equipe/c2-no-celular.png` (tela com respostas simuladas) |
 | G6 | Encaminhar e favoritar mensagens | ✅ feito 13/11 (migration 0513) |
 | G7 | **Kanban de contatos** por etiqueta, com resumo por coluna | temos funil de negócios |
 | G8 | Variáveis da organização (chaves e valores guardados uma vez, usados nos fluxos) | ✅ feito 13/11: Configurações › Variáveis da empresa, `{{empresa.chave}}` nos chatbots, no WebHook e nas respostas rápidas |
@@ -235,7 +235,7 @@ A seção 8 comparou bloco a bloco e deixou de fora o que o CRM resolve por OUTR
 4. ~~**Pedir para digitar** com várias opções e regex próprio~~ — feito 13/11 ("Aceitar várias respostas", "Testar opções").
 5. ~~Opções dentro de blocos~~ — feito 13/11: modos de transferir (variável, mesma conversa, remover, setor da conversa), Notificar com escolha e "só se disponível", botão de link, "não listado" e perguntas no Iniciar manualmente, dia útil no Aguardar até e estatística por bloco com CSV. Ficaram de fora o "outro caminho se falhar" (o motor decide antes de enviar) e o CRON.
 6. ~~Conversa~~ — feito 13/11: baixar histórico (.txt/.pdf), encaminhar e favoritar, quem está vendo a conversa, reatribuição do atendente offline. Ficaram de fora: figurinhas salvas (o WAHA fixado não envia figurinha) e mascarar telefone (tarefa grande e própria).
-7. Maiores — feito 13/11: variáveis da empresa e importar .vcf (fotos em `evidence/variaveis-e-vcf/v1-importar-aceita-vcf.png`, `evidence/variaveis-e-vcf/v2-resumo-da-importacao.png`, `evidence/variaveis-e-vcf/v3-variaveis-da-empresa.png` e `evidence/variaveis-e-vcf/v4-ajuda-do-chatbot.png`; telas montadas com respostas simuladas, sem banco). Faltam o webchat no site e o chat interno da equipe.
+7. Maiores — feito 13/11: variáveis da empresa e importar .vcf (fotos em `evidence/variaveis-e-vcf/v1-importar-aceita-vcf.png`, `evidence/variaveis-e-vcf/v2-resumo-da-importacao.png`, `evidence/variaveis-e-vcf/v3-variaveis-da-empresa.png` e `evidence/variaveis-e-vcf/v4-ajuda-do-chatbot.png`; telas montadas com respostas simuladas, sem banco). Chat interno da equipe feito 13/11 (migration 0515). Falta o webchat no site.
 
 **O que o ChatAI tem e a Umbler não** (para a oferta): agente de IA com agenda, follow-ups visuais com IA e gatilhos (silêncio, etapa, caso, retorno), roteadores entre agentes, memória e casos, propostas e comandas, prospecção e radar, chamadas por telefone (SIP), Nuvemshop, Kiwify, Cakto e Hotmart, conversões do Meta Ads, LGPD completa, auditoria, API e MCP, marca própria, Empresas/Pessoas (B2B), tarefas, honorários e faturamento.
 

@@ -31,6 +31,22 @@ export const MANUAL_ATENDIMENTO: ManualDoGrupo = {
     ],
   },
 
+  "/app/chat-da-equipe": {
+    oQueE:
+      "Conversa interna da equipe, sem sair do CRM: a sala “Geral”, com todo mundo da empresa, e uma conversa direta com cada pessoa. Nada daqui vai ao cliente.",
+    comoUsar: [
+      "Escolha “Geral” para falar com a equipe inteira, ou o nome de uma pessoa para falar só com ela.",
+      "Escreva no campo de baixo e aperte Enter para enviar. Shift+Enter pula linha.",
+      "O número ao lado de “Chat da equipe” no menu mostra quantas mensagens você ainda não leu; ao abrir a conversa, ele some.",
+      "Quem recebe uma mensagem direta também é avisado no celular, se tiver ligado os avisos.",
+    ],
+    cuidados: [
+      "A conversa direta só as duas pessoas veem — nem o administrador lê.",
+      "Mensagens não são apagadas nem editadas depois de enviadas.",
+      "Quem sai da empresa deixa de ver o chat na hora.",
+    ],
+  },
+
   "/app/radar": {
     oQueE:
       "Mostra as demandas abertas que esfriaram e podem morrer sem resposta. A tela não envia nada: serve para você decidir em quais conversas agir primeiro.",

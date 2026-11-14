@@ -49,9 +49,10 @@ export interface NavMetadata {
    * Contador de pendências ao lado do rótulo. `casos`: casos em que a IA espera
    * uma pessoa (`awaiting_human`) — quem desenha é `ContadorDeCasos`. `fila`:
    * conversas que esperam uma pessoa (a aba Fila do Inbox) — `ContadorDaFila`.
+   * `equipe`: mensagens não lidas do chat interno — `ContadorDoChatDaEquipe`.
    * Zero não desenha nada: número que nunca some ensina a ignorar o número.
    */
-  contador?: "casos" | "fila";
+  contador?: "casos" | "fila" | "equipe";
   /**
    * A porta de um MÓDULO OPCIONAL da instalação (`lib/instalacao/modulos.ts`).
    * Com o módulo desligado ela some do menu, do hub e do ⌘K — para todo papel.
@@ -158,6 +159,17 @@ export const NAV_CATALOG = [
     sidebar: true,
     // Quantas conversas a IA passou para a equipe e esperam uma pessoa (aba Fila).
     contador: "fila",
+  },
+  {
+    // Chat interno da equipe (paridade com a Umbler Talk, migration 0515):
+    // sala Geral e conversas diretas entre as pessoas da empresa.
+    href: "/app/chat-da-equipe",
+    label: "Chat da equipe",
+    description: "Converse com a sua equipe sem sair do CRM: sala Geral e mensagens diretas.",
+    icon: "ChatsCircle",
+    group: "atendimento",
+    sidebar: true,
+    contador: "equipe",
   },
   {
     href: "/app/radar",

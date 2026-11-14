@@ -166,6 +166,8 @@ export const AUDIT_ACTIONS = [
   "conversation_settings.changed",
   /** Configurações › Variáveis da empresa ({{empresa.chave}}); a auditoria guarda só os nomes. */
   "organization_variables.changed",
+  /** Chat interno da equipe (migration 0515); a auditoria nunca guarda o texto. */
+  "team_chat.message_sent",
   /** "Baixar histórico" da conversa (.txt/.pdf): sai dado pessoal do sistema. */
   "conversation.history_exported",
   /** Estrela numa mensagem (migration 0513). */

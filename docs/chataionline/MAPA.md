@@ -80,6 +80,7 @@
 | 13/11 | Assinatura do atendente (chave no campo de mensagem, campo no Perfil) e a tela Configurações › Conversas (assinatura e comportamento do Fechar); sem migration | `.changes/assinatura-e-configuracoes-de-conversas.md`, `evidence/assinatura-e-conversas/` |
 | 13/11 | Chatbot: "Pedir para digitar" com várias respostas aceitas (formato pronto ou regra própria, uma saída por opção, "Testar opções", trava contra regra que trava o servidor em `lib/chatbot/regex-segura.ts`) | `.changes/pedir-digitar-varias-respostas.md`, `evidence/pedir-digitar-opcoes/` |
 | 13/11 | Chatbot: opções extras dos blocos (dia útil, botão de link, Iniciar manualmente não listado e com perguntas, modos de transferir, Notificar com escolha) e estatística por bloco com CSV (migration 0512) | `.changes/chatbot-opcoes-extras-dos-blocos.md`, `chatbot-transferir-e-notificar-como-a-umbler.md`, `chatbot-estatistica-por-bloco.md`, `evidence/chatbot-opcoes-extras/` |
+| 13/11 | Chat da equipe: sala Geral e conversas diretas (só as duas pessoas leem), ao vivo, com não lidas no menu e aviso no celular (migration 0515) | `.changes/chat-da-equipe.md`, `evidence/chat-da-equipe/` |
 | 13/11 | Variáveis da empresa (`{{empresa.chave}}` em chatbots, WebHook e respostas rápidas; sem tabela nova, em `organizations.settings.variaveis`) e importar contatos de .vcf | `.changes/variaveis-da-empresa.md`, `importar-contatos-vcf.md`, `evidence/variaveis-e-vcf/` |
 | 13/11 | Conversa: baixar histórico (.txt/.pdf), encaminhar e favoritar mensagens (migration 0513), quem está vendo a conversa (presença ao vivo), reatribuição automática do atendente offline (migration 0514) | `.changes/baixar-historico-da-conversa.md`, `encaminhar-e-favoritar-mensagens.md`, `quem-esta-vendo-a-conversa.md`, `reatribuicao-automatica.md`, `evidence/historico-da-conversa/` |
 | 11–13/11 | Auditoria de segurança — 2ª rodada (telefonia, telemetria, LGPD, prompt, mensagens), 3 verificadores independentes | `.changes/endurecimento-auditoria-rodada-2.md`; migration `0509`; relatório em `/srv/security-audit-skill/chataionline/run-2/REPORT.md` |
@@ -94,7 +95,7 @@
 - O último commit de segurança (`57e7229`) não teve verificador independente.
 - Chatbot: carrossel e cupom bloqueados por decisão; ver a comparação com a Umbler para o resto.
 - Comparação com a Umbler Talk: ver [`comparacao-umbler-talk.md`](comparacao-umbler-talk.md) —
-  faltando (seção 9 de lá): webchat e chat interno da equipe; e,
+  faltando (seção 9 de lá): webchat no site; e,
   da conversa, figurinhas salvas (o WAHA fixado 2026.7.2 não envia figurinha) e mascarar telefone (tarefa própria). Agendar mensagem, Fechar com despedida/chatbot, assinatura, Pedir para digitar com várias respostas e opções dos blocos já foram feitos.
 - Chatbot: blocos e opções da Umbler feitos; ficaram de fora "outro caminho se falhar" no Enviar mensagem/Transferir e o CRON no Aguardar até.
 
