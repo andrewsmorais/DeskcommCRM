@@ -233,6 +233,15 @@ jobs:
               for a in alertas:
                   print(f"| {risco.get(a.get('riskcode','0'), '?')} | {a.get('name','')} | {a.get('count','')} | {a.get('pluginid','')} |")
               print()
+              # Os detalhes de cada alerta (método, endereço, campo, ataque), para
+              # quem triar sem acesso ao artefato.
+              for a in alertas:
+                  print(f"### {a.get('name','')} [{a.get('pluginid','')}]\n")
+                  for i in a.get("instances", [])[:5]:
+                      ataque = (i.get("attack") or "")[:120].replace("|", "/")
+                      evid = (i.get("evidence") or "")[:120].replace("|", "/")
+                      print(f"- `{i.get('method','')} {i.get('uri','')}` campo=`{i.get('param','')}` ataque=`{ataque}` evidência=`{evid}`")
+                  print()
           print("## schemathesis\n")
           junit = glob.glob("seguranca-relatorios/schemathesis/*.xml")
           if junit:

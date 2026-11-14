@@ -106,6 +106,21 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
+          // Política de conteúdo MÍNIMA, apontada pelo ZAP (10038 — CSP ausente).
+          // Só as três diretivas que não dependem de endereço de instalação: a
+          // imagem é única para todas as VPS (Supabase, Storage e logos mudam por
+          // cliente), então `script-src`/`connect-src` aqui quebrariam alguém. Elas:
+          //   object-src 'none' — nada de <object>/<embed> (plugin, Flash, PDF
+          //     embutido como vetor de script);
+          //   base-uri 'self' — um <base> injetado não desvia links e scripts
+          //     relativos para outro site;
+          //   frame-ancestors 'none' — o mesmo que o X-Frame-Options acima, na
+          //     forma que os navegadores novos leem primeiro (clickjacking).
+          // Vigiado em tests/seguranca/seguranca.spec.ts.
+          {
+            key: "Content-Security-Policy",
+            value: "object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+          },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           // microphone=(self): o gravador de voz do composer (PTT estilo WhatsApp)
           // usa getUserMedia({audio}); microphone=() bloquearia em TODA origem,

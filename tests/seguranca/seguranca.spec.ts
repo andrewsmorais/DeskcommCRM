@@ -38,6 +38,10 @@ test.describe("1. cabeçalhos de proteção", () => {
       const h = r.headers();
       expect(h["x-content-type-options"]).toBe("nosniff");
       expect(h["x-frame-options"]).toBe("DENY");
+      const csp = h["content-security-policy"] ?? "";
+      expect(csp).toContain("object-src 'none'");
+      expect(csp).toContain("base-uri 'self'");
+      expect(csp).toContain("frame-ancestors 'none'");
       expect(h["referrer-policy"]).toBeTruthy();
       expect(h["x-powered-by"], "o servidor não deve anunciar a tecnologia").toBeUndefined();
     });
