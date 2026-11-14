@@ -18,7 +18,7 @@ Legenda: ✅ tem igual ou melhor · 🟡 tem parecido (diferença anotada) · �
 |---|---|---|
 | Transferir para setor | ✅ | Setores + aba "Setor" no Transferir |
 | Transferir para atendente | ✅ | |
-| Transferir para **outro canal** (outro número) | ❌ | Hoje a conversa fica no número em que chegou |
+| Transferir para outro canal (outro número) | ✅ | "Continuar por outro número" na conversa (`hooks/inbox/useContinuarPorOutroNumero.ts`) — ver seção 9 |
 | Privar atendimento (cadeado) | ✅ | Conversa privada |
 | Detalhes do contato (telefone, foto, anotações, etiquetas) | ✅ | Painel lateral do CRM |
 | Agendar mensagem (mensagem, nota ou chatbot), aba "Agendadas" | ✅ | Feito 13/11 (template não: o agendamento sai pelo QR code) |
@@ -51,10 +51,10 @@ referência estão conferidos em `docs/audits/2026-11-03-chatbot-60-cards.md`.
 | Recurso da Umbler | ChatAI | Observação |
 |---|---|---|
 | Variáveis do contato e variáveis guardadas no fluxo | ✅ | `{{variavel}}` |
-| Pedir para digitar com **regex próprio** (ex.: número de cartão, CPF) | 🟡 | Só formatos prontos: qualquer, e-mail, telefone, data, hora |
+| Pedir para digitar com regex próprio (ex.: número de cartão, CPF) | ✅ | Feito 13/11: "Aceitar várias respostas" com regra própria, travada contra regra que pode parar o atendimento (reforçada em 14/11) |
 | Pedir para escolher, condições, transferências, nota, campos do contato | ✅ | |
 | Transferir para agente de IA | ✅ | Escolhe qual agente |
-| Agendar um chatbot para um contato numa data | ❌ | Depende do "agendar mensagem" da seção 1 |
+| Agendar um chatbot para um contato numa data | ✅ | Feito 13/11: o agendamento na conversa aceita mensagem, nota ou chatbot |
 
 ### Bloco a bloco (capturas do menu da Umbler enviadas pelo dono em 13/11/2026)
 
