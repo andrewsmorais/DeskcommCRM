@@ -40,15 +40,43 @@ export function externalIdDoVisitante(canalId: string, mensagemId: string): stri
   return `webchat:${canalId}:${mensagemId}`;
 }
 
+/**
+ * O contato deste visitante foi ANONIMIZADO (LGPD). O token dele não abre mais
+ * a conversa antiga nem escreve nela: o balão recebe "recomece" e gera um
+ * token novo — a pessoa volta como visitante novo, sem o histórico apagado.
+ */
+export class VisitanteEncerrado extends Error {}
+
+/** O canal já recebeu visitantes novos demais nesta janela. */
+export class VisitantesNovosDemais extends Error {}
+
 export async function receberDoVisitante(
   admin: SupabaseClient,
   entrada: EntradaDoVisitante,
+  opcoes: {
+    /**
+     * Pode nascer mais um visitante NESTE canal agora? O token é escolhido por
+     * quem chama (um novo a cada pedido fura o limite por visitante), então o
+     * teto de contatos e conversas novas é do CANAL — auditoria de 14/11/2026.
+     */
+    podeNascerVisitante?: () => boolean;
+  } = {},
 ): Promise<DesfechoDaEntrada> {
   const hash = hashDoVisitante(entrada.token);
   const identidade = identidadeDoVisitante(entrada.canalId, hash);
 
-  const contactId = await garantirContato(admin, entrada, identidade);
-  const conversationId = await garantirConversa(admin, entrada, contactId, identidade);
+  // A conversa já ligada a este visitante vem ANTES do contato: se o atendente
+  // juntou a ficha do visitante a outra, a conversa segue sendo a mesma — sem
+  // isto nascia um segundo contato e uma segunda conversa com o mesmo id.
+  const existente = await conversaDoVisitante(admin, entrada.organizationId, entrada.canalId, identidade);
+  let contactId: string;
+  let conversationId: string;
+  if (existente) {
+    ({ contactId, conversationId } = existente);
+  } else {
+    contactId = await garantirContato(admin, entrada, identidade, opcoes.podeNascerVisitante);
+    conversationId = await garantirConversa(admin, entrada, contactId, identidade);
+  }
 
   const agora = new Date().toISOString();
   const { data, error } = await admin
@@ -97,19 +125,48 @@ export async function receberDoVisitante(
   return { status: "ingested", conversationId, messageId, criadaEm: agora };
 }
 
+/** A conversa (e o contato dela) já ligada a este visitante, a mais antiga se houver mais de uma. */
+async function conversaDoVisitante(
+  admin: SupabaseClient,
+  organizationId: string,
+  canalId: string,
+  identidade: string,
+): Promise<{ conversationId: string; contactId: string } | null> {
+  const { data, error } = await admin
+    .from("conversations")
+    .select("id, contact_id, contacts:contact_id(is_anonymized)")
+    .eq("organization_id", organizationId)
+    .eq("channel_session_id", canalId)
+    .eq("provider_conversation_id", identidade)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (error) throw new Error("webchat_conversation_lookup_failed");
+  const linha = ((data ?? []) as unknown as Array<{
+    id: string;
+    contact_id: string | null;
+    contacts: { is_anonymized: boolean } | { is_anonymized: boolean }[] | null;
+  }>)[0];
+  if (!linha?.contact_id) return null;
+  const contato = Array.isArray(linha.contacts) ? linha.contacts[0] : linha.contacts;
+  if (contato?.is_anonymized) throw new VisitanteEncerrado();
+  return { conversationId: linha.id, contactId: linha.contact_id };
+}
+
 async function garantirContato(
   admin: SupabaseClient,
   entrada: EntradaDoVisitante,
   identidade: string,
+  podeNascer?: () => boolean,
 ): Promise<string> {
   const { data: existente, error: erroDeLeitura } = await admin
     .from("contacts")
-    .select("id, name, email")
+    .select("id, name, email, is_anonymized")
     .eq("organization_id", entrada.organizationId)
     .eq("social_identity", identidade)
     .is("is_merged_into", null)
     .maybeSingle();
   if (erroDeLeitura) throw new Error("webchat_contact_lookup_failed");
+  if ((existente as { is_anonymized?: boolean } | null)?.is_anonymized) throw new VisitanteEncerrado();
   if (existente) {
     // Nome e e-mail entram quando faltam — nunca sobrescrevem o que o
     // atendente corrigiu na tela.
@@ -133,6 +190,7 @@ async function garantirContato(
     return atual.id;
   }
 
+  if (podeNascer && !podeNascer()) throw new VisitantesNovosDemais();
   const nome = entrada.nome ?? "Visitante do site";
   const linha = {
     organization_id: entrada.organizationId,
@@ -214,16 +272,9 @@ export async function lerDoVisitante(
   args: { organizationId: string; canalId: string; token: string; depois?: string },
 ): Promise<MensagemDoBalao[]> {
   const identidade = identidadeDoVisitante(args.canalId, hashDoVisitante(args.token));
-  const { data: conversa, error: erroDaConversa } = await admin
-    .from("conversations")
-    .select("id")
-    .eq("organization_id", args.organizationId)
-    .eq("channel_session_id", args.canalId)
-    .eq("provider_conversation_id", identidade)
-    .maybeSingle();
-  if (erroDaConversa) throw new Error("webchat_conversation_lookup_failed");
+  const conversa = await conversaDoVisitante(admin, args.organizationId, args.canalId, identidade);
   if (!conversa) return [];
-  const conversationId = (conversa as { id: string }).id;
+  const conversationId = conversa.conversationId;
 
   let consulta = admin
     .from("messages")

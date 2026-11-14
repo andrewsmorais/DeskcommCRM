@@ -122,7 +122,9 @@ describe("ChatThread: busca nas mensagens carregadas", () => {
     const bolha = container.querySelector('[data-search-match="true"] [data-testid="message-bubble"]');
     expect(bolha?.className).toContain("ring-2");
     // Não consulta o servidor: a busca é só sobre o que já está carregado.
-    expect(get).not.toHaveBeenCalled();
+    // (A lista de favoritas é carregada ao abrir a conversa, para desenhar a
+    // estrela nas bolhas — não é a busca, e por isso fica fora desta conta.)
+    expect(get.mock.calls.filter((c) => !String(c[0]).endsWith("/favoritas"))).toEqual([]);
   });
 
   it("leva a primeira ocorrência ao campo de visão", () => {

@@ -111,6 +111,22 @@ describe("regra própria segura", () => {
     expect(Date.now() - antes).toBeLessThan(100);
   });
 
+  it("cadeia de opcionais e de faixas largas é recusada (auditoria de 14/11)", () => {
+    for (const r of [`${"a?".repeat(40)}!`, `${"a?".repeat(9)}!`, `\\w*\\w*\\w*${"a?".repeat(3)}!`, `${"a{0,99}".repeat(25)}!`, `${"a{0,99}".repeat(4)}!`, "a{1,3}b{2,9}c{0,5}d{1,4}"])
+      expect(problemaDaRegex(r), r).not.toBeNull();
+    // O que é comum continua passando: poucos opcionais, faixas exatas.
+    for (const r of ["^\\+?55?\\s?\\(?\\d{2}\\)?\\s?\\d{4,5}-?\\d{4}$", "^\\d{3}\\.?\\d{3}\\.?\\d{3}-?\\d{2}$", "^[A-Z]{3}\\d{1,2}[A-Z]?\\d{2}$"])
+      expect(problemaDaRegex(r), r).toBeNull();
+  });
+
+  it("a pior regra aceita com opcionais, na maior mensagem, roda rápido", () => {
+    const pior = `\\w*\\w*\\w{0,99}${"a?".repeat(2)}!`;
+    expect(problemaDaRegex(pior)).toBeNull();
+    const antes = Date.now();
+    casaRegex(pior, "a".repeat(1000));
+    expect(Date.now() - antes).toBeLessThan(1500);
+  });
+
   it("a pior regra aceita, na maior mensagem, roda rápido", () => {
     const pior = "\\w*\\w*\\w*!";
     expect(problemaDaRegex(pior)).toBeNull();

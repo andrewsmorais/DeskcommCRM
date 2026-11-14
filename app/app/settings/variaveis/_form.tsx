@@ -3,6 +3,7 @@
  * O formulário de Variáveis da empresa: uma linha por variável (nome, valor,
  * para que serve), com o `{{empresa.nome}}` pronto para copiar.
  */
+import { copyToClipboard } from "@/lib/clipboard";
 import { Copy, Plus, Trash } from "@/lib/ui/icons";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -59,10 +60,9 @@ export function VariaveisForm({ initial }: { initial: VariavelDaEmpresa[] }) {
   }
 
   function copiar(chave: string) {
-    void navigator.clipboard
-      ?.writeText(`{{${PREFIXO_DA_EMPRESA}${chave}}}`)
-      .then(() => toast.success(t("Copiado.")))
-      .catch(() => undefined);
+    void copyToClipboard(`{{${PREFIXO_DA_EMPRESA}${chave}}}`).then((copiou) => {
+      if (copiou) toast.success(t("Copiado."));
+    });
   }
 
   function salvar() {
@@ -115,7 +115,7 @@ export function VariaveisForm({ initial }: { initial: VariavelDaEmpresa[] }) {
                   <button
                     type="button"
                     onClick={() => copiar(l.chave)}
-                    className="inline-flex items-center gap-1 rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground hover:text-foreground"
+                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground hover:text-foreground"
                     title={t("Copiar para usar na mensagem")}
                   >
                     {`{{${PREFIXO_DA_EMPRESA}${l.chave}}}`}

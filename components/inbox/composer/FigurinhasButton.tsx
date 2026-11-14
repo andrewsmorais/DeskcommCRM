@@ -95,7 +95,7 @@ export function FigurinhasButton({ conversationId, disabled }: { conversationId:
                 </button>
                 <button
                   type="button"
-                  className="absolute -top-1 -right-1 hidden rounded-full bg-background p-0.5 shadow group-hover:block focus-visible:block"
+                  className="absolute -top-1 -right-1 hidden rounded-full bg-background p-0.5 shadow-sm group-hover:block focus-visible:block"
                   aria-label={t("Apagar figurinha")}
                   onClick={() => apagar.mutate(f.id)}
                 >

@@ -16,6 +16,7 @@ import {
   useMensagensDaEquipe,
 } from "@/hooks/equipe/useChatDaEquipe";
 import { useT } from "@/hooks/i18n/useT";
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { CORPO_MAX, SALA_GERAL } from "@/lib/equipe/chat";
 import { ChatsCircle, PaperPlaneTilt, UsersThree } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
@@ -25,19 +26,17 @@ function iniciais(nome: string): string {
   return ((p[0]?.[0] ?? "") + (p.length > 1 ? (p[p.length - 1]?.[0] ?? "") : "")).toUpperCase() || "?";
 }
 
-function hora(iso: string): string {
+function hora(iso: string, tag: string): string {
   const d = new Date(iso);
   const hoje = new Date();
   const mesmoDia = d.toDateString() === hoje.toDateString();
-  return mesmoDia
-    ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) +
-        " " +
-        d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const relogio = d.toLocaleTimeString(tag, { hour: "2-digit", minute: "2-digit" });
+  return mesmoDia ? relogio : `${d.toLocaleDateString(tag, { day: "2-digit", month: "2-digit" })} ${relogio}`;
 }
 
 export function ChatDaEquipe() {
   const t = useT();
+  const tag = useTagDeIdioma();
   const router = useRouter();
   const params = useSearchParams();
   const com = params.get("com") || SALA_GERAL;
@@ -112,7 +111,7 @@ export function ChatDaEquipe() {
                       {c.chave === SALA_GERAL ? t("Geral") : c.nome}
                     </span>
                     {c.ultima ? (
-                      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{hora(c.ultima.quando)}</span>
+                      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{hora(c.ultima.quando, tag)}</span>
                     ) : null}
                   </span>
                   <span className="flex items-center gap-2">
@@ -167,8 +166,8 @@ export function ChatDaEquipe() {
                     <p className="mb-0.5 text-xs font-semibold">{nomes[m.autor_user_id] ?? t("Pessoa da equipe")}</p>
                   ) : null}
                   <p className="whitespace-pre-wrap wrap-anywhere">{m.corpo}</p>
-                  <p className={cn("mt-1 text-[10px]", minha ? "text-primary-foreground/80" : "text-muted-foreground")}>
-                    {hora(m.created_at)}
+                  <p className={cn("mt-1 text-[10px]", minha ? "text-primary-foreground" : "text-muted-foreground")}>
+                    {hora(m.created_at, tag)}
                   </p>
                 </div>
               </div>

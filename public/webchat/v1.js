@@ -201,6 +201,16 @@
 
     if (config.saudacao) lista.appendChild(el("div", "msg deles", config.saudacao));
 
+    // O servidor encerrou este visitante (dados apagados a pedido): token novo,
+    // tela limpa. A próxima mensagem abre uma conversa nova.
+    function recomecar() {
+      memoria.visitante = novoToken();
+      guardar();
+      vistas = {};
+      ultima = "";
+      while (lista.firstChild) lista.removeChild(lista.firstChild);
+      if (config.saudacao) lista.appendChild(el("div", "msg deles", config.saudacao));
+    }
     function rolar() {
       lista.scrollTop = lista.scrollHeight;
     }
@@ -220,6 +230,7 @@
       if (ultima) corpo.depois = ultima;
       return pedir("/ler", corpo)
         .then(function (r) {
+          if (r.status === 410) return recomecar();
           if (!r.ok || !r.corpo.data) return;
           var novas = 0;
           r.corpo.data.mensagens.forEach(function (m) {
@@ -318,6 +329,10 @@
               if (campoNome.parentNode) form.removeChild(campoNome);
               if (campoEmail.parentNode) form.removeChild(campoEmail);
             }
+          } else if (r.status === 410) {
+            recomecar();
+            campo.value = texto;
+            lista.appendChild(el("div", "nota", "Sua conversa anterior foi encerrada. Envie de novo para começar outra."));
           } else if (r.status === 429) {
             falhou("Muitas mensagens seguidas. Aguarde um pouco e tente de novo.");
           } else {

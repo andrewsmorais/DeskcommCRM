@@ -1,0 +1,645 @@
+[
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "chatbot-regex-segura:uncounted-optional-and-bounded-quantifiers",
+  "title": "The chatbot regex validator accepts patterns with many `?` or `{n,m}` quantifiers outside groups, which may stall the shared worker",
+  "description": "The custom rule (\"regra própria\") of the \"Pedir para digitar\" chatbot step is a regular expression written by a tenant manager. It is run synchronously, with no deadline, on the first 100 characters of a message sent by a contact. The validator `problemaDaRegex` is the only bound on matching cost. Source reading confirms that it counts only `*`, `+` and `{n,}` (at most 3), and that it looks at `?`, `|` and `{n,m}` only inside a group that is itself repeated. A flat pattern with no groups, made only of optional atoms or range-bounded atoms, therefore passes with zero counted repetitions, up to the 200-character cap. Examples that the validator accepts by source reading: `a?` written 40 times followed by `!` (81 characters), and `a{0,99}` written about 25 times followed by `!`. On a 100-character run of `a`, a plain backtracking engine has about 2^40 paths for the first and a high-degree polynomial for the second. If the deployed V8 engine really takes that time, a manager of one organization who publishes such a flow and sends one message of 100 `a` characters could hold the event loop of the Node process that drains chatbot events for every organization of the installation. The matching time was not measured in this run, so the stall itself is not demonstrated. What is established is only that the validator accepts these patterns and that the complexity argument in the file header does not cover them.",
+  "claimed_root_cause": "`problemaDaRegex` (lib/chatbot/regex-segura.ts:86) counts as free repetition only `/[*+]|\\{\\d+,\\}/`. The check at line 80 that covers `?`, `|` and `{n,m}` runs only for the inner text of a group followed by a quantifier (line 76). A pattern with no groups never reaches it. Chains of `?` or `{n,m}` atoms are thus unlimited apart from the 200-character cap, although on a 100-character input `{0,99}` behaves like `*` and N consecutive optional atoms give up to 2^N backtracking paths.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "app/api/v1/chatbot-flows/[id]/route.ts",
+    "line": 77,
+    "scope": "PATCH",
+    "description": "A user with role manager saves or publishes a flow. A `pedir_digitar` option with formato `regex` carries a pattern of up to 200 characters (lib/chatbot/passos.ts:141). The flow validation in lib/chatbot/validar.ts:132 calls problemaDaRegex, which returns null for a group-free pattern of `?` or `{n,m}` quantifiers."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/chatbot/motor.ts",
+    "line": 796,
+    "scope": "andar (case pedir_digitar)",
+    "description": "When the contact's message arrives, the engine calls primeiraOpcaoQueBate(c.opcoes, ctx.mensagem). The same call is made again at line 819 for the reply path. The engine is imported by the agent-engine drain (lib/agent-engine/edge/crm/drain.ts:32)."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/chatbot/regras.ts",
+    "line": 517,
+    "scope": "primeiraOpcaoQueBate",
+    "description": "For each option with formato `regex`, calls casaRegex(o.regex, bruto) with the raw contact message."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/chatbot/regex-segura.ts",
+    "line": 86,
+    "scope": "problemaDaRegex",
+    "description": "Counts only `*`, `+` and `{n,}`. A pattern made only of `?` or `{n,m}` quantifiers outside groups has zero counted repetitions and returns null."
+   },
+   {
+    "kind": "sink",
+    "file": "lib/chatbot/regex-segura.ts",
+    "line": 98,
+    "scope": "casaRegex",
+    "description": "`new RegExp(padrao.trim(), \"iu\").test(texto.trim().slice(0, 100))` runs synchronously on the Node event loop with no deadline."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "lib/chatbot/regex-segura.ts",
+    "line": 86,
+    "description": "The free-repetition count uses `/[*+]|\\{\\d+,\\}/g`. `?` and `{n,m}` are not counted."
+   },
+   {
+    "file": "lib/chatbot/regex-segura.ts",
+    "line": 80,
+    "description": "`?`, `|` and `{n,` are tested only on the inner text of a group that is followed by a quantifier (condition at line 76). A pattern without groups never reaches this test."
+   },
+   {
+    "file": "lib/chatbot/regex-segura.ts",
+    "line": 5,
+    "description": "The header (lines 4-8) states that a badly written rule can freeze the whole worker for every organization of the installation, and that a running `test` cannot be interrupted. Lines 18-19 claim a worst case of about 100^4 steps, which assumes only rules (3) and (4)."
+   },
+   {
+    "file": "lib/chatbot/pedir-digitar-opcoes.test.ts",
+    "line": 115,
+    "description": "The committed \"worst accepted rule\" test measures only `\\w*\\w*\\w*!`. The rejection list at line 103 has no chain of `?` or `{n,m}` atoms, so no committed test covers this shape."
+   },
+   {
+    "file": "lib/chatbot/passos.ts",
+    "line": 141,
+    "description": "The schema caps the option regex at 200 characters. This is the only other bound on the pattern."
+   },
+   {
+    "file": "docker-compose.prod.yml",
+    "line": 60,
+    "description": "The production compose file declares one `worker` service for the agent-engine. The default installation therefore has one worker process, not one per organization."
+   }
+  ],
+  "blockers": [
+   "No approved OS sandbox is available in this run, so the matching time of an accepted pattern (for example `a?` repeated 20 to 40 times followed by `!`, on 100 `a` characters) was not measured in the Node/V8 version of the worker image. Whether it is seconds, hours or negligible is a runtime fact.",
+   "V8 behaviour for this pattern shape is not a repository fact. An engine optimization could remove the exponential search, and the run did not observe either outcome.",
+   "Recovery is not established from source: whether the event that triggers the slow match is redelivered after the worker restarts (making the stall repeat), and whether a container healthcheck or supervisor restarts a worker whose event loop is blocked."
+  ],
+  "validation_plan": {
+   "local": "In an isolated process with no network, a 5-second CPU limit and a read-only copy of the repository, import problemaDaRegex and casaRegex from lib/chatbot/regex-segura.ts. Step 1: assert that problemaDaRegex returns null for 'a?' repeated N times + '!' for N = 16, 18, 20, 22, 24, and for 'a{0,99}' repeated K times + '!' for K = 3, 4, 5. Step 2: time casaRegex for each pattern on 'a' repeated 100 times, in increasing order, and stop at the first measurement above 1 second. A time that roughly doubles for each extra `a?` confirms exponential growth; flat times in microseconds refute the candidate. Use the same Node major version as Dockerfile.worker. Do not run inside a live worker.",
+   "deployment": "The owner checks, on their own installation and without any audit traffic: (1) that a single agent-engine worker container serves every organization; (2) whether an event_log event whose handler does not return is picked up again after the worker restarts; (3) whether anything restarts a worker whose event loop is blocked."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "chatbot-webhook:response-buffered-before-64k-cap",
+  "title": "The chatbot webhook block buffers the whole remote response before applying the 64 KB limit",
+  "description": "The chatbot webhook step calls a URL configured by a tenant manager, from the agent-engine worker process. The file header states that the response is read up to 64 KB, but the code awaits `res.text()` and only then slices the string. The whole decompressed body is therefore held in the worker's memory, and the only bound on the read is the 8-second abort signal. A manager who points the step at a server they control and returns a very large or highly compressed body could make the worker allocate far more than 64 KB per call, each time a contact message reaches the step. Source shows the worker container has `mem_limit: 512m` and `restart: unless-stopped` (docker-compose.prod.yml:72 and :99), so the possible result is an out-of-memory kill and restart of the worker that drains events for every organization of the installation, not exhaustion of the whole host. Whether a response can reach that limit within 8 seconds was not observed. The actor needs the manager role in a tenant, so the result matters mainly on installations that host more than one organization.",
+  "claimed_root_cause": "chamarWebhookDoChatbot applies TETO_DA_RESPOSTA to the string returned by `res.text()` instead of limiting bytes while reading the stream; it does not check Content-Length and does not cap the decompressed size.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "app/api/v1/chatbot-flows/[id]/route.ts",
+    "line": 77,
+    "scope": "PATCH",
+    "description": "After requireSupportWrite, requireRole(\"manager\") admits a tenant manager, who can publish a flow containing a webhook step whose https URL points to a server they control."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/chatbot/executar.ts",
+    "line": 1372,
+    "scope": "fazerWebhook",
+    "description": "When a contact message reaches the step, the worker (via lib/agent-engine/edge/crm/drain.ts) calls chamarWebhookDoChatbot with the step configuration."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/chatbot/webhook.ts",
+    "line": 122,
+    "scope": "chamarWebhookDoChatbot",
+    "description": "After the outbound URL and resolved-address guards pass, fetch is called with redirect manual and an 8 s AbortSignal; no response size limit is set."
+   },
+   {
+    "kind": "sink",
+    "file": "lib/chatbot/webhook.ts",
+    "line": 129,
+    "scope": "chamarWebhookDoChatbot",
+    "description": "`(await res.text()).slice(0, TETO_DA_RESPOSTA)` reads the entire decompressed body into a string before cutting it to 64 KB."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "lib/chatbot/webhook.ts",
+    "line": 129,
+    "description": "The slice is applied only after the full body has been read into a string."
+   },
+   {
+    "file": "lib/chatbot/webhook.ts",
+    "line": 15,
+    "description": "The header states the intended control: 'resposta lida até 64 KB'."
+   },
+   {
+    "file": "lib/chatbot/webhook.ts",
+    "line": 127,
+    "description": "The only bound on the read is AbortSignal.timeout(TEMPO_DO_WEBHOOK_MS), 8 seconds; there is no byte limit."
+   },
+   {
+    "file": "docker-compose.prod.yml",
+    "line": 72,
+    "description": "The worker service has `mem_limit: 512m` (with `restart: unless-stopped` at line 99), which contains the effect to a kill and restart of the worker container."
+   }
+  ],
+  "blockers": [
+   "No approved sandbox in this run: memory growth of the worker from a large or compressed response was not observed, so it is not established that one or a few calls can reach the 512 MB container limit within the 8-second window.",
+   "How much decompressed data the runtime's fetch delivers in 8 seconds on the target hardware and network is not a source fact.",
+   "Whether the installation hosts more than one organization (so that a manager of one tenant affects others through the shared worker), and how many webhook calls the worker runs concurrently in practice, are deployment facts."
+  ],
+  "validation_plan": {
+   "local": "In an isolated process with a 256 MB memory limit and no network, call chamarWebhookDoChatbot with `pularChecagemDeRede: true` and an injected `fetch` that returns a Response streaming 1 MB, 8 MB and 32 MB of the letter 'a'. Record process.memoryUsage().rss before and after each call. RSS growing with body size while the returned value stays within 64 KB confirms the missing bound; stop at 32 MB.",
+   "deployment": "The owner checks whether the installation has more than one organization served by the same worker container, and looks in the worker container's history (restart count and OOM-kill flag in `docker inspect`) for restarts that coincide with chatbot webhook calls in the worker log line 'chatbot: WebHook chamado'."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "ci-seguranca-secret-with-mutable-actions",
+  "title": "Security CI job keeps the Anthropic API key readable while running actions and pip packages resolved by mutable references",
+  "description": "The seguranca workflow passes the repository secret ANTHROPIC_API_KEY into the environment of the step that starts a background `next start` process (lines 113-118). That process stays alive for the rest of the job. Later steps on the same runner, under the same OS user, run code resolved by mutable references: zaproxy/action-full-scan by tag v0.13.0 (lines 166 and 183), schemathesis and garak installed from PyPI by version range without hashes (lines 155 and 204), and actions/upload-artifact by major tag (line 270). Earlier steps are also tag-referenced: supabase/setup-cli@v3 (line 54), and pnpm/action-setup@v6, actions/cache@v4 and actions/setup-node@v7 inside .github/actions/preparar-node/action.yml. They run before the secret appears but on the same runner, so they could leave something behind that reads it later. Code running as the runner user can read the environment of the app process and the runner has open egress, so a compromised tag or package could copy the key out. This needs an upstream compromise or tag move in one of those third-party sources; nothing in this repository lets an outside contributor trigger it. The workflow runs only on workflow_dispatch, push to the branch chataionline/seguranca-auditoria, and a weekly schedule, with permissions contents: read and no pull-request trigger. The exposure is therefore limited to this one provider key and its billing. The sibling trivy.yml pins its third-party action by commit SHA and states why, but holds no secret. Source reading confirms the workflow structure; it cannot show whether the secret is configured or whether a repository-level pinning policy exists, so this stays needs_validation.",
+  "claimed_root_cause": "A long-lived provider key is injected at process level into a background process (seguranca.yml lines 113-118) in a job whose third-party actions and Python tools are referenced by tag or version range rather than commit SHA or hash. The integrity of the code sharing the runner with the secret therefore depends on upstream tag and package owners.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": ".github/workflows/seguranca.yml",
+    "line": 166,
+    "scope": "jobs.seguranca.steps (3/4 ZAP — de fora, sem login)",
+    "description": "Third-party action zaproxy/action-full-scan@v0.13.0 is resolved by tag at run time, so whoever controls that tag decides the code that runs on the runner. The same reference repeats at line 183. The same kind of mutable resolution applies to the pip installs of schemathesis (line 155) and garak (line 204)."
+   },
+   {
+    "kind": "propagation",
+    "file": ".github/workflows/seguranca.yml",
+    "line": 118,
+    "scope": "jobs.seguranca.steps (Subir o app (next start) e esperar responder) run",
+    "description": "`nohup pnpm exec next start -p 3001 > /tmp/app.log 2>&1 &` leaves a background process running for the remainder of the job. It inherits the step environment, and later steps run as the same runner user."
+   },
+   {
+    "kind": "sink",
+    "file": ".github/workflows/seguranca.yml",
+    "line": 116,
+    "scope": "jobs.seguranca.steps (Subir o app (next start) e esperar responder) env",
+    "description": "`ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}` is set in the environment of the step that starts the background app process, so the provider key remains present on the runner while later third-party code executes."
+   }
+  ],
+  "evidence": [
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 116,
+    "description": "The secret is set as an environment variable of the step that starts the long-running app process."
+   },
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 118,
+    "description": "The app is started with nohup in the background and is never stopped, so it outlives the step."
+   },
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 166,
+    "description": "zaproxy/action-full-scan is referenced by tag v0.13.0, not by commit SHA; repeated at line 183."
+   },
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 155,
+    "description": "schemathesis is installed from PyPI by version range (>=4.3,<5) with no hash pinning, after the secret-bearing process has started."
+   },
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 204,
+    "description": "garak is installed from PyPI by version range (>=0.17,<0.18) with no hash pinning, in the step that runs only when the secret exists."
+   },
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 270,
+    "description": "actions/upload-artifact@v7 is referenced by major tag and runs while the app process is still alive."
+   },
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 54,
+    "description": "supabase/setup-cli@v3 (third party, major tag) runs earlier in the same job and can persist changes on the runner."
+   },
+   {
+    "file": ".github/actions/preparar-node/action.yml",
+    "line": 83,
+    "description": "pnpm/action-setup@v6 (third party, major tag) runs earlier in the same job; actions/cache@v4 (line 78) and actions/setup-node@v7 (line 89) are also tag-referenced."
+   },
+   {
+    "file": ".github/workflows/seguranca.yml",
+    "line": 21,
+    "description": "Limiting control: triggers are only workflow_dispatch, push to one branch, and schedule (lines 21-32), with permissions contents: read (lines 34-35). No pull-request or fork-triggered path reaches the secret."
+   },
+   {
+    "file": ".github/workflows/trivy.yml",
+    "line": 9,
+    "description": "The sibling workflow states that its action is pinned by commit because a tag can be replaced by whoever controls its repository (pinned at line 44). That control is absent from the workflow that holds the secret."
+   }
+  ],
+  "blockers": [
+   "Whether the ANTHROPIC_API_KEY secret is actually configured in the repository or organization settings is not visible in source. Without it the value is empty and the path is inert (the workflow's own TEM_CHAVE guard at line 47 anticipates that case).",
+   "Whether the repository or organization enforces an allowed-actions policy or mandatory full-commit-SHA pinning in GitHub Actions settings is not visible in source. Such a policy would block the tag-referenced actions, though not the PyPI installs.",
+   "The disclosure requires an upstream compromise or tag move in a third-party action or PyPI package. That is an external event that cannot be observed or reproduced from this repository, so no result is demonstrated."
+  ],
+  "validation_plan": {
+   "deployment": "The owner checks two things in the GitHub repository settings, without running anything. (1) Under Settings > Secrets and variables > Actions, whether ANTHROPIC_API_KEY exists at repository or organization level, and whether it is a dedicated key with a low spend limit or a key shared with production. (2) Under Settings > Actions > General, whether actions are restricted to an allow-list or required to be pinned to a full-length commit SHA. If the secret exists and no pinning policy is enforced, the exposure stands as described. Smallest source fix: pin every third-party `uses:` in .github/workflows/seguranca.yml and .github/actions/preparar-node/action.yml to a full commit SHA, as trivy.yml already does; install schemathesis and garak from a requirements file with --require-hashes; and use a dedicated spend-capped key for this job."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "storage-path-dot-segment:figurinhas-post-download",
+  "title": "Sticker save downloads a stored media path with the service role after only a prefix check, so a path with '..' segments may read an object outside the tenant folder",
+  "description": "Source reading supports the trace, but no cross-tenant read was observed, so this stays needs_validation. POST /api/v1/figurinhas with { message_id } (role agent or above) reads messages.media_storage_path with the session client and checks only that it starts with `<orgId>/`. It then downloads that path from the private whatsapp-media bucket with the service-role client, converts the bytes to WebP, stores the result under the caller's own sticker folder, and GET /api/v1/figurinhas returns a signed URL for it. An agent can place an arbitrary suffix in that column: sendMessageSchema accepts any media_storage_path of 1 to 500 characters, sendMessageHandler checks only startsWith(`<org>/<conversation>/`), and the row is inserted with the raw path and status queued before any signing or send step. In storage-js 2.117.2, download() builds `${url}/object/${bucketId}/${path}` with no encoding or normalisation; _getFinalPath strips only leading slashes. That string goes to fetch unchanged through fetchDoServidor. Standard URL parsing removes '..' segments before a request is sent, so a stored value such as `<orgA>/<convA>/../../<orgB>/<convB>/<file>` would be requested as `/object/whatsapp-media/<orgB>/<convB>/<file>` with the service-role key, which bypasses storage policies. Limits visible in source: the fetched object must be at most 5 MB and decode as PNG, JPEG, WebP or GIF, otherwise the route returns 422 and nothing is stored; the attacker gets a re-encoded WebP copy, not the original bytes; and the attacker must know the victim object's exact key, which contains the organization UUID, the conversation UUID and a random file name. More '..' segments could aim the same service-role GET at another bucket or another path under the Supabase base URL, but only a response that decodes as an image would be returned. The ownership check and the schema field predate this change; the service-role download of the stored path in the sticker route is new.",
+  "claimed_root_cause": "Tenant ownership of a storage object is decided by a string prefix check (startsWith) on a caller-supplied path that the storage client library later places unencoded in a URL path, where dot segments are resolved. The new sticker-save route adds a service-role download of that stored path and re-checks only the organization prefix.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "lib/schemas/messaging.ts",
+    "line": 77,
+    "scope": "sendMessageSchema",
+    "description": "The POST /api/v1/messages body field media_storage_path is accepted as any string of 1 to 500 characters, with no pattern."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/messaging/media/upload-validation.ts",
+    "line": 16,
+    "scope": "isMediaPathOwnedBy",
+    "description": "Ownership is path.startsWith(`${orgId}/${conversationId}/`), so '..' segments after the prefix pass."
+   },
+   {
+    "kind": "propagation",
+    "file": "app/api/v1/messages/_handler.ts",
+    "line": 718,
+    "scope": "sendMessageHandler",
+    "description": "The raw path is written to messages.media_storage_path in the row inserted with status queued, before any signing or send step."
+   },
+   {
+    "kind": "propagation",
+    "file": "app/api/v1/figurinhas/route.ts",
+    "line": 103,
+    "scope": "POST",
+    "description": "The sticker-save route reads the message with the session client and requires only type sticker or image, not revoked, and media_storage_path.startsWith(`${orgId}/`)."
+   },
+   {
+    "kind": "sink",
+    "file": "app/api/v1/figurinhas/route.ts",
+    "line": 105,
+    "scope": "POST",
+    "description": "admin.storage.from('whatsapp-media').download(m.media_storage_path) runs with the service role. The bytes are converted, uploaded to the caller's sticker folder, and later exposed by GET through a signed URL."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "app/api/v1/figurinhas/route.ts",
+    "line": 105,
+    "description": "Service-role download of a path taken from the message row, guarded only by the organization-prefix check on line 103."
+   },
+   {
+    "file": "lib/messaging/media/upload-validation.ts",
+    "line": 8,
+    "description": "The comment says storage keys are literal with no traversal semantics. That is true of keys sent in a JSON body, but this key is placed in a URL path by the client library."
+   },
+   {
+    "file": "app/api/v1/messages/_handler.ts",
+    "line": 526,
+    "description": "isMediaPathOwnedBy is the only check on a caller-supplied media_storage_path before the row is inserted."
+   },
+   {
+    "file": "node_modules/.pnpm/@supabase+storage-js@2.117.2/node_modules/@supabase/storage-js/src/packages/StorageFileApi.ts",
+    "line": 926,
+    "description": "download() builds `${this.url}/${renderPath}/${_path}` and passes it to fetch; _getFinalPath (line 1536) only prefixes the bucket id and strips leading slashes, with no encoding or dot-segment handling."
+   },
+   {
+    "file": "lib/supabase/fetch-do-servidor.ts",
+    "line": 89,
+    "description": "Line number approximate. The admin client's fetch wrapper passes the URL string to globalThis.fetch after at most swapping the public base for the internal one; it does not validate or normalise the path."
+   },
+   {
+    "file": "app/api/v1/figurinhas/route.ts",
+    "line": 54,
+    "description": "GET returns signed URLs for every sticker in the organization's library, which is how the converted copy would reach the agent."
+   }
+  ],
+  "blockers": [
+   "No approved sandbox in this run, so no target code was executed and no request was observed.",
+   "Not observed: that the Storage API, on receiving the collapsed request `/object/whatsapp-media/<orgB>/<convB>/<file>` with the service-role key, returns the other tenant's object. The collapse itself follows from standard URL parsing in fetch but was not executed here.",
+   "Exploitation needs the exact key of a victim object (organization UUID, conversation UUID, random file name). No source-visible way for an agent of another tenant to learn such a key was found."
+  ],
+  "validation_plan": {
+   "local": "On a throwaway local Supabase with two dummy organizations, upload a small PNG to whatsapp-media/<orgB>/<convB>/x.png. As an agent of orgA, POST /api/v1/messages with type image and media_storage_path `<orgA>/<convA>/../../<orgB>/<convB>/x.png`, and confirm the row is stored even if the send fails. Then POST /api/v1/figurinhas with { message_id } for that row and check whether the response is 201 and GET /api/v1/figurinhas returns a sticker rendered from orgB's image. Stop at that single dummy object. A unit-level alternative is to assert that `new URL(base + '/object/whatsapp-media/a/b/../../c/d.png').pathname` ends in `/object/whatsapp-media/c/d.png`, and that both routes reject a path containing '.', '..', '%' or a backslash segment once fixed.",
+   "deployment": "The owner can query their own database for stored paths with dot or encoded segments: select count(*) from messages where media_storage_path ~ '(^|/)\\.\\.?(/|$)' or media_storage_path like '%\\%%' escape '\\'. Any non-zero count deserves review of those rows and of the stickers saved from them."
+  }
+ },
+ {
+  "verdict": "confirmed",
+  "fingerprint": "telefone-oculto/active-org-cookie-desvia-a-pergunta",
+  "title": "Hidden-phone mask is switched off by sending an active_org cookie that names no organization of the user",
+  "description": "The hidden-phone control decides whether to mask by asking the database about the organization named in the raw active_org cookie. Authorization ignores that cookie when it matches none of the user's memberships and serves the user's first organization instead. A team member marked as 'does not see phone numbers' can therefore send any other UUID, or a non-UUID string, in active_org: the mask question is answered 'not hidden', while routes such as GET /api/v1/contacts still return their real organization's contacts with full numbers. Removing the cookie does not have this effect, because a null organization asks 'hidden in any of my organizations'. This goes through the product's own routes and session client, so it is a separate defect from the already-disclosed limitation (service-role reads and direct PostgREST calls are unmasked). The practical gain over that limitation is small, so severity is low.",
+  "root_cause": "lib/supabase/server.ts feeds the unvalidated active_org cookie into fetchComTelefoneOculto, while requireRole resolves the organization through resolveActiveOrg and escolherMembroAtivo, which fall back to the first membership when the cookie matches nothing. fn_eu_oculto_telefone returns false for an organization the caller is not a member of, and the wrapper also treats any non-OK RPC response or exception as false. The two components disagree about which organization the request is in, and the disagreement resolves to 'show the number'.",
+  "intended_behavior": "For a member whose user_organizations.ocultar_telefone is true in the organization the request is served for, every phone field read through the server session client is masked, whatever cookies the client sends.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "lib/supabase/server.ts",
+    "line": 58,
+    "scope": "clienteDeServidor",
+    "description": "The raw value of the client-supplied active_org cookie is passed as orgAtiva to fetchComTelefoneOculto, with no check that the user belongs to that organization."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/supabase/telefone-oculto-fetch.ts",
+    "line": 38,
+    "scope": "fetchComTelefoneOculto.perguntar",
+    "description": "The cookie value is sent as p_org to the fn_eu_oculto_telefone RPC. A non-OK response (line 40, for example a value that is not a UUID) or an exception (line 43) returns false, meaning 'do not mask'."
+   },
+   {
+    "kind": "propagation",
+    "file": "supabase/migrations/20261114020000_0517_telefone_oculto.sql",
+    "line": 25,
+    "scope": "fn_eu_oculto_telefone",
+    "description": "The function returns coalesce(bool_or(ocultar_telefone), false) over the caller's non-revoked memberships filtered by organization_id = p_org. For an organization the caller is not in there are no rows, so the result is false."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/auth/server.ts",
+    "line": 76,
+    "scope": "escolherMembroAtivo",
+    "description": "When the cookie matches no membership, the active organization falls back to memberships[0] (line 85), so requireRole and the route queries still run for the user's real organization."
+   },
+   {
+    "kind": "sink",
+    "file": "lib/supabase/telefone-oculto-fetch.ts",
+    "line": 55,
+    "scope": "fetchComTelefoneOculto",
+    "description": "With the decision false, the original PostgREST response is returned untouched, and phone_number and the other phone fields reach the route or page unmasked."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "lib/supabase/server.ts",
+    "line": 58,
+    "description": "cookieStore.getAll().find((c) => c.name === \"active_org\")?.value ?? null is used directly as the organization for the mask question."
+   },
+   {
+    "file": "lib/auth/server.ts",
+    "line": 297,
+    "description": "resolveActiveOrg uses escolherMembroAtivo(authUser.organizations, cookie), which returns the first membership when the cookie is not one of the user's organizations (lines 76-86)."
+   },
+   {
+    "file": "app/api/v1/contacts/route.ts",
+    "line": 101,
+    "description": "The session path of the contacts list takes the organization from requireRole (authz.org.orgId, the fallback organization) and reads with createClient() (line 107), the session client that carries the mask wrapper. The selected columns in _handler.ts line 35 include phone_number."
+   },
+   {
+    "file": "supabase/baseline.sql",
+    "line": 43631,
+    "description": "The installed definition of fn_eu_oculto_telefone matches the migration: no rows for a foreign p_org gives false. This is the only definition in the baseline."
+   },
+   {
+    "file": "lib/supabase/telefone-oculto-fetch.test.ts",
+    "line": 35,
+    "description": "Committed test: when the RPC answers false the wrapper returns the full number '+5511999998888'. Line 41 asserts the same for a 404 response."
+   }
+  ],
+  "conditions": [
+   {
+    "kind": "authentication_level",
+    "description": "The attacker is a logged-in member of the tenant."
+   },
+   {
+    "kind": "authorization_role",
+    "description": "Agent or viewer whose membership has ocultar_telefone = true, set by a manager."
+   },
+   {
+    "kind": "data_state",
+    "description": "The attacker sends an active_org cookie whose value is not one of their organizations: any other UUID, or a non-UUID string. Not in support-impersonation mode. The fallback organization (first membership by accepted_at, then organization_id) is the one whose numbers are exposed; for a single-organization user that is their only organization."
+   }
+  ],
+  "execution": {
+   "attacker_perspective": "A restricted agent using their own browser session or an HTTP client carrying their own session cookie.",
+   "payloads": [
+    "Cookie: active_org=00000000-0000-4000-8000-000000000000 (sent alongside the agent's normal session cookie)"
+   ],
+   "instructions": [
+    "No target code was run: this run had no approved sandbox. The result is stated from deterministic source reading plus the committed unit test lib/supabase/telefone-oculto-fetch.test.ts, which was read and not run.",
+    "Followed the active_org cookie value from lib/supabase/server.ts line 58 into the RPC body in lib/supabase/telefone-oculto-fetch.ts line 38.",
+    "Evaluated fn_eu_oculto_telefone (migration 0517 and supabase/baseline.sql line 43631) for a p_org in which the caller has no membership: the aggregate has no rows and coalesce gives false.",
+    "Followed the same cookie value through requireRole, resolveActiveOrg and escolherMembroAtivo in lib/auth/server.ts lines 76-86 and 297: no match, so memberships[0] becomes the active organization.",
+    "Confirmed that GET /api/v1/contacts (app/api/v1/contacts/route.ts lines 101-107) uses that organization with the masked session client, and that proxy.ts does not reference active_org."
+   ],
+   "observed_result": "By source reading, not execution: with an active_org value that matches no membership, the mask decision is false while the request is served for the user's first organization, so phone_number is returned unmasked. The committed test cases 'quem não está marcado recebe o número inteiro' and the 404 case assert that the wrapper returns phone_number '+5511999998888' unmodified whenever the RPC answers false or errors."
+  },
+  "remediation": {
+   "strategy": "Do not key the mask decision on a client-supplied value. Simplest: always call fn_eu_oculto_telefone with p_org null, which the function already defines as 'hidden in any of my organizations'. The trade-off is that a user hidden in one organization is also masked in their other organizations. To avoid that, pass the organization resolved by resolveActiveOrg instead. Also treat an RPC failure other than 'function does not exist' (404) as 'mask'. Regression case: a member with ocultar_telefone = true and an active_org cookie set to a random UUID, and separately to 'x', still receives masked phone_number. The existing test's expectation of p_org 'org-1' must be updated.",
+   "code_changes": [
+    {
+     "file_name": "lib/supabase/telefone-oculto-fetch.ts",
+     "fixed_code": "      const r = await base(`${raiz}/rest/v1/rpc/fn_eu_oculto_telefone`, {\n        method: \"POST\",\n        headers,\n        // Never the cookie's organization: null asks \"hidden in any of my organizations\".\n        body: JSON.stringify({ p_org: null }),\n      });\n      // Only a missing function (database without migration 0517) means \"nobody is marked\".\n      if (r.status === 404) return false;\n      if (!r.ok) return true;\n      return (await r.json()) === true;"
+    }
+   ]
+  },
+  "severity": {
+   "likelihood": {
+    "score": "medium",
+    "reason": "It takes one edited cookie and no special tooling, but the attacker must be a restricted team member who knows or guesses the mechanism."
+   },
+   "impact": {
+    "score": "low",
+    "reason": "Discloses contact phone numbers of the agent's own tenant to an agent the manager meant to restrict. No cross-tenant data is reached. The same numbers are already reachable by that agent through the disclosed direct-PostgREST limitation, so the added exposure is limited."
+   },
+   "overall_severity": "low"
+  },
+  "confidence": {
+   "score": "high",
+   "reason": "Every step is deterministic in source: the raw cookie reaches the RPC, the SQL returns false for a non-member organization, and authorization falls back to the first membership. Not executed locally."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "vcf-linhasLogicas-quadratic-fold",
+  "title": "vCard import re-scans the growing folded line on every continuation line (quadratic work on the shared Node process, before the 500-row cap)",
+  "description": "POST /api/v1/contacts/import accepts a .vcf of up to 5 MB from any authenticated user with role agent or above. The route has no rate limit, and no request-body limit appears in next.config.ts or the Caddyfiles. vcfParaLinhas runs synchronously at route.ts:131; the 500-row cap is checked only afterwards, at route.ts:151, and it counts finished cards, not physical lines. Inside linhasLogicas, every physical line triggers anterior.split(':') over the whole previous logical line (vcf.ts:51). If the new line starts with a space or tab, it is appended to that previous line (vcf.ts:54), with no cap on the number of continuation lines or on the resulting length. A file with one first line followed by only continuation lines therefore costs work proportional to (number of lines) x (length of the accumulated line). Two shapes fit in 5 MB: about 1.7 million lines of ' a', or a first line of about 2.5 MB followed by about 1.2 million lines holding a single space. Both give on the order of 10^12 characters scanned in one synchronous call. If the accumulated line has no ':', the case-insensitive regex also scans all of it each time. The quoted-printable branch (vcf.ts:52) has the same shape. The app container runs a single 'node server.js' (Dockerfile:143), so while the call runs that process serves no other request for any tenant of the installation. The quadratic growth is established from source. The wall-clock duration was not measured (no sandbox in this run), so whether the stall is seconds or many minutes is not established.",
+  "claimed_root_cause": "linhasLogicas does work proportional to the length of the accumulated logical line for every physical line (split, regex test, string rebuild), with no cap on continuation-line count or logical-line length, and the only bound applied before parsing is the 5 MB file size.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "app/api/v1/contacts/import/route.ts",
+    "line": 84,
+    "scope": "POST",
+    "description": "After requireSupportWrite and requireRole('agent') (lines 63-70), the handler reads a multipart upload from field 'file'. It is treated as vCard when the name ends in .vcf/.vcard or the MIME type is text/vcard (line 100)."
+   },
+   {
+    "kind": "propagation",
+    "file": "app/api/v1/contacts/import/route.ts",
+    "line": 115,
+    "scope": "POST",
+    "description": "The only bound applied before parsing is file.size <= CSV_MAX_BYTES (5 MB)."
+   },
+   {
+    "kind": "propagation",
+    "file": "app/api/v1/contacts/import/route.ts",
+    "line": 131,
+    "scope": "POST",
+    "description": "vcfParaLinhas(text) runs synchronously in the request handler. The CSV_MAX_DATA_ROWS check comes later, at line 151."
+   },
+   {
+    "kind": "sink",
+    "file": "lib/contacts/vcf.ts",
+    "line": 51,
+    "scope": "linhasLogicas",
+    "description": "For each physical line, anterior.split(':') scans the whole accumulated previous logical line and a regex tests its first segment. Lines 52 and 54 then replace it with a longer string."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "lib/contacts/vcf.ts",
+    "line": 54,
+    "description": "A line starting with space or tab is appended to the previous logical line; there is no limit on how many times or on the resulting length."
+   },
+   {
+    "file": "lib/contacts/vcf.ts",
+    "line": 47,
+    "description": "The whole text is split into physical lines with no cap on their number."
+   },
+   {
+    "file": "lib/contacts/csv.ts",
+    "line": 148,
+    "description": "CSV_MAX_BYTES = 5 * 1024 * 1024."
+   },
+   {
+    "file": "app/api/v1/contacts/import/route.ts",
+    "line": 151,
+    "description": "The 500-row cap is checked after the parser has finished, and it counts parsed cards, so a file with zero or one card passes it regardless of line count."
+   },
+   {
+    "file": "Dockerfile",
+    "line": 143,
+    "description": "The app image starts a single 'node server.js' process; the route handler runs on that process's event loop."
+   }
+  ],
+  "blockers": [
+   "No approved OS sandbox in this run, so the parser could not be executed. The actual wall-clock time of vcfParaLinhas on a worst-case 5 MB input in the shipped Node/V8 version is not measured, and it decides whether the stall is negligible or long enough to matter.",
+   "Not source-visible: whether the hosting reverse proxy (Traefik, CloudPanel or another in front of the app) enforces a request-body limit below 5 MB or a request timeout that changes the outcome. The repository's own Caddyfiles and next.config.ts set none."
+  ],
+  "validation_plan": {
+   "local": "In an isolated harness with no network and a CPU-time limit of about 60 s, import only lib/contacts/vcf.ts and call vcfParaLinhas on 'BEGIN:VCARD\\nFN:x\\n' followed by N lines ' a', for N = 10000, 20000, 40000, 80000. Record the time for each and check whether it roughly quadruples when N doubles. Repeat with a first line of 100 KB, 200 KB and 400 KB of 'a' followed by the same number of lines holding one space. Extrapolate to 5 MB; do not run the 5 MB case and do not run against a live app process.",
+   "deployment": "The owner can check two facts on the installation: (1) the maximum upload size and request timeout configured in the proxy in front of the app; (2) that the app service runs as one container with one Node process. No audit traffic should be sent to the deployment."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "webchat-public-enviar:rate-limit-key-forwarded-ip+visitor-token-rotation",
+  "title": "Anonymous webchat sender can sidestep the per-visitor limit by rotating the token, and the per-IP limit too where the proxy appends X-Forwarded-For",
+  "description": "POST /api/v1/webhooks/webchat/<key>/enviar is unauthenticated, and the key is public by design (it sits in the customer site's HTML). Two process-local counters are the only bound on what an anonymous requester can create in the tenant: 60/min per client-IP string and 15/min per visitor-token hash. Source reading establishes three facts. (1) The visitor token is any 43-character base64url string chosen by the requester, so a fresh token per request never reaches the 15/min counter. (2) Each accepted request with an unseen token inserts a contact, a conversation and a message through the service-role client, then runs the shared post-entry step: a lead attempt and an ai_agent.dispatch_requested event. (3) No per-channel or per-organization cap exists, so one truthful address can already create 60 contacts and conversations per minute. The IP key is the leftmost X-Forwarded-For element. Under the nginx vhost the repository documents for CloudPanel installs ($proxy_add_x_forwarded_for appends to the client-sent header), that element would be whatever the client sent, which would remove the per-IP bound as well. Whether this holds depends on the proxy actually deployed; the default compose uses Caddy (caddy:2-alpine, plain reverse_proxy, no trusted_proxies), whose treatment of a client-sent header is not visible in source. If the IP key is requester-controlled, anyone who knows a tenant's key could create Inbox conversations, contacts, leads and event_log rows without a limit, on a database and worker shared by every tenant of the install. The agent cost is narrower than the hunter stated: a webchat channel is created with ai_gate 'allowlist' (closed), so an agent turn per message would only follow where the owner has opened the gate and published an agent for that channel. The existing committed security spec covers only the per-visitor 429 with a constant token.",
+  "claimed_root_cause": "The enviar route's limits are keyed only on requester-influenced dimensions: the leftmost X-Forwarded-For value and a self-generated visitor token. There is no aggregate limit per channel or organization on rows created by new visitors, and getIp trusts the leftmost forwarded value regardless of which proxy wrote it.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+    "line": 38,
+    "scope": "POST",
+    "description": "Unauthenticated POST; tenant and channel resolved from the public path key."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/rate-limit-helper.ts",
+    "line": 44,
+    "scope": "getIp",
+    "description": "Client IP is the first comma-separated element of X-Forwarded-For, falling back to req.ip and then 127.0.0.1."
+   },
+   {
+    "kind": "propagation",
+    "file": "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+    "line": 41,
+    "scope": "POST",
+    "description": "The 60/min counter is keyed on that IP string."
+   },
+   {
+    "kind": "propagation",
+    "file": "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+    "line": 59,
+    "scope": "POST",
+    "description": "The 15/min counter is keyed on the SHA-256 of the visitor token from the request body, which the requester generates."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/channels/webchat/ingest.ts",
+    "line": 150,
+    "scope": "garantirContato",
+    "description": "An unseen token hash inserts a new contact for the tenant through the service-role client."
+   },
+   {
+    "kind": "propagation",
+    "file": "lib/channels/webchat/ingest.ts",
+    "line": 183,
+    "scope": "garantirConversa",
+    "description": "A conversation is created for that contact and channel via fn_upsert_wa_conversation."
+   },
+   {
+    "kind": "sink",
+    "file": "lib/channels/webchat/ingest.ts",
+    "line": 86,
+    "scope": "receberDoVisitante",
+    "description": "After the message insert, the shared post-entry step runs opt-out, lead creation, campaign check and emits ai_agent.dispatch_requested."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "lib/rate-limit-helper.ts",
+    "line": 45,
+    "description": "getIp reads the leftmost X-Forwarded-For value with no check on who wrote it."
+   },
+   {
+    "file": "docs/runbooks/cloudpanel.md",
+    "line": 235,
+    "description": "The documented nginx vhost sets X-Forwarded-For with $proxy_add_x_forwarded_for, which appends to the client-sent header instead of replacing it."
+   },
+   {
+    "file": "lib/rate-limit.ts",
+    "line": 6,
+    "description": "The limiter is a process-local Map; an entry is created per distinct key string and swept every five minutes, so it is per replica and has no aggregate dimension."
+   },
+   {
+    "file": "lib/channels/webchat/config.ts",
+    "line": 82,
+    "description": "The visitor token is any 43-character base64url string supplied by the requester; nothing issues or signs it server-side."
+   },
+   {
+    "file": "lib/http/ip-do-cliente.ts",
+    "line": 11,
+    "description": "The project's own note that forwarded headers can be forged by the requester when no proxy checks them."
+   },
+   {
+    "file": "Caddyfile",
+    "line": 47,
+    "description": "The default deployment uses plain reverse_proxy app:3000 with no trusted_proxies setting; how it treats a client-sent X-Forwarded-For is Caddy's default behaviour, not visible in source."
+   },
+   {
+    "file": "docker-compose.prod.yml",
+    "line": 407,
+    "description": "The Caddy image is the mutable tag caddy:2-alpine, so the exact proxy version and its forwarded-header default are not fixed by source."
+   },
+   {
+    "file": "lib/channels/pos-entrada.ts",
+    "line": 158,
+    "description": "The post-entry step requests an agent dispatch event for every newly stored inbound message, after the lead step at line 147; nothing here caps it per channel or organization."
+   },
+   {
+    "file": "app/api/v1/channels/webchat/route.ts",
+    "line": 86,
+    "description": "A webchat channel is created with metadataInicialDoCanal(), i.e. ai_gate 'allowlist' (lib/ai/elegibilidade/pre-go-live.ts line 82), so agent turns are closed by default; this bounds the AI-cost part of the claim, not the row creation."
+   },
+   {
+    "file": "tests/seguranca/chat-no-site.spec.ts",
+    "line": 125,
+    "description": "The committed security spec checks only that one visitor token sending repeatedly gets 429; no test covers token rotation or a varied forwarded address."
+   }
+  ],
+  "blockers": [
+   "No approved OS-enforced sandbox is available in this run, so the handler could not be executed against a local fixture to observe the response codes and row counts.",
+   "The reverse proxy actually in front of the app (Caddy default, hosting-panel Traefik, CloudPanel nginx, or a CDN) and whether it replaces or appends a client-sent X-Forwarded-For is a deployment fact outside source; it decides whether the 60/min per-IP bound can be sidestepped.",
+   "The number of app replicas is outside source; the limiter is per process, so the effective per-IP bound scales with the replica count."
+  ],
+  "validation_plan": {
+   "local": "In an isolated fixture with a dummy tenant and one webchat channel (status WORKING, no domain list), call the enviar POST handler 70 times within one minute, each with a fresh 43-character base64url token, a fresh uuid id, a short text, and a different first X-Forwarded-For value. Then repeat 70 times with fresh tokens but a constant X-Forwarded-For. Count the 201 and 429 responses and the rows created in contacts, conversations, messages, crm_leads and event_log for the dummy tenant. The claim holds if the first run returns no 429 and creates 70 contacts, and the second returns 429 only from the 61st request. Stop there; do not measure load.",
+   "deployment": "On the owner's own install, the owner sends one GET to /api/v1/webhooks/webchat/<own key> carrying a made-up X-Forwarded-For value (for example 203.0.113.7) and checks, by temporarily logging the header as received by the app container, whether the made-up value is still the first element. If it is, the proxy appends and the per-IP limit is bypassable on that install. The owner should also note how many app replicas run."
+  }
+ }
+]

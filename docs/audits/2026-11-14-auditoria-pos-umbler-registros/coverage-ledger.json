@@ -1,0 +1,1936 @@
+[
+ {
+  "coverage_id": ".github%2Fworkflows%2Fseguranca.yml%23seguranca::.github%2Fworkflows%2Fseguranca.yml%23permissions::profile%2Fquick%2Fall-in-scope-subsystems::SUPPLY-CHAIN-AND-RELEASE.md%23Mutable%20and%20unbound%20build%20inputs",
+  "canonical_refs": {
+   "surface": ".github/workflows/seguranca.yml#seguranca",
+   "boundary": ".github/workflows/seguranca.yml#permissions",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs"
+  },
+  "surface": "CI security workflows, images and self-host update kit",
+  "boundary": "fork CI/secrets; mutable build inputs; update path of existing installs",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Mutable and unbound build inputs",
+  "starting_paths": [
+   ".github/workflows/seguranca.yml",
+   ".github/workflows/trivy.yml",
+   ".github/actions/preparar-node/action.yml",
+   "scripts/seguranca/openapi.ts",
+   "scripts/seguranca/waha-confere.ts",
+   "scripts/seguranca/garak/config.yaml",
+   "scripts/seguranca/schemathesis.toml",
+   "scripts/zap/sessao.mjs",
+   "Dockerfile",
+   "Dockerfile.worker",
+   "Dockerfile.scheduler",
+   "hostgator-setup-kit/_common.sh",
+   "hostgator-setup-kit/update.sh",
+   "hostgator-setup-kit/install.sh",
+   "docker-compose.prod.yml",
+   "package.json"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+   "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
+   "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow",
+   "SUPPLY-CHAIN-AND-RELEASE.md#Workflow command and expression confusion",
+   "SUPPLY-CHAIN-AND-RELEASE.md#Automation identity overreach",
+   "SUPPLY-CHAIN-AND-RELEASE.md#Update metadata and rollback confusion",
+   "SUPPLY-CHAIN-AND-RELEASE.md#Universal moves",
+   "SUPPLY-CHAIN-AND-RELEASE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "hunter-entrega",
+  "reviewed_paths": [
+   ".dockerignore",
+   ".github/actions/preparar-node/action.yml",
+   ".github/workflows/seguranca.yml",
+   ".github/workflows/trivy.yml",
+   ".gitignore",
+   "Dockerfile",
+   "Dockerfile.scheduler",
+   "Dockerfile.worker",
+   "docker-compose.prod.yml",
+   "hostgator-setup-kit/_common.sh",
+   "hostgator-setup-kit/install.sh",
+   "hostgator-setup-kit/update.sh",
+   "package.json",
+   "scripts/seguranca/garak/config.yaml",
+   "scripts/seguranca/schemathesis.toml",
+   "scripts/seguranca/waha-confere.ts",
+   "scripts/zap/sessao.mjs"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     ".github/workflows/seguranca.yml",
+     ".github/workflows/trivy.yml"
+    ],
+    "invariant": "Untrusted (fork or pull request) code never runs in a job that holds secrets or a write token.",
+    "method": "source",
+    "result": "Both workflows trigger only on workflow_dispatch, push to the single branch chataionline/seguranca-auditoria, and schedule. Neither has a pull_request, pull_request_target, issue_comment or workflow_run trigger. Both declare permissions: contents: read. trivy.yml references no secret. No untrusted-code path into a privileged job was found.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     ".github/workflows/seguranca.yml",
+     ".github/workflows/trivy.yml",
+     ".github/actions/preparar-node/action.yml"
+    ],
+    "invariant": "No attacker-controlled event field (branch name, commit message, title) is interpolated into a shell command or expression.",
+    "method": "source",
+    "result": "The only expressions are github.ref in the concurrency group, runner.os and a step output derived from package.json in the cache key, and secrets.ANTHROPIC_API_KEY in env. No github.event.* or head_ref value reaches a run block. Shell values (IMG, PADRAO) are read from files committed to the repository.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     ".github/workflows/seguranca.yml",
+     ".github/actions/preparar-node/action.yml",
+     ".github/workflows/trivy.yml"
+    ],
+    "invariant": "Code resolved by a mutable reference does not execute on the runner while a repository secret is readable there.",
+    "method": "source",
+    "result": "Not held in seguranca.yml. ANTHROPIC_API_KEY is placed in the environment of a background `next start` process (line 116, started with nohup) that stays alive for the rest of the job. After that, the same runner user executes code resolved by mutable references: zaproxy/action-full-scan@v0.13.0 (lines 166, 183), pip installs of schemathesis and garak by version range without hashes (lines 155, 204), actions/upload-artifact@v7 (line 270), and the Playwright browser download. Before the secret step, supabase/setup-cli@v3, pnpm/action-setup@v6, actions/cache@v4 and actions/setup-node@v7 also run by tag and could leave persistent state on the runner. trivy.yml pins its third-party action by commit SHA and states why, but holds no secret. Recorded as candidate ci-seguranca-secret-with-mutable-actions.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     ".github/workflows/seguranca.yml",
+     "scripts/zap/sessao.mjs",
+     "scripts/seguranca/garak/config.yaml",
+     "scripts/seguranca/schemathesis.toml",
+     ".gitignore"
+    ],
+    "invariant": "Published logs and artifacts of the security job contain no reusable credential, and the tools cannot be aimed at a live site.",
+    "method": "source",
+    "result": "sessao.mjs refuses any base URL that is not http://localhost or 127.0.0.1. The session cookies written to /tmp, zap-logado.prop, the schemathesis HAR and the garak report belong to seeded test accounts on the job's own local Supabase stack, which is destroyed with the runner. zap-logado.prop and /tmp/garak.yaml are deleted after use. .e2e-creds.json and .env* are git-ignored. The Anthropic key is never written to a file or echoed by the workflow. Whether the app writes the key to /tmp/app.log (tailed to the public log on failure) was not traced.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     "Dockerfile",
+     "Dockerfile.worker",
+     "Dockerfile.scheduler",
+     ".dockerignore",
+     "package.json"
+    ],
+    "invariant": "Image changes (apk upgrade, removal of npm/pnpm/corepack, tsx CMD) do not add a lower-trust build input or put secrets in the image.",
+    "method": "source",
+    "result": "Dependencies still install with pnpm install --frozen-lockfile and a pinned pnpm 9.15.9. .dockerignore excludes .env, .env.* and .git from the `COPY . .` context. The app runs as non-root user nextjs. Removing npm, npx, corepack, pnpm and yarn only reduces what the image contains; the worker CMD now calls node_modules/.bin/tsx directly. The base images node:22-alpine and alpine:3.20 and the new `apk upgrade --no-cache` are mutable inputs controlled by the upstream publishers; that was already true of the base images and is recorded as hardening, not a finding.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     "hostgator-setup-kit/_common.sh",
+     "hostgator-setup-kit/update.sh",
+     "hostgator-setup-kit/install.sh",
+     "docker-compose.prod.yml",
+     "scripts/seguranca/waha-confere.ts",
+     ".github/workflows/trivy.yml"
+    ],
+    "invariant": "The update path only moves an existing install's WAHA image to a value fixed in the kit, never to an attacker-influenced or operator-overridden one.",
+    "method": "source",
+    "result": "atualizar_waha_do_padrao rewrites WAHA_IMAGE in .env only when the current value equals exactly a previous kit default (devlikeapro/waha:latest-2026.7.2), and writes the constant WAHA_PADRAO. Any other operator-chosen value is kept and a notice is printed. No remote metadata is consulted. trivy.yml fails when the compose default and WAHA_PADRAO disagree. The new target is a version tag rather than a digest, so its content is controlled by the WAHA publisher; that is the same trust as before the change and is recorded as hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "verifier-3",
+    "reviewed_paths": [
+     ".github/actions/preparar-node/action.yml",
+     ".github/workflows/seguranca.yml",
+     ".github/workflows/trivy.yml"
+    ],
+    "invariant": "independent re-verification of candidate ci-seguranca-secret-with-mutable-actions",
+    "method": "source",
+    "result": "decision: needs_validation",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "ci-seguranca-secret-with-mutable-actions"
+  ],
+  "unresolved": [],
+  "planned_agent": "hunter-entrega",
+  "hardening_notes": [
+   "proxy.ts:145 reads the whole JSON body in the proxy when Content-Length is absent (chunked upload), because a missing header is treated as 0. Only authenticated sessions reach it and Next bounds the buffered body, but a missing or non-numeric Content-Length should skip the check.",
+   "lib/seguranca/entrada.ts:37 uses `pilha.push(...v)`. A JSON array with more elements than the engine's spread-argument limit (reachable inside the 2 MB cap, e.g. an array of single digits) throws RangeError outside the try/catch, and the proxy answers 500 to that authenticated caller's own request. Push in a loop instead and wrap the walk in a try/catch that fails open.",
+   "The proxy JSON guard keys on Content-Type containing application/json and on Content-Length <= 2 MB. A JSON body sent with another content type, or a larger one, skips it and hits the earlier database 500. Not a boundary, but routes that write user text still need their own validation.",
+   "docker-compose.prod.yml:136 and hostgator-setup-kit/_common.sh pin WAHA by version tag (devlikeapro/waha:latest-2026.9.2) while serverless-redis-http, wacalls and asterisk are pinned by sha256 digest. update.sh now moves the whole installed base to this tag, so a digest pin would bind what the CI check in trivy.yml actually tested.",
+   ".github/workflows/trivy.yml scans the WAHA image by a hardcoded literal (devlikeapro/waha:latest-2026.9.2) rather than the $IMG value read from the compose file, so on the next bump the scan can silently keep covering the old version.",
+   "Dockerfile, Dockerfile.worker and Dockerfile.scheduler use floating base tags (node:22-alpine, alpine:3.20) and now `apk upgrade --no-cache`, so two builds of the same commit can differ. Acceptable for patching, but digest-pinned bases with scheduled bumps would make what Trivy scanned match what is published.",
+   "next.config.ts CSP has no script-src or connect-src (deliberate and documented), so it gives no XSS mitigation; the frame, object and base restrictions are the only effect.",
+   "redis:7-alpine and caddy:2-alpine in docker-compose.prod.yml are floating tags with the default pull policy (older than this scope).",
+   "seguranca.yml tails /tmp/app.log into the public job log on failure. Whether the app can log the Anthropic key or request headers there was not traced; worth confirming the logger never prints it."
+  ],
+  "decisions": {
+   "ci-seguranca-secret-with-mutable-actions": "needs_validation"
+  }
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Fattendants%2Favailability%2F%5Buser_id%5D%2Froute.ts%23critic-2::critic-missing-unit%232::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+  "canonical_refs": {
+   "surface": "app/api/v1/attendants/availability/[user_id]/route.ts#critic-2",
+   "boundary": "critic-missing-unit#2",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Access control"
+  },
+  "surface": "Attendant availability: the PATCH that changes the reassignment rule, and the team-list GET that now reads reassignment and hidden-phone flags with the service-role client",
+  "boundary": "agent to manager-only settings of other members; service-role read inside one tenant",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Access control (role check on a new field, admin-client read)",
+  "starting_paths": [
+   "app/api/v1/attendants/availability/[user_id]/route.ts",
+   "app/api/v1/attendants/availability/route.ts",
+   "lib/schemas/routing.ts",
+   "supabase/migrations/20261113230000_0514_reatribuicao_do_atendente.sql"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "TypeScript only"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: source-backed coverage gap: the new 'reatribuicao' field gets a manager-only check placed after the isSelf/isManager logic. The GET adds two service-role reads (attendant_availability, user_organizations.ocultar_telefone) filtered by activeOrg.orgId and returned to any agent. Neither route is in any reviewed_paths. The reassignment unit reviewed only the handler and migration 0514, not the route that writes the setting."
+  ]
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Fconversations%2F%5Bid%5D%2Fagendadas%2Froute.ts%23POST::lib%2Fauth%2Frequire-role.ts%23requireRole::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+  "canonical_refs": {
+   "surface": "app/api/v1/conversations/[id]/agendadas/route.ts#POST",
+   "boundary": "lib/auth/require-role.ts#requireRole",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Access control"
+  },
+  "surface": "conversation features: scheduled, visibility, favorites, close, team chat",
+  "boundary": "role + RLS + conversation visibility; private direct team chat",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Access control",
+  "starting_paths": [
+   "app/api/v1/conversations/[id]/agendadas/route.ts",
+   "app/api/v1/conversations/[id]/agendadas/[agendadaId]/route.ts",
+   "lib/agendadas/executar.ts",
+   "lib/agendadas/servidor.ts",
+   "lib/agendadas/regras.ts",
+   "app/api/v1/conversations/[id]/visibilidade/route.ts",
+   "lib/inbox/visibilidade.ts",
+   "app/api/v1/messages/[id]/favorita/route.ts",
+   "app/api/v1/equipe/mensagens/route.ts",
+   "app/api/v1/equipe/conversas/route.ts",
+   "app/api/v1/equipe/lida/route.ts",
+   "app/api/v1/equipe/_membros.ts",
+   "lib/conversas/reatribuicao.handler.ts",
+   "app/api/v1/settings/conversas/route.ts",
+   "app/api/v1/settings/variaveis/route.ts",
+   "app/api/v1/me/assinatura/route.ts",
+   "supabase/migrations/20261113180000_0510_conversa_oculta.sql",
+   "supabase/migrations/20261113190000_0511_mensagens_agendadas.sql",
+   "supabase/migrations/20261114000000_0515_chat_interno_da_equipe.sql"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Retention and queued-work overrun",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "hunter-privacidade",
+  "reviewed_paths": [
+   "app/api/v1/conversations/[id]/agendadas/[agendadaId]/route.ts",
+   "app/api/v1/conversations/[id]/agendadas/route.ts",
+   "app/api/v1/conversations/[id]/visibilidade/route.ts",
+   "app/api/v1/equipe/_membros.ts",
+   "app/api/v1/equipe/conversas/route.ts",
+   "app/api/v1/equipe/lida/route.ts",
+   "app/api/v1/equipe/mensagens/route.ts",
+   "app/api/v1/me/assinatura/route.ts",
+   "app/api/v1/messages/[id]/favorita/route.ts",
+   "app/api/v1/settings/conversas/route.ts",
+   "app/api/v1/settings/variaveis/route.ts",
+   "lib/agendadas/executar.ts",
+   "lib/agendadas/servidor.ts",
+   "lib/auth/require-role.ts",
+   "lib/conversas/reatribuicao.handler.ts",
+   "lib/equipe/chat.ts",
+   "lib/inbox/visibilidade.ts",
+   "supabase/baseline.sql",
+   "supabase/migrations/20261113180000_0510_conversa_oculta.sql",
+   "supabase/migrations/20261113190000_0511_mensagens_agendadas.sql",
+   "supabase/migrations/20261113220000_0513_mensagens_favoritas.sql",
+   "supabase/migrations/20261113230000_0514_reatribuicao_do_atendente.sql",
+   "supabase/migrations/20261114000000_0515_chat_interno_da_equipe.sql"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "app/api/v1/conversations/[id]/agendadas/route.ts",
+     "app/api/v1/conversations/[id]/agendadas/[agendadaId]/route.ts",
+     "lib/agendadas/servidor.ts",
+     "supabase/migrations/20261113190000_0511_mensagens_agendadas.sql",
+     "lib/auth/require-role.ts"
+    ],
+    "invariant": "A scheduled message can be created, read, edited or cancelled only by a member (agent or above for writes) who can see the conversation under RLS, and service-role writes are bound to the session organization rather than the body.",
+    "method": "source",
+    "result": "Holds. POST and PATCH read the conversation with the session client (conversaVisivel, RLS conversations_select via the three-argument fn_can_view_conversation) before any service-role write. Every insert, update and delete filters organization_id from authz.org.orgId. PATCH and DELETE load the row through the RLS-scoped session client bound to both path ids, require creator or manager, and update conditionally on status='agendada'. The table grants only SELECT to authenticated, and its select policy requires a visible conversation. The chatbot flow id from the body is checked against the session organization.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "lib/agendadas/executar.ts"
+    ],
+    "invariant": "The worker sends a scheduled item once, inside the row's tenant, and only while the scheduling user is still an active member with a sending role and the contact is neither blocked nor anonymized.",
+    "method": "source",
+    "result": "Holds for tenant binding, single send and role/revocation. The claim is a conditional update on (organization_id, id, status='agendada'). The context query re-reads the membership (revoked_at null, accepted_at not null, role in agent/manager/admin) and the contact flags at send time, and the flow is re-read by organization. Anonymization deletes pending rows by trigger. Residual gap, recorded as hardening: the worker does not re-check that the scheduler can still see the conversation.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "app/api/v1/conversations/[id]/visibilidade/route.ts",
+     "lib/inbox/visibilidade.ts",
+     "supabase/migrations/20261113180000_0510_conversa_oculta.sql",
+     "app/api/v1/messages/[id]/favorita/route.ts",
+     "supabase/migrations/20261113220000_0513_mensagens_favoritas.sql",
+     "supabase/baseline.sql"
+    ],
+    "invariant": "Hiding a conversation or starring a message can only touch rows the caller can see in their own tenant.",
+    "method": "source",
+    "result": "Holds. Both routes require agent or above and write with the session client filtered by the session organization. For conversations, the route first reads the row through RLS and returns 404 when it is not visible. For messages, the UPDATE has a WHERE and RETURNING, so messages_select (which requires a visible conversation) applies alongside messages_update and the restrictive messages_update_de_atendente policy. 'Hidden' is an inbox filter, not an access boundary. The 0510 trigger function is not security definer and updates only the same organization and conversation.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "app/api/v1/equipe/mensagens/route.ts",
+     "app/api/v1/equipe/conversas/route.ts",
+     "app/api/v1/equipe/lida/route.ts",
+     "app/api/v1/equipe/_membros.ts",
+     "lib/equipe/chat.ts",
+     "supabase/migrations/20261114000000_0515_chat_interno_da_equipe.sql"
+    ],
+    "invariant": "A direct team-chat message is readable only by its author and recipient within the organization, and the sender cannot forge the author, the tenant or a recipient outside the organization.",
+    "method": "source",
+    "result": "Holds. All reads use the session client. The equipe_mensagens_select policy requires organization membership and (general room, or author = auth.uid(), or recipient = auth.uid()), so a manager or admin cannot read other people's direct messages through this path. The 'com' parameter is validated as the literal 'geral' or a UUID before it is interpolated into the PostgREST .or() filter, so there is no filter injection. Inserts use the service role with organization_id and autor_user_id taken from the session, and the recipient is checked against non-revoked members of the session organization. Read markers are keyed to the session user. Authenticated has SELECT only on both tables.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "lib/conversas/reatribuicao.handler.ts",
+     "supabase/migrations/20261113230000_0514_reatribuicao_do_atendente.sql",
+     "app/api/v1/settings/conversas/route.ts",
+     "app/api/v1/settings/variaveis/route.ts",
+     "app/api/v1/me/assinatura/route.ts"
+    ],
+    "invariant": "Automatic reassignment and the conversation/variable settings act only inside the event's or session's organization, and settings writes need manager or above.",
+    "method": "source",
+    "result": "Holds. The handler filters every read, RPC and insert by row.organization_id and checks the configured flow against that organization. Both settings PATCH routes require manager, call requireSupportWrite first, validate with Zod, check body-supplied chatbot ids against the session organization, and update only organizations.id = session organization. The signature route changes only the caller's own user metadata.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "planned_agent": "hunter-privacidade",
+  "hardening_notes": [
+   "lib/agendadas/executar.ts: at send time the worker re-checks the scheduler's membership and role but not whether they can still see the conversation (made private, or reassigned in visibility_mode 'own'). A message scheduled while authorized still goes out in their name after they lose access. Re-evaluating visibility at send time, or cancelling pending rows on reassignment, would close this.",
+   "lib/supabase/telefone-oculto-fetch.ts: besides the cookie issue, any transient RPC failure yields 'not hidden' (fail open, already disclosed). Failing closed on everything except 'function not found' is a small change.",
+   "lib/contatos/telefone-oculto.ts: the mask covers five JSON keys only. Not traced to a response in this run, but worth checking: contacts.wa_lid, conversations.group_chat_id, messages.external_id (WAHA ids embed the chat JID), messages.metadata.group_sender, a contact name that defaults to the number, and any non-JSON response (CSV/text) produced through the session client.",
+   "Hidden phone: filtering or searching contacts by phone through the session client still works for a restricted agent, so a number could be recovered digit by digit by observing which filters match. Consider rejecting phone filters for marked members.",
+   "app/api/v1/equipe/_membros.ts: names in the team chat and its push notifications come from user_metadata.full_name, which each user can change. A member can display a colleague's name in the internal chat. The list also includes invited members who have not accepted yet (no accepted_at filter), so they can be addressed in direct messages.",
+   "app/api/v1/settings/conversas/route.ts and settings/variaveis/route.ts: read-modify-write of organizations.settings without a version check. Concurrent saves can drop each other's keys (integrity, not access)."
+  ],
+  "parent_note": "hunter omitiu artifact:null em checagens só de fonte; normalizado pelo pai"
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Fconversations%2F%5Bid%5D%2Fclose%2Froute.ts%23critic-0::critic-missing-unit%230::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+  "canonical_refs": {
+   "surface": "app/api/v1/conversations/[id]/close/route.ts#critic-0",
+   "boundary": "critic-missing-unit#0",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Access control"
+  },
+  "surface": "Closing a conversation with a farewell message or a closing chatbot, and the shared helper that starts a chatbot by hand (POST /api/v1/conversations/[id]/close with encerramento, POST /api/v1/conversations/[id]/chatbot)",
+  "boundary": "agent session (user client plus service-role writes) to a conversation they can see, and through it to the WhatsApp/webchat send path and the chatbot worker",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Access control (parallel send path and stale authorization)",
+  "starting_paths": [
+   "app/api/v1/conversations/[id]/close/route.ts",
+   "app/api/v1/conversations/[id]/chatbot/route.ts",
+   "lib/chatbot/iniciar-manual.ts",
+   "lib/conversas/preferencias-servidor.ts",
+   "lib/conversas/preferencias.ts",
+   "app/api/v1/messages/route.ts",
+   "app/actions/settings/updateProfile.ts",
+   "lib/schemas/settings.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "TypeScript only, no native code"
+   },
+   {
+    "block": "CLIENT-SIDE.md#DOM-based XSS",
+    "reason": "server routes only; no HTML sink on this path"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: source-backed coverage gap: the close route got 137 new lines. It now calls sendMessageHandler directly, skipping the outer gating in messages/route.ts (resolveAuthDual and the token/on-behalf rules), and starts a chatbot through the new pedirChatbotManual. When reading the company's conversation settings fails, carregarPreferenciasDeConversa quietly falls back to the defaults, so a company rule that forbids or forces something on Close can be skipped. The chatbot route now accepts operator-supplied 'variaveis' that go into the worker event. The signature name comes from the session user's user_metadata, which the user can edit outside the 75-character profile schema. The ledger's 'conversation features' unit names close in its surface, but none of these files are in any reviewed_paths, and none of its checks cover them."
+  ]
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Fconversations%2F%5Bid%5D%2Ffavoritas%2Froute.ts%23critic-1::critic-missing-unit%231::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+  "canonical_refs": {
+   "surface": "app/api/v1/conversations/[id]/favoritas/route.ts#critic-1",
+   "boundary": "critic-missing-unit#1",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Access control"
+  },
+  "surface": "Read paths that list conversations and favourites under the new hidden-conversation rule (GET /api/v1/conversations, /counts, GET /api/v1/conversations/[id]/favoritas, the MCP crm_list_conversations tool)",
+  "boundary": "viewer/agent session or API/MCP token to conversations and messages the caller is not allowed to see (visibility_mode, hidden, private)",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Access control (policy vs query disagreement on parallel read paths)",
+  "starting_paths": [
+   "app/api/v1/conversations/[id]/favoritas/route.ts",
+   "app/api/v1/conversations/_handler.ts",
+   "app/api/v1/conversations/counts/route.ts",
+   "app/api/v1/conversations/route.ts",
+   "lib/mcp/tools/conversations.ts",
+   "lib/schemas/messaging.ts",
+   "lib/inbox/visibilidade.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Policy and query disagreement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Enumeration and aggregate oracles",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "TypeScript only"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: source-backed coverage gap: the new favoritas GET reads messages filtered only by conversation_id, at the viewer role, and relies on the messages RLS. The list and count handlers now take a client-chosen 'ocultas' value (excluir/so/incluir). The MCP tool forces ocultas='incluir' for integrations. The visibility unit reviewed visibilidade.ts and the visibility write route only. No unit checked that these read paths agree with fn_can_view_conversation and the 0510 policies, or that the counts give no aggregate oracle."
+  ]
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Ffigurinhas%2Froute.ts%23POST::lib%2Ffigurinhas%2Ffigurinha.ts%23paraFigurinha::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+  "canonical_refs": {
+   "surface": "app/api/v1/figurinhas/route.ts#POST",
+   "boundary": "lib/figurinhas/figurinha.ts#paraFigurinha",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+  },
+  "surface": "file inputs: stickers, vCard/CSV import, forward media copy, history download",
+  "boundary": "agent upload/stored path ↔ storage of the tenant and shared CPU/memory",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Resource and file handling",
+  "starting_paths": [
+   "app/api/v1/figurinhas/route.ts",
+   "app/api/v1/figurinhas/[id]/route.ts",
+   "app/api/v1/conversations/[id]/figurinha/route.ts",
+   "lib/figurinhas/figurinha.ts",
+   "app/api/v1/contacts/import/route.ts",
+   "lib/contacts/vcf.ts",
+   "app/api/v1/messages/[id]/encaminhar/route.ts",
+   "app/api/v1/conversations/[id]/historico/route.ts",
+   "lib/conversas/historico.ts",
+   "lib/conversas/historico-pdf.tsx",
+   "lib/waha/media-send.ts",
+   "lib/waha/client.ts",
+   "supabase/migrations/20261114010000_0516_figurinhas_salvas.sql"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Blob and signed-reference overreach",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Export and backup scope expansion",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Import and restore authority expansion",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Decompression and representation amplification",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "hunter-arquivos",
+  "reviewed_paths": [
+   "Dockerfile",
+   "app/api/v1/contacts/import/route.ts",
+   "app/api/v1/conversations/[id]/figurinha/route.ts",
+   "app/api/v1/conversations/[id]/historico/route.ts",
+   "app/api/v1/figurinhas/[id]/route.ts",
+   "app/api/v1/figurinhas/route.ts",
+   "app/api/v1/messages/[id]/encaminhar/route.ts",
+   "app/api/v1/messages/_handler.ts",
+   "lib/contacts/csv.ts",
+   "lib/contacts/vcf.ts",
+   "lib/conversas/historico-pdf.tsx",
+   "lib/conversas/historico.ts",
+   "lib/figurinhas/figurinha.ts",
+   "lib/messaging/media/upload-validation.ts",
+   "lib/schemas/messaging.ts",
+   "lib/supabase/fetch-do-servidor.ts",
+   "lib/waha/client.ts",
+   "lib/waha/media-send.ts",
+   "supabase/migrations/20261114010000_0516_figurinhas_salvas.sql"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-arquivos",
+    "reviewed_paths": [
+     "app/api/v1/figurinhas/route.ts",
+     "app/api/v1/messages/_handler.ts",
+     "lib/messaging/media/upload-validation.ts",
+     "lib/schemas/messaging.ts"
+    ],
+    "invariant": "A stored media path that the sticker-save route downloads with the service-role client must resolve only to an object under the caller's own organization prefix.",
+    "method": "source",
+    "result": "Not enforced. The route checks only startsWith(`${orgId}/`) on messages.media_storage_path (route.ts:103) and passes it to admin.storage.download (route.ts:105). An agent can create a message row with a path containing '..' segments: sendMessageSchema accepts any string up to 500 chars (lib/schemas/messaging.ts:77), isMediaPathOwnedBy is a bare startsWith (upload-validation.ts:16-18), and the row is inserted with the raw path before any send attempt (_handler.ts:718). storage-js 2.117.2 download() puts the path unencoded into the request URL (StorageFileApi.ts:922-926), so fetch URL parsing would collapse the dot segments. Whether the collapsed request returns another tenant's object was not observed. Candidate returned as needs_validation.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-arquivos",
+    "reviewed_paths": [
+     "app/api/v1/contacts/import/route.ts",
+     "lib/contacts/vcf.ts",
+     "lib/contacts/csv.ts"
+    ],
+    "invariant": "Parsing an uploaded contact file of accepted size must cost roughly linear CPU on the shared Node event loop, and the row cap must bound the work.",
+    "method": "source",
+    "result": "Not enforced for .vcf. File cap is 5 MB (csv.ts:148, route.ts:115). The 500-row cap (route.ts:151) is applied only after vcfParaLinhas has run (route.ts:131). linhasLogicas (vcf.ts:46-60) re-scans the whole accumulated previous logical line on every physical line (split(':') plus regex at vcf.ts:51) and then appends to it (vcf.ts:52, 54), so a file made of one line followed by many short continuation lines costs O(n²) synchronous work. Timing was not measured. Candidate returned as needs_validation.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-arquivos",
+    "reviewed_paths": [
+     "lib/figurinhas/figurinha.ts",
+     "app/api/v1/figurinhas/route.ts",
+     "app/api/v1/figurinhas/[id]/route.ts",
+     "supabase/migrations/20261114010000_0516_figurinhas_salvas.sql"
+    ],
+    "invariant": "Sticker upload: bounded input, format allow-list, server-derived storage key inside the tenant prefix, and tenant-filtered service-role reads and writes.",
+    "method": "source",
+    "result": "Holds, apart from the candidate above. Input is capped at 5 MB before sharp (figurinha.ts:28-29, route.ts:87). Format is taken from sharp metadata and limited to png/jpeg/webp/gif, with animated:false. The storage key is `${orgId}/figurinhas/${sha256}.webp`, built from server values only. The library is capped at 200 per organization. Every admin-client query filters organization_id from authz.org.orgId. DELETE validates the UUID and filters by org before removing the row and the object. In migration 0516, RLS allows select for the org only, all grants are revoked from anon/authenticated, and only select is granted back to authenticated. No sharp limitInputPixels override was found, so the library default applies (see hardening).",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-arquivos",
+    "reviewed_paths": [
+     "app/api/v1/conversations/[id]/figurinha/route.ts",
+     "app/api/v1/messages/[id]/encaminhar/route.ts",
+     "lib/waha/media-send.ts",
+     "lib/waha/client.ts"
+    ],
+    "invariant": "Sending a sticker and forwarding media copy only objects the caller's tenant owns, into a destination conversation the caller can see, with server-built destination keys.",
+    "method": "source",
+    "result": "Holds on the source-visible path. Sticker send: the conversation is read with the session client (RLS) and org filter, the figurinha row is read with org filter, the storage_path was written by the server, and the destination is `${orgId}/${id}/${uuid}-figurinha.webp`. Forward: the source message and each destination are read with the session client and org filter, there are at most 5 distinct destinations, and the source path must start with the org prefix. The copy sends source and destination keys in the JSON body (literal keys, not in the URL), so the dot-segment collapse of the download path does not apply to copy. The destination file name is the last '/' segment, so it cannot add path components. wahaSendPlanFor forces mimetype image/webp with no file name for stickers. The sendSticker 404 fallback recurses once with a different endpoint and cannot loop.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-arquivos",
+    "reviewed_paths": [
+     "app/api/v1/conversations/[id]/historico/route.ts",
+     "lib/conversas/historico.ts",
+     "lib/conversas/historico-pdf.tsx"
+    ],
+    "invariant": "The history export includes only messages the requester can read, in the requester's tenant, and the download file name cannot inject headers.",
+    "method": "source",
+    "result": "Holds. Conversation and messages are read with the session client (RLS plus the hidden-phone mask) and filtered by organization_id and conversation_id. The limit is 5000 messages. The admin client is used only to resolve names of user_ids confirmed as members of the same organization. The file name is reduced to [\\w-] and 40 chars before Content-Disposition. The export is audited. PDF text is filtered to Latin-1. Cost bounds are in hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "verifier-4",
+    "reviewed_paths": [
+     "app/api/v1/figurinhas/route.ts",
+     "app/api/v1/messages/_handler.ts",
+     "lib/messaging/media/upload-validation.ts",
+     "lib/schemas/messaging.ts",
+     "lib/supabase/fetch-do-servidor.ts"
+    ],
+    "invariant": "independent re-verification of candidate storage-path-dot-segment:figurinhas-post-download",
+    "method": "source",
+    "result": "decision: needs_validation",
+    "artifact": null
+   },
+   {
+    "agent_id": "verifier-6",
+    "reviewed_paths": [
+     "Dockerfile",
+     "app/api/v1/contacts/import/route.ts",
+     "lib/contacts/csv.ts",
+     "lib/contacts/vcf.ts"
+    ],
+    "invariant": "independent re-verification of candidate vcf-linhasLogicas-quadratic-fold",
+    "method": "source",
+    "result": "decision: needs_validation",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "storage-path-dot-segment:figurinhas-post-download",
+   "vcf-linhasLogicas-quadratic-fold"
+  ],
+  "unresolved": [],
+  "planned_agent": "hunter-arquivos",
+  "hardening_notes": [
+   "lib/messaging/media/upload-validation.ts: reject any media_storage_path containing '.', '..', empty or percent-encoded segments, or backslashes, and match it against a strict `<uuid>/<uuid>/<name>` pattern. Reuse the same check in app/api/v1/figurinhas/route.ts:103 and app/api/v1/messages/[id]/encaminhar/route.ts:77 instead of startsWith(`${orgId}/`).",
+   "lib/contacts/vcf.ts: build each logical line from an array of fragments joined once, decide the quoted-printable state when the line starts rather than re-splitting it, and cap continuation lines and logical-line length. Also stop parsing once 501 cards have been collected, so the row cap bounds the work.",
+   "lib/figurinhas/figurinha.ts: sharp is called without limitInputPixels, so the library default (about 268 megapixels) applies. A 5 MB highly compressible PNG can declare 16383x16383 pixels and cost seconds of libvips CPU per upload. Set limitInputPixels to a few megapixels and reject on metadata width/height before resizing.",
+   "app/api/v1/figurinhas/route.ts and app/api/v1/contacts/import/route.ts: req.formData() buffers the whole multipart body before file.size is checked. Check Content-Length first, or confirm a body limit at the proxy.",
+   "app/api/v1/figurinhas/route.ts:105-107: the 'from conversation' branch downloads the whole stored media into memory before paraFigurinha applies the 5 MB limit. Check media_size_bytes from the message row first.",
+   "app/api/v1/figurinhas/route.ts:73-78 and 133-137: the 200-per-organization cap is count-then-insert, so concurrent uploads can exceed it slightly. This affects only the tenant's own quota.",
+   "app/api/v1/conversations/[id]/figurinha/route.ts:74 and app/api/v1/messages/[id]/encaminhar/route.ts:82: each send or forward copies the object into the destination conversation folder, and the copy stays if the send fails. An agent can multiply a 50 MB file by 5 per request with no aggregate quota. This consumes the tenant's own storage (shared with the instance on a self-host).",
+   "app/api/v1/conversations/[id]/historico/route.ts: the PDF export lays out up to 5000 messages with unbounded body length through @react-pdf/renderer in the request, with wrap={false} on each block. A conversation with very long inbound messages makes this slow and memory-heavy. Cap body length per line in the PDF (the .txt keeps everything) or lower the PDF limit. Behaviour of wrap={false} blocks taller than a page was not checked.",
+   "app/api/v1/conversations/[id]/historico/route.ts:75: one auth.admin.getUserById call per distinct team sender. Bounded by team size, but could be a single query."
+  ],
+  "decisions": {
+   "storage-path-dot-segment:figurinhas-post-download": "needs_validation",
+   "vcf-linhasLogicas-quadratic-fold": "needs_validation"
+  }
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Fmessages%2F_handler.ts%23uncovered-hunter-arquivos-0::hunter-uncovered%23hunter-arquivos-0::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "app/api/v1/messages/_handler.ts#uncovered-hunter-arquivos-0",
+   "boundary": "hunter-uncovered#hunter-arquivos-0",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "POST /api/v1/messages with a user-supplied media_storage_path (existing send path, not changed in this scope)",
+  "boundary": "agent of one tenant ↔ objects of other tenants and other buckets, through a service-role signed URL handed to the channel",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Resource and file handling",
+  "starting_paths": [
+   "app/api/v1/messages/_handler.ts",
+   "lib/messaging/media/upload-validation.ts",
+   "lib/schemas/messaging.ts",
+   "lib/chatbot/midia.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: Same root cause as the sticker-save candidate, with a stronger sink: _handler.ts:950-952 calls admin.storage.createSignedUrl(input.media_storage_path) after only the startsWith check. storage-js places that path in the URL of the sign request, so a '..' path may sign an arbitrary object of any file type and send it to a WhatsApp number the agent chooses. This code predates the scoped changes and has no coverage unit in this run."
+  ]
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Fwebhooks%2Fwebchat%2F%5Bchave%5D%2Fenviar%2Froute.ts%23POST::lib%2Fchannels%2Fwebchat%2Fpublico.ts%23canalPelaChave::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+  "canonical_refs": {
+   "surface": "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts#POST",
+   "boundary": "lib/channels/webchat/publico.ts#canalPelaChave",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Access control"
+  },
+  "surface": "webchat public routes (config, enviar, ler)",
+  "boundary": "path key → tenant; visitor token hash → conversation",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Access control",
+  "starting_paths": [
+   "app/api/v1/webhooks/webchat/[chave]/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/ler/route.ts",
+   "lib/channels/webchat/publico.ts",
+   "lib/channels/webchat/config.ts",
+   "lib/channels/webchat/ingest.ts",
+   "lib/channels/webchat/adapter.ts",
+   "app/api/v1/channels/webchat/route.ts",
+   "app/api/v1/channels/webchat/[id]/route.ts",
+   "app/api/v1/channels/webchat/_comum.ts",
+   "lib/channels/pos-entrada.ts",
+   "supabase/migrations/20261114030000_0518_chat_no_site.sql"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Composite-key and namespace collision",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Enumeration and aggregate oracles",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "hunter-site",
+  "reviewed_paths": [
+   "app/api/v1/channels/webchat/[id]/route.ts",
+   "app/api/v1/channels/webchat/_comum.ts",
+   "app/api/v1/channels/webchat/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/ler/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/route.ts",
+   "lib/auth/public-paths.ts",
+   "lib/channels/pos-entrada.ts",
+   "lib/channels/webchat/adapter.ts",
+   "lib/channels/webchat/config.ts",
+   "lib/channels/webchat/ingest.ts",
+   "lib/channels/webchat/publico.ts",
+   "supabase/baseline.sql",
+   "supabase/migrations/20261114030000_0518_chat_no_site.sql"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "app/api/v1/webhooks/webchat/[chave]/route.ts",
+     "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+     "app/api/v1/webhooks/webchat/[chave]/ler/route.ts",
+     "lib/channels/webchat/publico.ts",
+     "lib/channels/webchat/config.ts",
+     "supabase/baseline.sql",
+     "lib/auth/public-paths.ts"
+    ],
+    "invariant": "The tenant and channel on the public routes come only from the path key, never from the body.",
+    "method": "source",
+    "result": "canalPelaChave validates the key as 32 hex, then looks up channel_sessions by provider=webchat, webhook_path_token=key, archived_at null and status WORKING. webhook_path_token carries a table-wide UNIQUE constraint in the baseline. All three routes pass canal.organizationId and canal.id to the ingest functions; the body schemas (envioDoVisitanteSchema, leituraDoVisitanteSchema) have no organization, channel or conversation field.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "lib/channels/webchat/ingest.ts",
+     "lib/channels/webchat/config.ts",
+     "supabase/baseline.sql"
+    ],
+    "invariant": "A visitor can read and write only the conversation bound to the SHA-256 of their own token, and sees only sent text messages.",
+    "method": "source",
+    "result": "lerDoVisitante finds the conversation by organization_id, channel_session_id and provider_conversation_id = webchat:<channel>:<sha256(token)>. The token must match 43 base64url characters. Messages are filtered by organization_id and conversation_id, type=text, revoked_at null, and inbound or outbound with status sent/delivered/read, limit 50. Internal notes live in the separate conversation_notes table and are never selected. The read-receipt update is limited to ids returned by that query plus organization_id. The .or() filter string is constant and depois is validated as an ISO datetime.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "lib/channels/webchat/ingest.ts",
+     "lib/channels/pos-entrada.ts"
+    ],
+    "invariant": "Visitor-supplied name and email cannot attach the visitor to another person's contact or conversation.",
+    "method": "source",
+    "result": "garantirContato looks up the contact only by organization_id and social_identity. Email is written only when the contact has none, and a 23505 on email falls back to an insert without it; there is no lookup by email. All contact, conversation and message writes filter organization_id taken from the channel row. Post-entry effects (opt-out, lead, campaign, agent dispatch) act only on the visitor's own contactId and conversationId.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "app/api/v1/channels/webchat/route.ts",
+     "app/api/v1/channels/webchat/[id]/route.ts",
+     "app/api/v1/channels/webchat/_comum.ts",
+     "lib/channels/webchat/adapter.ts",
+     "supabase/migrations/20261114030000_0518_chat_no_site.sql"
+    ],
+    "invariant": "Admin management of webchat channels is admin-only and scoped to the session's tenant.",
+    "method": "source",
+    "result": "GET, POST, PATCH and DELETE call requireRole('admin'); the mutating ones call requireSupportWrite first. Every service-role query filters organization_id = authz.org.orgId and provider = webchat; the id is validated as a UUID. Bodies use strict Zod schemas with no organization_id or key field; the key is generated server-side with randomBytes(16). PATCH replaces only metadata.webchat through configDoChatSchema. Migration 0518 only adds the webchat_key column, a partial unique index and widens check constraints. The adapter send only returns an id for text.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "planned_agent": "hunter-site",
+  "hardening_notes": [
+   "Add an aggregate cap per webchat channel and per organization on new visitors per window (new contacts and conversations), independent of IP and token, and move these counters to the shared Redis limiter so they hold across replicas.",
+   "Derive the client IP from the hop written by the trusted proxy (rightmost untrusted element, or X-Real-IP set by the proxy) rather than the leftmost X-Forwarded-For value; getIp's fallback to 127.0.0.1 puts all header-less requests in one bucket.",
+   "lerCorpoDoBalao only rejects an oversized body up front when Content-Length is declared. For chunked bodies it buffers up to the framework cap before the 8 KB check. Read the stream with a running byte counter and abort at 8 KB.",
+   "The Origin allow-list is a browser-side control only: a non-browser client can send any Origin header. The UI and docs should not present it as protection against scripted senders.",
+   "origemPermitida ignores the scheme, so http://<allowed-domain> is accepted. Consider requiring https outside localhost.",
+   "If an attendant merges a webchat contact into another contact, the visitor's next message creates a second contact and conversation with the same provider_conversation_id. lerDoVisitante's maybeSingle then errors and the widget gets 500. Reuse the existing conversation by provider_conversation_id first.",
+   "A visitor can set any unclaimed email on their own webchat contact, and email is unique per organization. A stranger can therefore pre-claim a real customer's email on a throwaway contact. Consider keeping visitor-typed email in source_metadata only, until an attendant confirms it.",
+   "The visitor token stays in localStorage with no expiry. On a shared computer the next person on the same site sees the earlier chat. Consider an expiry or a 'end conversation' control in the widget."
+  ]
+ },
+ {
+  "coverage_id": "app%2Fapi%2Fv1%2Fwebhooks%2Fwebchat%2F%5Bchave%5D%2Fenviar%2Froute.ts%23POST::lib%2Frate-limit.ts%23checkRateLimit::profile%2Fquick%2Fall-in-scope-subsystems::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Pre-authentication%20work%20imbalance",
+  "canonical_refs": {
+   "surface": "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts#POST",
+   "boundary": "lib/rate-limit.ts#checkRateLimit",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance"
+  },
+  "surface": "webchat public routes (config, enviar, ler)",
+  "boundary": "rate limit, body cap and client-IP derivation before tenant work",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Pre-authentication work imbalance",
+  "starting_paths": [
+   "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/ler/route.ts",
+   "lib/channels/webchat/publico.ts",
+   "lib/rate-limit.ts",
+   "lib/rate-limit-helper.ts",
+   "lib/channels/webchat/ingest.ts"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules",
+   "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+   "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+   "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+   "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "hunter-site",
+  "reviewed_paths": [
+   "Caddyfile",
+   "app/api/v1/channels/webchat/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+   "app/api/v1/webhooks/webchat/[chave]/ler/route.ts",
+   "docker-compose.prod.yml",
+   "docker-compose.traefik.yml",
+   "docs/runbooks/cloudpanel.md",
+   "lib/channels/pos-entrada.ts",
+   "lib/channels/webchat/config.ts",
+   "lib/channels/webchat/ingest.ts",
+   "lib/channels/webchat/publico.ts",
+   "lib/http/ip-do-cliente.ts",
+   "lib/rate-limit-helper.ts",
+   "lib/rate-limit.ts",
+   "next.config.ts",
+   "node_modules/next/dist/server/body-streams.js",
+   "proxy.ts",
+   "tests/seguranca/chat-no-site.spec.ts"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+     "app/api/v1/webhooks/webchat/[chave]/ler/route.ts",
+     "lib/rate-limit.ts",
+     "lib/rate-limit-helper.ts",
+     "lib/http/ip-do-cliente.ts",
+     "Caddyfile",
+     "docker-compose.traefik.yml",
+     "docs/runbooks/cloudpanel.md"
+    ],
+    "invariant": "The per-IP limit on the public webchat routes is keyed on a value the requester cannot choose.",
+    "method": "source",
+    "result": "getIp returns the first comma-separated element of X-Forwarded-For, else req.ip, else 127.0.0.1. The shipped Caddyfile uses plain reverse_proxy with no trusted_proxies; Caddy's handling of a client-sent header there is its own default, not visible in source. The CloudPanel runbook's nginx vhost sets X-Forwarded-For to $proxy_add_x_forwarded_for, which appends to the client-sent header, so the first element would be requester-controlled there. docker-compose.traefik.yml does not configure forwarded-header trust; the hosting panel's Traefik is outside source. The limiter is an in-process Map, so it is per replica.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+     "lib/channels/webchat/ingest.ts",
+     "lib/channels/pos-entrada.ts"
+    ],
+    "invariant": "Rows created by anonymous visitors are bounded per channel or tenant, not only per requester-chosen identity.",
+    "method": "source",
+    "result": "The only bounds are 60/min per IP key and 15/min per visitor-token hash. The token is generated by the requester, so each request can carry a fresh one. Each accepted request with a fresh token inserts a contact, a conversation (fn_upsert_wa_conversation), a message, attempts a lead (garantirLeadDaConversa) and emits ai_agent.dispatch_requested. There is no per-channel or per-organization cap, and no proof-of-work or challenge. Even with a truthful IP, one address can create 60 contacts, conversations and lead attempts per minute.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "lib/channels/webchat/publico.ts",
+     "proxy.ts",
+     "next.config.ts",
+     "node_modules/next/dist/server/body-streams.js"
+    ],
+    "invariant": "Body buffering on the public routes is bounded before parsing.",
+    "method": "source",
+    "result": "lerCorpoDoBalao rejects a declared Content-Length above 8 KB, but for a body with no or a false length it calls req.text() and checks the size only afterwards. The proxy.ts matcher covers /api/v1/webhooks/*, and Next 16.4.6 body-streams caps the buffered body at proxyClientMaxBodySize, which next.config.ts does not override. So the effective pre-parse bound is the framework's, not 8 KB. This runs after the IP limit and the key lookup. Recorded as hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "verifier-7",
+    "reviewed_paths": [
+     "Caddyfile",
+     "app/api/v1/channels/webchat/route.ts",
+     "app/api/v1/webhooks/webchat/[chave]/enviar/route.ts",
+     "docker-compose.prod.yml",
+     "docs/runbooks/cloudpanel.md",
+     "lib/channels/pos-entrada.ts",
+     "lib/channels/webchat/config.ts",
+     "lib/channels/webchat/ingest.ts",
+     "lib/http/ip-do-cliente.ts",
+     "lib/rate-limit-helper.ts",
+     "lib/rate-limit.ts",
+     "tests/seguranca/chat-no-site.spec.ts"
+    ],
+    "invariant": "independent re-verification of candidate webchat-public-enviar:rate-limit-key-forwarded-ip+visitor-token-rotation",
+    "method": "source",
+    "result": "decision: needs_validation",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "webchat-public-enviar:rate-limit-key-forwarded-ip+visitor-token-rotation"
+  ],
+  "unresolved": [],
+  "planned_agent": "hunter-site",
+  "hardening_notes": [
+   "Add an aggregate cap per webchat channel and per organization on new visitors per window (new contacts and conversations), independent of IP and token, and move these counters to the shared Redis limiter so they hold across replicas.",
+   "Derive the client IP from the hop written by the trusted proxy (rightmost untrusted element, or X-Real-IP set by the proxy) rather than the leftmost X-Forwarded-For value; getIp's fallback to 127.0.0.1 puts all header-less requests in one bucket.",
+   "lerCorpoDoBalao only rejects an oversized body up front when Content-Length is declared. For chunked bodies it buffers up to the framework cap before the 8 KB check. Read the stream with a running byte counter and abort at 8 KB.",
+   "The Origin allow-list is a browser-side control only: a non-browser client can send any Origin header. The UI and docs should not present it as protection against scripted senders.",
+   "origemPermitida ignores the scheme, so http://<allowed-domain> is accepted. Consider requiring https outside localhost.",
+   "If an attendant merges a webchat contact into another contact, the visitor's next message creates a second contact and conversation with the same provider_conversation_id. lerDoVisitante's maybeSingle then errors and the widget gets 500. Reuse the existing conversation by provider_conversation_id first.",
+   "A visitor can set any unclaimed email on their own webchat contact, and email is unique per organization. A stranger can therefore pre-claim a real customer's email on a throwaway contact. Consider keeping visitor-typed email in source_metadata only, until an attendant confirms it.",
+   "The visitor token stays in localStorage with no expiry. On a shared computer the next person on the same site sees the earlier chat. Consider an expiry or a 'end conversation' control in the widget."
+  ],
+  "decisions": {
+   "webchat-public-enviar:rate-limit-key-forwarded-ip+visitor-token-rotation": "needs_validation"
+  }
+ },
+ {
+  "coverage_id": "lib%2Fautomation%2Factions%2Fcall-webhook.ts%23uncovered-hunter-chatbot-0::hunter-uncovered%23hunter-chatbot-0::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "lib/automation/actions/call-webhook.ts#uncovered-hunter-chatbot-0",
+   "boundary": "hunter-uncovered#hunter-chatbot-0",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "automation 'call webhook' action response handling",
+  "boundary": "tenant-authored URL/remote response ↔ shared worker memory",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Unbounded buffering and cardinality",
+  "starting_paths": [
+   "lib/automation/actions/call-webhook.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "out_of_scope",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "scoped run, code not changed since 57e72291: lib/chatbot/webhook.ts states it uses the same guards as this file; the same read-then-slice pattern may exist there. It is outside my assigned units and outside the stated change scope, so it was not reviewed."
+  ]
+ },
+ {
+  "coverage_id": "lib%2Fchannels%2Fpos-entrada.ts%23uncovered-hunter-site-1::hunter-uncovered%23hunter-site-1::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "lib/channels/pos-entrada.ts#uncovered-hunter-site-1",
+   "boundary": "hunter-uncovered#hunter-site-1",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "visitor-supplied name and text reaching the AI agent and chatbot engine via ai_agent.dispatch_requested",
+  "boundary": "anonymous website visitor to agent runtime and operator AI spend",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Pre-authentication work imbalance",
+  "starting_paths": [
+   "lib/channels/pos-entrada.ts",
+   "lib/leads/nascimento-do-lead.ts",
+   "lib/ai/elegibilidade/campanha.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "out_of_scope",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "scoped run, code not changed since 57e72291: The webchat adds an unauthenticated source for agent dispatch and campaign-keyword AI authorization. The dispatch gate and per-contact spend bounds were not traced in this unit."
+  ]
+ },
+ {
+  "coverage_id": "lib%2Fchatbot%2Fregras.ts%23casaRegex::lib%2Fchatbot%2Fregex-segura.ts%23validarRegex::profile%2Fquick%2Fall-in-scope-subsystems::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Superlinear%20parsing%2C%20matching%2C%20or%20evaluation",
+  "canonical_refs": {
+   "surface": "lib/chatbot/regras.ts#casaRegex",
+   "boundary": "lib/chatbot/regex-segura.ts#validarRegex",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Superlinear parsing, matching, or evaluation"
+  },
+  "surface": "chatbot 'regra própria' (tenant-authored regex run on contact text)",
+  "boundary": "tenant manager/contact ↔ shared worker CPU",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Superlinear parsing, matching, or evaluation",
+  "starting_paths": [
+   "lib/chatbot/regex-segura.ts",
+   "lib/chatbot/regras.ts",
+   "lib/chatbot/validar.ts",
+   "lib/chatbot/motor.ts",
+   "lib/chatbot/executar.ts",
+   "lib/chatbot/simulador.ts"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Superlinear parsing, matching, or evaluation",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "hunter-chatbot",
+  "reviewed_paths": [
+   "app/api/v1/chatbot-flows/[id]/route.ts",
+   "docker-compose.prod.yml",
+   "lib/agent-engine/edge/crm/drain.ts",
+   "lib/chatbot/motor.ts",
+   "lib/chatbot/passos.ts",
+   "lib/chatbot/pedir-digitar-opcoes.test.ts",
+   "lib/chatbot/regex-segura.ts",
+   "lib/chatbot/regras.ts",
+   "lib/chatbot/validar.ts"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "lib/chatbot/regex-segura.ts",
+     "lib/chatbot/pedir-digitar-opcoes.test.ts"
+    ],
+    "invariant": "Every pattern accepted by problemaDaRegex has small bounded matching cost on the 100 characters that are tested.",
+    "method": "source",
+    "result": "Not upheld by source. Rule (4) at line 86 counts only `*`, `+` and `{n,}`. The optional `?` and the bounded range `{n,m}` are not counted when they sit outside a group; rule (3) at line 80 looks at them only inside a repeated group. A pattern made of 40 consecutive `a?` followed by `!` (81 characters, no group, no backreference, zero counted repetitions) is accepted, and so is `a{0,99}` repeated about 25 times followed by `!`. On a 100-character run of `a` a backtracking engine has about 2^40 paths for the first and a degree-25 polynomial for the second. The committed test only measures `\\w*\\w*\\w*!` as the 'worst accepted rule'.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "lib/chatbot/regex-segura.ts"
+    ],
+    "invariant": "Escapes, character classes, nested groups, lazy quantifiers, named groups, lookbehind and backreferences cannot hide a repeated group that contains a repetition or alternation.",
+    "method": "source",
+    "result": "Upheld. esqueleto() replaces an escape (2 characters) and a whole `[...]` class with `x`. A repeated group is detected by the quantifier right after `)`, and the inner text is tested for `* + ? |` and `{n,`. Nested groups are covered because the outer group's inner text includes the inner quantifier. Named groups are rejected conservatively when repeated, because of the `?`. `\\1`, `\\k<` and `(?<=` / `(?<!` are refused. No group-based bypass found.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "lib/chatbot/regras.ts",
+     "lib/chatbot/motor.ts",
+     "lib/chatbot/validar.ts",
+     "lib/chatbot/passos.ts",
+     "lib/agent-engine/edge/crm/drain.ts",
+     "app/api/v1/chatbot-flows/[id]/route.ts"
+    ],
+    "invariant": "The tenant-authored regex reaches the shared worker only through casaRegex, with bounded pattern length, option count and tested text.",
+    "method": "source",
+    "result": "Upheld for reachability. Flows are saved with role manager (app/api/v1/chatbot-flows/[id]/route.ts:77). The schema caps the regex at 200 characters and 10 options per step. motor.ts:796 and :819 call primeiraOpcaoQueBate, which calls casaRegex (regras.ts:517); casaRegex re-runs problemaDaRegex and slices the text to 100 characters. The engine runs in the agent-engine drain (drain.ts imports lib/chatbot/executar), one Node process for all organizations, and `RegExp.test` is synchronous with no deadline. The validator is therefore the only bound.",
+    "artifact": null
+   },
+   {
+    "agent_id": "verifier-1",
+    "reviewed_paths": [
+     "app/api/v1/chatbot-flows/[id]/route.ts",
+     "docker-compose.prod.yml",
+     "lib/chatbot/motor.ts",
+     "lib/chatbot/passos.ts",
+     "lib/chatbot/pedir-digitar-opcoes.test.ts",
+     "lib/chatbot/regex-segura.ts",
+     "lib/chatbot/regras.ts"
+    ],
+    "invariant": "independent re-verification of candidate chatbot-regex-segura:uncounted-optional-and-bounded-quantifiers",
+    "method": "source",
+    "result": "decision: needs_validation",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "chatbot-regex-segura:uncounted-optional-and-bounded-quantifiers"
+  ],
+  "unresolved": [],
+  "planned_agent": "hunter-chatbot",
+  "hardening_notes": [
+   "lib/chatbot/regex-segura.ts: count every quantifier that can match a variable number of times (`?`, `{n,m}`, `*`, `+`, `{n,}`) toward one small budget, or run tenant regexes in a worker thread with a deadline or on a linear-time engine such as RE2. Add test cases for 'a?'x40+'!' and 'a{0,99}'x25+'!'.",
+   "lib/chatbot/webhook.ts: read the body through res.body.getReader() and stop and cancel at 64 KB; refuse responses whose Content-Length exceeds the cap. The sibling lib/automation/actions/call-webhook.ts belongs to another unit and was not reviewed for the same pattern.",
+   "lib/automation/outbound-ip.ts: the IPv6 link-local test uses startsWith('fe80'), but fe80::/10 runs to febf; the IPv4-compatible form (::a.b.c.d), site-local fec0::/10 and 6to4 2002::/16 are not listed. Low practical reach because IPv6 literals are refused and https is required in production.",
+   "lib/automation/outbound-url.ts and outbound-ip.ts: the check-then-fetch DNS rebinding window remains (declared in the source). In production it is mitigated by mandatory https and certificate validation; with NODE_ENV other than production, http is allowed and the window would reach internal plain-HTTP services. Pinning the validated IP in a custom lookup would close it.",
+   "app/api/v1/chatbot-flows/[id]/estatisticas/route.ts: CSV cells are quoted but a leading `=`, `+`, `-` or `@` is not neutralized. Output labels come from flow text written by a manager of the same organization and are opened by agents or admins in a spreadsheet. Prefix such cells with an apostrophe.",
+   "lib/chatbot/passos.ts and lib/empresa/variaveis.ts: the variable key regex accepts `__proto__` and `constructor`. No pollution is reachable (string assignments only), but `{{constructor}}` expands to built-in function text. Use Object.create(null) maps or Object.hasOwn on lookup.",
+   "lib/inbox/template-vars.ts and the chatbot message substitution put contact- or webhook-derived values into outbound messages unfiltered, by design; lib/chatbot/links.ts documents that links arriving inside a variable are not checked."
+  ],
+  "decisions": {
+   "chatbot-regex-segura:uncounted-optional-and-bounded-quantifiers": "needs_validation"
+  }
+ },
+ {
+  "coverage_id": "lib%2Fchatbot%2Fwebhook.ts%23chamarWebhook::lib%2Fautomation%2Foutbound-url.ts%23assertSafeOutboundUrl::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+  "canonical_refs": {
+   "surface": "lib/chatbot/webhook.ts#chamarWebhook",
+   "boundary": "lib/automation/outbound-url.ts#assertSafeOutboundUrl",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+  },
+  "surface": "chatbot webhook block, variables, company variables and link button",
+  "boundary": "tenant-authored URL/variables/remote response ↔ internal network and outbound messages",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Resource and file handling",
+  "starting_paths": [
+   "lib/chatbot/webhook.ts",
+   "lib/chatbot/webhook-corpo.ts",
+   "lib/chatbot/executar.ts",
+   "lib/chatbot/motor.ts",
+   "lib/chatbot/links.ts",
+   "lib/empresa/variaveis.ts",
+   "lib/inbox/template-vars.ts",
+   "app/api/v1/settings/variaveis/route.ts",
+   "app/api/v1/chatbot-flows/[id]/estatisticas/route.ts",
+   "lib/automation/outbound-url.ts",
+   "lib/automation/outbound-ip.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+  "selected_companion_blocks": [
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+   "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   },
+   {
+    "block": "ATTACK-CLASSES.md#Injection",
+    "reason": "coberto dentro desta unidade só para variáveis→link/CSV; SQL é parametrizado (recon 1c)"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "hunter-chatbot",
+  "reviewed_paths": [
+   "Dockerfile",
+   "app/api/v1/chatbot-flows/[id]/estatisticas/route.ts",
+   "app/api/v1/chatbot-flows/[id]/route.ts",
+   "app/api/v1/settings/variaveis/route.ts",
+   "docker-compose.prod.yml",
+   "lib/automation/outbound-ip.ts",
+   "lib/automation/outbound-url.ts",
+   "lib/chatbot/estatistica.ts",
+   "lib/chatbot/executar.ts",
+   "lib/chatbot/links.ts",
+   "lib/chatbot/motor.ts",
+   "lib/chatbot/passos.ts",
+   "lib/chatbot/validar.ts",
+   "lib/chatbot/webhook-corpo.ts",
+   "lib/chatbot/webhook.ts",
+   "lib/empresa/variaveis.ts",
+   "lib/inbox/template-vars.ts"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "lib/chatbot/webhook.ts",
+     "lib/automation/outbound-url.ts",
+     "lib/automation/outbound-ip.ts",
+     "lib/chatbot/validar.ts",
+     "Dockerfile"
+    ],
+    "invariant": "The webhook block cannot reach loopback, private, link-local or metadata addresses, including through variables, redirects, alternate IP notations or DNS.",
+    "method": "source",
+    "result": "Upheld in source, with one declared residual. The guards run on the URL after variable substitution (webhook.ts:76-79). Values are passed through encodeURIComponent, and validar.ts refuses `{{}}` in the host at publish. `new URL` normalizes decimal, hex and short IPv4 forms before the textual check. IPv6 literals are refused outright. Every resolved address is judged, and any special address refuses the call. Redirects are not followed (`redirect: \"manual\"`). Residual: the fetch resolves the name again, so a rebinding window exists (documented in outbound-ip.ts). In the production image NODE_ENV=production forces https, so a rebound connection to an internal plain-HTTP service fails the TLS handshake and certificate check. Not reported as a finding.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "lib/chatbot/webhook.ts"
+    ],
+    "invariant": "The remote response is read up to 64 KB, as the file header states.",
+    "method": "source",
+    "result": "Not upheld. webhook.ts:129 runs `(await res.text()).slice(0, TETO_DA_RESPOSTA)`: the whole body, decompressed, is buffered into a string and only then cut. The only bound is the 8 s AbortSignal. There is no Content-Length check, no streamed read with a byte cap, and no cap on decompressed size.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "lib/chatbot/webhook.ts",
+     "lib/chatbot/webhook-corpo.ts",
+     "lib/chatbot/executar.ts",
+     "lib/chatbot/motor.ts",
+     "lib/chatbot/passos.ts",
+     "lib/empresa/variaveis.ts"
+    ],
+    "invariant": "Contact answers, company variables and the remote response cannot change request structure, inject headers, redirect secrets to another host or pollute object prototypes.",
+    "method": "source",
+    "result": "Upheld. Header names are limited to `[A-Za-z0-9-]{1,60}` by the schema and reserved ones (Authorization, Cookie, Host, X-Webhook-*, X-Forwarded-*) are skipped. Header values have CR/LF removed. The custom body inserts JSON-escaped values and is re-parsed before sending. The signature and Authorization go only to the validated host. valorNoCaminho returns only string, number or boolean, cut to 1000 characters; a path such as `constructor.name` reads harmless built-in values. A variable named `__proto__` passes the key regex, but assigning a string to it is a no-op. `{{constructor}}` or `{{__proto__}}` in a template expands to built-in text, which is cosmetic. Secrets are decrypted per step bound to organization, flow and node (executar.ts:1343).",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "lib/empresa/variaveis.ts",
+     "lib/inbox/template-vars.ts",
+     "lib/chatbot/links.ts",
+     "app/api/v1/settings/variaveis/route.ts"
+    ],
+    "invariant": "Company variables are written only by manager or above, into the caller's own organization, with bounded size and without recursive template expansion.",
+    "method": "source",
+    "result": "Upheld. PATCH calls requireSupportWrite and requireRole(\"manager\"). The admin-client read and update both filter on authz.org.orgId from the session. The schema caps the list at 50 entries, values at 1000 characters and keys at `[a-z_][a-z0-9_]*`. Other settings keys are preserved. Audit records names only. Substitution is a single pass, so there is no expansion bomb. links.ts is a design-time check that documents it does not inspect links arriving inside a variable.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-chatbot",
+    "reviewed_paths": [
+     "app/api/v1/chatbot-flows/[id]/estatisticas/route.ts",
+     "lib/chatbot/estatistica.ts"
+    ],
+    "invariant": "The per-block statistics export is limited to the caller's organization and cannot inject through the filename or CSV structure.",
+    "method": "source",
+    "result": "Upheld for isolation and structure. requireRole(\"agent\"); the session client (RLS) plus an explicit organization_id filter on both chatbot_flows and chatbot_estatisticas; `dias` restricted to 7, 30 or 90; 20000-row limit; filename reduced to `[\\w-]`; fields quoted with doubled quotes. Gap: cells starting with `= + - @` are not neutralized, and output labels come from flow text written by a manager of the same organization. Recorded as hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "verifier-2",
+    "reviewed_paths": [
+     "app/api/v1/chatbot-flows/[id]/route.ts",
+     "docker-compose.prod.yml",
+     "lib/chatbot/executar.ts",
+     "lib/chatbot/webhook.ts"
+    ],
+    "invariant": "independent re-verification of candidate chatbot-webhook:response-buffered-before-64k-cap",
+    "method": "source",
+    "result": "decision: needs_validation",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "chatbot-webhook:response-buffered-before-64k-cap"
+  ],
+  "unresolved": [],
+  "planned_agent": "hunter-chatbot",
+  "hardening_notes": [
+   "lib/chatbot/regex-segura.ts: count every quantifier that can match a variable number of times (`?`, `{n,m}`, `*`, `+`, `{n,}`) toward one small budget, or run tenant regexes in a worker thread with a deadline or on a linear-time engine such as RE2. Add test cases for 'a?'x40+'!' and 'a{0,99}'x25+'!'.",
+   "lib/chatbot/webhook.ts: read the body through res.body.getReader() and stop and cancel at 64 KB; refuse responses whose Content-Length exceeds the cap. The sibling lib/automation/actions/call-webhook.ts belongs to another unit and was not reviewed for the same pattern.",
+   "lib/automation/outbound-ip.ts: the IPv6 link-local test uses startsWith('fe80'), but fe80::/10 runs to febf; the IPv4-compatible form (::a.b.c.d), site-local fec0::/10 and 6to4 2002::/16 are not listed. Low practical reach because IPv6 literals are refused and https is required in production.",
+   "lib/automation/outbound-url.ts and outbound-ip.ts: the check-then-fetch DNS rebinding window remains (declared in the source). In production it is mitigated by mandatory https and certificate validation; with NODE_ENV other than production, http is allowed and the window would reach internal plain-HTTP services. Pinning the validated IP in a custom lookup would close it.",
+   "app/api/v1/chatbot-flows/[id]/estatisticas/route.ts: CSV cells are quoted but a leading `=`, `+`, `-` or `@` is not neutralized. Output labels come from flow text written by a manager of the same organization and are opened by agents or admins in a spreadsheet. Prefix such cells with an apostrophe.",
+   "lib/chatbot/passos.ts and lib/empresa/variaveis.ts: the variable key regex accepts `__proto__` and `constructor`. No pollution is reachable (string assignments only), but `{{constructor}}` expands to built-in function text. Use Object.create(null) maps or Object.hasOwn on lookup.",
+   "lib/inbox/template-vars.ts and the chatbot message substitution put contact- or webhook-derived values into outbound messages unfiltered, by design; lib/chatbot/links.ts documents that links arriving inside a variable are not checked."
+  ],
+  "decisions": {
+   "chatbot-webhook:response-buffered-before-64k-cap": "needs_validation"
+  }
+ },
+ {
+  "coverage_id": "lib%2Fcontatos%2Ftelefone-oculto.ts%23uncovered-hunter-privacidade-0::hunter-uncovered%23hunter-privacidade-0::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "lib/contatos/telefone-oculto.ts#uncovered-hunter-privacidade-0",
+   "boundary": "hunter-uncovered#hunter-privacidade-0",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "hidden phone: session-client responses that carry the number outside the five masked keys",
+  "boundary": "agent marked 'oculto' ↔ contact phone numbers",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Access control",
+  "starting_paths": [
+   "lib/contatos/telefone-oculto.ts",
+   "app/api/v1/messages/[id]/route.ts",
+   "lib/messaging/remetente-de-grupo.ts",
+   "lib/messaging/presenca.ts",
+   "app/api/v1/contacts/route.ts",
+   "app/api/v1/contacts/_handler.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: Needs a field-by-field inventory of what each session-client route and page returns (wa_lid, group_chat_id, external_id, metadata.group_sender, name fallback, text/CSV outputs, phone search filters). That is too broad for this unit's depth bound and distinct from the disclosed service-role/direct-PostgREST limitation."
+  ]
+ },
+ {
+  "coverage_id": "lib%2Flgpd%2Fexport-collector.ts%23critic-3::critic-missing-unit%233::profile%2Fquick%2Fall-in-scope-subsystems::DATA-ISOLATION-AND-LIFECYCLE.md%23Export%20and%20backup%20scope%20expansion",
+  "canonical_refs": {
+   "surface": "lib/lgpd/export-collector.ts#critic-3",
+   "boundary": "critic-missing-unit#3",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Export and backup scope expansion"
+  },
+  "surface": "LGPD data-subject export and anonymisation of the personal data added in this scope (scheduled messages, favourites, team chat, saved stickers, webchat visitor contacts and messages)",
+  "boundary": "a contact's personal data across a data-subject access request or erasure, inside one tenant",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Export and retention lifecycle",
+  "starting_paths": [
+   "lib/lgpd/export-collector.ts",
+   "supabase/migrations/20261113190000_0511_mensagens_agendadas.sql",
+   "supabase/migrations/20261113220000_0513_mensagens_favoritas.sql",
+   "supabase/migrations/20261114000000_0515_chat_interno_da_equipe.sql",
+   "supabase/migrations/20261114030000_0518_chat_no_site.sql",
+   "lib/channels/webchat/ingest.ts"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Export and backup scope expansion",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Retention and queued-work overrun",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "TypeScript/SQL only"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: source-backed coverage gap (missing lifecycle mode): export-collector.ts was changed to export mensagens_agendadas with the service-role client, filtered by org and contact, and was never reviewed. Only 0511 adds an anonymisation trigger. The other new tables that hold personal data were not checked for export or erasure coverage: webchat visitor contacts and messages from 0518, and the visitor-token hash. The data-lifecycle companion is selected, but no unit was given its export/retention blocks for this subsystem."
+  ]
+ },
+ {
+  "coverage_id": "lib%2Frate-limit-helper.ts%23uncovered-hunter-site-0::hunter-uncovered%23hunter-site-0::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "lib/rate-limit-helper.ts#uncovered-hunter-site-0",
+   "boundary": "hunter-uncovered#hunter-site-0",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "other public routes that key rate limits on getIp or ipDoCliente (auth callback, WAHA per-tenant webhook, lead-capture webhooks)",
+  "boundary": "client-IP derivation from X-Forwarded-For before the limit",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Quota-accounting scope and reset gaps",
+  "starting_paths": [
+   "lib/rate-limit-helper.ts",
+   "lib/http/ip-do-cliente.ts",
+   "app/auth/callback/route.ts",
+   "app/api/v1/webhooks/waha/[token]/route.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "out_of_scope",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "scoped run, code not changed since 57e72291: The same leftmost-X-Forwarded-For key is used by routes outside my assigned units (the auth callback limit in particular); each needs its own impact analysis."
+  ]
+ },
+ {
+  "coverage_id": "lib%2Fsupabase%2Fserver.ts%23createClient::lib%2Fsupabase%2Ftelefone-oculto-fetch.ts%23fetchComTelefoneOculto::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Access%20control",
+  "canonical_refs": {
+   "surface": "lib/supabase/server.ts#createClient",
+   "boundary": "lib/supabase/telefone-oculto-fetch.ts#fetchComTelefoneOculto",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Access control"
+  },
+  "surface": "hidden phone masking in the server session client",
+  "boundary": "agent marked 'oculto' ↔ contact phone numbers",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Access control",
+  "starting_paths": [
+   "lib/supabase/telefone-oculto-fetch.ts",
+   "lib/contatos/telefone-oculto.ts",
+   "lib/supabase/server.ts",
+   "lib/auth/server.ts",
+   "app/api/v1/team/[user_id]/telefone/route.ts",
+   "supabase/migrations/20261114020000_0517_telefone_oculto.sql",
+   "app/api/v1/conversations/[id]/historico/route.ts",
+   "components/contacts/EditContactDialog.tsx",
+   "lib/channels/phone-variants.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+  "selected_companion_blocks": [
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Policy and query disagreement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Export and backup scope expansion",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+   "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "candidate",
+  "agent_id": "hunter-privacidade",
+  "reviewed_paths": [
+   "app/actions/shell/setActiveOrg.ts",
+   "app/api/v1/contacts/route.ts",
+   "app/api/v1/conversations/[id]/historico/route.ts",
+   "app/api/v1/team/[user_id]/telefone/route.ts",
+   "lib/auth/server.ts",
+   "lib/contatos/telefone-oculto.ts",
+   "lib/supabase/server.ts",
+   "lib/supabase/telefone-oculto-fetch.test.ts",
+   "lib/supabase/telefone-oculto-fetch.ts",
+   "supabase/baseline.sql",
+   "supabase/migrations/20261114020000_0517_telefone_oculto.sql"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "lib/supabase/telefone-oculto-fetch.ts",
+     "lib/supabase/telefone-oculto-fetch.test.ts",
+     "lib/supabase/server.ts",
+     "lib/auth/server.ts",
+     "app/actions/shell/setActiveOrg.ts",
+     "supabase/migrations/20261114020000_0517_telefone_oculto.sql",
+     "supabase/baseline.sql"
+    ],
+    "invariant": "The mask decision for the server session client is taken for the same organization the request is actually authorized in, and the restricted user cannot influence it.",
+    "method": "source",
+    "result": "Fails. server.ts passes the raw active_org cookie to fetchComTelefoneOculto, which sends it as p_org to fn_eu_oculto_telefone. That function returns coalesce(bool_or(...), false) over the caller's memberships in p_org, so a UUID of an organization the caller does not belong to yields false, and a non-UUID value yields an RPC error that the wrapper also treats as false. Meanwhile escolherMembroAtivo ignores a cookie that matches no membership and falls back to memberships[0], so the request is still served for the real organization, with numbers unmasked. See candidate telefone-oculto/active-org-cookie-desvia-a-pergunta.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "app/api/v1/team/[user_id]/telefone/route.ts"
+    ],
+    "invariant": "Only a manager or above of the same organization can switch the hidden-phone flag, and only for a member of that organization.",
+    "method": "source",
+    "result": "Holds. The route calls requireSupportWrite and requireRole('manager'), validates the UUID and body, looks the membership up by (session organization, target user), rejects revoked members, refuses to hide for manager/admin, updates by membership id and session organization, and audits. An agent cannot clear their own flag here.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-privacidade",
+    "reviewed_paths": [
+     "lib/contatos/telefone-oculto.ts",
+     "app/api/v1/conversations/[id]/historico/route.ts"
+    ],
+    "invariant": "The history export and other session-client reads do not hand a restricted agent the number through a path the mask does not see.",
+    "method": "source",
+    "result": "Partly holds. The history export reads the contact and messages with the session client, so phone_number arrives masked before it reaches the TXT/PDF header when the mask decision is correct, and the service-role use in that route reads only team names. The mask is keyed on five JSON field names (phone_number, phone, telefone, wa_identity, phone_e164). Values that carry the number under other keys or inside strings are not covered; those are listed under hardening and were not traced to a response in this run.",
+    "artifact": null
+   },
+   {
+    "agent_id": "verifier-5",
+    "reviewed_paths": [
+     "app/api/v1/contacts/route.ts",
+     "lib/auth/server.ts",
+     "lib/supabase/server.ts",
+     "lib/supabase/telefone-oculto-fetch.test.ts",
+     "lib/supabase/telefone-oculto-fetch.ts",
+     "supabase/baseline.sql",
+     "supabase/migrations/20261114020000_0517_telefone_oculto.sql"
+    ],
+    "invariant": "independent re-verification of candidate telefone-oculto/active-org-cookie-desvia-a-pergunta",
+    "method": "source",
+    "result": "decision: confirmed",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [
+   "telefone-oculto/active-org-cookie-desvia-a-pergunta"
+  ],
+  "unresolved": [],
+  "planned_agent": "hunter-privacidade",
+  "hardening_notes": [
+   "lib/agendadas/executar.ts: at send time the worker re-checks the scheduler's membership and role but not whether they can still see the conversation (made private, or reassigned in visibility_mode 'own'). A message scheduled while authorized still goes out in their name after they lose access. Re-evaluating visibility at send time, or cancelling pending rows on reassignment, would close this.",
+   "lib/supabase/telefone-oculto-fetch.ts: besides the cookie issue, any transient RPC failure yields 'not hidden' (fail open, already disclosed). Failing closed on everything except 'function not found' is a small change.",
+   "lib/contatos/telefone-oculto.ts: the mask covers five JSON keys only. Not traced to a response in this run, but worth checking: contacts.wa_lid, conversations.group_chat_id, messages.external_id (WAHA ids embed the chat JID), messages.metadata.group_sender, a contact name that defaults to the number, and any non-JSON response (CSV/text) produced through the session client.",
+   "Hidden phone: filtering or searching contacts by phone through the session client still works for a restricted agent, so a number could be recovered digit by digit by observing which filters match. Consider rejecting phone filters for marked members.",
+   "app/api/v1/equipe/_membros.ts: names in the team chat and its push notifications come from user_metadata.full_name, which each user can change. A member can display a colleague's name in the internal chat. The list also includes invited members who have not accepted yet (no accepted_at filter), so they can be addressed in direct messages.",
+   "app/api/v1/settings/conversas/route.ts and settings/variaveis/route.ts: read-modify-write of organizations.settings without a version check. Concurrent saves can drop each other's keys (integrity, not access)."
+  ],
+  "parent_note": "hunter omitiu artifact:null em checagens só de fonte; normalizado pelo pai",
+  "decisions": {
+   "telefone-oculto/active-org-cookie-desvia-a-pergunta": "confirmed"
+  }
+ },
+ {
+  "coverage_id": "proxy.ts%23proxy::lib%2Fseguranca%2Fentrada.ts%23motivoDeRecusaDoJson::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Obvious%20things",
+  "canonical_refs": {
+   "surface": "proxy.ts#proxy",
+   "boundary": "lib/seguranca/entrada.ts#motivoDeRecusaDoJson",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Obvious things"
+  },
+  "surface": "edge hardening: JSON guard in proxy, CSP, Caddy method block, contacts id/tag guards",
+  "boundary": "malformed request ↔ handlers; framing/parsing disagreements",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Obvious things",
+  "starting_paths": [
+   "proxy.ts",
+   "lib/seguranca/entrada.ts",
+   "next.config.ts",
+   "Caddyfile",
+   "Caddyfile.single-server",
+   "app/api/v1/contacts/[id]/route.ts",
+   "app/api/v1/contacts/_handler.ts",
+   "lib/auth/public-paths.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Obvious things",
+  "selected_companion_blocks": [
+   "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+   "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+   "WEB-PROTOCOL-AND-AUTH.md#Request framing and desynchronization",
+   "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+   "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "hunter-entrega",
+  "reviewed_paths": [
+   ".dockerignore",
+   ".gitignore",
+   "Caddyfile",
+   "Caddyfile.single-server",
+   "app/api/v1/contacts/[id]/route.ts",
+   "app/api/v1/contacts/_handler.ts",
+   "lib/auth/public-paths.ts",
+   "lib/seguranca/entrada.ts",
+   "next.config.ts",
+   "proxy.ts"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     "proxy.ts",
+     "lib/seguranca/entrada.ts",
+     "lib/auth/public-paths.ts"
+    ],
+    "invariant": "The new JSON guard in the proxy adds no unauthenticated work and does not weaken any authorization decision.",
+    "method": "source",
+    "result": "The guard runs at proxy.ts:139-155, after the public-path early return (line 67) and after the 401 for a missing user (lines 110-133), so only authenticated session requests reach the body read and JSON walk. It can only reject with 422 or pass the request on unchanged; it never rewrites the body or grants access. Ways around it (non-JSON content type, Content-Length above 2 MB, public or bearer paths) only restore the earlier behaviour, where the database rejects the text and the route returns 500. That is no boundary crossing. Robustness gaps are listed under hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     "app/api/v1/contacts/[id]/route.ts",
+     "app/api/v1/contacts/_handler.ts"
+    ],
+    "invariant": "The contacts id guard and the tag filter do not allow filter injection or skip an authorization step.",
+    "method": "source",
+    "result": "The UUID regex is anchored at both ends and returns 404 before any database call. The route is not a public path, so the proxy already answers 401 to anonymous callers, and PATCH/DELETE still call requireSupportWrite and requireRole. The tag filter (_handler.ts:181) is sent as its own query parameter through query.filter, with backslash and double quote escaped inside a quoted array element, so a tag cannot leave the array literal or add a condition. The search filter in .or() (lines 131-176, older code) strips comma and parentheses and escapes LIKE wildcards.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     "next.config.ts",
+     "Caddyfile",
+     "Caddyfile.single-server"
+    ],
+    "invariant": "The header and edge changes do not open framing, method or routing exposure.",
+    "method": "source",
+    "result": "The CSP adds object-src 'none', base-uri 'self' and frame-ancestors 'none' to every path, alongside the existing X-Frame-Options DENY, nosniff and Referrer-Policy; it loosens nothing. Both Caddyfiles answer TRACE, TRACK and CONNECT with 405 as the first directive inside route, ahead of every reverse_proxy, and the existing 403 for the global WAHA webhook path is kept. No request-smuggling-relevant setting was changed. How Caddy treats a client-supplied X-Forwarded-For is deployment behaviour, not visible here, and belongs to the peer rate-limit unit.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-entrega",
+    "reviewed_paths": [
+     "proxy.ts",
+     "lib/auth/public-paths.ts",
+     ".gitignore",
+     ".dockerignore"
+    ],
+    "invariant": "Literal checklist over the scoped change: hardcoded secrets, committed env/key files, eval or exec, debug gates, cookie flags, security TODOs.",
+    "method": "source",
+    "result": "A grep of the added lines since 57e72291 (lockfile, tests and docs excluded) found no hardcoded key, token or private key, no eval, new Function or child_process, and no security TODO/FIXME. Tracked env files are only the three *.example templates; .env* and .e2e-creds.json are git-ignored and .env is excluded from the Docker context. The session cookie keeps sameSite strict, httpOnly and the secure helper (proxy.ts:95-101). The one wildcard CORS header added is in the public webchat helper, which is peer-owned and not reviewed here. Added redirects go to fixed internal paths. lib/auth/public-paths.ts is unchanged in this scope; the new webchat routes fall under the existing /api/v1/webhooks/ entry and are peer-owned.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "planned_agent": "hunter-entrega",
+  "hardening_notes": [
+   "proxy.ts:145 reads the whole JSON body in the proxy when Content-Length is absent (chunked upload), because a missing header is treated as 0. Only authenticated sessions reach it and Next bounds the buffered body, but a missing or non-numeric Content-Length should skip the check.",
+   "lib/seguranca/entrada.ts:37 uses `pilha.push(...v)`. A JSON array with more elements than the engine's spread-argument limit (reachable inside the 2 MB cap, e.g. an array of single digits) throws RangeError outside the try/catch, and the proxy answers 500 to that authenticated caller's own request. Push in a loop instead and wrap the walk in a try/catch that fails open.",
+   "The proxy JSON guard keys on Content-Type containing application/json and on Content-Length <= 2 MB. A JSON body sent with another content type, or a larger one, skips it and hits the earlier database 500. Not a boundary, but routes that write user text still need their own validation.",
+   "docker-compose.prod.yml:136 and hostgator-setup-kit/_common.sh pin WAHA by version tag (devlikeapro/waha:latest-2026.9.2) while serverless-redis-http, wacalls and asterisk are pinned by sha256 digest. update.sh now moves the whole installed base to this tag, so a digest pin would bind what the CI check in trivy.yml actually tested.",
+   ".github/workflows/trivy.yml scans the WAHA image by a hardcoded literal (devlikeapro/waha:latest-2026.9.2) rather than the $IMG value read from the compose file, so on the next bump the scan can silently keep covering the old version.",
+   "Dockerfile, Dockerfile.worker and Dockerfile.scheduler use floating base tags (node:22-alpine, alpine:3.20) and now `apk upgrade --no-cache`, so two builds of the same commit can differ. Acceptable for patching, but digest-pinned bases with scheduled bumps would make what Trivy scanned match what is published.",
+   "next.config.ts CSP has no script-src or connect-src (deliberate and documented), so it gives no XSS mitigation; the frame, object and base restrictions are the only effect.",
+   "redis:7-alpine and caddy:2-alpine in docker-compose.prod.yml are floating tags with the default pull policy (older than this scope).",
+   "seguranca.yml tails /tmp/app.log into the public job log on failure. Whether the app can log the Anthropic key or request headers there was not traced; worth confirming the logger never prints it."
+  ]
+ },
+ {
+  "coverage_id": "proxy.ts%23uncovered-hunter-entrega-1::hunter-uncovered%23hunter-entrega-1::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "proxy.ts#uncovered-hunter-entrega-1",
+   "boundary": "hunter-uncovered#hunter-entrega-1",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "Login `next` redirect parameter (proxy.ts sets next=pathname+search; app/auth/callback/route.ts reads `next`)",
+  "boundary": "unauthenticated visitor ↔ post-login redirect target",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Obvious things (open redirect)",
+  "starting_paths": [
+   "proxy.ts",
+   "app/auth/callback/route.ts",
+   "app/login"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: Older code outside the scoped diff; the consumer of `next` was located but its validation was not traced. Needs its own unit if open-redirect coverage of the login flow is wanted."
+  ]
+ },
+ {
+  "coverage_id": "public%2Fwebchat%2Fv1.js%23widget::lib%2Fchannels%2Fwebchat%2Fpublico.ts%23cabecalhosDoBalao::profile%2Fquick%2Fall-in-scope-subsystems::CLIENT-SIDE.md%23DOM-based%20XSS",
+  "canonical_refs": {
+   "surface": "public/webchat/v1.js#widget",
+   "boundary": "lib/channels/webchat/publico.ts#cabecalhosDoBalao",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "CLIENT-SIDE.md#DOM-based XSS"
+  },
+  "surface": "embeddable chat widget on third-party pages",
+  "boundary": "host page ↔ widget ↔ CRM origin (CORS, DOM, storage)",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "DOM-based XSS",
+  "starting_paths": [
+   "public/webchat/v1.js",
+   "lib/channels/webchat/publico.ts",
+   "components/connections/ChatNoSiteClient.tsx",
+   "components/inbox/ChannelLogo.tsx"
+  ],
+  "ordinary_attack_class_block": null,
+  "selected_companion_blocks": [
+   "CLIENT-SIDE.md#Core discipline",
+   "CLIENT-SIDE.md#DOM-based XSS",
+   "CLIENT-SIDE.md#Credentialed CORS trust",
+   "CLIENT-SIDE.md#Browser-storage disclosure and stale authorization",
+   "CLIENT-SIDE.md#Universal moves",
+   "CLIENT-SIDE.md#Validation rules"
+  ],
+  "excluded_blocks": [
+   {
+    "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+    "reason": "alvo é TypeScript/SQL; sem código nativo no escopo"
+   },
+   {
+    "block": "AI-AND-LLM.md#Core discipline",
+    "reason": "nenhum caminho de modelo/ferramenta foi alterado no escopo"
+   },
+   {
+    "block": "CLIENT-SIDE.md#`postMessage` origin and source trust",
+    "reason": "o widget não usa postMessage"
+   }
+  ],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "covered",
+  "agent_id": "hunter-site",
+  "reviewed_paths": [
+   "app/api/v1/channels/webchat/_comum.ts",
+   "components/connections/ChatNoSiteClient.tsx",
+   "components/inbox/ChannelLogo.tsx",
+   "lib/channels/webchat/config.ts",
+   "lib/channels/webchat/publico.ts",
+   "public/webchat/v1.js"
+  ],
+  "local_checks": [
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "public/webchat/v1.js"
+    ],
+    "invariant": "Nothing from the network, storage or the host page reaches an HTML- or script-executing sink in the widget.",
+    "method": "source",
+    "result": "Every text (title, greeting, message text, error notes) goes in through the el() helper via textContent or through setAttribute('aria-label'). The widget has no innerHTML, document.write, eval, or URL sinks. The colour is re-checked against /^#[0-9a-fA-F]{6}$/ before style.setProperty. The stylesheet is a constant. The API base comes from the script's own src origin plus a key checked as 32 hex. The localStorage value is JSON-parsed and only string fields are used, as input values. The message class is chosen by comparison, not concatenated from server data.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "lib/channels/webchat/publico.ts",
+     "lib/channels/webchat/config.ts",
+     "public/webchat/v1.js"
+    ],
+    "invariant": "CORS on the public routes exposes no credentialed or cross-visitor data.",
+    "method": "source",
+    "result": "cabecalhosDoBalao never sends Access-Control-Allow-Credentials, and the widget uses credentials: 'omit'. The routes use no cookie: identity is the visitor token in the body. Origin is echoed only when an allow-list exists, and origemPermitida requires an exact host or dot-suffix match before any data is returned; the 403 body has only an error code. A wildcard or echoed origin therefore gives a foreign page nothing it could not get by direct request, and it still needs the 256-bit visitor token to read a conversation.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "public/webchat/v1.js"
+    ],
+    "invariant": "The visitor token in browser storage is not readable by a lower-authority party than the one that already controls the page.",
+    "method": "source",
+    "result": "The token is stored in the host site's localStorage under chat_do_site_<key>. Its readers are scripts on that same origin, which already control the page and the widget's open shadow root. There is no account switch or logout lifecycle for an anonymous visitor. No finding. On a shared computer the next user of the same browser profile sees the earlier chat; recorded as hardening.",
+    "artifact": null
+   },
+   {
+    "agent_id": "hunter-site",
+    "reviewed_paths": [
+     "components/connections/ChatNoSiteClient.tsx",
+     "components/inbox/ChannelLogo.tsx",
+     "app/api/v1/channels/webchat/_comum.ts"
+    ],
+    "invariant": "The admin screen renders the embed snippet and channel data without an HTML sink.",
+    "method": "source",
+    "result": "Neither component uses dangerouslySetInnerHTML or innerHTML. The snippet is built server-side from the origin of NEXT_PUBLIC_APP_URL and the hex key, shown as an input value and copied with clipboard.writeText. The visitor's page URL (http/https only by schema) is stored in metadata and not rendered as a link in any file found by grep.",
+    "artifact": null
+   }
+  ],
+  "result_fingerprints": [],
+  "unresolved": [],
+  "planned_agent": "hunter-site",
+  "hardening_notes": [
+   "Add an aggregate cap per webchat channel and per organization on new visitors per window (new contacts and conversations), independent of IP and token, and move these counters to the shared Redis limiter so they hold across replicas.",
+   "Derive the client IP from the hop written by the trusted proxy (rightmost untrusted element, or X-Real-IP set by the proxy) rather than the leftmost X-Forwarded-For value; getIp's fallback to 127.0.0.1 puts all header-less requests in one bucket.",
+   "lerCorpoDoBalao only rejects an oversized body up front when Content-Length is declared. For chunked bodies it buffers up to the framework cap before the 8 KB check. Read the stream with a running byte counter and abort at 8 KB.",
+   "The Origin allow-list is a browser-side control only: a non-browser client can send any Origin header. The UI and docs should not present it as protection against scripted senders.",
+   "origemPermitida ignores the scheme, so http://<allowed-domain> is accepted. Consider requiring https outside localhost.",
+   "If an attendant merges a webchat contact into another contact, the visitor's next message creates a second contact and conversation with the same provider_conversation_id. lerDoVisitante's maybeSingle then errors and the widget gets 500. Reuse the existing conversation by provider_conversation_id first.",
+   "A visitor can set any unclaimed email on their own webchat contact, and email is unique per organization. A stranger can therefore pre-claim a real customer's email on a throwaway contact. Consider keeping visitor-typed email in source_metadata only, until an attendant confirms it.",
+   "The visitor token stays in localStorage with no expiry. On a shared computer the next person on the same site sees the earlier chat. Consider an expiry or a 'end conversation' control in the widget."
+  ]
+ },
+ {
+  "coverage_id": "repo%23unchanged-since-57e72291::repo%23all-other-boundaries::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "repo#unchanged-since-57e72291",
+   "boundary": "repo#all-other-boundaries",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "everything not changed since 57e72291",
+  "boundary": "all other boundaries",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Wildcard",
+  "starting_paths": [
+   "app",
+   "lib"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "out_of_scope",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "scoped run: only files changed since 57e72291 are in scope"
+  ]
+ },
+ {
+  "coverage_id": "scripts%2Fseguranca%2Fopenapi.ts%23uncovered-hunter-entrega-0::hunter-uncovered%23hunter-entrega-0::profile%2Fquick%2Fall-in-scope-subsystems::ATTACK-CLASSES.md%23Wildcard",
+  "canonical_refs": {
+   "surface": "scripts/seguranca/openapi.ts#uncovered-hunter-entrega-0",
+   "boundary": "hunter-uncovered#hunter-entrega-0",
+   "subsystem": "profile/quick/all-in-scope-subsystems",
+   "attack_class": "ATTACK-CLASSES.md#Wildcard"
+  },
+  "surface": "scripts/seguranca/openapi.ts (OpenAPI generation from route Zod schemas for schemathesis)",
+  "boundary": "CI tool input only; no production path",
+  "subsystem": "all in-scope subsystems (quick profile)",
+  "attack_class": "Mutable and unbound build inputs",
+  "starting_paths": [
+   "scripts/seguranca/openapi.ts"
+  ],
+  "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+  "selected_companion_blocks": [],
+  "excluded_blocks": [],
+  "prior_status": "none",
+  "attempts": [],
+  "wave": 1,
+  "status": "deferred",
+  "agent_id": null,
+  "reviewed_paths": [],
+  "local_checks": [],
+  "result_fingerprints": [],
+  "unresolved": [
+   "quick_profile_final_critic: Listed in the starting paths but not read in this pass. It runs only inside the CI job against the local app and has no secret access of its own, so it was deprioritized; a short review would close the unit's path list."
+  ]
+ }
+]

@@ -42,6 +42,8 @@ describe("chat no site — configuração e entrada do visitante", () => {
     expect(origemPermitida("https://naoloja.com.br", ["loja.com.br"])).toBe(false);
     expect(origemPermitida(null, ["loja.com.br"])).toBe(false);
     expect(origemPermitida("lixo", ["loja.com.br"])).toBe(false);
+    expect(origemPermitida("http://loja.com.br", ["loja.com.br"])).toBe(false);
+    expect(origemPermitida("http://localhost:3000", ["localhost:3000"])).toBe(true);
   });
 
   it("o banco guarda o hash, nunca o token", () => {

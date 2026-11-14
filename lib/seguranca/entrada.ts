@@ -35,7 +35,9 @@ export function motivoDeRecusaDoJson(corpo: string): string | null {
     if (typeof v === "string") {
       if (!textoGuardavel(v)) return "texto_com_caractere_invalido";
     } else if (Array.isArray(v)) {
-      pilha.push(...v);
+      // Um por um: `push(...v)` estoura o limite de argumentos do motor com
+      // uma lista enorme, e o erro subia como 500 em vez de deixar passar.
+      for (const filho of v) pilha.push(filho);
     } else if (v && typeof v === "object") {
       for (const [k, filho] of Object.entries(v)) {
         if (!textoGuardavel(k)) return "texto_com_caractere_invalido";

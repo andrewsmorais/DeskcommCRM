@@ -12,7 +12,8 @@
  *   3. nenhum grupo que se repete (`(...)+`, `(...)*`, `(...){2,}`) pode ter,
  *      dentro dele, outra repetição ou um "ou" (`|`) — é daí que nasce o tempo
  *      exponencial;
- *   4. no máximo 3 repetições sem limite (`*`, `+`, `{n,}`) na regra inteira;
+ *   4. no máximo 3 repetições de tamanho livre (`*`, `+`, `{n,}`, `{n,m}` com
+ *      folga) na regra inteira, e um orçamento conjunto com as opcionais (`?`);
  *   5. e a regra é testada só nos 100 primeiros caracteres da mensagem.
  *
  * Com (3) não sobra crescimento exponencial; com (4) e (5) o pior polinomial
@@ -24,6 +25,13 @@
 export const REGEX_MAX = 200;
 export const TEXTO_TESTADO_MAX = 100;
 const REPETICOES_LIVRES_MAX = 3;
+/**
+ * Orçamento conjunto: cada repetição larga custa 2, cada opcional (`?`,
+ * `{n,n+1}`) custa 1. MEDIDO no Node 22, em 100 letras iguais: 3 largas + 2
+ * opcionais ≈ 0,2 s (o pior caso que cabe); 3 largas + 6 opcionais = 4 s; 20
+ * opcionais sozinhos = 2 s e cada um a mais dobra.
+ */
+const CUSTO_MAX = 8;
 
 /** Remove escapes e classes `[...]`, que não contam como estrutura. */
 function esqueleto(padrao: string): string {
@@ -82,10 +90,35 @@ export function problemaDaRegex(padrao: string): string | null {
       }
     }
   }
-  // (4) repetições sem limite.
-  const livres = (s.match(/[*+]|\{\d+,\}/g) ?? []).length;
+  // (4) repetições de tamanho VARIÁVEL, todas — não só `*` e `+`.
+  //
+  // A primeira versão contava só `*`, `+` e `{n,}`. A auditoria de 14/11/2026
+  // mostrou o furo: `a?` escrito 40 vezes passa sem grupo nenhum e tem 2^40
+  // caminhos; `a{0,99}` é um `*` com outro nome nos 100 caracteres testados.
+  // Agora toda repetição que pode casar um número variável de vezes entra na
+  // conta: as largas (`*`, `+`, `{n,}`, `{n,m}` com folga > 1) no teto de
+  // sempre, e as estreitas (`?`, `{n,n+1}`) num orçamento conjunto com elas.
+  const semPrefixoDeGrupo = s.replace(/\(\?(?::|=|!|<[A-Za-z_][A-Za-z0-9_]*>)/g, "(");
+  let livres = 0;
+  let opcionais = 0;
+  for (const q of semPrefixoDeGrupo.match(/[*+?]|\{\d+(?:,\d*)?\}/g) ?? []) {
+    if (q === "*" || q === "+") livres++;
+    else if (q === "?") opcionais++;
+    else {
+      const [, de, virgula, ate] = /^\{(\d+)(,?)(\d*)\}$/.exec(q) ?? [];
+      if (!virgula) continue; // `{n}` exato: não varia
+      if (ate === "") livres++;
+      else {
+        const folga = Number(ate) - Number(de);
+        if (folga > 1) livres++;
+        else if (folga === 1) opcionais++;
+      }
+    }
+  }
   if (livres > REPETICOES_LIVRES_MAX)
-    return `A regra pode ter no máximo ${REPETICOES_LIVRES_MAX} repetições sem limite (* ou +).`;
+    return `A regra pode ter no máximo ${REPETICOES_LIVRES_MAX} repetições de tamanho livre (*, + ou {n,m}).`;
+  if (2 * livres + opcionais > CUSTO_MAX)
+    return "A regra tem partes opcionais (?) e repetições demais juntas, e isso pode travar o atendimento. Simplifique a regra.";
   return null;
 }
 

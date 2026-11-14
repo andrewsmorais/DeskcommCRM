@@ -19,6 +19,7 @@ import { audit } from "@/lib/audit";
 import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { traduzir } from "@/lib/i18n/dicionario";
+import { caminhoDeMidiaDaEmpresa } from "@/lib/messaging/media/upload-validation";
 import type { SendMessageInput } from "@/lib/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // (`isMediaPathOwnedBy`): copia o arquivo para a pasta dela no Storage.
     let caminho = m.media_storage_path;
     if (m.type !== "text" && caminho) {
-      if (!caminho.startsWith(`${authz.org.orgId}/`)) {
+      if (!caminhoDeMidiaDaEmpresa(caminho, authz.org.orgId)) {
         resultados.push({ conversation_id: destino, ok: false, erro: t("Esta mensagem não pode ser encaminhada.") });
         continue;
       }

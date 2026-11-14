@@ -72,6 +72,13 @@ describe("telefone oculto", () => {
     expect(await oculto(BIA, null)).toBe(false);
   });
 
+  it("organização de que a pessoa NÃO é membro vale como 'sem organização' (migration 0519)", async () => {
+    // Antes respondia false: bastava trocar o cookie active_org por outro UUID.
+    const ESTRANHA = "99999999-9999-4999-8999-999999999999";
+    expect(await oculto(ANA, ESTRANHA)).toBe(true);
+    expect(await oculto(BIA, ESTRANHA)).toBe(false);
+  });
+
   it("anon não executa a função", async () => {
     const r = await como("anon", null, (c) => c.query(`select public.fn_eu_oculto_telefone(null)`));
     expect(String(r)).toMatch(/permission denied/);

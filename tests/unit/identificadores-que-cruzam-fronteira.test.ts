@@ -176,6 +176,9 @@ const SITES: { arquivo: string; fronteira: string; papel?: "gerador" | "validado
   // O arquivo do passo "Enviar mídia" do chatbot: `<org>/chatbot/<fluxo>/<uuid>.<ext>`,
   // três uuids e um segmento fixo — a mesma forma, abaixo do teto da chave.
   { arquivo: "app/api/v1/chatbot-flows/[id]/media/route.ts", fronteira: "storage.chave-de-objeto" },
+  // A figurinha salva (migration 0516): `<org>/figurinhas/<sha256>.webp` — um
+  // uuid, um segmento fixo e 64 hex gerados no servidor.
+  { arquivo: "app/api/v1/figurinhas/route.ts", fronteira: "storage.chave-de-objeto" },
   // Chave de idempotência: os geradores (manda UUID) e os validadores (exige UUID).
   { arquivo: "app/onboarding/connect-whatsapp/_client.tsx", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "components/extensions/ExtensionsManager.tsx", fronteira: "api.idempotency-key", papel: "gerador" },

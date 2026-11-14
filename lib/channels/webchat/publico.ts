@@ -103,8 +103,23 @@ export function erroDoBalao(
 export async function lerCorpoDoBalao(req: Request): Promise<unknown | null> {
   const declarado = Number(req.headers.get("content-length") ?? 0);
   if (declarado > MAX_CORPO) return null;
-  const texto = await req.text();
-  if (texto.length > MAX_CORPO) return null;
+  // Lê contando: corpo sem tamanho declarado (chunked) para no teto, em vez de
+  // ser guardado inteiro para só então ser recusado.
+  const leitor = req.body?.getReader();
+  if (!leitor) return null;
+  const partes: Uint8Array[] = [];
+  let lidos = 0;
+  for (;;) {
+    const { done, value } = await leitor.read();
+    if (done || !value) break;
+    lidos += value.byteLength;
+    if (lidos > MAX_CORPO) {
+      await leitor.cancel().catch(() => {});
+      return null;
+    }
+    partes.push(value);
+  }
+  const texto = new TextDecoder().decode(Buffer.concat(partes));
   try {
     return JSON.parse(texto);
   } catch {

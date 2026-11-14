@@ -31,6 +31,10 @@ on:
   schedule:
     - cron: "17 6 * * 1" # segunda, 03:17 em Brasília
 
+# As ações de terceiros vão FIXADAS POR COMMIT (como no trivy.yml): este job
+# guarda uma chave de IA no ambiente do app, e uma etiqueta pode ser trocada por
+# quem controla o repositório da ação. Para subir de versão, troque o commit e o
+# comentário juntos (`git ls-remote https://github.com/<dono>/<ação> refs/tags/<vX>`).
 permissions:
   contents: read
 
@@ -46,12 +50,12 @@ jobs:
       # O garak só roda com a chave do modelo; o segredo não entra em `if:` direto.
       TEM_CHAVE: ${{ secrets.ANTHROPIC_API_KEY != '' && 'sim' || 'nao' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/preparar-node
         timeout-minutes: 5
 
-      - uses: supabase/setup-cli@v3
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3
         with:
           version: 2.117.0
 
@@ -163,7 +167,7 @@ jobs:
             --report junit,har --report-dir seguranca-relatorios/schemathesis
 
       - name: "3/4 ZAP — de fora, sem login (varredura completa)"
-        uses: zaproxy/action-full-scan@v0.13.0
+        uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
         continue-on-error: true
         with:
           target: http://localhost:3001
@@ -180,7 +184,7 @@ jobs:
           mv report_html.html report_json.json report_md.md seguranca-relatorios/zap-de-fora/ 2>/dev/null || true
 
       - name: "3/4 ZAP — logado como atendente (varredura completa)"
-        uses: zaproxy/action-full-scan@v0.13.0
+        uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
         continue-on-error: true
         with:
           target: http://localhost:3001/app
@@ -267,7 +271,7 @@ jobs:
 
       - name: Publicar os relatórios
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: seguranca-relatorios
           path: |

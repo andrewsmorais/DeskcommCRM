@@ -16,6 +16,12 @@ import sharp from "sharp";
 export const LADO = 512;
 export const MAX_ENTRADA = 5 * 1024 * 1024;
 export const MAX_SAIDA = 100 * 1024;
+/**
+ * Teto de pixels da imagem de entrada (16 megapixels). Um PNG pequeno em bytes
+ * pode declarar 16000×16000 e custar segundos de CPU do servidor; o padrão da
+ * biblioteca (268 megapixels) deixava. Auditoria de 14/11/2026.
+ */
+export const PIXELS_MAX = 16_000_000;
 export const MAX_POR_EMPRESA = 200;
 export const MIME = "image/webp";
 
@@ -29,13 +35,13 @@ export async function paraFigurinha(entrada: Buffer): Promise<Buffer> {
   if (entrada.byteLength > MAX_ENTRADA) throw new FigurinhaInvalida("Imagem maior que 5 MB.");
   let formato: string | undefined;
   try {
-    formato = (await sharp(entrada, { animated: false }).metadata()).format;
+    formato = (await sharp(entrada, { animated: false, limitInputPixels: PIXELS_MAX }).metadata()).format;
   } catch {
     throw new FigurinhaInvalida("Isto não é uma imagem.");
   }
   if (!formato || !FORMATOS_ACEITOS.has(formato))
     throw new FigurinhaInvalida("Use uma imagem PNG, JPG, WebP ou GIF.");
-  const base = sharp(entrada, { animated: false })
+  const base = sharp(entrada, { animated: false, limitInputPixels: PIXELS_MAX })
     .rotate()
     .resize(LADO, LADO, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } });
   for (const qualidade of [80, 65, 50, 35, 20]) {

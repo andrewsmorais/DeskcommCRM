@@ -53,7 +53,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // CSV: com o nome do bloco e o rótulo da saída que a tela mostra.
   const g = grafoSchema.safeParse((fluxo as { grafo?: unknown }).grafo);
   const nos = new Map((g.success ? g.data.nodes : []).map((n) => [n.id, n]));
-  const campo = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+  // Texto que começa por = + - @ vira fórmula quando a planilha abre o arquivo;
+  // o apóstrofo na frente faz a planilha ler como texto.
+  const campo = (v: string | number) => {
+    const s = typeof v === "string" && /^[=+\-@\t\r]/.test(v) ? `'${v}` : String(v);
+    return `"${s.replace(/"/g, '""')}"`;
+  };
   const linhas = [["Bloco", "Tipo", "Saída", "Conclusões", "% do bloco"].map(campo).join(";")];
   for (const b of blocos) {
     const no = nos.get(b.node_id);

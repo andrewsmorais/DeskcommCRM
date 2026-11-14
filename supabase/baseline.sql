@@ -43639,7 +43639,18 @@ as $f$
     from public.user_organizations uo
    where uo.user_id = auth.uid()
      and uo.revoked_at is null
-     and (p_org is null or uo.organization_id = p_org);
+     and (
+       p_org is null
+       or uo.organization_id = p_org
+       -- (migration 0519) p_org que não é uma organização MINHA não filtra
+       -- nada: um cookie trocado no navegador não desliga a máscara.
+       or not exists (
+         select 1 from public.user_organizations m
+          where m.user_id = auth.uid()
+            and m.revoked_at is null
+            and m.organization_id = p_org
+       )
+     );
 $f$;
 revoke execute on function public.fn_eu_oculto_telefone(uuid) from public, anon;
 grant execute on function public.fn_eu_oculto_telefone(uuid) to authenticated, service_role;

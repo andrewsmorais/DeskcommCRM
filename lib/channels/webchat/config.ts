@@ -134,7 +134,11 @@ export function origemPermitida(origem: string | null, dominios: readonly string
   if (!origem) return false;
   let host: string;
   try {
-    host = new URL(origem).host.toLowerCase();
+    const url = new URL(origem);
+    host = url.host.toLowerCase();
+    // Site sem cadeado só vale em teste local: `http://loja.com.br` pode ser
+    // qualquer um no meio do caminho.
+    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") return false;
   } catch {
     return false;
   }

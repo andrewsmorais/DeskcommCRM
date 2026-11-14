@@ -50,6 +50,30 @@ type Linha = {
 /** Papéis que podem mandar mensagem (o leitor não envia). */
 const PAPEIS_QUE_ENVIAM = new Set(["agent", "manager", "admin"]);
 
+/**
+ * A MESMA régua da tela (`fn_can_view_conversation`), avaliada como quem
+ * agendou. A função lê `auth.uid()`; aqui ele é posto só dentro de uma
+ * transação que é desfeita em seguida. Falha na pergunta = não enxerga.
+ */
+async function aindaEnxerga(pool: pg.Pool, organizationId: string, conversationId: string, userId: string): Promise<boolean> {
+  const cli = await pool.connect();
+  try {
+    await cli.query("begin");
+    await cli.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId, role: "authenticated" })]);
+    const { rows } = await cli.query<{ pode: boolean | null }>(
+      `select public.fn_can_view_conversation(cv.organization_id, cv.assigned_to_user_id, cv.is_private) as pode
+         from conversations cv where cv.organization_id = $1 and cv.id = $2`,
+      [organizationId, conversationId],
+    );
+    return rows[0]?.pode === true;
+  } catch {
+    return false;
+  } finally {
+    await cli.query("rollback").catch(() => {});
+    cli.release();
+  }
+}
+
 export async function executarMensagemAgendada(
   pool: pg.Pool,
   admin: SupabaseClient,
@@ -129,6 +153,12 @@ export async function executarMensagemAgendada(
   if (!c) return falhar("A conversa não existe mais.");
   if (!c.role || !PAPEIS_QUE_ENVIAM.has(c.role))
     return falhar("Quem agendou não faz mais parte da equipe, ou não pode mais enviar mensagens.");
+  // Quem agendou AINDA enxerga a conversa? Entre o agendamento e a hora, ela
+  // pode ter virado privada ou passado para outra pessoa (equipe em que cada um
+  // vê só as suas). Mandar em nome de quem não a vê mais seria furar a regra de
+  // visibilidade por um caminho lateral (auditoria de 14/11/2026).
+  if (!(await aindaEnxerga(pool, organizationId, linha.conversation_id, linha.criado_por)))
+    return falhar("Quem agendou não tem mais acesso a esta conversa.");
   if (c.is_blocked) return falhar("O contato está bloqueado e não recebe mensagens.");
   if (c.is_anonymized) return falhar("O contato foi anonimizado.");
 

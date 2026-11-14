@@ -9,7 +9,6 @@ import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { ContadorDeCasos } from "@/components/shell/ContadorDeCasos";
-import { ContadorDoChatDaEquipe } from "@/components/shell/ContadorDoChatDaEquipe";
 import { ContadorDaFila } from "@/components/shell/ContadorDaFila";
 import { VersionFooter } from "@/components/shell/VersionFooter";
 import { LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
@@ -292,7 +291,6 @@ export function SidebarContent({
                           )}
                           {item.contador === "casos" && <ContadorDeCasos compacto={collapsed} />}
                           {item.contador === "fila" && <ContadorDaFila compacto={collapsed} />}
-                          {item.contador === "equipe" && <ContadorDoChatDaEquipe compacto={collapsed} />}
                         </Link>
                       </li>
                     );

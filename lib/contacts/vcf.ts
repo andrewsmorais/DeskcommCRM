@@ -42,20 +42,55 @@ function desescapar(v: string): string {
   return v.replace(/\\([nN,;:\\])/g, (_m, c: string) => (c === "n" || c === "N" ? " " : c));
 }
 
+/** Teto de uma linha lógica (um campo do cartão), em letras. */
+const LINHA_LOGICA_MAX = 20_000;
+
 /** As linhas lógicas do arquivo: dobras e quebras suaves de QP desfeitas. */
 function linhasLogicas(texto: string): string[] {
   const fisicas = texto.replace(/^﻿/, "").split(/\r\n|\r|\n/);
+  // Tempo LINEAR: a linha lógica em montagem fica em PEDAÇOS e só é juntada uma
+  // vez, e "é quoted-printable?" é decidido quando ela começa. A versão
+  // anterior relia a linha inteira a cada linha física — um arquivo de 5 MB só
+  // com continuações custava trilhões de passos e parava o servidor para todas
+  // as empresas (auditoria de 14/11/2026). Linha lógica maior que o teto é
+  // cortada: nenhum campo de contato legítimo chega perto.
   const saida: string[] = [];
+  let pedacos: string[] | null = null;
+  let tamanho = 0;
+  let qp = false;
+  let terminaEmIgual = false;
+  const fechar = () => {
+    if (pedacos) saida.push(pedacos.join(""));
+    pedacos = null;
+  };
+  const somar = (parte: string) => {
+    const cabe = LINHA_LOGICA_MAX - tamanho;
+    const p = cabe <= 0 ? "" : parte.length > cabe ? parte.slice(0, cabe) : parte;
+    pedacos!.push(p);
+    tamanho += p.length;
+    terminaEmIgual = parte.endsWith("=");
+  };
   for (const l of fisicas) {
-    const anterior = saida.length > 0 ? saida[saida.length - 1]! : null;
-    if (anterior !== null && /QUOTED-PRINTABLE/i.test(anterior.split(":")[0] ?? "") && anterior.endsWith("=")) {
-      saida[saida.length - 1] = anterior.slice(0, -1) + l;
-    } else if (anterior !== null && /^[ \t]/.test(l)) {
-      saida[saida.length - 1] = anterior + l.slice(1);
+    if (pedacos && qp && terminaEmIgual) {
+      // Quebra suave de quoted-printable: tira o "=" do fim e emenda.
+      const ultimo = pedacos.length - 1;
+      const anterior = pedacos[ultimo]!;
+      if (anterior.endsWith("=")) {
+        pedacos[ultimo] = anterior.slice(0, -1);
+        tamanho -= 1;
+      }
+      somar(l);
+    } else if (pedacos && /^[ \t]/.test(l)) {
+      somar(l.slice(1));
     } else {
-      saida.push(l);
+      fechar();
+      pedacos = [];
+      tamanho = 0;
+      qp = /QUOTED-PRINTABLE/i.test(l.slice(0, l.indexOf(":") === -1 ? l.length : l.indexOf(":")));
+      somar(l);
     }
   }
+  fechar();
   return saida;
 }
 

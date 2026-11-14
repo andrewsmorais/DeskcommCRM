@@ -23,6 +23,8 @@ function urlDe(input: Parameters<Fetch>[0]): string {
   return input.url;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function fetchComTelefoneOculto(base: Fetch, orgAtiva: string | null): Fetch {
   let decisao: Promise<boolean> | null = null;
 
@@ -35,12 +37,20 @@ export function fetchComTelefoneOculto(base: Fetch, orgAtiva: string | null): Fe
       const r = await base(`${raiz}/rest/v1/rpc/fn_eu_oculto_telefone`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ p_org: orgAtiva }),
+        // O cookie é do NAVEGADOR: só segue quando tem forma de UUID, e o
+        // banco trata organização de que a pessoa não é membro como "qualquer
+        // uma das minhas" (migration 0519). Sem isto, um cookie trocado
+        // desligava a máscara (auditoria de 14/11/2026).
+        body: JSON.stringify({ p_org: orgAtiva && UUID.test(orgAtiva) ? orgAtiva : null }),
       });
-      if (!r.ok) return false;
+      // Só "a função não existe" (banco ainda sem a migration 0517) quer dizer
+      // "ninguém está marcado". Qualquer outra falha esconde o número: na
+      // dúvida, o lado seguro.
+      if (r.status === 404) return false;
+      if (!r.ok) return true;
       return (await r.json()) === true;
     } catch {
-      return false;
+      return true;
     }
   };
 

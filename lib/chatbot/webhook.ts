@@ -65,6 +65,34 @@ export function corpoDoWebhook(envio: EnvioDoWebhook, agora: Date): Record<strin
   };
 }
 
+/**
+ * Lê a resposta SÓ até o teto, em bytes, e larga o resto.
+ *
+ * `(await res.text()).slice(...)` cortava DEPOIS de guardar o corpo inteiro
+ * (já descomprimido) na memória do worker, que é um só para todas as empresas:
+ * um servidor devolvendo centenas de MB derrubava o worker (auditoria de
+ * 14/11/2026). Aqui a leitura para no teto e a conexão é cancelada.
+ */
+export async function lerAteOTeto(res: Response, teto: number): Promise<string> {
+  const leitor = res.body?.getReader();
+  if (!leitor) return "";
+  const partes: Uint8Array[] = [];
+  let lidos = 0;
+  try {
+    while (lidos < teto) {
+      const { done, value } = await leitor.read();
+      if (done || !value) break;
+      const cabe = teto - lidos;
+      partes.push(value.byteLength > cabe ? value.subarray(0, cabe) : value);
+      lidos += Math.min(value.byteLength, cabe);
+      if (value.byteLength >= cabe) break;
+    }
+  } finally {
+    await leitor.cancel().catch(() => {});
+  }
+  return new TextDecoder().decode(Buffer.concat(partes)).slice(0, teto);
+}
+
 export async function chamarWebhookDoChatbot(
   c: ConfigDe<"webhook">,
   envio: EnvioDoWebhook,
@@ -126,7 +154,7 @@ export async function chamarWebhookDoChatbot(
       redirect: "manual",
       signal: AbortSignal.timeout(TEMPO_DO_WEBHOOK_MS),
     });
-    const texto = (await res.text()).slice(0, TETO_DA_RESPOSTA);
+    const texto = await lerAteOTeto(res, TETO_DA_RESPOSTA);
     let json: unknown = null;
     try {
       json = texto ? JSON.parse(texto) : null;

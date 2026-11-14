@@ -15,7 +15,7 @@ import { getIp } from "@/lib/rate-limit-helper";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { leituraDoVisitanteSchema } from "@/lib/channels/webchat/config";
-import { lerDoVisitante } from "@/lib/channels/webchat/ingest";
+import { lerDoVisitante, VisitanteEncerrado } from "@/lib/channels/webchat/ingest";
 import {
   cabecalhosDoBalao,
   canalPelaChave,
@@ -61,6 +61,8 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     });
     return respostaDoBalao({ data: { mensagens } }, 200, origem, dominios);
   } catch (error) {
+    if (error instanceof VisitanteEncerrado)
+      return erroDoBalao(410, "visitor_reset", "Esta conversa foi encerrada. Comece uma nova.", origem, dominios);
     logger.error("[webchat] falha ao ler a conversa do visitante", {
       organization_id: canal.organizationId,
       channel_session_id: canal.id,

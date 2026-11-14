@@ -82,8 +82,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { data: org } = await supabase.from("organizations").select("timezone").eq("id", authz.org.orgId).maybeSingle();
   const fuso = (org as { timezone?: string | null } | null)?.timezone || "America/Sao_Paulo";
   const nomeDoContato = rotuloDoContato(contato, t);
-  const linhas = linhasDoHistorico(lista, { nomeDoContato, nomesDaEquipe, fuso });
-  const geradoEm = quandoNoFuso(new Date().toISOString(), fuso);
+  const linhas = linhasDoHistorico(lista, { nomeDoContato, nomesDaEquipe, fuso, idioma: authz.user.idioma });
+  const geradoEm = quandoNoFuso(new Date().toISOString(), fuso, authz.user.idioma);
   const truncado = lista.length >= LIMITE;
 
   void audit({

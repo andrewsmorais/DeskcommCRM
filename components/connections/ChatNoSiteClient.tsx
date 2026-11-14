@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api/client";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useT } from "@/hooks/i18n/useT";
 
 import { ChannelAiAccess } from "./ChannelAiAccess";
@@ -133,12 +134,8 @@ function CartaoDoChat({ chat, aoMudar }: { chat: Chat; aoMudar: () => void }) {
   }
 
   async function copiar() {
-    try {
-      await navigator.clipboard.writeText(chat.codigo);
-      toast.success(t("Código copiado."));
-    } catch {
-      toast.error(t("Não foi possível copiar. Selecione o código e copie à mão."));
-    }
+    if (await copyToClipboard(chat.codigo)) toast.success(t("Código copiado."));
+    else toast.error(t("Não foi possível copiar. Selecione o código e copie à mão."));
   }
 
   async function remover() {
@@ -242,7 +239,7 @@ function CartaoDoChat({ chat, aoMudar }: { chat: Chat; aoMudar: () => void }) {
           <Input
             id={`dominios-${chat.id}`}
             value={dominios}
-            placeholder="minhaloja.com.br"
+            placeholder={t("o endereço do seu site, sem https://")}
             onChange={(e) => setDominios(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">

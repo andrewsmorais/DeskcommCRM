@@ -49,10 +49,9 @@ export interface NavMetadata {
    * Contador de pendências ao lado do rótulo. `casos`: casos em que a IA espera
    * uma pessoa (`awaiting_human`) — quem desenha é `ContadorDeCasos`. `fila`:
    * conversas que esperam uma pessoa (a aba Fila do Inbox) — `ContadorDaFila`.
-   * `equipe`: mensagens não lidas do chat interno — `ContadorDoChatDaEquipe`.
    * Zero não desenha nada: número que nunca some ensina a ignorar o número.
    */
-  contador?: "casos" | "fila" | "equipe";
+  contador?: "casos" | "fila";
   /**
    * A porta de um MÓDULO OPCIONAL da instalação (`lib/instalacao/modulos.ts`).
    * Com o módulo desligado ela some do menu, do hub e do ⌘K — para todo papel.
@@ -168,8 +167,11 @@ export const NAV_CATALOG = [
     description: "Converse com a sua equipe sem sair do CRM: sala Geral e mensagens diretas.",
     icon: "ChatsCircle",
     group: "atendimento",
-    sidebar: true,
-    contador: "equipe",
+    // FORA do menu lateral de propósito: ele está no teto da dobra (15 itens a
+    // 1280x900, `tests/unit/interface-por-empresa.test.ts`). A porta é o botão
+    // do topo (`components/shell/BotaoDoChatDaEquipe.tsx`), com o número de
+    // não lidas, mais o hub de Atendimento e a busca.
+    sidebar: false,
   },
   {
     href: "/app/radar",

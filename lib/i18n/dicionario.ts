@@ -18474,6 +18474,8 @@ export const DICIONARIO: Traducoes = {
   "Alguém da equipe": { es: "Alguien del equipo" },
   "Também vendo esta conversa agora": { es: "También viendo esta conversación ahora" },
   // Chat no site (migration 0518)
+  "o endereço do seu site, sem https://": { es: "la dirección de tu sitio, sin https://" },
+  "A imagem é grande demais para virar figurinha.": { es: "La imagen es demasiado grande para convertirse en sticker." },
   "Aparência salva.": { es: "Apariencia guardada." },
   "Chat criado. Copie o código e cole no seu site.": { es: "Chat creado. Copia el código y pégalo en tu sitio." },
   "Chat desligado. O balão some do site.": { es: "Chat apagado. El globo desaparece del sitio." },

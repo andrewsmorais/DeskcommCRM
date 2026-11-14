@@ -17,6 +17,7 @@ import { z } from "zod";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { caminhoDeMidiaDaEmpresa } from "@/lib/messaging/media/upload-validation";
 import {
   caminhoDaFigurinha,
   FigurinhaInvalida,
@@ -95,13 +96,22 @@ export async function POST(req: NextRequest): Promise<Response> {
     const supabase = await createClient();
     const { data: msg } = await supabase
       .from("messages")
-      .select("type, media_storage_path, revoked_at")
+      .select("type, media_storage_path, media_size_bytes, revoked_at")
       .eq("id", pedido.data.message_id)
       .eq("organization_id", orgId)
       .maybeSingle();
-    const m = msg as { type: string; media_storage_path: string | null; revoked_at: string | null } | null;
-    if (!m || m.revoked_at || !["sticker", "image"].includes(m.type) || !m.media_storage_path?.startsWith(`${orgId}/`))
+    const m = msg as {
+      type: string;
+      media_storage_path: string | null;
+      media_size_bytes: number | null;
+      revoked_at: string | null;
+    } | null;
+    if (!m || m.revoked_at || !["sticker", "image"].includes(m.type) || !caminhoDeMidiaDaEmpresa(m.media_storage_path, orgId))
       return fail("not_found", t("Figurinha não encontrada."), 404, { requestId });
+    // O tamanho gravado barra antes de baixar: sem isto, um vídeo de 50 MB
+    // rotulado como imagem ia inteiro para a memória só para ser recusado.
+    if ((m.media_size_bytes ?? 0) > MAX_ENTRADA)
+      return fail("validation_failed", t("A imagem é grande demais para virar figurinha."), 422, { requestId });
     const { data: blob, error } = await admin.storage.from(BUCKET).download(m.media_storage_path);
     if (error || !blob) return fail("not_found", t("O arquivo da figurinha não está mais guardado."), 404, { requestId });
     entrada = Buffer.from(await blob.arrayBuffer());

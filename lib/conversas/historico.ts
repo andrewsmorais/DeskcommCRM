@@ -7,6 +7,8 @@
  * mensagem apagada vira "[mensagem apagada]". Notas internas NÃO entram: o
  * arquivo é o que o cliente e a empresa conversaram.
  */
+import { tagDeIdioma } from "@/lib/i18n/datas";
+import { IDIOMA_PADRAO, type Idioma } from "@/lib/i18n/idiomas";
 import { lerRemetenteDeGrupo, rotuloDoRemetente } from "@/lib/messaging/remetente-de-grupo";
 
 export type MensagemDoHistorico = {
@@ -44,10 +46,10 @@ const QUEM_FORA_DA_EQUIPE: Record<string, string> = {
   crm: "Sistema",
 };
 
-export function quandoNoFuso(instante: string, fuso: string): string {
+export function quandoNoFuso(instante: string, fuso: string, idioma: Idioma = IDIOMA_PADRAO): string {
   const d = new Date(instante);
   try {
-    return new Intl.DateTimeFormat("pt-BR", {
+    return new Intl.DateTimeFormat(tagDeIdioma(idioma), {
       timeZone: fuso,
       day: "2-digit",
       month: "2-digit",
@@ -64,7 +66,7 @@ export function quandoNoFuso(instante: string, fuso: string): string {
 
 export function linhasDoHistorico(
   mensagens: MensagemDoHistorico[],
-  ctx: { nomeDoContato: string; nomesDaEquipe: Record<string, string>; fuso: string },
+  ctx: { nomeDoContato: string; nomesDaEquipe: Record<string, string>; fuso: string; idioma?: Idioma },
 ): LinhaDoHistorico[] {
   return mensagens.map((m) => {
     let quem: string;
@@ -83,7 +85,7 @@ export function linhasDoHistorico(
       const corpo = (m.body ?? "").trim();
       texto = marcador ? (corpo ? `${marcador} ${corpo}` : marcador) : corpo || "[mensagem sem texto]";
     }
-    return { quando: quandoNoFuso(m.sent_at ?? m.created_at, ctx.fuso), quem, texto };
+    return { quando: quandoNoFuso(m.sent_at ?? m.created_at, ctx.fuso, ctx.idioma), quem, texto };
   });
 }
 

@@ -23,6 +23,10 @@ export const webchatAdapter: ChannelAdapter = {
     sendFailed: "webchat_error",
     unknownError: "webchat_unknown",
   },
+  // O canal é o nosso próprio banco: se o cron chegou até aqui, ele responde.
+  async checkHealth() {
+    return { reachable: true, status: "WORKING", detail: null };
+  },
   async send(envelope) {
     if (envelope.kind !== "text")
       throw new Error("O chat do site só mostra texto por enquanto. Envie a mensagem como texto.");

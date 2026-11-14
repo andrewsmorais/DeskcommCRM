@@ -66,4 +66,22 @@ describe("vcfParaLinhas — o arquivo de contatos do celular vira linhas de plan
     expect(pareceVcf("a.bin", "text/x-vcard")).toBe(true);
     expect(pareceVcf("planilha.csv", "text/csv")).toBe(false);
   });
+
+  it("arquivo só de continuações é lido em tempo linear (auditoria de 14/11)", () => {
+    // 400 mil linhas de continuação: na versão antiga, cada uma relia a linha
+    // inteira montada até ali (dezenas de bilhões de passos).
+    const ruim = `BEGIN:VCARD\nFN:x\n${" a\n".repeat(400_000)}END:VCARD\n`;
+    const antes = Date.now();
+    const lidas = vcfParaLinhas(ruim);
+    expect(Date.now() - antes).toBeLessThan(3000);
+    expect(lidas.length).toBeLessThanOrEqual(2);
+  });
+
+  it("dobra e quoted-printable continuam sendo desfeitos", () => {
+    const v = "BEGIN:VCARD\nFN:Maria\n  Silva\nNOTE;ENCODING=QUOTED-PRINTABLE:linha=\nseguinte\nTEL:+5511999998888\nEND:VCARD";
+    const [cabecalho, linha] = vcfParaLinhas(v);
+    expect(cabecalho).toBeDefined();
+    expect(linha?.join("|")).toContain("Maria Silva");
+  });
 });
+
