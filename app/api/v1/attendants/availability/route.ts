@@ -121,7 +121,20 @@ export async function GET(_req: NextRequest): Promise<Response> {
       reatribuicoes.set(r.user_id, r.reatribuicao);
   }
 
+  // Telefone oculto (migration 0517). Leitura à parte e tolerante, como a de cima.
+  const ocultos = new Set<string>();
+  {
+    const { data: marcados } = await admin
+      .from("user_organizations")
+      .select("user_id")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("ocultar_telefone", true)
+      .is("revoked_at", null);
+    for (const r of (marcados ?? []) as { user_id: string }[]) ocultos.add(r.user_id);
+  }
+
   const rows = roster.map((m) => ({
+    ocultar_telefone: ocultos.has(m.userId),
     reatribuicao: reatribuicoes.get(m.userId) ?? "desligada",
     user_id: m.userId,
     role: m.papel,

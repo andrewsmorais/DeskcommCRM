@@ -9,6 +9,8 @@ import type { AvailabilitySchedule, RoutingConfig } from "@/lib/schemas/routing"
 
 export interface AttendantAvailability {
   user_id: string;
+  /** Telefone oculto para esta pessoa (migration 0517). */
+  ocultar_telefone?: boolean;
   role: string | null;
   name: string | null;
   email: string | null;
@@ -96,5 +98,16 @@ export function useUpdateRouting() {
       toast.success(t("Roteamento atualizado."));
       qc.invalidateQueries({ queryKey: ROUTING_KEY });
     },
+  });
+}
+
+/** Liga/desliga o telefone oculto de uma pessoa da equipe (migration 0517). */
+export function useTelefoneOculto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { userId: string; ocultar: boolean }) =>
+      apiClient.patch(`/api/v1/team/${args.userId}/telefone`, { ocultar: args.ocultar }),
+    onError: showApiError,
+    onSettled: () => void qc.invalidateQueries({ queryKey: ATTENDANTS_KEY }),
   });
 }

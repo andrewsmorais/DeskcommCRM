@@ -171,6 +171,8 @@ export const AUDIT_ACTIONS = [
   /** Biblioteca de figurinhas da empresa (migration 0516). */
   "sticker.saved",
   "sticker.deleted",
+  /** Telefone oculto por atendente (migration 0517). */
+  "team.phone_visibility_changed",
   /** "Baixar histórico" da conversa (.txt/.pdf): sai dado pessoal do sistema. */
   "conversation.history_exported",
   /** Estrela numa mensagem (migration 0513). */

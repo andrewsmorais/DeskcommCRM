@@ -206,7 +206,7 @@ foi salvo na conta da Umbler. Lado ChatAI conferido no código desta branch.
 | # | Recurso | Observação |
 |---|---|---|
 | G1 | Ocultar conversa na caixa de entrada + filtro "Ocultas" | ✅ feito 13/11 (olho no topo da conversa) |
-| G2 | Mascarar o telefone dos contatos por papel/atendente (busca e exportação também mascaram) | ❌ não feito: o telefone aparece em ~45 telas e chega ao navegador pela leitura direta do banco; esconder de verdade pede mudar a permissão da coluna e todas essas leituras — tarefa própria |
+| G2 | Mascarar o telefone dos contatos por atendente | ✅ feito 14/11 (migration 0517): Equipe › Atendimento, coluna "Telefone dos contatos"; o servidor mascara em toda leitura feita como o atendente marcado. Limite: o token do tempo real ainda está no navegador, e quem souber usar a API do banco direto com ele lê o número. Prova: `evidence/telefone-oculto/t1-equipe-e-contato.png` |
 | G3 | Reatribuição de chats: tira o atendente offline quando o contato escreve | ✅ feito 13/11 (migration 0514) |
 | G4 | **Atalhos de chatbot** fixados no rodapé do campo de mensagem | temos o botão do robô no topo |
 | G5 | Chat interno da equipe | ✅ feito 13/11 (migration 0515): sala Geral e conversas diretas, ao vivo, com não lidas no menu e aviso no celular; fotos em `evidence/chat-da-equipe/c1-sala-geral.png` e `evidence/chat-da-equipe/c2-no-celular.png` (tela com respostas simuladas) |

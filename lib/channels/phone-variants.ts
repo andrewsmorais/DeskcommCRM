@@ -79,6 +79,10 @@ export function canonicalPhoneBR(raw: string): string {
 /** Exibição: mesma regra da gravação. Vazio continua vazio. */
 export function phoneForDisplay(raw: string | null | undefined): string {
   if (raw == null || !raw.trim()) return "";
+  // Telefone oculto para este atendente (lib/contatos/telefone-oculto.ts): já
+  // vem mascarado do servidor, e normalizar os dígitos que sobraram ("+5588")
+  // inventaria um número.
+  if (raw.includes("•")) return raw.trim();
   return canonicalPhoneBR(raw);
 }
 

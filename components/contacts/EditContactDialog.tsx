@@ -1,4 +1,5 @@
 "use client";
+import { telefoneMascarado } from "@/lib/contatos/telefone-oculto";
 import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -79,7 +80,10 @@ export function EditContactDialog({ contact, open, onOpenChange, customFieldDefs
     const payload: Record<string, unknown> = {};
     if (values.name?.trim()) payload.name = values.name.trim();
     if (values.email?.trim()) payload.email = values.email.trim();
-    if (values.phone_number?.trim()) payload.phone_number = values.phone_number.trim();
+    // Telefone oculto para este atendente (migration 0517): o número veio
+    // mascarado e não é dele mexer — devolver o que viu apagaria o verdadeiro.
+    if (values.phone_number?.trim() && !telefoneMascarado(values.phone_number))
+      payload.phone_number = values.phone_number.trim();
     // Igual aos campos de cima: só manda quando há data. O `type="date"` devolve
     // `AAAA-MM-DD` (a forma que `contactPatchSchema` e a coluna `birthdate` já
     // exigem), então o diálogo não normaliza nada — o que se digita é o que se
@@ -122,7 +126,11 @@ export function EditContactDialog({ contact, open, onOpenChange, customFieldDefs
           </div>
           <div className="space-y-2">
             <Label htmlFor="ec-phone">{t("Telefone (E.164)")}</Label>
-            <Input id="ec-phone" {...form.register("phone_number")} />
+            <Input
+              id="ec-phone"
+              {...form.register("phone_number")}
+              readOnly={telefoneMascarado(contact.phone_number)}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="ec-birthdate">{t("Data de nascimento")}</Label>

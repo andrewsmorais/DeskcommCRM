@@ -43611,6 +43611,30 @@ begin
 end $$;
 revoke execute on function public.fn_mensagens_agendadas_ao_anonimizar() from public, anon, authenticated;
 
+-- ---- telefone oculto por atendente (migration 0517) ----
+-- Antes da varredura de anon de propósito (tests/unit/varredura-anon-e-o-ultimo-bloco.test.ts),
+-- e a coluna junto: a função é `language sql`, validada na criação.
+alter table public.user_organizations
+  add column if not exists ocultar_telefone boolean not null default false;
+comment on column public.user_organizations.ocultar_telefone is
+  'Esta pessoa não vê o telefone dos contatos desta organização: o servidor o devolve mascarado (paridade com a Umbler). Marcado pelo gerente em Equipe. Migration 0517.';
+
+create or replace function public.fn_eu_oculto_telefone(p_org uuid default null)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $f$
+  select coalesce(bool_or(uo.ocultar_telefone), false)
+    from public.user_organizations uo
+   where uo.user_id = auth.uid()
+     and uo.revoked_at is null
+     and (p_org is null or uo.organization_id = p_org);
+$f$;
+revoke execute on function public.fn_eu_oculto_telefone(uuid) from public, anon;
+grant execute on function public.fn_eu_oculto_telefone(uuid) to authenticated, service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria

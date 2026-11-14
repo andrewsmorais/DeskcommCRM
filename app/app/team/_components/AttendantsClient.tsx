@@ -10,6 +10,7 @@ import {
   useRoutingConfig,
   useUpdateAvailability,
   useUpdateRouting,
+  useTelefoneOculto,
   type AttendantAvailability,
 } from "@/hooks/team/useAttendants";
 import { estaDePlantao } from "@/lib/routing/eligibility";
@@ -430,6 +431,7 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
   const t = useT();
   const avail = useAttendants();
   const patch = useUpdateAvailability();
+  const telefone = useTelefoneOculto();
   const [scheduleFor, setScheduleFor] = useState<Attendant | null>(null);
   const now = useMemo(() => new Date(), []);
 
@@ -493,6 +495,7 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
                 <TableHead>{t("Capacidade")}</TableHead>
                 <TableHead>{t("Horário")}</TableHead>
                 {canManage ? <TableHead>{t("Reatribuição")}</TableHead> : null}
+                {canManage ? <TableHead>{t("Telefone dos contatos")}</TableHead> : null}
                 {canManage ? <TableHead className="w-[120px]">{t("Disponível")}</TableHead> : null}
               </TableRow>
             </TableHeader>
@@ -576,6 +579,28 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
                           <option value="offline">{t("Quando estiver offline")}</option>
                           <option value="sempre">{t("Sempre")}</option>
                         </select>
+                      </TableCell>
+                    ) : null}
+                    {canManage ? (
+                      <TableCell>
+                        {/* Telefone oculto (Umbler): o atendente vê o número
+                            mascarado. Gerente e administrador veem sempre. */}
+                        {a.availability?.role === "manager" || a.availability?.role === "admin" ? (
+                          <span className="text-xs text-muted-foreground">{t("Sempre vê")}</span>
+                        ) : (
+                          <select
+                            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                            aria-label={`${t("Telefone dos contatos")} — ${a.name}`}
+                            value={a.availability?.ocultar_telefone ? "oculto" : "visivel"}
+                            title={t("Oculto: o atendente vê o número dos contatos mascarado (+55•••••••••88) em toda tela.")}
+                            onChange={(e) =>
+                              telefone.mutate({ userId: a.userId, ocultar: e.target.value === "oculto" })
+                            }
+                          >
+                            <option value="visivel">{t("Visível")}</option>
+                            <option value="oculto">{t("Oculto")}</option>
+                          </select>
+                        )}
                       </TableCell>
                     ) : null}
                     {canManage ? (
