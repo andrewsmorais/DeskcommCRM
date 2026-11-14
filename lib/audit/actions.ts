@@ -30,6 +30,8 @@
  */
 export const AUDIT_ACTIONS = [
   "cold_call.result",
+  "lead.participant_added",
+  "lead.participant_removed",
   "cold_call.script_updated",
   "billing.subscription_canceled",
   "ad_tracking_link.saved",

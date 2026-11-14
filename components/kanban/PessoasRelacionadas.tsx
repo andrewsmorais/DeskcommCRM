@@ -289,3 +289,93 @@ function AdicionarParticipante({ leadId }: { leadId: string }) {
   );
 }
 
+/**
+ * A busca e o papel, e o POST.
+ *
+ * O papel é digitado ANTES de escolher a pessoa (texto livre, teto de 40 no
+ * servidor) porque é ele que faz o vínculo ser útil: "quem paga" e "quem viaja"
+ * são a informação que o negócio de grupo precisa, e escrevê-la depois exigiria
+ * abrir a linha de novo. Em branco, o vínculo nasce sem papel — e um POST novo
+ * do mesmo contato com papel preenchido é "dar papel", que é o mesmo caminho
+ * (upsert no índice único, do lado do servidor).
+ */
+function FormularioDeParticipante({ leadId, onFechar }: { leadId: string; onFechar: () => void }) {
+  const t = useT();
+  const [busca, setBusca] = useState("");
+  const [papel, setPapel] = useState("");
+  const adicionar = useAdicionarParticipante(leadId);
+  const termo = busca.trim();
+  const { data, isLoading } = useContactList({ search: termo || undefined, limit: 5 });
+  const contatos = data?.pages[0]?.data ?? [];
+
+  async function incluir(contactId: string) {
+    try {
+      await adicionar.mutateAsync({ contact_id: contactId, papel: papel.trim() || null });
+      toast.success(t("Participante adicionado."));
+      onFechar();
+    } catch {
+      // `useAdicionarParticipante` já mostra o erro da API; aqui só não deixar a
+      // rejeição escapar como erro não tratado.
+    }
+  }
+
+  return (
+    <div
+      className="space-y-2 rounded-md border border-border p-2"
+      data-testid="formulario-de-participante"
+    >
+      <div className="space-y-1">
+        <Label htmlFor="papel-do-participante" className="text-xs">
+          {t("Papel")}
+        </Label>
+        <Input
+          id="papel-do-participante"
+          value={papel}
+          maxLength={40}
+          placeholder={t("Pagante, passageiro…")}
+          onChange={(e) => setPapel(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="busca-de-participante" className="text-xs">
+          {t("Buscar contato")}
+        </Label>
+        <Input
+          id="busca-de-participante"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+      </div>
+      {isLoading && <p className="text-[11px] text-text-muted">{t("Carregando…")}</p>}
+      {!isLoading && contatos.length === 0 && (
+        <p className="text-[11px] text-text-muted">{t("Nenhum contato encontrado.")}</p>
+      )}
+      <ul className="space-y-1">
+        {contatos.map((contato) => (
+          <li key={contato.id} className="flex items-center gap-2 text-xs">
+            <span className="min-w-0 truncate">{nomeDoContato(contato) ?? "—"}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="ml-auto h-6 px-2 text-[11px]"
+              disabled={adicionar.isPending}
+              onClick={() => incluir(contato.id)}
+            >
+              {t("Adicionar")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 px-2 text-[11px] text-text-muted"
+        onClick={onFechar}
+      >
+        {t("Cancelar")}
+      </Button>
+    </div>
+  );
+}
