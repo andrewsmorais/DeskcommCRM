@@ -1,0 +1,189 @@
+name: zap
+# Varredura de segurança do ZAP (https://github.com/zaproxy/zaproxy) contra uma
+# instalação LIMPA do app, de pé dentro do próprio job: o mesmo Supabase local,
+# o mesmo baseline.sql e o mesmo build de produção do e2e. Nunca aponta para um
+# site no ar — o alvo é sempre http://localhost:3001 deste runner.
+#
+# Duas passadas:
+#   1. de fora, sem login (o que qualquer pessoa na internet alcança);
+#   2. logado como o ATENDENTE de teste (scripts/zap/sessao.mjs grava o cookie e
+#      o ZAP o põe em toda requisição).
+# Os relatórios (HTML, JSON e Markdown) saem como artefatos do job, e o resumo
+# aparece na página da execução. A varredura não reprova o job: ela informa —
+# quem decide o que é defeito é a triagem do relatório.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [chataionline/seguranca-auditoria]
+    paths:
+      - .github/workflows/zap.yml
+      - .zap/**
+      - scripts/zap/**
+  schedule:
+    - cron: "17 6 * * 1" # segunda, 03:17 em Brasília
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/preparar-node
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.117.0
+
+      - name: Subir Supabase local (sem a cadeia de migrations)
+        run: |
+          set -o pipefail
+          mv supabase/migrations /tmp/migrations-off
+          mkdir -p supabase/migrations
+          for tentativa in 1 2 3; do
+            supabase start -x studio,postgres-meta && break
+            supabase stop --no-backup || true
+            sleep $((tentativa * 30))
+          done
+          supabase status
+
+      - name: Aplicar o baseline.sql (o mesmo que o install.sh aplica)
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q <<'SQL'
+          create schema if not exists extensions;
+          create extension if not exists "uuid-ossp" with schema extensions;
+          create extension if not exists pgcrypto with schema extensions;
+          create extension if not exists vector with schema public;
+          create extension if not exists citext with schema public;
+          create extension if not exists pg_trgm with schema public;
+          SQL
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q -f supabase/baseline.sql
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q \
+            -c "insert into private.app_secrets (name, value) values ('nuvemshop_oauth_key', '$(openssl rand -hex 32)') on conflict (name) do nothing;"
+          docker restart $(docker ps -q --filter name=supabase_realtime)
+
+      - name: Credenciais do stack local e ambiente do app
+        run: |
+          supabase status -o env > /tmp/sb.env
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' /tmp/sb.env | cut -d'"' -f2)"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' /tmp/sb.env | cut -d'"' -f2)"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' /tmp/sb.env | cut -d'"' -f2)"
+          } >> "$GITHUB_ENV"
+
+      - name: Gerar e publicar o .env.e2e
+        run: |
+          pnpm e2e:env
+          grep -vE '^[[:space:]]*(#|$)' .env.e2e >> "$GITHUB_ENV"
+
+      - name: Build de produção
+        run: pnpm e2e:build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          SENTRY_DSN: "off"
+
+      - name: Semear as contas de teste
+        run: |
+          cp .env.e2e .env.local
+          pnpm exec tsx scripts/seed-e2e-credentials.ts
+
+      - name: Subir o app (next start) e esperar responder
+        run: |
+          nohup pnpm exec next start -p 3001 > /tmp/app.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/login || true)
+            [ "$code" = "200" ] && { echo "app de pé em ~$((i*2))s"; exit 0; }
+            sleep 2
+          done
+          tail -50 /tmp/app.log
+          exit 1
+
+      - name: Instalar o navegador e gravar a sessão do atendente de teste
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          node scripts/zap/sessao.mjs http://localhost:3001 /tmp/zap-cookie.txt
+          # O cabeçalho entra numa regra do "Replacer" do ZAP (adiciona Cookie em
+          # toda requisição). Vai num arquivo de opções, nunca na linha de comando
+          # de um log público.
+          {
+            echo "replacer.full_list(0).description=sessao-de-teste"
+            echo "replacer.full_list(0).enabled=true"
+            echo "replacer.full_list(0).matchtype=REQ_HEADER"
+            echo "replacer.full_list(0).matchstr=Cookie"
+            echo "replacer.full_list(0).regex=false"
+            echo "replacer.full_list(0).replacement=$(cat /tmp/zap-cookie.txt)"
+          } > zap-logado.prop
+          # O ZAP roda num contêiner que lê a pasta de trabalho.
+          chmod a+r zap-logado.prop
+
+      - name: "ZAP 1/2 — de fora, sem login (varredura completa)"
+        uses: zaproxy/action-full-scan@v0.13.0
+        continue-on-error: true
+        with:
+          target: http://localhost:3001
+          rules_file_name: .zap/regras.tsv
+          cmd_options: "-a -j -m 5 -T 45"
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-de-fora
+
+      - name: Guardar o relatório de fora
+        if: always()
+        run: |
+          mkdir -p zap-relatorios/de-fora
+          mv report_html.html report_json.json report_md.md zap-relatorios/de-fora/ 2>/dev/null || true
+
+      - name: "ZAP 2/2 — logado como atendente (varredura completa)"
+        uses: zaproxy/action-full-scan@v0.13.0
+        continue-on-error: true
+        with:
+          target: http://localhost:3001/app
+          rules_file_name: .zap/regras.tsv
+          cmd_options: "-a -j -m 5 -T 45 -z \"-configfile /zap/wrk/zap-logado.prop\""
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-logado
+
+      - name: Guardar o relatório logado e montar o resumo
+        if: always()
+        run: |
+          mkdir -p zap-relatorios/logado
+          mv report_html.html report_json.json report_md.md zap-relatorios/logado/ 2>/dev/null || true
+          rm -f zap-logado.prop
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os
+          risco = {"3": "Alto", "2": "Médio", "1": "Baixo", "0": "Informativo"}
+          print("# Varredura de segurança do ZAP\n")
+          for nome, titulo in (("de-fora", "De fora, sem login"), ("logado", "Logado como atendente")):
+              caminho = f"zap-relatorios/{nome}/report_json.json"
+              print(f"## {titulo}\n")
+              if not os.path.exists(caminho):
+                  print("_Sem relatório (a passada não terminou — veja o log do passo)._\n")
+                  continue
+              alertas = [a for s in json.load(open(caminho)).get("site", []) for a in s.get("alerts", [])]
+              alertas.sort(key=lambda a: -int(a.get("riskcode", "0")))
+              print("| Risco | Alerta | Ocorrências | Regra |\n|---|---|---|---|")
+              for a in alertas:
+                  print(f"| {risco.get(a.get('riskcode','0'), '?')} | {a.get('name','')} | {a.get('count','')} | {a.get('pluginid','')} |")
+              print()
+          PY
+
+      - name: Publicar os relatórios
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zap-relatorios
+          path: zap-relatorios/
+          retention-days: 30
+
+      - name: Log do app (se algo deu errado)
+        if: failure()
+        run: tail -200 /tmp/app.log || true

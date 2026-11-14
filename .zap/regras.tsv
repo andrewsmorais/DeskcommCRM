@@ -1,0 +1,3 @@
+# Regras do ZAP para o DeskcommCRM (formato do zaproxy/action-*: id<TAB>WARN|IGNORE|FAIL<TAB>motivo).
+# Começa vazio de propósito: a primeira varredura mostra tudo. Só entra aqui o
+# que for medido como falso positivo, com o motivo escrito.
