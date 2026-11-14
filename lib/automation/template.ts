@@ -1,4 +1,5 @@
 import { resolveField } from "@/lib/automation/conditions";
+import { aplicarBlocosCondicionais } from "@/lib/texto/bloco-condicional";
 
 const ALIASES: Record<string, string> = {
   nome: "contact.name",
@@ -25,10 +26,18 @@ export function marcacaoDoCrm(nome: string): boolean {
 }
 
 export function renderTemplate(template: string, context: Record<string, unknown>): string {
-  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, path: string) => {
-    const resolved = resolveField(context, ALIASES[path] ?? path);
-    // `{{primeiro_nome}}` = primeira palavra do nome, como no Inbox e na campanha.
-    const texto = String(resolved ?? "");
-    return path === "primeiro_nome" ? (texto.trim().split(/\s+/)[0] ?? "") : texto;
+  // `{{#campo}}...{{/campo}}`: o trecho só sai quando o campo tem valor, e a
+  // linha inteira some quando o bloco era o conteúdo dela. Mesma leitura da
+  // variável que a passada abaixo usa.
+  const comBlocos = aplicarBlocosCondicionais(template, {
+    temValor: (campo) => valorDaMarcacao(campo, context).trim() !== "",
   });
+  return comBlocos.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, path: string) => valorDaMarcacao(path, context));
+}
+
+function valorDaMarcacao(path: string, context: Record<string, unknown>): string {
+  const resolved = resolveField(context, ALIASES[path] ?? path);
+  // `{{primeiro_nome}}` = primeira palavra do nome, como no Inbox e na campanha.
+  const texto = String(resolved ?? "");
+  return path === "primeiro_nome" ? (texto.trim().split(/\s+/)[0] ?? "") : texto;
 }

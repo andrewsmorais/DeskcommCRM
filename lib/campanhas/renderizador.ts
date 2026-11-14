@@ -27,6 +27,7 @@
  * fechado de resolvedores.
  */
 
+import { aplicarBlocosCondicionais } from "@/lib/texto/bloco-condicional";
 import { horaNoFuso } from "./relogio";
 
 /** As variáveis que existem. Oferecer uma que não resolve é prometer dado que não há. */
@@ -65,7 +66,10 @@ export function renderizar(
   const faltando = new Set<VariavelDaCampanha>();
   const desconhecidas = new Set<string>();
 
-  const texto = template.replace(TOKEN, (literal, bruto: string) => {
+  // Campanha: sem valor a mensagem é PULADA (não sai com buraco), então o bloco
+  // `{{#campo}}...{{/campo}}` fica — só as marcas saem — e a falta é contada.
+  const semMarcasDeBloco = aplicarBlocosCondicionais(template, { temValor: () => true, manterSemValor: true });
+  const texto = semMarcasDeBloco.replace(TOKEN, (literal, bruto: string) => {
     const chave = bruto.toLowerCase();
     switch (chave) {
       case "nome": {

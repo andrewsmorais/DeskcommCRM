@@ -1,3 +1,4 @@
+import { aplicarBlocosCondicionais } from "@/lib/texto/bloco-condicional";
 /**
  * Interpola variáveis de template com dados do contato da conversa (Onda 5).
  * Suporta {{nome}} e {{primeiro_nome}}, e as variáveis da empresa
@@ -17,7 +18,11 @@ export function interpolateTemplate(
 ): string {
   const full = (contact.name ?? "").trim();
   const first = full.split(/\s+/)[0] ?? "";
-  return body.replace(/\{\{\s*((?:empresa\.)?[a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (literal, rawKey: string) => {
+  // Rascunho: o bloco `{{#campo}}...{{/campo}}` FICA mesmo sem valor — a
+  // variável segue visível para o atendente ver o que falta preencher. Só as
+  // marcas do bloco saem.
+  const semMarcasDeBloco = aplicarBlocosCondicionais(body, { temValor: () => true, manterSemValor: true });
+  return semMarcasDeBloco.replace(/\{\{\s*((?:empresa\.)?[a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (literal, rawKey: string) => {
     const key = rawKey.toLowerCase();
     if (key.startsWith("empresa.")) {
       const v = empresa[key];

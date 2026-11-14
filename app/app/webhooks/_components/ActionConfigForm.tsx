@@ -1,6 +1,7 @@
 "use client";
 
 import { useT } from "@/hooks/i18n/useT";
+import { CampoComVariaveis } from "@/components/variaveis/CampoComVariaveis";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -8,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -136,11 +136,6 @@ function CreateOrMoveLeadForm({
   );
 }
 
-const TEMPLATE_VARS = [
-  { token: "{{nome}}", label: "Nome" },
-  { token: "{{telefone}}", label: "Telefone" },
-  { token: "{{lead.title}}", label: "Título do lead" },
-];
 
 function SendWhatsappForm({
   config,
@@ -148,20 +143,6 @@ function SendWhatsappForm({
 }: FormProps<{ channel_session_id: string; template: string }>) {
   const t = useT();
   const { data: sessions } = useChannelSessions();
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-
-  const insertVar = (token: string) => {
-    const el = textareaRef.current;
-    const current = config.template;
-    const start = el?.selectionStart ?? current.length;
-    const end = el?.selectionEnd ?? current.length;
-    const next = current.slice(0, start) + token + current.slice(end);
-    onChange({ ...config, template: next });
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + token.length, start + token.length);
-    });
-  };
 
   return (
     <div className="space-y-2">
@@ -189,25 +170,14 @@ function SendWhatsappForm({
         ) : null}
       </div>
       <div className="space-y-1">
-        <Label>{t("Mensagem")}</Label>
-        <div className="flex flex-wrap gap-1">
-          {TEMPLATE_VARS.map((v) => (
-            <Button
-              key={v.token}
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => insertVar(v.token)}
-            >
-              {v.label}
-            </Button>
-          ))}
-        </div>
-        <Textarea
-          ref={textareaRef}
-          rows={4}
-          value={config.template}
-          onChange={(e) => onChange({ ...config, template: e.target.value })}
+        {/* O botão "Inserir variável" no lugar dos três botões fixos de antes
+            (Nome, Telefone, Título do lead): a lista sai do catálogo e só
+            oferece o que o renderizador da automação troca de verdade. */}
+        <CampoComVariaveis
+          rotulo={t("Mensagem")}
+          fonte="automacao"
+          valor={config.template}
+          onChange={(texto) => onChange({ ...config, template: texto })}
           placeholder="Oi {{nome}}, tudo bem?"
         />
         <p className="text-xs text-muted-foreground">

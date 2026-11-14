@@ -18627,6 +18627,21 @@ export const DICIONARIO: Traducoes = {
   "Redação": { es: "Redacción" },
   "Outra forma de dizer a mesma coisa": { es: "Otra forma de decir lo mismo" },
   "Remover redação": { es: "Eliminar redacción" },
+  // Inserir variável e bloco condicional
+  "Inserir variável": { es: "Insertar variable" },
+  "Buscar variável": { es: "Buscar variable" },
+  "Nenhuma variável encontrada": { es: "No se encontró ninguna variable" },
+  "Para a linha sumir quando o campo estiver vazio, envolva-a: {{#campo}}rótulo {{campo}}{{/campo}}.": {
+    es: "Para que la línea desaparezca cuando el campo esté vacío, envuélvela: {{#campo}}etiqueta {{campo}}{{/campo}}.",
+  },
+  "Prévia com um contato de exemplo": { es: "Vista previa con un contacto de ejemplo" },
+  "Outros": { es: "Otros" },
+  "Negócio": { es: "Negocio" },
+  "Telefone do contato": { es: "Teléfono del contacto" },
+  "E-mail do contato": { es: "Correo del contacto" },
+  "Título do negócio": { es: "Título del negocio" },
+  "Outro dado do negócio ou do contato: {{lead.nome_do_campo}} ou {{contact.nome_da_coluna}}.": { es: "Otro dato del negocio o del contacto: {{lead.nome_do_campo}} o {{contact.nome_da_coluna}}." },
+  "As variáveis da empresa entram como {{empresa.nome_da_variavel}} (Configurações › Variáveis da empresa).": { es: "Las variables de la empresa entran como {{empresa.nome_da_variavel}} (Configuración › Variables de la empresa)." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

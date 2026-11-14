@@ -1,6 +1,7 @@
 "use client";
 
 import { useT } from "@/hooks/i18n/useT";
+import { CampoComVariaveis } from "@/components/variaveis/CampoComVariaveis";
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -125,16 +126,17 @@ export function TemplateFormDialog({ open, onOpenChange, canShare, template }: P
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="tpl-body">{t("Mensagem")}</Label>
-            <Textarea
+            <CampoComVariaveis
               id="tpl-body"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
+              rotulo={t("Mensagem")}
+              fonte="inbox"
+              valor={body}
+              onChange={setBody}
               placeholder={t("Oi {{primeiro_nome}}, tudo bem?")}
               minLength={1}
               maxLength={4096}
-              required
-              rows={5}
+              obrigatorio
+              linhas={5}
             />
             <p className="text-xs text-muted-foreground">
               {t("Use")} {"{{primeiro_nome}}"} {t("e")} {"{{nome}}"} {t("para personalizar.")}
