@@ -96,6 +96,11 @@ export function useAuth(): AuthCtx {
   return ctx;
 }
 
+/** As capacidades da organização (`telefonia`, …). Fora do provider devolve vazio: oferecer a menos é o lado seguro. */
+export function useCapacidadesLigadas(): readonly string[] {
+  return useContext(Ctx)?.activeOrg?.capacidades_ligadas ?? [];
+}
+
 export function useUser(): AuthUser {
   return useAuth().user;
 }

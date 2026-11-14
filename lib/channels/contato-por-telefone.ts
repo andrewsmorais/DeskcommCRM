@@ -107,6 +107,19 @@ export async function encontrarContatoPorTelefoneComNome(
   return (linha as { id: string; phone_number: string | null; name: string | null } | null) ?? null;
 }
 
+/**
+ * Como `encontrarContatoPorTelefone`, com o bloqueio lido na MESMA consulta: a
+ * ligação recebida de quem pediu "PARAR" é recusada (`workers/voice-agent`).
+ */
+export async function encontrarContatoPorTelefoneComBloqueio(
+  admin: SupabaseClient,
+  orgId: string,
+  rawPhone: string,
+): Promise<{ id: string; phone_number: string | null; is_blocked: boolean | null } | null> {
+  const linha = await buscarPorVariantes(admin, orgId, rawPhone, "id, phone_number, is_blocked");
+  return (linha as { id: string; phone_number: string | null; is_blocked: boolean | null } | null) ?? null;
+}
+
 /** O contato da mensagem e os gêmeos gravados com a outra grafia do número. */
 export async function idsDoContatoEGemeos(
   admin: SupabaseClient,

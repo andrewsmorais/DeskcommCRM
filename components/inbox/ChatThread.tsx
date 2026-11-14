@@ -29,6 +29,8 @@ import type { Message, Note } from "@/lib/types/messaging";
 
 interface Props {
   conversationId: string | null;
+  /** O fio mora numa página que rola (a tela do Cold Call): acompanhar o fim não pode arrastar a página. */
+  soNaCaixa?: boolean;
   searchTerm?: string;
   provider?: string | null;
   /** Escolher uma mensagem para responder. Sobe até o composer. */
@@ -91,6 +93,7 @@ export function ChatThread({
   dono,
   contatoId,
   searchTerm = "",
+  soNaCaixa = false,
 }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
@@ -245,11 +248,13 @@ export function ChatThread({
     // da pintura em branco, que é exatamente o defeito acima.
     if (items.length > 0) jaAncorou.current = true;
 
-    bottomRef.current?.scrollIntoView({
-      behavior: primeiraAncoragem ? "auto" : "smooth",
-      block: "end",
-    });
-  }, [items.length, conversationId, paginas]);
+    const behavior = primeiraAncoragem ? "auto" : "smooth";
+    if (soNaCaixa && scrollerRef.current) {
+      scrollerRef.current.scrollTo({ top: scrollerRef.current.scrollHeight, behavior });
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+    }
+  }, [items.length, conversationId, paginas, soNaCaixa]);
 
   /**
    * O ESTADO DO CANAL DESTE THREAD, PUBLICADO SEMPRE — inclusive quando não há

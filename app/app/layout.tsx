@@ -14,6 +14,7 @@ import { marcaDaInstalacao } from "@/lib/branding/instalacao";
 import { resolverMarcaDaOrganizacao } from "@/lib/branding/organizacao";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { telefoniaEmUso } from "@/lib/telefonia/em-uso";
 import { modulosLigados } from "@/lib/instalacao/modulos";
 import { capacidadesLigadas } from "@/lib/organizacao/capacidades";
 import { BillingBanner } from "@/components/app/BillingBanner";
@@ -101,7 +102,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
      *    este layout — a cerca anterior lia o texto-fonte e reprovava esta
      *    refatoração sem que nada tivesse quebrado.
      */
-    const [orgRes, conexoes, isEnrolled, mfaRequired, modulos] = await Promise.all([
+    const [orgRes, conexoes, isEnrolled, mfaRequired, modulos, telefonia] = await Promise.all([
       admin
         .from("organizations")
         .select("onboarded_at, status, settings")
@@ -112,6 +113,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       requiresMfa(activeOrg.role, user.is_platform_admin, user.id, activeOrg.orgId),
       // Da INSTALAÇÃO: decide se a porta de um módulo opcional entra no menu.
       modulosLigados(admin),
+      // Da ORGANIZAÇÃO: a telefonia não tem chave de instalação que o app leia.
+      telefoniaEmUso(admin, activeOrg.orgId),
     ]);
 
     const orgRow = orgRes.data;
@@ -144,7 +147,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       cliente_pela_agenda: clientePelaAgendaLigado(orgRow?.settings),
       modulos_ligados: modulos,
       // Mesma linha de `settings` já lida acima — nenhuma consulta a mais.
-      capacidades_ligadas: capacidadesLigadas(orgRow?.settings, modulos),
+      capacidades_ligadas: capacidadesLigadas(orgRow?.settings, modulos, telefonia),
     };
 
     // `marcaDaInstalacao()` é memoizada por TTL no PROCESSO (`lib/branding/

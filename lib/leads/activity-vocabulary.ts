@@ -180,9 +180,12 @@ export type ActivityType =
    * retorno veio" seria indistinguível de "o retorno está a caminho" — e é
    * justamente no silêncio que a demanda morre. O PORQUÊ vai no `reason`.
    */
-  | "proposal_followup_skipped";
+  | "proposal_followup_skipped"
+  /** Resultado de uma ligação da fila do Cold Call (`app/api/v1/cold-call/resultado`). */
+  | "cold_call_result";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
+  cold_call_result: "Ligação de cold call",
   lead_created: "Entrou pelo WhatsApp",
   stage_changed: "Mudou de estágio",
   agent_move_corrected: "Correção do que o assistente tinha feito",

@@ -2,6 +2,7 @@
  * Labels pt-br congelados da aba Automações (UI-T3). Fonte única — a timeline
  * de atividade (UI-T4) importa os mesmos mapas, nunca redeclara os textos.
  */
+import type { CapacidadeDaOrganizacao } from "@/lib/organizacao/capacidades";
 import type { TRIGGER_EVENTS } from "@/lib/schemas/webhooks";
 
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number];
@@ -48,6 +49,9 @@ export const TRIGGER_LABELS: Record<TriggerEvent, string> = {
   // funil) ficam embaixo, na configuração da regra.
   "lead.silent_for": "Quando ficar N dias sem mensagem",
   "lead.stage_stale": "Quando um lead ficar N dias na mesma etapa",
+  // A frase diz o DESFECHO para quem ligou ("não for atendida"). "Recebida"
+  // separa da ligação FEITA que ninguém atendeu — essa não dispara o gatilho.
+  "voice_call.missed": "Quando uma ligação recebida não for atendida",
 };
 
 export const ACTION_LABELS: Record<ActionType, string> = {
@@ -62,3 +66,22 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   // #1540 — a ação que não fala com o cliente: o lembrete é da equipe.
   create_task: "Criar tarefa interna (sem mensagem ao cliente)",
 };
+
+/**
+ * O gatilho que só dispara com uma capacidade da organização ligada. A ligação
+ * perdida nasce do worker de voz, e quem não usa telefonia veria uma opção que
+ * nunca dispara. O gatilho JÁ gravado na regra (`atual`) continua na lista,
+ * porque o que está salvo não some da tela.
+ */
+const CAPACIDADE_DO_GATILHO: Partial<Record<TriggerEvent, CapacidadeDaOrganizacao>> = {
+  "voice_call.missed": "telefonia",
+};
+
+export function gatilhoOferecido(
+  ev: TriggerEvent,
+  capacidadesLigadas: readonly string[] | undefined,
+  atual?: string,
+): boolean {
+  const capacidade = CAPACIDADE_DO_GATILHO[ev];
+  return !capacidade || ev === atual || (capacidadesLigadas ?? []).includes(capacidade);
+}
