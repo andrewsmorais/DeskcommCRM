@@ -15,6 +15,7 @@ vi.mock("@/hooks/inbox/useUploadMedia", () => ({
   useUploadMedia: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock("@/hooks/inbox/useMessageTemplates", () => ({
+  useGruposDeRespostas: () => ({ data: [], isLoading: false }),
   useMessageTemplates: () => ({ data: [], isLoading: false }),
 }));
 vi.mock("@/hooks/inbox/useDraftReply", () => ({

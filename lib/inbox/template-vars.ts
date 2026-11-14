@@ -1,4 +1,5 @@
 import { aplicarBlocosCondicionais } from "@/lib/texto/bloco-condicional";
+import type { MidiaDeTemplate } from "@/lib/templates/midias";
 /**
  * Interpola variáveis de template com dados do contato da conversa (Onda 5).
  * Suporta {{nome}} e {{primeiro_nome}}, e as variáveis da empresa
@@ -32,4 +33,20 @@ export function interpolateTemplate(
     if (key === "primeiro_nome") return first !== "" ? first : literal;
     return literal; // desconhecida: mantém
   });
+}
+
+/**
+ * O que a resposta rápida entrega ao compositor: o texto interpolado e as mídias
+ * gravadas, na ordem (vindo do produto original). Lista NOVA de propósito: o
+ * compositor reordena a fila e não pode mexer no cache da tela de templates.
+ */
+export function payloadDeUso(
+  template: { id?: string; title?: string; body: string; midias?: readonly MidiaDeTemplate[] | null },
+  contact: TemplateContact,
+  empresa: Record<string, string> = {},
+): { texto: string; midias: MidiaDeTemplate[] } {
+  return {
+    texto: interpolateTemplate(template.body, contact, empresa),
+    midias: [...(template.midias ?? [])],
+  };
 }

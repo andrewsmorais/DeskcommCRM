@@ -397,6 +397,15 @@ export const AUDIT_ACTIONS = [
   "template.created",
   "template.updated",
   "template.deleted",
+  // Respostas rápidas com mídia, ordem e grupos (vindo do produto original):
+  // reordenar e reorganizar grupos não é `template.updated` — o texto não foi
+  // tocado. A remoção de mídia vai no `template.updated` (campo `removidas`).
+  "template.reordered",
+  "template.media_added",
+  "template_group.created",
+  "template_group.updated",
+  "template_group.deleted",
+  "template_group.reordered",
   "auth.signup_requested",
   "auth.signup_failed",
   "auth.signup_confirmed",

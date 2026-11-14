@@ -13,13 +13,24 @@ interface Props {
   sending: boolean;
   onCancel: () => void;
   onSend: (caption: string) => void;
+  /** Legenda que já vem escrita (o texto da resposta rápida com imagem). */
+  legendaInicial?: string | null;
+  /** "1 de 3" quando a resposta rápida leva vários arquivos. */
+  progresso?: string | null;
 }
 
 /** Preview antes do envio (padrão WhatsApp): thumb ou card + legenda. */
-export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Props) {
+export function AttachmentPreviewDialog({
+  file,
+  sending,
+  onCancel,
+  onSend,
+  legendaInicial = null,
+  progresso = null,
+}: Props) {
   const t = useT();
-  const [caption, setCaption] = useState("");
-  useEffect(() => setCaption(""), [file]);
+  const [caption, setCaption] = useState(legendaInicial ?? "");
+  useEffect(() => setCaption(legendaInicial ?? ""), [file, legendaInicial]);
 
   const objectUrl = useMemo(() => (file && /^(image|video)\//.test(file.type) ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => {
@@ -34,7 +45,10 @@ export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Pro
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("Enviar anexo")}</DialogTitle>
+          <DialogTitle>
+            {t("Enviar anexo")}
+            {progresso ? <span className="ml-2 text-sm font-normal text-muted-foreground">{progresso}</span> : null}
+          </DialogTitle>
         </DialogHeader>
         <div className="flex items-center justify-center rounded-lg bg-muted/40 p-3">
           {isImage && objectUrl && (

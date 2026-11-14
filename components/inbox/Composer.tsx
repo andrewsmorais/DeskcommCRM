@@ -23,7 +23,12 @@ import { FigurinhasButton } from "@/components/inbox/composer/FigurinhasButton";
 import { useAssinarLembrado } from "@/hooks/inbox/usePreferenciasDeConversa";
 import { resolveSlash, TemplateMenu } from "@/components/inbox/composer/TemplateMenu";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
-import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
+import { useGruposDeRespostas, useMessageTemplates } from "@/hooks/inbox/useMessageTemplates";
+import { BarraDeRecursos } from "@/components/inbox/composer/BarraDeRecursos";
+import { type Recurso } from "@/lib/inbox/recursos";
+import { lerRespostaRapidaGravada } from "@/lib/inbox/resposta-rapida";
+import { ehMidiaDeAudio, mimeDaMidia, type MidiaDeTemplate } from "@/lib/templates/midias";
+import { toast } from "sonner";
 import { X } from "lucide-react";
 import { useSendMessage } from "@/hooks/inbox/useSendMessage";
 import { useUploadMedia } from "@/hooks/inbox/useUploadMedia";
@@ -128,7 +133,18 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // O aviso some no primeiro ENVIO: depois do clique o rascunho foi usado, e
   // deixar a faixa prometendo texto que já saiu seria mentira de tela.
   const [rascunhoUsado, setRascunhoUsado] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // A FILA de anexos: um arquivo escolhido pelo "+", ou os arquivos de uma
+  // resposta rápida (imagens e áudio, na ordem gravada). O diálogo mostra o
+  // primeiro; enviado, o próximo aparece. Nada sai sem o atendente ver.
+  const [fila, setFila] = useState<File[]>([]);
+  const [totalDaFila, setTotalDaFila] = useState(0);
+  const [legendaInicial, setLegendaInicial] = useState<string | null>(null);
+  const pendingFile = fila[0] ?? null;
+  const setPendingFile = (f: File | null) => {
+    setFila(f ? [f] : []);
+    setTotalDaFila(f ? 1 : 0);
+    setLegendaInicial(null);
+  };
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [mode, setMode] = useState<"reply" | "note">(initialMode);
@@ -141,6 +157,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const upload = useUploadMedia();
   const createNote = useCreateNote();
   const templates = useMessageTemplates();
+  const grupos = useGruposDeRespostas();
   const slash = resolveSlash(text);
   const menuOpen = mode === "reply" && slash.open && !menuDismissed;
 
@@ -224,17 +241,70 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       });
   }
 
-  function applyTemplate(t: MessageTemplate) {
-    const filled = interpolateTemplate(t.body, { name: contactName ?? null }, variaveisDaEmpresa);
-    setText(filled);
-    setMenuDismissed(true);
+  function escreverNoCampo(texto: string, focar = true) {
+    setText(texto);
     const ta = taRef.current;
     if (!ta) return;
     requestAnimationFrame(() => {
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = filled.length;
+      if (focar) ta.focus();
+      ta.selectionStart = ta.selectionEnd = texto.length;
       autoresize();
     });
+  }
+
+  /** Os BYTES de uma mídia da resposta rápida, pela própria origem (sem CORS do bucket). */
+  async function arquivoDaMidia(templateId: string, midia: MidiaDeTemplate, indice: number): Promise<File> {
+    const res = await fetch(`/api/v1/message-templates/${templateId}/midias/${indice}`);
+    if (!res.ok) throw new Error("midia_indisponivel");
+    const blob = await res.blob();
+    const nome = midia.storage_path.split("/").pop() ?? `arquivo-${indice + 1}`;
+    // O tipo sai do CAMINHO (que a rota de upload escolheu pelos bytes).
+    return new File([blob], nome, { type: mimeDaMidia(midia.storage_path) });
+  }
+
+  /**
+   * Escolhe a resposta rápida — pelo "/" ou pelo botão da barra, um caminho só.
+   *
+   * Só texto: o texto vai para o campo, como sempre. Com imagem ou áudio, os
+   * arquivos entram na fila de anexos (com prévia) e o texto vira a legenda da
+   * primeira imagem. Áudio não leva legenda no WhatsApp: sem imagem, o texto
+   * fica no campo para sair como mensagem. NADA é enviado aqui.
+   */
+  async function applyTemplate(template: Recurso) {
+    const leitura = lerRespostaRapidaGravada(template);
+    setMenuDismissed(true);
+    if (!leitura.ok) {
+      toast.error(t(leitura.motivo));
+      return;
+    }
+    const texto = interpolateTemplate(template.body, { name: contactName ?? null }, variaveisDaEmpresa);
+    const midias = template.midias ?? [];
+    if (!midias.length || respostaBarrada) {
+      escreverNoCampo(texto);
+      return;
+    }
+    try {
+      const arquivos = await Promise.all(midias.map((m, i) => arquivoDaMidia(template.id, m, i)));
+      const levaLegenda = midias.some((m) => !ehMidiaDeAudio(m));
+      // A imagem que leva a legenda vai primeiro na fila: é ela que o diálogo
+      // abre com o texto já escrito.
+      const ordenados = levaLegenda
+        ? [...arquivos.filter((a) => !a.type.startsWith("audio/")), ...arquivos.filter((a) => a.type.startsWith("audio/"))]
+        : arquivos;
+      setFila(ordenados);
+      setTotalDaFila(ordenados.length);
+      if (levaLegenda) {
+        setLegendaInicial(texto || null);
+        setText("");
+      } else {
+        setLegendaInicial(null);
+        escreverNoCampo(texto, false);
+      }
+    } catch {
+      // Sem os bytes não há prévia nem envio: o texto vai para o campo, com o aviso.
+      toast.error(t("Não foi possível carregar a mídia da resposta rápida. O texto foi para o campo."));
+      escreverNoCampo(texto);
+    }
   }
 
   /**
@@ -291,7 +361,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           open={menuOpen}
           query={slash.query}
           templates={templates.data ?? []}
-          onPick={applyTemplate}
+          grupos={grupos.data ?? []}
+          onPick={(tpl) => void applyTemplate(tpl)}
           onClose={() => setMenuDismissed(true)}
         />
         {/* O AVISO DO RASCUNHO SUGERIDO (issue #1611) — acima dos modos, sempre
@@ -371,6 +442,21 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               <X className="size-4" />
             </button>
           </div>
+        )}
+        {/* A BARRA DE RESPOSTAS RÁPIDAS — um botão por resposta. O clique NÃO
+            envia: entrega ao MESMO applyTemplate do "/". */}
+        {mode === "reply" && (
+          <BarraDeRecursos
+            recursos={templates.data ?? []}
+            grupos={grupos.data ?? []}
+            disabled={respostaBarrada || !!text.trim()}
+            dica={
+              text.trim()
+                ? t("A resposta rápida substitui o texto do campo. Envie ou apague o rascunho antes.")
+                : undefined
+            }
+            onEscolher={(r) => void applyTemplate(r)}
+          />
         )}
         <div className="flex items-end gap-2">
           {mode === "reply" && (
@@ -470,6 +556,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       </div>
       <AttachmentPreviewDialog
         file={pendingFile}
+        legendaInicial={totalDaFila > 0 && fila.length === totalDaFila ? legendaInicial : null}
+        progresso={
+          totalDaFila > 1 ? `${totalDaFila - fila.length + 1} ${t("de")} ${totalDaFila}` : null
+        }
         sending={upload.isPending || send.isPending}
         onCancel={() => setPendingFile(null)}
         onSend={async (caption) => {
@@ -486,7 +576,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 media_mime: uploaded.media_mime,
                 media_size_bytes: uploaded.media_size_bytes,
               },
-              { onSuccess: () => setPendingFile(null) },
+              // Enviado este, o próximo da fila aparece (a legenda era só do primeiro).
+              { onSuccess: () => setFila((atual) => atual.slice(1)) },
             );
           } catch {
             // toast já disparado pelo onError de useUploadMedia; dialog fica aberto p/ retry

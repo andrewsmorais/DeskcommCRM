@@ -24,6 +24,7 @@ export function CampoComVariaveis({
   obrigatorio,
   maxLength,
   minLength,
+  ajuda,
 }: {
   id?: string;
   rotulo: string;
@@ -35,6 +36,8 @@ export function CampoComVariaveis({
   obrigatorio?: boolean;
   maxLength?: number;
   minLength?: number;
+  /** Uma linha de orientação abaixo do campo. */
+  ajuda?: string;
 }) {
   const t = useT();
   const campoRef = React.useRef<HTMLTextAreaElement>(null);
@@ -71,6 +74,7 @@ export function CampoComVariaveis({
         maxLength={maxLength}
         minLength={minLength}
       />
+      {ajuda ? <p className="text-xs text-muted-foreground">{ajuda}</p> : null}
       {previa !== null ? (
         <div className="rounded-md bg-muted/40 p-2 text-xs" data-testid="previa-com-valores">
           <p className="font-medium text-muted-foreground">{t("Prévia com um contato de exemplo")}</p>
