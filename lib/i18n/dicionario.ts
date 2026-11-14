@@ -18596,6 +18596,29 @@ export const DICIONARIO: Traducoes = {
   "Telefone ligado ao negócio.": { es: "Teléfono vinculado al negocio." },
   // Pessoas relacionadas e números do negócio (produto original)
   // Pessoas relacionadas e números do negócio (produto original)
+  // Inbox que diz por que a lista não carregou (produto original)
+  "A consulta das conversas excedeu o tempo limite.": {
+    es: "La consulta de las conversaciones superó el tiempo límite.",
+  },
+  "Não foi possível falar com o servidor. Verifique a conexão.": {
+    es: "No fue posible comunicarse con el servidor. Verifica la conexión.",
+  },
+  "O servidor não respondeu agora.": { es: "El servidor no respondió ahora." },
+  "Você não tem permissão para ver estas conversas.": {
+    es: "No tienes permiso para ver estas conversaciones.",
+  },
+  "O pedido da lista de conversas foi recusado.": {
+    es: "La solicitud de la lista de conversaciones fue rechazada.",
+  },
+  "As conversas continuam salvas. Nada foi perdido.": {
+    es: "Las conversaciones siguen guardadas. No se perdió nada.",
+  },
+  "A consulta excedeu o tempo limite. Tente de novo.": {
+    es: "La consulta superó el tiempo límite. Intenta de nuevo.",
+  },
+  "Sem conexão com o servidor. Verifique a rede e tente de novo.": {
+    es: "Sin conexión con el servidor. Verifica la red e intenta de nuevo.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

@@ -13,6 +13,7 @@ import { ConversationListItem } from "./ConversationListItem";
 import { EmptyInbox } from "@/components/empty";
 import { EmptyPorFiltro } from "./EmptyPorFiltro";
 import { filtrosAuxiliaresAtivos } from "@/lib/inbox/filtros-ativos";
+import { textoDaFalhaDaLista } from "@/lib/inbox/falha-da-lista";
 import type {
   ConversationsFilters,
   ConversationWithContact,
@@ -123,17 +124,22 @@ export function ConversationList({
     );
   }
 
-  if (q.isError) {
+  // O erro só fala quando NÃO HÁ O QUE PRESERVAR: um refetch que falha com a
+  // lista na tela deixa a lista onde está. E ele DIZ QUAL FOI — tempo esgotado,
+  // servidor fora, sessão caída e pedido recusado pedem ações diferentes.
+  if (q.isError && q.data === undefined) {
     return (
-      <div className="p-4 text-center text-sm text-muted-foreground">
-        <p>{t("Erro ao carregar conversas.")}</p>
+      <div className="space-y-2 p-4 text-center text-sm text-muted-foreground" role="alert">
+        <p className="text-foreground">{textoDaFalhaDaLista(q.error, t)}</p>
+        {/* O banco continua com tudo: é a LEITURA que não voltou. */}
+        <p>{t("As conversas continuam salvas. Nada foi perdido.")}</p>
         <Button
           size="sm"
           variant="outline"
           className="mt-2"
           onClick={() => q.refetch()}
         >
-          Tentar novamente
+          {t("Tentar novamente")}
         </Button>
       </div>
     );
