@@ -163,6 +163,22 @@ export const MANUAL_CRM: ManualDoGrupo = {
     ],
   },
 
+  "/app/cold-call": {
+    oQueE:
+      "Fila de ligações para prospectar: um lead por vez, com o roteiro ao lado. Cada resultado move o lead no funil de cold call sozinho.",
+    comoUsar: [
+      'Na primeira vez, clique em "Criar funil de cold call" (pede papel de administrador). Depois use "Como configurar" para ver o passo a passo.',
+      "Importe a lista de leads pela planilha, no botão de importar da própria tela. Quem entrou aparece na fila.",
+      'Clique num lead e em "Ligar". Com o canal de voz do CRM pareado, a ligação sai pelo navegador; sem ele, pelo "Discador do aparelho".',
+      'Ao terminar, escolha o "Resultado Cold Call" (Não atendeu, Caixa postal, Follow-up, Pediu reunião, Não tem interesse, Número errado) e salve. Quem não atendeu volta para a fila.',
+      "Use a busca por nome ou telefone para achar um lead na fila.",
+    ],
+    cuidados: [
+      'Quem pediu para não ser incomodado ("PARAR") e contato anonimizado aparecem como "Não ligar" e não recebem ligação.',
+      "É um módulo opcional da instalação, desligado por padrão: quem administra o servidor liga em Administração › Sistema.",
+    ],
+  },
+
   "/app/products": {
     oQueE:
       "Catálogo dos produtos da loja. É daqui que o atendente de IA tira o preço e as fotos quando um cliente pergunta.",

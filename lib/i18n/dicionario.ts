@@ -18583,6 +18583,7 @@ export const DICIONARIO: Traducoes = {
   // Pessoas relacionadas e números do negócio (produto original)
   // Pessoas relacionadas e números do negócio (produto original)
   // Cold Call (vindo do produto original)
+  "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
   "A ligação pelo CRM ainda não está ligada. Por enquanto, o botão abre o discador do seu aparelho.": { es: "La llamada por el CRM aún no está activa. Por ahora, el botón abre el marcador de tu dispositivo." },
   "Abertura": { es: "Apertura" },
