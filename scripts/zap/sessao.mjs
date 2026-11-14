@@ -7,7 +7,7 @@
  * Só roda contra endereço local: nunca contra um site no ar.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 
 const [base = "http://localhost:3001", saida = "/tmp/zap-cookie.txt"] = process.argv.slice(2);
 if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(base)) {

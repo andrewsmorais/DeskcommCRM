@@ -53,7 +53,7 @@
     "@emoji-mart/react": "^1.1.1",
     "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^5.9.1",
-    "@modelcontextprotocol/sdk": "^1.30.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-avatar": "^1.2.6",
@@ -87,9 +87,9 @@
     "ipaddr.js": "^2.5.0",
     "jsonc-parser": "^3.3.1",
     "lucide-react": "^1.47.0",
-    "next": "^16.3.6",
+    "next": "^16.4.5",
     "next-themes": "^0.4.6",
-    "nodemailer": "10.0.10",
+    "nodemailer": "10.3.1",
     "pdfjs-dist": "^6.3.289",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
@@ -104,7 +104,7 @@
     "tailwind-merge": "^3.7.0",
     "web-push": "^3.6.7",
     "ws": "^8.21.3",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -134,23 +134,34 @@
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1",
-    "vite": "^8.3.0",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
   },
   "packageManager": "pnpm@9.15.9",
   "//jsdom": "Fixado em 30.0.1 de propósito (sem ^). O jsdom 30.1 guarda a implementação do Blob num campo privado (#impl), e o ambiente jsdom do vitest (makeCompatBlob) lê o Blob pela 1ª símbolo da instância: com 30.1.x, URL.createObjectURL(file) e FormData/Request com File lançam `Cannot read properties of undefined (reading '_buffer')` — 4 casos da suíte (composer-attach x2, composer-colar-imagem, upload-templates-media-security). Upstream: vitest-dev/vitest#11336, aberta e sem conserto em nenhuma release (5.0.2 ainda quebra). Tire o pin quando o vitest instalado trouxer o conserto; o sinal é esses 4 casos verdes com jsdom 30.1+. Rastreio: melgarafael/DeskcommCRM#1745.",
   "pnpm": {
     "//overrides": "Pisos de versão para dependência TRANSITIVA com advisory. Não é atalho: `pnpm update <pkg>` só casa o padrão contra o package.json (hono/js-yaml/nanoid não estão lá, e não se movem), e `pnpm update` sem alvo reescreve 29 ranges diretas e arrasta 139 pacotes. Override é a única ferramenta que move transitiva sem arrastar o mundo. Os seletores com `@<major>` são LOAD-BEARING: o lock tem duas árvores de brace-expansion (1.x e 5.x) e duas de path-to-regexp (6.x e 8.x); sem o escopo, o override rebaixa a árvore nova para a antiga — em silêncio, com `pnpm audit` ainda verde.",
     "overrides": {
-      "postcss": "^8.5.28",
-      "sharp": "^0.35.0",
-      "hono": "^4.13.5",
+      "body-parser@2": "^2.4.0",
+      "postcss": "^8.5.32",
+      "sharp": "^0.35.5",
+      "hono": "^4.13.16",
+      "@hono/node-server@2": "^2.1.6",
       "js-yaml": "^4.3.2",
-      "brace-expansion@1": "^1.1.18",
+      "brace-expansion@1": "^1.1.21",
+      "brace-expansion@5": "^5.0.12",
       "path-to-regexp@6": "^6.3.0",
-      "fast-uri": "^3.1.7",
-      "qs": "^6.16.0",
-      "browserslist": "^4.28.8"
+      "fast-uri": "^3.1.9",
+      "ip-address@10": "^10.7.4",
+      "undici@7": "^7.30.1",
+      "undici@8": "^8.12.2",
+      "qs": "^6.16.1",
+      "browserslist": "^4.28.8",
+      "seroval": "^1.6.10",
+      "source-map-js": "^1.2.2",
+      "proxy-addr@2": "^2.0.8",
+      "glob@10": "^10.5.0",
+      "minimatch@9": "^9.0.6"
     },
     "patchedDependencies": {
       "@react-pdf/hyphenate": "patches/@react-pdf__hyphenate.patch"
