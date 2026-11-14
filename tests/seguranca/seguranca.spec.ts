@@ -179,3 +179,11 @@ test("9. login com injeção de SQL não entra", async ({ page }) => {
     await expect(page).toHaveURL(/\/login/);
   }
 });
+
+test("10. entradas que o schemathesis achou não derrubam a rota de contatos", async ({ page }) => {
+  await entrar(page, "agent");
+  const etiqueta = await api(page).get(`/api/v1/contacts?tag=${encodeURIComponent('a"b,{c}')}`);
+  expect(etiqueta.status(), await etiqueta.text()).toBe(200);
+  const idTorto = await api(page).patch("/api/v1/contacts/nao-e-um-id", { data: { name: "x" } });
+  expect(idTorto.status()).toBe(404);
+});

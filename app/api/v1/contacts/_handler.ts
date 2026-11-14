@@ -175,7 +175,10 @@ export async function listContactsHandler(
     }
     query = query.or(orParts.join(","));
   }
-  if (q.tag) query = query.contains("tags", [q.tag]);
+  // `contains` monta o literal de array SEM aspas (`cs.{valor}`): uma etiqueta
+  // com aspas, vírgula ou chave quebrava o literal e a rota respondia 500
+  // (schemathesis, 14/11/2026). O elemento vai entre aspas, escapado.
+  if (q.tag) query = query.filter("tags", "cs", `{"${q.tag.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"}`);
   if (q.source) query = query.eq("source", q.source);
 
   if (q.cursor) {

@@ -22,12 +22,21 @@ import { deleteContactHandler, getContactHandler, patchContactHandler } from "..
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Id que não é UUID não é contato nenhum: 404 na porta, antes do banco. Sem
+ * isto o Postgres recusava o texto ("invalid input syntax for type uuid") e a
+ * rota respondia 500 — achado do schemathesis (14/11/2026).
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const naoEContato = (requestId: string) => fail("not_found", "Contact not found.", 404, { requestId });
+
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const requestId = randomUUID();
   const { id } = await ctx.params;
+  if (!UUID.test(id)) return naoEContato(requestId);
 
   const supabase = await createClient();
   const {
@@ -76,6 +85,7 @@ export async function PATCH(
 
   const requestId = randomUUID();
   const { id } = await ctx.params;
+  if (!UUID.test(id)) return naoEContato(requestId);
 
   const supabase = await createClient();
   // spec 13 §4: escrita é agent+ (viewer é read-only).
@@ -131,6 +141,7 @@ export async function DELETE(
 
   const requestId = randomUUID();
   const { id } = await ctx.params;
+  if (!UUID.test(id)) return naoEContato(requestId);
 
   const authz = await requireRole("agent", { requestId, resource: "contacts" });
   if (!authz.ok) return authz.response;

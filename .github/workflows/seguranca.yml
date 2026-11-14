@@ -154,9 +154,12 @@ jobs:
         run: |
           python3 -m pip install -q "schemathesis>=4.3,<5"
           pnpm exec tsx scripts/seguranca/openapi.ts > /tmp/openapi.json
-          schemathesis run /tmp/openapi.json -u http://localhost:3001 \
+          # TRACE sai pela configuração (scripts/seguranca/schemathesis.toml). /health:
+          # 503 é a resposta certa quando Redis e WhatsApp estão fora — e aqui estão.
+          schemathesis --config-file scripts/seguranca/schemathesis.toml run /tmp/openapi.json -u http://localhost:3001 \
             -H "Cookie: $(cat /tmp/cookie-manager.txt)" \
             -c not_a_server_error -n 30 -w 1 --request-timeout 30 \
+            --exclude-path /api/v1/health \
             --report junit,har --report-dir seguranca-relatorios/schemathesis
 
       - name: "3/4 ZAP — de fora, sem login (varredura completa)"

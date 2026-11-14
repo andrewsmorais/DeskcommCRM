@@ -1,0 +1,7 @@
+# Configuração do schemathesis da bateria de segurança (.github/workflows/seguranca.yml).
+#
+# TRACE fica de fora dos "métodos inesperados" da fase de cobertura: o Next
+# responde 500 a ele antes de qualquer rota, e quem o barra na VPS é o Caddy
+# (Caddyfile, 405) — que o job não tem. Todo o resto continua sondado.
+[phases.coverage]
+unexpected-methods = ["get", "put", "post", "delete", "options", "patch", "query"]
