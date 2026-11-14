@@ -1485,6 +1485,38 @@ gravar_imagens() {
   set_env_var "$envfile" VOICE_AGENT_PULL_POLICY "$politica"
 }
 
+# ── A versão do WhatsApp (WAHA) de quem instalou com o padrão anterior ───────
+#
+# O `install.sh` grava `WAHA_IMAGE` no .env com o padrão do dia — então trocar o
+# padrão do compose não chega a quem já instalou: a linha do .env vence. Para o
+# parque receber o WAHA novo sem ninguém editar arquivo (doutrina de
+# packaging), o update troca o valor SÓ quando ele é exatamente um padrão
+# anterior nosso. Valor escolhido por quem opera (waha-plus, outra tag) não é
+# tocado: aparece um aviso, e quem escolheu decide.
+#
+# 2026.7.2 → 2026.9.2: o `sendSticker` (figurinhas) só existe a partir da
+# 2026.8.2. As sessões pareadas ficam no volume `waha-data`: trocar a imagem
+# não pede QR de novo.
+WAHA_PADRAO="devlikeapro/waha:latest-2026.9.2"
+WAHA_PADROES_ANTERIORES="devlikeapro/waha:latest-2026.7.2"
+
+atualizar_waha_do_padrao() {  # atualizar_waha_do_padrao [envfile] → imprime o que fez
+  local envfile="${1:-.env}" atual anterior
+  [ -f "$envfile" ] || return 0
+  [ -w "$envfile" ] || return 0
+  atual="$(grep -E '^WAHA_IMAGE=' "$envfile" | tail -1 | cut -d= -f2- | tr -d "'\"")"
+  [ -z "$atual" ] && return 0   # sem linha: vale o padrão do compose, já novo
+  [ "$atual" = "$WAHA_PADRAO" ] && return 0
+  for anterior in $WAHA_PADROES_ANTERIORES; do
+    if [ "$atual" = "$anterior" ]; then
+      set_env_var "$envfile" WAHA_IMAGE "$WAHA_PADRAO"
+      printf 'atualizado %s -> %s\n' "$atual" "$WAHA_PADRAO"
+      return 0
+    fi
+  done
+  printf 'mantido %s\n' "$atual"
+}
+
 # ── Os segredos da chamada de voz, no .env de quem já tinha instalado ────────
 #
 # A doutrina de packaging é literal: "bump de versão não pode exigir que o

@@ -2,6 +2,7 @@
 
 import { EncaminharDialog } from "@/components/inbox/EncaminharDialog";
 import { useFavoritar, useFavoritas } from "@/hooks/inbox/useMensagemFavoritaEncaminhar";
+import { useSalvarFigurinha } from "@/hooks/inbox/useFigurinhas";
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 
 import type { Locale } from "date-fns";
@@ -118,6 +119,7 @@ export function ChatThread({
   const listaDeFavoritas = useFavoritas(conversationId);
   const favoritas = useMemo(() => new Set((listaDeFavoritas.data ?? []).map((f) => f.id)), [listaDeFavoritas.data]);
   const favoritar = useFavoritar(conversationId ?? "");
+  const salvarFigurinha = useSalvarFigurinha(t("Figurinha salva."), t("Essa figurinha já estava salva."));
   const [encaminhando, setEncaminhando] = useState<string | null>(null);
   const canalAlteraEnviada = transportaMensagem(provider)
     && capabilitiesOf(provider as ChannelProvider).alteraMensagemEnviada;
@@ -420,6 +422,7 @@ export function ChatThread({
                   favorita={favoritas.has(item.data.id)}
                   onFavoritar={podeAgir ? (f) => favoritar.mutate({ id: item.data.id, favorita: f }) : undefined}
                   onEncaminhar={podeAgir ? () => setEncaminhando(item.data.id) : undefined}
+                  onSalvarFigurinha={podeAgir ? () => salvarFigurinha.mutate({ message_id: item.data.id }) : undefined}
                 />
               ),
             )}

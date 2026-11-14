@@ -587,6 +587,14 @@ gravar_imagens .env "$VERSAO_ALVO"
 # isto compra é o dia em que o dono QUISER ligar não começar por inventar dois
 # segredos num editor dentro da VPS, que é o passo manual que a doutrina de
 # packaging proíbe.
+# A versão do WhatsApp (WAHA): quem está no padrão anterior nosso sobe para o
+# atual (figurinhas pedem 2026.8.2+); quem escolheu outra, fica — e sabe.
+WAHA_TROCA="$(atualizar_waha_do_padrao .env)" || WAHA_TROCA=""
+case "$WAHA_TROCA" in
+  atualizado*) c_ylw "  (o WhatsApp do servidor sobe para a versão nova; as conexões continuam pareadas)" ;;
+  mantido*)    c_ylw "  (o WhatsApp do servidor segue na versão escolhida no .env: ${WAHA_TROCA#mantido }. Figurinhas pedem 2026.8.2 ou mais nova.)" ;;
+esac
+
 VOZ_CRIADA="$(completar_segredos_da_voz .env)" || VOZ_CRIADA=""
 [ -n "$VOZ_CRIADA" ] && c_ylw "  (preparei as credenciais da chamada de voz no .env — ela segue DESLIGADA)"
 

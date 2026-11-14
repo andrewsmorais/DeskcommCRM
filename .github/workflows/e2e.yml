@@ -1303,7 +1303,7 @@ jobs:
           # isso em 01/09/2026 (o digest do `latest` virou 2026.8.2 enquanto o
           # pin segue em 2026.7.2). Medido no run 35095923107: com `:latest` o
           # contêiner NÃO sobe.
-          WAHA_IMAGE: devlikeapro/waha:latest-2026.7.2
+          WAHA_IMAGE: devlikeapro/waha:latest-2026.9.2
           REDIS_IMAGE: redis:7-alpine
           # O MESMO digest do compose: `:latest` é tag móvel. Medido em
           # 2026-09-16 com `docker buildx imagetools inspect`: o `:latest` de

@@ -3,7 +3,7 @@
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { format } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { ArrowBendUpLeft, ArrowBendUpRight, CaretDown, Check, Checks, PencilSimple, Robot, Star, Trash, WarningOctagon } from "@/lib/ui/icons";
+import { ArrowBendUpLeft, ArrowBendUpRight, CaretDown, Check, Checks, PencilSimple, Robot, Star, Sticker, Trash, WarningOctagon } from "@/lib/ui/icons";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -53,6 +53,8 @@ interface Props {
   onFavoritar?: (favorita: boolean) => void;
   /** Abre a escolha de conversas para encaminhar. */
   onEncaminhar?: () => void;
+  /** Guarda a figurinha recebida na biblioteca da empresa (migration 0516). */
+  onSalvarFigurinha?: () => void;
 }
 
 function AckIndicator({ status, t }: { status: string; t: (texto: string) => string }) {
@@ -82,6 +84,7 @@ export function MessageBubble({
   favorita = false,
   onFavoritar,
   onEncaminhar,
+  onSalvarFigurinha,
 }: Props) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(message.body ?? "");
@@ -130,7 +133,8 @@ export function MessageBubble({
   const podeEncaminhar = !apagada && Boolean(onEncaminhar)
     && (message.type === "text" ? Boolean(message.body) : ["image", "video", "audio", "document"].includes(message.type) && Boolean(message.media_storage_path));
   const podeFavoritar = !apagada && Boolean(onFavoritar);
-  const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar || podeEncaminhar || podeFavoritar);
+  const podeSalvarFigurinha = !apagada && message.type === "sticker" && Boolean(message.media_storage_path) && Boolean(onSalvarFigurinha);
+  const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar || podeEncaminhar || podeFavoritar || podeSalvarFigurinha);
   const aiGenerated = isAiGeneratedMessage(message.metadata);
   const citations = extractCitations(message.metadata);
   const showCitationButton =
@@ -269,6 +273,11 @@ export function MessageBubble({
                 <DropdownMenuItem onSelect={() => onFavoritar(!favorita)}>
                   <Star size={16} weight={favorita ? "fill" : "regular"} aria-hidden />
                   {favorita ? t("Tirar dos favoritos") : t("Favoritar")}
+                </DropdownMenuItem>
+              )}
+              {podeSalvarFigurinha && onSalvarFigurinha && (
+                <DropdownMenuItem onSelect={() => onSalvarFigurinha()}>
+                  <Sticker size={16} aria-hidden />{t("Salvar figurinha")}
                 </DropdownMenuItem>
               )}
               {podeEncaminhar && onEncaminhar && (

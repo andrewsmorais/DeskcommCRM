@@ -20,6 +20,9 @@ on:
       - .trivyignore
       - pnpm-lock.yaml
       - Dockerfile*
+      - docker-compose.prod.yml
+      - hostgator-setup-kit/_common.sh
+      - scripts/seguranca/waha-confere.ts
   schedule:
     - cron: "41 6 * * 1" # segunda, 03:41 em Brasília
 
@@ -103,6 +106,39 @@ jobs:
           exit-code: "0"
           skip-setup-trivy: true
 
+      - uses: ./.github/actions/preparar-node
+        timeout-minutes: 5
+
+      - name: "WAHA fixado: sobe, fala com o app e tem sendSticker"
+        run: |
+          IMG=$(grep -oE 'WAHA_IMAGE:-[^}]+' docker-compose.prod.yml | head -1 | cut -d- -f2-)
+          PADRAO=$(grep -oE '^WAHA_PADRAO="[^"]+"' hostgator-setup-kit/_common.sh | cut -d'"' -f2)
+          echo "compose: $IMG | update.sh: $PADRAO"
+          [ "$IMG" = "$PADRAO" ] || { echo "::error::o compose e o _common.sh discordam da versão do WAHA"; exit 1; }
+          CHAVE=$(openssl rand -hex 24)
+          HASH=$(printf '%s' "$CHAVE" | sha512sum | cut -d' ' -f1)
+          docker run -d --name waha -p 3000:3000 \
+            -e WAHA_API_KEY="sha512:$HASH" -e WHATSAPP_DEFAULT_ENGINE=NOWEB "$IMG"
+          for i in $(seq 1 60); do
+            c=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Api-Key: $CHAVE" http://127.0.0.1:3000/api/server/version || true)
+            [ "$c" = "200" ] && break; sleep 2
+          done
+          WAHA_URL=http://127.0.0.1:3000 WAHA_CHAVE="$CHAVE" WAHA_VERSAO_ESPERADA="${IMG##*latest-}" \
+            pnpm exec tsx scripts/seguranca/waha-confere.ts || { docker logs --tail 60 waha; exit 1; }
+
+      - name: "Trivy — imagem do WAHA fixado"
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: image
+          image-ref: devlikeapro/waha:latest-2026.9.2
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          format: json
+          output: trivy-imagem-waha.json
+          exit-code: "0"
+          skip-setup-trivy: true
+
       - name: Resumo
         if: always()
         run: |
@@ -114,7 +150,8 @@ jobs:
           nomes = {"CRITICAL": "Crítica", "HIGH": "Alta", "MEDIUM": "Média", "LOW": "Baixa", "UNKNOWN": "?"}
           print("# Varredura do Trivy\n")
           for arq, titulo in (("trivy-codigo.json", "Código"), ("trivy-imagem-app.json", "Imagem do app"),
-                              ("trivy-imagem-worker.json", "Imagem do worker"), ("trivy-imagem-scheduler.json", "Imagem do scheduler")):
+                              ("trivy-imagem-worker.json", "Imagem do worker"), ("trivy-imagem-scheduler.json", "Imagem do scheduler"),
+                              ("trivy-imagem-waha.json", "Imagem do WAHA (de terceiros; só crítica e alta)")):
               print(f"## {titulo}\n")
               if not os.path.exists(arq):
                   print("_Sem relatório (o passo falhou — veja o log)._\n"); continue

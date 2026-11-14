@@ -7,6 +7,9 @@ describe("capacidade medida do servidor, não inferência comercial", () => {
       version: "2026.7.2", engine: "NOWEB", tier: "CORE", multipleSessions: "supported",
     });
   });
+  it("2026.9.2 (o pin atual, medido no CI) também", () => {
+    expect(describeWahaServer({ version: "2026.9.2", engine: "NOWEB", tier: "CORE" }).multipleSessions).toBe("supported");
+  });
   it.each([
     { version: "2026.7.3", engine: "NOWEB", tier: "CORE" },
     { version: "2026.7.2", engine: "WEBJS", tier: "PLUS" },

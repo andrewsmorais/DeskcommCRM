@@ -31,7 +31,7 @@ Legenda: ✅ tem igual ou melhor · 🟡 tem parecido (diferença anotada) · �
 | Assinar mensagens com o nome do atendente | ✅ | Feito 13/11 |
 | Anexar arquivo, emojis, áudio | ✅ | |
 | Respostas rápidas (pessoais ou da equipe) | ✅ | Digita "/" no campo |
-| Figurinhas salvas para enviar | 🟡 | Mostra figurinha recebida; enviar figurinha depende do WAHA 2026.8.2 (`sendSticker`), e a versão fixada é a 2026.7.2 |
+| Figurinhas salvas para enviar | ✅ | Feito 14/11 (migration 0516): biblioteca da empresa, salvar a recebida ou trazer do computador, enviar pelo `sendSticker` do WAHA 2026.9.2 (foto em `evidence/figurinhas/f1-quadro-de-figurinhas.png`, tela com respostas simuladas) |
 
 ## 2. Canais
 

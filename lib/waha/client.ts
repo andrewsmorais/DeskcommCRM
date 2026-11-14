@@ -765,6 +765,12 @@ export class WahaClient {
       headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ session, chatId, ...plan.payload }),
     }, TETO_DE_MIDIA_MS);
+    // `sendSticker` só existe a partir do WAHA 2026.8.2. Numa instalação com o
+    // WAHA anterior (o operador fixou a versão no .env), a rota não existe: a
+    // figurinha sai como imagem, em vez de não sair.
+    if (res.status === 404 && plan.endpoint === "sendSticker") {
+      return this.sendMedia(session, chatId, { endpoint: "sendImage", payload: plan.payload });
+    }
     if (!res.ok) {
       throw new Error(`waha_${res.status}`);
     }

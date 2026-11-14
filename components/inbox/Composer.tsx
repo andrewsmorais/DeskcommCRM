@@ -19,6 +19,7 @@ import { ReplyReviewPanel } from "@/components/inbox/composer/ReplyReviewPanel";
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
 import { AgendarButton } from "@/components/inbox/composer/AgendarButton";
 import { AssinarButton } from "@/components/inbox/composer/AssinarButton";
+import { FigurinhasButton } from "@/components/inbox/composer/FigurinhasButton";
 import { useAssinarLembrado } from "@/hooks/inbox/usePreferenciasDeConversa";
 import { resolveSlash, TemplateMenu } from "@/components/inbox/composer/TemplateMenu";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
@@ -392,6 +393,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           {mode === "reply" && (
             <AssinarButton ligado={assinar} onChange={setAssinar} disabled={respostaBarrada} />
           )}
+          {/* Figurinhas salvas da empresa (migration 0516). Só na resposta. */}
+          {mode === "reply" && <FigurinhasButton conversationId={conversationId} disabled={respostaBarrada} />}
           <EmojiButton
             disabled={isDisabled}
             onPick={(emoji) => {

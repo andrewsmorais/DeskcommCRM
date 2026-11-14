@@ -1786,7 +1786,7 @@ esac
   # nunca chegava a ninguém. O `dc pull` de cada update entregava qualquer versão
   # que o upstream tivesse publicado, sem ninguém ter testado.
   # `latest-2026.7.2` é o mesmo digest de `latest` hoje (65e593e30bb7…).
-  envq WAHA_IMAGE "${WAHA_IMAGE:-devlikeapro/waha:latest-2026.7.2}"
+  envq WAHA_IMAGE "${WAHA_IMAGE:-$WAHA_PADRAO}"
   envq WAHA_DEFAULT_ENGINE "${WAHA_DEFAULT_ENGINE:-NOWEB}"
   envq UPSTASH_REDIS_REST_URL "http://srh:80"
   envq UPSTASH_REDIS_REST_TOKEN "$UPSTASH_REDIS_REST_TOKEN"

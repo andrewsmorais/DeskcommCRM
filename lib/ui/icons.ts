@@ -54,6 +54,7 @@ export {
   EnvelopeSimple,
   PaperPlaneTilt,
   Smiley,
+  Sticker,
   Check,
   Checks,
   X,
