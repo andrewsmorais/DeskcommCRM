@@ -186,6 +186,7 @@ describe("hubSections", () => {
       "/app/people",
       "/app/tasks",
       "/app/calls",
+      "/app/cold-call",
       "/app/comandas",
       "/app/products",
       "/app/imports",
