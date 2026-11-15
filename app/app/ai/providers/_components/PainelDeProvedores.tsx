@@ -731,12 +731,7 @@ function CartaoDoPonto({
       }
       const avisos: string[] = json?.data?.avisos ?? [];
       if (avisos.length > 0) avisos.forEach((a) => toast.warning(t(a)));
-      else {
-        // No ponto com menu, quem escolheu "Automático" lê "Automático", e não o
-        // par técnico por trás da opção (openai/whisper-1 mesmo sem chave OpenAI).
-        const escolhida = opcoesFixas?.find((o) => o.provider === provider && o.modelId === modelId);
-        toast.success(`"${t(ponto.rotulo)}" ${t("agora usa")} ${escolhida ? t(escolhida.rotulo) : modelId}`);
-      }
+      else toast.success(`"${t(ponto.rotulo)}" ${t("agora usa")} ${modelId}`);
       await aoSalvar();
     } finally {
       setSalvando(false);
