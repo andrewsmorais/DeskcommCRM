@@ -51,6 +51,7 @@ vi.mock("@/lib/auth/server", () => ({
     is_platform_admin: false,
   }),
   resolveActiveOrg: async () => ({ orgId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", role: "admin" }),
+  mfaEmDivida: async () => false,
 }));
 vi.mock("@/lib/nuvemshop/config", () => ({
   getConfig: () => ({ appId: "123", clientSecret: "s" }),
