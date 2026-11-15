@@ -229,11 +229,25 @@ describe("requireRole — os caminhos que não passam pela leitura paralela", ()
     expect(createClient).not.toHaveBeenCalled();
   });
 
-  it("platform admin com opt-in passa sem ler papel nem MFA, como antes", async () => {
+  // O atalho de plataforma pulava também a prova do segundo fator: a senha
+  // sozinha de um admin da plataforma com fator agia em qualquer organização.
+  it("platform admin com opt-in, fator e sessão aal1 é BARRADO com mfa_required", async () => {
     preparar({ role: "viewer", temFator: true, aal: "aal1", isPlatformAdmin: true });
     const r = await requireRole("admin", { allowPlatformAdmin: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect((await r.response.json()).error.code).toBe("mfa_required");
+  });
+
+  it("CONTROLE: platform admin com opt-in em aal2 passa", async () => {
+    preparar({ role: "viewer", temFator: true, aal: "aal2", isPlatformAdmin: true });
+    const r = await requireRole("admin", { allowPlatformAdmin: true });
     expect(r.ok).toBe(true);
-    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("platform admin com opt-in e sem fator passa (a verificação é opcional)", async () => {
+    preparar({ role: "viewer", temFator: false, aal: "aal1", isPlatformAdmin: true });
+    const r = await requireRole("admin", { allowPlatformAdmin: true });
+    expect(r.ok).toBe(true);
   });
 
   it("acompanhamento ativo NÃO usa o atalho de platform admin: papel e MFA são lidos", async () => {

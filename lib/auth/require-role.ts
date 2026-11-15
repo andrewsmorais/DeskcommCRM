@@ -118,6 +118,31 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   }
 
   if (allowPlatformAdmin && user.is_platform_admin && !user.support) {
+    // O atalho de plataforma pulava o papel E a prova do segundo fator: uma
+    // sessão só com a senha de um admin da plataforma que ligou a verificação
+    // agia em QUALQUER organização (o alvo pode vir do path). Quem TEM fator
+    // prova nesta sessão também aqui — trazido do produto original (4961dadae).
+    if (await mfaEmDivida()) {
+      void audit({
+        action: "authz.denied",
+        actorUserId: user.id,
+        organizationId: org.orgId,
+        resourceType: resource ?? null,
+        requestId,
+        metadata: { reason: "mfa_required", via: "platform_admin" },
+      });
+      return {
+        ok: false,
+        response: fail(
+          "mfa_required",
+          t(
+            "Esta sessão precisa da verificação em duas etapas. Entre novamente com o código do aplicativo.",
+          ),
+          403,
+          { requestId },
+        ),
+      };
+    }
     if (opts.plano) {
       const recusado = await exigirRecursoDoPlano(org.orgId, opts.plano, { requestId });
       if (recusado) return { ok: false, response: recusado };
