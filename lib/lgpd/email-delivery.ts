@@ -74,7 +74,7 @@ export async function sendExportEmail(args: SendArgs): Promise<{ messageId: stri
   <p>Sua solicitação de acesso aos dados pessoais (LGPD Art. 18, II) foi processada por <strong>${orgName}</strong>.</p>
   <p>O relatório completo está disponível para download no link abaixo. Por motivos de segurança, o link expira em <strong>${expiresFmt}</strong>.</p>
   <p style="margin:24px 0;">
-    <a href="${args.signedUrl}" style="background:${args.marca.accent};color:${args.marca.accentFg};padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block;">Baixar relatório LGPD</a>
+    <a href="${escapeHtml(args.signedUrl)}" style="background:${args.marca.accent};color:${args.marca.accentFg};padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block;">Baixar relatório LGPD</a>
   </p>
   <p style="font-size:12px;color:${NEUTROS_DE_SAIDA.suave};">Se você não solicitou este relatório, ignore este email — nenhum dado adicional é compartilhado.</p>
   <p style="font-size:12px;color:${NEUTROS_DE_SAIDA.suave};">Base legal: LGPD Lei nº 13.709/2018, Art. 18, II.</p>
