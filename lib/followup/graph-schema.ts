@@ -270,6 +270,11 @@ export const actionConfigSchema = z.discriminatedUnion('mode', [
      * o de hoje — continua válido byte a byte, sem migration.
      */
     variacoes: z.array(z.string().trim().min(1).max(4000)).max(MAX_VARIACOES_DO_PASSO).optional(),
+    /**
+     * MÍDIA OPCIONAL por URL (vindo do produto original). Presente, o `body` vira
+     * a LEGENDA. Opcional: grafos publicados seguem válidos byte a byte.
+     */
+    media_url: z.string().url().max(2000).optional(),
   }),
   z.strictObject({
     mode: z.literal('ai_message'),

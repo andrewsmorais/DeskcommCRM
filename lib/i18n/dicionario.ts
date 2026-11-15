@@ -18825,6 +18825,9 @@ export const DICIONARIO: Traducoes = {
   "A opção “uma vez por contato” só aceita ligado ou desligado.": { es: "La opción “una vez por contacto” solo acepta activado o desactivado." },
   "Esta automação está configurada para rodar no máximo uma vez por contato, e este contato já passou por ela. Nada foi enviado agora e nada será.": { es: "Esta automatización está configurada para ejecutarse como máximo una vez por contacto, y este contacto ya pasó por ella. No se envió nada ahora ni se enviará." },
   "Esta automação não repete para o mesmo contato dentro do intervalo configurado, e este contato passou por ela há menos tempo que isso. Nada foi enviado agora; ela volta a valer quando a janela terminar.": { es: "Esta automatización no se repite para el mismo contacto dentro del intervalo configurado, y este contacto pasó por ella hace menos tiempo. No se envió nada ahora; vuelve a valer cuando termine la ventana." },
+  // Mídia nas automações e no follow-up
+  "Imagem, vídeo, áudio ou documento (opcional)": { es: "Imagen, video, audio o documento (opcional)" },
+  "Cole o link direto do arquivo. Com uma imagem, um vídeo ou um documento, a mensagem acima vira a legenda; o áudio sai como mensagem de voz, sem legenda. Em número oficial, fora da janela de 24h a mídia não sai — só um modelo aprovado.": { es: "Pega el enlace directo del archivo. Con una imagen, un video o un documento, el mensaje de arriba se vuelve la leyenda; el audio sale como mensaje de voz, sin leyenda. En número oficial, fuera de la ventana de 24h el archivo no sale — solo una plantilla aprobada." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

@@ -47,7 +47,9 @@ export interface ChannelSendInput {
    * (`agent/fotos-do-produto.ts`). Caminho, nunca URL nem bytes: quem assina a
    * URL curta para o canal é o handler de mensagens, como em toda mídia.
    */
-  media?: { storagePath: string; mime: string };
+  media?:
+    | { storagePath: string; mime: string }
+    | { url: string; mime: string; type: 'image' | 'video' | 'audio' | 'document' };
   /**
    * Presente = este envio é uma NOTA DE VOZ, não texto. Opcional pela mesma
    * razão do `template`: um adapter que ignore o campo manda `body` como

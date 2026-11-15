@@ -101,6 +101,8 @@ export interface FollowupJobRequest {
     fallback_template_id?: string;
     /** action (mode 'text') — corpo pronto; o turno envia sem chamar o modelo. */
     fixed_body?: string;
+    /** action (mode 'text') — mídia OPCIONAL por URL; presente, o `fixed_body` vira a LEGENDA. */
+    fixed_media_url?: string;
     /**
      * action (mode 'template') — id em `message_templates` (texto pronto) OU em
      * `meta_templates` (modelo aprovado do canal, o único que sai com a janela de 24 h
@@ -308,7 +310,10 @@ function turnPayloadExtras(
     // redação só — o de hoje — sai exatamente o `body`.
     const redacoes = redacoesDoPasso(node.config);
     const ordem = redacoesNaOrdemDaVez(redacoes, semente ?? "", enviosJaFeitos(events));
-    return { fixed_body: interpolarVolta(ordem[0]!, events) };
+    return {
+      fixed_body: interpolarVolta(ordem[0]!, events),
+      ...(node.config.media_url ? { fixed_media_url: node.config.media_url } : {}),
+    };
   }
   if (node.type === "action" && node.config.mode === "template") {
     const volta = latestRepeatIndex(events);

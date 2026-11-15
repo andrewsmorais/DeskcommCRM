@@ -67,7 +67,9 @@ export interface SendMessageInput {
    */
   template?: { name: string; language: string; values: Record<string, string> };
   /** Presente = imagem da pasta da conversa em `whatsapp-media`; `body` é a legenda. */
-  media?: { storagePath: string; mime: string };
+  media?:
+    | { storagePath: string; mime: string }
+    | { url: string; mime: string; type: 'image' | 'video' | 'audio' | 'document' };
   /**
    * Presente = esta mensagem sai como NOTA DE VOZ (ElevenLabs), não texto.
    *
@@ -116,11 +118,19 @@ export function corpoDoEnvio(
           template_values: input.template.values,
         }
       : input.media
-        ? {
-            type: 'image' as const,
-            media_storage_path: input.media.storagePath,
-            media_mime: input.media.mime,
-          }
+        ? 'url' in input.media
+          ? {
+              // Mídia por URL de um passo automático: o `type` vem decidido e o
+              // handler é quem busca e confere o arquivo (anti-SSRF).
+              type: input.media.type,
+              media_url: input.media.url,
+              media_mime: input.media.mime,
+            }
+          : {
+              type: 'image' as const,
+              media_storage_path: input.media.storagePath,
+              media_mime: input.media.mime,
+            }
         : { type: 'text' as const }),
     // Foto sem legenda vai sem `body`: o schema do envio pede corpo não vazio.
     ...(input.body !== '' || !input.media ? { body: input.body } : {}),

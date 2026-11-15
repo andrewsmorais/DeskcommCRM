@@ -98,7 +98,20 @@ export const conditionSchema = z.object({
 
 export const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("create_or_move_lead"), config: z.object({ pipeline_id: z.string().uuid(), stage_id: z.string().uuid() }) }),
-  z.object({ type: z.literal("send_whatsapp_message"), config: z.object({ channel_session_id: z.string().uuid(), template: z.string().min(1).max(2000) }) }),
+  z.object({
+    type: z.literal("send_whatsapp_message"),
+    config: z.object({
+      channel_session_id: z.string().uuid(),
+      template: z.string().min(1).max(2000),
+      /**
+       * MÍDIA OPCIONAL por URL (vindo do produto original): presente, o
+       * `template` vira a LEGENDA. O tipo (imagem, vídeo, áudio, documento) é
+       * decidido no envio pelo MIME/extensão — guardar uma cópia aqui seria uma
+       * segunda verdade. `nullish`: regra antiga (só texto) segue idêntica.
+       */
+      media_url: z.string().url().max(2000).nullish(),
+    }),
+  }),
   z.object({ type: z.literal("add_tag"), config: z.object({ tags: z.array(z.string().min(1).max(60)).min(1).max(10) }) }),
   z.object({ type: z.literal("assign_owner"), config: z.object({ user_id: z.string().uuid() }) }),
   z.object({

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -135,6 +136,7 @@ export function ActionForm({
   const [variacoes, setVariacoes] = useState<string[]>(
     config.mode === "text" ? (config.variacoes ?? []) : [],
   );
+  const [mediaUrl, setMediaUrl] = useState(config.mode === "text" ? (config.media_url ?? "") : "");
   const [promptHint, setPromptHint] = useState(config.mode === "ai_message" ? config.prompt_hint : "");
   const [fallbackTemplateId, setFallbackTemplateId] = useState(
     config.mode === "ai_message" ? (config.fallback_template_id ?? "") : "",
@@ -146,6 +148,7 @@ export function ActionForm({
     mode: ModoDaAcao;
     body: string;
     variacoes: string[];
+    mediaUrl: string;
     promptHint: string;
     fallbackTemplateId: string;
     templateId: string;
@@ -159,6 +162,7 @@ export function ActionForm({
             ...(next.variacoes.some((v) => v.trim().length > 0)
               ? { variacoes: next.variacoes.map((v) => v.trim()).filter((v) => v.length > 0) }
               : {}),
+            ...(next.mediaUrl.trim() ? { media_url: next.mediaUrl.trim() } : {}),
           }
         : next.mode === "ai_message"
           ? {
@@ -176,7 +180,7 @@ export function ActionForm({
     onChange(parsed.data);
   };
 
-  const fields = { body, variacoes, promptHint, fallbackTemplateId, templateId };
+  const fields = { body, variacoes, mediaUrl, promptHint, fallbackTemplateId, templateId };
 
   return (
     <div className="space-y-3">
@@ -218,6 +222,22 @@ export function ActionForm({
           <p className="text-xs text-text-muted">
             {t("Sai exatamente assim, sem IA. No laço,")} {t("{{volta}}")} e {t("{{voltas}}")} {t("viram o número da volta.")}
           </p>
+          <div className="space-y-1">
+            <Label htmlFor="action-media-url">{t("Imagem, vídeo, áudio ou documento (opcional)")}</Label>
+            <Input
+              id="action-media-url"
+              type="url"
+              value={mediaUrl}
+              placeholder="https://…/oferta.pdf"
+              onChange={(e) => {
+                setMediaUrl(e.target.value);
+                commit({ mode, ...fields, mediaUrl: e.target.value });
+              }}
+            />
+            <p className="text-xs text-text-muted">
+              {t("Cole o link direto do arquivo. Com uma imagem, um vídeo ou um documento, a mensagem acima vira a legenda; o áudio sai como mensagem de voz, sem legenda. Em número oficial, fora da janela de 24h a mídia não sai — só um modelo aprovado.")}
+            </p>
+          </div>
           <div className="space-y-2 rounded-sm border border-border p-2" data-testid="action-variacoes">
             <Label>{t("Outras redações do mesmo passo (opcional)")}</Label>
             <p className="text-xs text-text-muted">

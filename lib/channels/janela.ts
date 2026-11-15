@@ -87,6 +87,25 @@ export function estadoDaJanela(
  * Abaixo de um minuto vira "menos de 1m" e não "0m", que se lê como fechada —
  * e ainda dá para escrever.
  */
+/**
+ * O canal aceita mensagem LIVRE agora? Falso só quando a janela de 24h existe
+ * neste canal e está fechada. Erro de leitura (provider desconhecido) é
+ * falha ABERTA: não saber o canal não prova que ele restringe.
+ */
+export function canalAceitaTextoLivreAgora(
+  provider: string | null | undefined,
+  lastInboundAt: string | null,
+  agora: Date,
+): boolean {
+  let estado: EstadoDaJanela;
+  try {
+    estado = estadoDaJanela(provider, lastInboundAt, agora);
+  } catch {
+    return true;
+  }
+  return estado.tipo !== "fechada";
+}
+
 export function formatarRestante(ms: number): string {
   const totalMin = Math.floor(ms / 60_000);
   if (totalMin < 1) return "menos de 1m";

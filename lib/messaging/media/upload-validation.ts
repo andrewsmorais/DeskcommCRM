@@ -52,6 +52,16 @@ const DOCUMENT_MIMES = new Set([
   "application/zip",
 ]);
 
+/** O tipo de mensagem pelo MIME, ou `null` quando não é mídia que o canal leva. */
+export function kindFromMime(mime: string): MessageKind | null {
+  const base = (mime || "").split(";")[0]!.trim().toLowerCase();
+  if (base.startsWith("image/")) return "image";
+  if (base.startsWith("video/")) return "video";
+  if (base.startsWith("audio/")) return "audio";
+  if (DOCUMENT_MIMES.has(base)) return "document";
+  return null;
+}
+
 type Ok = { ok: true; kind: MessageKind };
 type Fail = { ok: false; code: "unsupported_media_type" | "payload_too_large" | "validation_failed"; message: string };
 

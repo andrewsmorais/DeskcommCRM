@@ -25,7 +25,10 @@ import type { FollowupFlowPointerRow } from "@/hooks/followup/useFollowupFlows";
 
 export type ActionItem =
   | { type: "create_or_move_lead"; config: { pipeline_id: string; stage_id: string } }
-  | { type: "send_whatsapp_message"; config: { channel_session_id: string; template: string } }
+  | {
+      type: "send_whatsapp_message";
+      config: { channel_session_id: string; template: string; media_url?: string | null };
+    }
   | {
       type: "send_ai_message";
       config: { agent_id: string; channel_session_id: string; instruction: string };
@@ -140,7 +143,7 @@ function CreateOrMoveLeadForm({
 function SendWhatsappForm({
   config,
   onChange,
-}: FormProps<{ channel_session_id: string; template: string }>) {
+}: FormProps<{ channel_session_id: string; template: string; media_url?: string | null }>) {
   const t = useT();
   const { data: sessions } = useChannelSessions();
 
@@ -185,6 +188,19 @@ function SendWhatsappForm({
               (Conexões), no fuso da sua organização, e quem a mudou lá veria a
               tela continuar prometendo outro horário. Rótulo visível é contrato. */}
           {t("Respeitamos a janela de envio e o limite diário configurados para esse número em Conexões — fora da janela, a mensagem espera a próxima.")}
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="acao-whatsapp-midia">{t("Imagem, vídeo, áudio ou documento (opcional)")}</Label>
+        <Input
+          id="acao-whatsapp-midia"
+          type="url"
+          value={config.media_url ?? ""}
+          onChange={(e) => onChange({ ...config, media_url: e.target.value || null })}
+          placeholder="https://…/oferta.pdf"
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("Cole o link direto do arquivo. Com uma imagem, um vídeo ou um documento, a mensagem acima vira a legenda; o áudio sai como mensagem de voz, sem legenda. Em número oficial, fora da janela de 24h a mídia não sai — só um modelo aprovado.")}
         </p>
       </div>
     </div>

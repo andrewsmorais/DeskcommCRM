@@ -1,4 +1,5 @@
 import {claimOfJob,type JobClaim} from "../queue/claim";
+import { classificarMidiaComLegenda, type TipoDeMidiaComLegenda } from '@/lib/messaging/media/midia-com-legenda';
 import {resultadoDoEnvioDoFollowup} from "../edge/crm/send-ledger";
 import { parseServiceBoundary } from "@/lib/atendimento/fronteira";
 import { requireCurrentServiceBoundary } from "@/lib/atendimento/fronteira-server";
@@ -84,6 +85,8 @@ export const followupTurnPayloadSchema = z
     prompt_hint: z.string().optional(),
     /** action mode `text` — enviado pela cadeia de guardrails, sem LLM. */
     fixed_body: z.string().min(1).max(4000).optional(),
+    /** Mídia OPCIONAL por URL do passo `action`/`text`; o `fixed_body` vira a LEGENDA. */
+    fixed_media_url: z.string().url().max(2000).optional(),
     /** action mode `template` — `message_templates` (texto) ou `meta_templates` (modelo aprovado do canal). */
     template_id: z.string().uuid().optional(),
     /** action mode `ai_message` — modelo aprovado que sai no lugar da IA com a janela de 24 h fechada. */
@@ -340,6 +343,7 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
         purpose: payload.purpose,
         promptHint: payload.prompt_hint,
         fixedBody: payload.fixed_body,
+        fixedMediaUrl: payload.fixed_media_url,
         templateId: payload.template_id,
         fallbackTemplateId: payload.fallback_template_id,
         voltaIndex: payload.volta_index,
@@ -418,6 +422,8 @@ async function runFlowDrivenTurn(
     purpose: 'send_message' | 'classify' | 'plan_timing' | undefined;
     promptHint: string | undefined;
     fixedBody: string | undefined;
+    /** Mídia opcional (imagem, vídeo, áudio, documento) do passo `action`/`text`. */
+    fixedMediaUrl: string | undefined;
     templateId: string | undefined;
     fallbackTemplateId: string | undefined;
     voltaIndex: number | undefined;
@@ -460,10 +466,28 @@ async function runFlowDrivenTurn(
       return;
     }
     if (passo !== null) {
+      // CANAL OFICIAL, JANELA FECHADA: mídia com legenda é mensagem LIVRE e não
+      // sai fora da janela de 24 h — e o texto NÃO sai sozinho no lugar dela.
+      if (passo.tipo === 'texto' && passo.midia !== undefined && (await janelaFechada(pool, target, clock()))) {
+        runLog.info('passo do fluxo pulado — mídia fora da janela de 24 h');
+        await complete(pool, {
+          jobId: job.id,
+          jobClaim: claimOfJob(job),
+          organizationId: target.tenantId,
+          enrollmentId,
+          nodeId,
+          result: {
+            kind: 'skipped',
+            reason: 'A janela de 24 horas deste canal está fechada: fora dela só um modelo aprovado pode sair, e mídia com legenda é mensagem livre. A mídia não foi enviada, e o texto não saiu sozinho.',
+          },
+        });
+        return;
+      }
       // Texto do operador: sem camada semântica (ver o cabeçalho de sendFixedOutbound).
       const desfecho = await sendFixedOutbound(
         deps, job, pool, ctx, clock, target, passo.body, false,
         passo.tipo === 'modelo_aprovado' ? passo.modelo : undefined,
+        passo.tipo === 'texto' ? passo.midia : undefined,
       );
       // TODO OS TRÊS DESFECHOS VOLTAM PARA O ENROLLMENT. O adiado era o que não
       // voltava, e o silêncio dele custava o enrollment inteiro: o motor ficava
@@ -604,7 +628,7 @@ function interpolarVoltaDoPayload(texto: string, index: number | undefined, tota
  * vez de a fila re-tentar até matar a inscrição por algo que tempo não conserta.
  */
 type PassoSemIa =
-  | { tipo: 'texto'; body: string }
+  | { tipo: 'texto'; body: string; midia?: MidiaComLegenda }
   | {
       tipo: 'modelo_aprovado';
       body: string;
@@ -612,19 +636,33 @@ type PassoSemIa =
     }
   | { tipo: 'recusado'; motivo: string };
 
+/** Mídia do passo, por URL, com o `body` como LEGENDA. */
+export type MidiaComLegenda = { url: string; type: TipoDeMidiaComLegenda; mime: string };
+
 async function resolveFlowSendBody(
   pool: pg.Pool,
   tenantId: string,
   channelSessionId: string,
   input: {
     fixedBody: string | undefined;
+    fixedMediaUrl?: string | undefined;
     templateId: string | undefined;
     voltaIndex: number | undefined;
     voltaTotal: number | undefined;
   },
 ): Promise<PassoSemIa | null> {
   if (input.fixedBody !== undefined) {
-    return { tipo: 'texto', body: interpolarVoltaDoPayload(input.fixedBody, input.voltaIndex, input.voltaTotal) };
+    const body = interpolarVoltaDoPayload(input.fixedBody, input.voltaIndex, input.voltaTotal);
+    // MÍDIA DO PASSO: arquivo sem tipo identificável é recusa de CONFIGURAÇÃO —
+    // o passo é pulado com o motivo, em vez de a fila re-tentar ou o texto sair
+    // solto prometendo um arquivo que não vem.
+    const url = input.fixedMediaUrl?.trim();
+    if (url) {
+      const classificada = classificarMidiaComLegenda(url);
+      if (!classificada.ok) return { tipo: 'recusado', motivo: classificada.motivo };
+      return { tipo: 'texto', body, midia: { url, type: classificada.type, mime: classificada.mime } };
+    }
+    return { tipo: 'texto', body };
   }
   if (input.templateId === undefined) return null;
   const { rows } = await pool.query<{ body: string }>(
@@ -714,6 +752,8 @@ async function sendFixedOutbound(
    * passar, que é o que um modelo aprovado é — como no `send_template` do agente.
    */
   modelo?: { name: string; language: string; values: Record<string, string> },
+  /** Presente = o envio sai como MÍDIA e o `body` é a LEGENDA (mesmo caminho do Inbox). */
+  midia?: MidiaComLegenda,
 ): Promise<EnvioFixoDesfecho> {
   const { tenantId, leadId, channelSessionId, conversationId } = target;
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
@@ -783,6 +823,8 @@ async function sendFixedOutbound(
       channel.send({
         tenantId, leadId, jobId: job.id, jobClaim: claimOfJob(job), seq: 1, conversationId, body: finalBody,
         ...(modelo !== undefined ? { template: modelo } : {}),
+        // Mídia do passo: o `body` acima é a LEGENDA dela.
+        ...(midia !== undefined ? { media: { url: midia.url, mime: midia.mime, type: midia.type } } : {}),
       }),
   });
 
