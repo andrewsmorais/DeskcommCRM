@@ -20,7 +20,6 @@ import { loadPromiseTable } from '../guardrails/promise/table';
 import { loadDisclosureTemplate, countPriorAcceptedSends } from '../guardrails/disclosure/template';
 import { DEFAULT_CHANNEL_PROVIDER } from '@/lib/channels/capabilities';
 import { getToolByName } from '@/lib/mcp/tools';
-import { escolhasRemotas } from '@/lib/mcp/servidor-externo/ids';
 import type { Logger } from '../obs/logger';
 import type { Citation } from '@/lib/ai/citations/types';
 
@@ -152,16 +151,6 @@ export function applyPreviewPolicy(
   semanticClassifier?: (body: string) => Promise<NonNullable<GateContext['semanticPromise']>>,
   liveContext?: () => Partial<GateContext>,
 ): ToolSet {
-  // #2147 — a ferramenta de um servidor MCP externo chega com o nome que o
-  // servidor anuncia e não está no catálogo compilado. A que o administrador
-  // marcou como LEITURA (`mcp_externo:leitura:<nome>`) roda como as leituras de
-  // cenário; a marcada como escrita segue fechada. O `execute` dela é o do turno
-  // real, que reconfere `readOnlyHint` + marca antes de chamar o servidor.
-  const leiturasRemotas = new Set(
-    escolhasRemotas(p.agent?.toolIds ?? [])
-      .filter((e) => e.leitura)
-      .map((e) => e.nome),
-  );
   return Object.fromEntries(
     Object.entries(tools).map(([name, definition]) => {
       const nativeRead = [
@@ -178,8 +167,7 @@ export function applyPreviewPolicy(
       const catalog = getToolByName(name);
       if (
         nativeRead ||
-        (catalog?.category === 'read' && (p.contactId !== null || SCENARIO_READS.has(name))) ||
-        (!catalog && leiturasRemotas.has(name))
+        (catalog?.category === 'read' && (p.contactId !== null || SCENARIO_READS.has(name)))
       )
         return [name, definition];
       return [
