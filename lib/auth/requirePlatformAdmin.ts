@@ -4,12 +4,12 @@
  * Flow:
  *  1. Validate JWT via getUser() (NEVER getSession on backend per CLAUDE.md).
  *  2. Confirm row in platform_admins (active = no revoked_at).
- *  3. Enforce MFA AAL2 if `mfa_required` (default true for platform admins).
+ *  3. Enforce MFA AAL2 if `mfa_required` OR the user has a verified TOTP factor.
  *
  * Redirects:
  *  - no user        → /login?next=/admin
  *  - no row         → /admin/forbidden
- *  - aal1 + required → /login/mfa?next=/admin
+ *  - aal1 + (required or has factor) → /login/mfa?next=/admin
  *
  * The middleware already does an early `fn_is_platform_admin` RPC check;
  * this helper performs the authoritative server-side validation inside the
@@ -53,7 +53,13 @@ export async function requirePlatformAdmin(): Promise<PlatformAdminContext> {
     redirect("/admin/forbidden");
   }
 
-  if (paRow.mfa_required) {
+  // Quem TEM fator prova nesta sessão, exigido ou não pela política — a mesma
+  // regra de `mfaEmDivida` (trazido do produto original). Antes, com
+  // `mfa_required = false` (o padrão), quem ligou a verificação por vontade
+  // própria entrava no painel da plataforma só com a senha. Os fatores vêm do
+  // `getUser()` acima, já validado no servidor.
+  const temFator = !!user.factors?.some((f) => f.factor_type === "totp" && f.status === "verified");
+  if (paRow.mfa_required || temFator) {
     const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aalData?.currentLevel !== "aal2") {
       redirect("/login/mfa?next=/admin");

@@ -39,7 +39,11 @@ export function InboxDaEmpresaForm({ initial }: Props) {
         toast.success(t("Bloqueio da caixa de mensagem salvo."));
         return;
       }
-      toast.error(t("Não foi possível salvar o bloqueio da caixa de mensagem."));
+      toast.error(
+        resultado.error === "mfa_required"
+          ? t("Confirme o código do seu aplicativo de duas etapas e tente de novo.")
+          : t("Não foi possível salvar o bloqueio da caixa de mensagem."),
+      );
     });
   }
 

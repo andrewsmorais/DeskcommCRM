@@ -10,7 +10,7 @@ import {
   pipelineConfigPatchSchema,
   type PipelineConfigPatch,
 } from "@/lib/schemas/settings";
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 
 export type UpdatePipelineConfigResult =
@@ -37,6 +37,10 @@ export async function updatePipelineConfig(
   if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
   }
+  // Depois do papel: quem TEM a verificação em duas etapas prova o código
+  // nesta sessão (trazido do produto original). Esta ação grava pelo client de
+  // serviço, que passa por cima da trava do banco.
+  if (await mfaEmDivida()) return { ok: false, error: "mfa_required" };
 
   const supabase = await createClient();
   const hdrs = await headers();

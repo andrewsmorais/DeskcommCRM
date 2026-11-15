@@ -289,6 +289,7 @@ function PipelineEditor({
     startTransition(async () => {
       const r = await updatePipelineConfig(pipeline.id, patch);
       if (r.ok) toast.success(`${pipeline.name} ${t("atualizado.")}`);
+      else if (r.error === "mfa_required") toast.error(t("Confirme o código do seu aplicativo de duas etapas e tente de novo."));
       else toast.error(`${t("Erro:")} ${r.error}`);
     });
   }

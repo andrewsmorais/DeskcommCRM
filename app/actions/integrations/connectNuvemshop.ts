@@ -24,7 +24,7 @@ import { redirect } from "next/navigation";
 import { chaveDeAssinatura, ROTULOS_DE_ASSINATURA } from "@/lib/auth/chave-de-assinatura";
 import { opcoesDoVinculo } from "@/lib/auth/cookie-de-vinculo";
 import { assinarVinculo } from "@/lib/auth/vinculo-oauth";
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { buildAuthorizeUrl } from "@/lib/nuvemshop/oauth";
 import { getConfig } from "@/lib/nuvemshop/config";
 import {
@@ -35,7 +35,7 @@ import {
 
 export type ConnectResult = {
   ok: false;
-  error: "auth_required" | "no_active_org" | "forbidden" | "not_configured";
+  error: "auth_required" | "no_active_org" | "forbidden" | "not_configured" | "mfa_required";
 };
 
 export async function connectNuvemshop(): Promise<ConnectResult> {
@@ -51,6 +51,10 @@ export async function connectNuvemshop(): Promise<ConnectResult> {
   if (activeOrg.role !== "admin" && !user.is_platform_admin) {
     return { ok: false, error: "forbidden" };
   }
+  // Depois do papel: quem TEM a verificação em duas etapas prova o código
+  // nesta sessão (trazido do produto original). Esta ação grava pelo client de
+  // serviço, que passa por cima da trava do banco.
+  if (await mfaEmDivida()) return { ok: false, error: "mfa_required" };
 
   const cfg = getConfig();
   if (!cfg) return { ok: false, error: "not_configured" };

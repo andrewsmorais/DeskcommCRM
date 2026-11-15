@@ -11,12 +11,12 @@
 import { supportWriteError } from "@/lib/impersonate/support";
 import { revalidatePath } from "next/cache";
 import { audit } from "@/lib/audit";
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type DisconnectResult =
   | { ok: true }
-  | { ok: false; error: "auth_required" | "no_active_org" | "forbidden" | "not_connected" | "db_error" };
+  | { ok: false; error: "auth_required" | "no_active_org" | "forbidden" | "not_connected" | "db_error" | "mfa_required" };
 
 export async function disconnectNuvemshop(): Promise<DisconnectResult> {
   const user = await loadAuthUser();
@@ -29,6 +29,10 @@ export async function disconnectNuvemshop(): Promise<DisconnectResult> {
   if (activeOrg.role !== "admin" && !user.is_platform_admin) {
     return { ok: false, error: "forbidden" };
   }
+  // Depois do papel: quem TEM a verificação em duas etapas prova o código
+  // nesta sessão (trazido do produto original). Esta ação grava pelo client de
+  // serviço, que passa por cima da trava do banco.
+  if (await mfaEmDivida()) return { ok: false, error: "mfa_required" };
 
   const admin = createAdminClient();
   const { data: existing, error: lookupErr } = await admin

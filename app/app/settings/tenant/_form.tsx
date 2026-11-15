@@ -54,6 +54,7 @@ export function TenantForm({ initial }: Props) {
     startTransition(async () => {
       const r = await updateTenant(parsed.data);
       if (r.ok) toast.success(t("Organização atualizada."));
+      else if (r.error === "mfa_required") toast.error(t("Confirme o código do seu aplicativo de duas etapas e tente de novo."));
       else toast.error(`${t("Erro")}: ${r.error}`);
     });
   }
