@@ -132,3 +132,16 @@ export function rotuloDoContato(
 
   return t(SEM_NOME);
 }
+
+/**
+ * O nome que a EQUIPE vê: o nome escolhido, senão o rótulo de sempre. Só para
+ * tela da equipe (caixa de entrada, ficha, lista) — nunca vai em mensagem.
+ */
+export function rotuloParaAEquipe(
+  c: ContatoNomeavel | null | undefined,
+  t: (texto: string) => string = (texto) => texto,
+): string {
+  const escolhido = (c?.name ?? "").trim();
+  if (escolhido !== "" && !ehIdentificadorTecnico(escolhido)) return escolhido;
+  return rotuloDoContato(c, t);
+}

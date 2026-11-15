@@ -69,6 +69,13 @@ export function useChannelSessions(opts?: { refetchInterval?: number; enabled?: 
     isError: query.isError,
     /** A migration 0100 não rodou neste banco: canal excluído volta à lista. */
     schemaOutdated: query.data?.meta?.schema_outdated === true,
+    /**
+     * Uma nova tentativa, para quem DECIDE algo com a lista e não pode confundir
+     * "ainda carregando" com "nada aqui" (o seletor de canal da conversa nova).
+     * `undefined` = a tentativa falhou.
+     */
+    refetch: async (): Promise<ChannelSession[] | undefined> =>
+      (await query.refetch()).data?.data,
   };
 }
 
