@@ -150,7 +150,13 @@ export async function GET(request: NextRequest) {
   const totpVerificado = fatores?.totp?.find((f) => f.status === "verified");
   if (totpVerificado) {
     const params = new URLSearchParams({ factor: totpVerificado.id, next: safeNext(next, "/app") });
-    return redirectTo(`/login/mfa?${params}`);
+    // O PEDIDO do código também é tela que EXIGE sessão: `/login/mfa` faz
+    // `getUser()` e, sem usuário, devolve para `/login`. Um 302 daqui continuaria
+    // a cadeia de navegação começada em `accounts.google.com`, o cookie `Strict`
+    // não viajaria e a pessoa nunca veria o campo do código (issue #4335 — a
+    // mesma classe da #1646, que já tirou o 302 dos destinos de sucesso).
+    // Mesma ponte, mesmo motivo; o `factor` e o `next` viajam nela.
+    return await paraTelaAutenticada(`/login/mfa?${params}`);
   }
 
   // ENTRADA: já existe vínculo. Provisionar ou reaplicar convite aqui seria
