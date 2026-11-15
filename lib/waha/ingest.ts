@@ -238,6 +238,10 @@ export function parseChatId(chatId: string): ChatIdentity {
     // `replace(/^\+/, "")` fica: é ancorado em `^`, casa 1 caractere, O(1) — não é
     // o que o CodeQL apontou.
     const digits = semSufixoDeChat(chatId).replace(/^\+/, "");
+    // Mesma faixa do CHECK contacts_phone_e164_format. Avisos do WhatsApp
+    // (0@s.whatsapp.net) não são contatos discáveis: quem lê ignora, em vez de
+    // abortar no upsert com telefone +0.
+    if (!/^\d{8,15}$/.test(digits)) return { kind: "unknown", phone: null, lid: null };
     return { kind: "phone", phone: "+" + digits, lid: null };
   }
   return { kind: "unknown", phone: null, lid: null };
@@ -409,12 +413,12 @@ export function resolveMessageType(p: WahaPayload): string {
   return "text";
 }
 
-function notifyNameOf(p: WahaPayload): string | null {
+export function notifyNameOf(p: WahaPayload): string | null {
   return p._data?.notifyName ?? p._data?.pushName ?? null;
 }
 
 /** Corpo textual: WAHA nem sempre preenche `body` em cartões de contato NOWEB. */
-function bodyOf(p: WahaPayload): string | null {
+export function bodyOf(p: WahaPayload): string | null {
   if (p.body) return p.body;
   const msg = p._data?.message;
   if (!msg || typeof msg !== "object") return null;
@@ -754,8 +758,26 @@ function textoNaoVazio(v: unknown): string | null {
  * emoji e sem alvo, e ainda carimbaria a conversa. A linha certa é a do ramo
  * `message.reaction`, ligada ao alvo.
  */
-function ehReacao(p: WahaPayload): boolean {
+export function ehReacao(p: WahaPayload): boolean {
   return p.type === "reaction" || objetoSimples(p.reaction) !== null;
+}
+
+/**
+ * A forma em que a ENTRADA grava `messages.external_id`: o id completo do webhook
+ * (`false_<chat>_<id>`). Fonte única, usada por `handleInbound` e pelo importador
+ * de histórico: as duas trilhas gravam a MESMA string, senão a unique não recusa
+ * a segunda linha e a mensagem duplica.
+ */
+export function externalIdDeEntrada(p: WahaPayload): string | null {
+  return p.id ?? null;
+}
+
+/**
+ * A forma em que a SAÍDA (eco do celular) grava `messages.external_id`: o bare id.
+ * Fonte única, ver `externalIdDeEntrada`.
+ */
+export function externalIdDeSaida(p: WahaPayload): string | null {
+  return p.id ? bareWaMessageId(p.id) : null;
 }
 
 async function handleInbound(

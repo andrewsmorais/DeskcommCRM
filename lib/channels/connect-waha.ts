@@ -8,6 +8,7 @@ import {
   nomeDaSessaoNovo,
   podeRenomearSessaoDoWaha,
 } from "@/lib/channels/nome-da-sessao";
+import { lerGuardarHistorico } from "@/lib/channels/acervo-do-historico";
 import type { WahaClient } from "@/lib/waha/client";
 import { WahaSessionError } from "@/lib/waha/client";
 import { sincronizarRecebimentoDeGrupos } from "@/lib/grupos/sincronizar-filtro";
@@ -25,6 +26,8 @@ const channelSchema = z.object({
   phone_number: z.string().nullable().optional(),
   status_reason: z.string().nullable().optional(),
   archived_at: z.string().nullable().optional(),
+  // A opção "guardar histórico" da conexão mora no `metadata` (jsonb, sem migration).
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 const receiptSchema = z.object({
   replay: z.boolean(),
@@ -194,7 +197,11 @@ async function executarConexao(
   }
   try {
     if (input.restart) await waha.stopSession(channel.waha_session_name);
-    const creation = await waha.createSession(channel.waha_session_name);
+    // A opção por conexão decide o corpo da criação (desligada por padrão).
+    // Desligada, a chamada continua a de sempre, sem segundo argumento.
+    const creation = lerGuardarHistorico(channel.metadata)
+      ? await waha.createSession(channel.waha_session_name, { guardarHistorico: true })
+      : await waha.createSession(channel.waha_session_name);
     created = creation.created;
     if (created) await finish("remote_created");
     const remote = await waha.startExistingSession(channel.waha_session_name);

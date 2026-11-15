@@ -125,6 +125,10 @@ export const POLITICAS_DE_AVISO = {
   chatbot_aviso: { refs: ["conversation"], orientacao: "Abra a conversa: o chatbot pediu que alguém da equipe olhasse." },
   // `agent_case`: o caso que a IA abriu, na Central no instante da abertura
   // (`lib/escalacao/caso-na-central.handler.ts`).
+  // Spec 32. O resumo aponta SEMPRE para a conexão (`ref_kind: channel_session`).
+  recuperacao_da_queda: { refs: ["channel_session"], orientacao: "Confira em Conexões se o número voltou e se o histórico do período fora do ar entrou como esperado." },
+  // Spec 32. Nasce SEMPRE com `ref_kind: conversation` (a conversa recuperada).
+  cliente_sem_resposta_na_queda: { refs: ["conversation"], orientacao: "Abra a conversa e responda o cliente — ele escreveu enquanto o número estava fora do ar." },
   other: { refs: ["lead", "channel_session", "appointment", "ai_agent", "ai_provider_credential", "agent_case"], orientacao: "Confira a situação descrita neste aviso com a pessoa responsável." },
 } satisfies Record<InboxKind, Politica>;
 

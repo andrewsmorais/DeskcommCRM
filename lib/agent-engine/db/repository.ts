@@ -95,6 +95,10 @@ export type InboxKind =
   // (migration 0491) O passo "Notificar atendente" do chatbot pede uma pessoa
   // na conversa — ref_kind='conversation'.
   | 'chatbot_aviso'
+  // (migration 0526) Recuperação das conversas da queda do número: o resumo da
+  // conexão e um aviso por conversa cujo cliente escreveu e ficou sem resposta.
+  | 'recuperacao_da_queda'
+  | 'cliente_sem_resposta_na_queda'
   | 'other';
 
 export interface InboxItemRow {

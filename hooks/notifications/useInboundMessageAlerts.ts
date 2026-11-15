@@ -128,6 +128,10 @@ export function useInboundMessageAlerts(): void {
         openConversationId: getOpenConversationId(conversationId),
         tabFocused: tabFocused(),
         tipo: (payload as { tipo?: unknown }).tipo,
+        // O acervo importado chega por INSERT nesta tabela igual a mensagem
+        // nova; a marca viaja na própria linha e é a única coisa que distingue
+        // passado de agora aqui.
+        metadata: row.metadata,
       })
     ) {
       return;

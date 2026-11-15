@@ -9,6 +9,7 @@ import { z } from "zod";
 import { describeWahaServer, type WahaServerCapabilities } from "@/lib/channels/waha-server";
 
 import { logger } from "@/lib/logger";
+import { wahaPayloadSchema, type WahaPayload } from "@/lib/waha/envelope";
 import { classificarFalhaDeAlcance, explicarFalhaDeAlcance } from "@/lib/net/alcance";
 
 /**
@@ -53,6 +54,99 @@ export const CONVERSAS_IGNORADAS = {
   /** Ver o parágrafo acima: o CRM já os descarta na entrada. */
   groups: true,
 } as const;
+
+/**
+ * O ACERVO DO NÚMERO — o histórico que existe ANTES da vinculação.
+ *
+ * ─── O defeito (issue #999) ────────────────────────────────────────────────
+ *
+ * A sessão do NOWEB nascia só com o filtro: `config: { ignore }`. O padrão da
+ * engine é `store { enabled: false, fullSync: false }` e não há variável de
+ * ambiente que o mude — quem cria a sessão é que precisa PEDIR. Sem o pedido,
+ * o canal não guarda nem entrega o que já estava no aparelho: só o que
+ * acontece depois da vinculação. Medido na instalação da issue: 3 conversas e
+ * 1 MB, contra 825 conversas e 57 MB com o acervo pedido.
+ *
+ * ─── Por que `fullSync` e não só `enabled` ─────────────────────────────────
+ *
+ * `fullSync` manda baixar o histórico ANTERIOR à vinculação. Ligando só
+ * `enabled`, o acervo só enche a partir de agora — o mesmo defeito com outra
+ * roupa. O custo é real e é do pareamento: na vinculação de um número
+ * movimentado, o canal baixa o passado inteiro (tempo, CPU e disco DELE, no
+ * teto de memória do contêiner). Quem não quer esse custo não liga a opção.
+ *
+ * ─── Desligado por padrão: decisão do mantenedor, não descuido ─────────────
+ *
+ * A #999 reabriu com decisão registrada na issue: desligado por padrão, com
+ * opção POR CONEXÃO. O acervo guarda dado pessoal fora do alcance da
+ * anonimização do CRM (ela limpa o banco do CRM, não o do canal), e o que ele
+ * destrava hoje é pouco — o CRM ainda não lê o histórico de volta. Por isso a
+ * constante abaixo NÃO entra no corpo sozinha: quem liga é a conexão
+ * (`channel_sessions.metadata.guardar_historico`, sem migration).
+ *
+ * `resolvePhoneForLid`, mais abaixo neste arquivo, depende do store — a tabela
+ * que traduz `<lid>` em telefone só existe com ele ligado. O caminho que cria
+ * a sessão dispensava o que outro caminho do mesmo arquivo exigia.
+ */
+export const ACERVO_DO_HISTORICO = {
+  /** Liga o acervo: sem isto o canal não guarda nem entrega o que já passou. */
+  enabled: true,
+  /** Baixa o histórico anterior à vinculação, não só o que vier depois. */
+  fullSync: true,
+} as const;
+
+/**
+ * O que a CONEXÃO pede ao canal na criação/reconfiguração da sessão.
+ *
+ * `undefined`/`{}` = o corpo continua idêntico ao de antes da #999. O nome da
+ * opção é o do botão na tela, para o leitor do chamador reconhecer a decisão.
+ *
+ * Três estados, não dois: `true` liga, `false` desliga, e AUSENTE não toca no
+ * `store` — deixa como encontrou. A reconexão de quem não tem a chave no
+ * `metadata` chega sem a opção, e a sessão dela pode ter o store ligado por
+ * fora (pelo painel do canal, ou criada enquanto o #1000 esteve na main). A
+ * doc do NOWEB avisa: "Do not change the values after you scanned QR, it can
+ * lead to the loss of the chat history". Desligar só com `false` explícito,
+ * que vem do PATCH /acervo — escolha de quem administra, na tela.
+ */
+export interface OpcoesDeAcervo {
+  /** Guarda (`true`) ou desliga (`false`) o acervo; ausente = não mexe. */
+  guardarHistorico?: boolean;
+}
+
+/** O `store` que a sessão TEM hoje — `null` = a engine está no default (desligado). */
+function storeDaSessao(config: Record<string, unknown> | null | undefined) {
+  const noweb = config?.noweb;
+  if (!noweb || typeof noweb !== "object" || Array.isArray(noweb)) return null;
+  const store = (noweb as Record<string, unknown>).store;
+  if (!store || typeof store !== "object" || Array.isArray(store)) return null;
+  return store as { enabled?: unknown; fullSync?: unknown };
+}
+
+/**
+ * A sessão já está do jeito que a conexão PEDIU?
+ *
+ * `guardar=false` conforma com o default da engine (sem `noweb.store`, ou com
+ * `enabled: false`); `guardar=true` exige `enabled: true`. É a régua de AMBOS
+ * os lados: ela decide se a convergência precisa de um PUT, e um PUT reinicia
+ * a sessão — ninguém pode pagar restart por uma opção que não mudou.
+ */
+function acervoEstaConferido(config: Record<string, unknown> | null | undefined, guardar: boolean | undefined): boolean {
+  if (guardar === undefined) return true;
+  const ligado = storeDaSessao(config)?.enabled === true;
+  return guardar ? ligado : !ligado;
+}
+
+/** Grava (ou desliga) o acervo na config que vai no PUT, sem tocar no resto do `noweb`. */
+function aplicarAcervoNaConfig(config: Record<string, unknown>, guardar: boolean | undefined): void {
+  if (acervoEstaConferido(config, guardar)) return;
+  const atual = config.noweb;
+  const noweb = atual && typeof atual === "object" && !Array.isArray(atual)
+    ? { ...(atual as Record<string, unknown>) }
+    : {};
+  noweb.store = guardar ? ACERVO_DO_HISTORICO : { enabled: false, fullSync: false };
+  config.noweb = noweb;
+}
 
 /**
  * As chaves do filtro que o CRM IMPÕE. `groups` fica de fora de propósito: desde a
@@ -249,11 +343,16 @@ export class WahaClient {
   }
 
   /** Porta granular para a futura reserva: created nunca significa ownership. */
-  async createSession(name: string): Promise<{ created: boolean; session: WahaSessionSnapshot }> {
+  async createSession(name: string, opcoes: OpcoesDeAcervo = {}): Promise<{ created: boolean; session: WahaSessionSnapshot }> {
+    // O acervo vai JUNTO com o filtro, mas SÓ quando a conexão pediu (opção
+    // desligada por padrão — decisão do mantenedor na issue #999). Sem a opção,
+    // o corpo é byte a byte o de sempre. Ver ACERVO_DO_HISTORICO.
+    const config: Record<string, unknown> = { ignore: CONVERSAS_IGNORADAS };
+    if (opcoes.guardarHistorico) config.noweb = { store: ACERVO_DO_HISTORICO };
     const res = await this.fetchComTeto(`${this.baseUrl}/api/sessions`, {
       method: "POST",
       headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, start: false, config: { ignore: CONVERSAS_IGNORADAS } }),
+      body: JSON.stringify({ name, start: false, config }),
     });
     if (!res.ok && !knownSessionConflict(await res.json().catch(() => null), res.status, "create", name)) {
       throw new WahaSessionError("create", res.status);
@@ -266,12 +365,18 @@ export class WahaClient {
   }
 
   /** Compatível com os callers: cria se necessário e inicia, confirmando GET. */
-  async startSession(name: string): Promise<{ qr?: string; status: string }> {
-    const creation = await this.createSession(name);
+  async startSession(name: string, opcoes: OpcoesDeAcervo = {}): Promise<{ qr?: string; status: string }> {
+    const creation = await this.createSession(name, opcoes);
     const ignore = creation.session.config?.ignore;
     const filtersCurrent = ignore && typeof ignore === "object" && Object.entries(CHAVES_DO_FILTRO_FIXAS)
       .every(([key, value]) => (ignore as Record<string, unknown>)[key] === value);
-    if (!creation.created && !filtersCurrent) await this.convergirConfigDaSessao(name);
+    // Sessão que JÁ existe: `POST /api/sessions` responde 422 e a config não é
+    // aplicada nesse caminho. Então quem ligou a opção em um número já pareado
+    // só consegue o acervo pela convergência (guardando daqui em diante: o
+    // fullSync é da vinculação). Sem a opção, o critério é o de sempre
+    // e o store fica como estava (ver OpcoesDeAcervo).
+    const acervoFalta = !acervoEstaConferido(creation.session.config, opcoes.guardarHistorico);
+    if (!creation.created && (!filtersCurrent || acervoFalta)) await this.convergirConfigDaSessao(name, opcoes);
     return this.startExistingSession(name);
   }
 
@@ -349,7 +454,7 @@ export class WahaClient {
    * que não conheça a rota faria toda reconexão falhar por causa de uma
    * economia — trocar mensagem por byte é o negócio errado.
    */
-  async convergirConfigDaSessao(name: string): Promise<void> {
+  async convergirConfigDaSessao(name: string, opcoes: OpcoesDeAcervo = {}): Promise<boolean> {
     const url = `${this.baseUrl}/api/sessions/${encodeURIComponent(name)}`;
     try {
       const atual = await this.fetchComTeto(url, { headers: { "X-Api-Key": this.apiKey } });
@@ -357,15 +462,15 @@ export class WahaClient {
         logger.warn("[waha] não li a config da sessão; não vou reescrevê-la", {
           status: atual.status,
         });
-        return;
+        return false;
       }
       const parsed = sessionSnapshotSchema.safeParse(await atual.json().catch(() => null));
       if (!parsed.success || parsed.data.name !== name) {
         logger.warn("[waha] a sessão respondeu sem identidade correta; não vou reescrevê-la", {});
-        return;
+        return false;
       }
       const sessao = parsed.data;
-      if (!sessao.config) return;
+      if (!sessao.config) return false;
 
       // Checa só o ENGINE aqui, não `compatibleSession()` inteiro: aquele também
       // exige que o filtro JÁ esteja correto, e o trabalho deste método é
@@ -376,7 +481,7 @@ export class WahaClient {
       const actualEngine = engine ?? (await this.getServerVersion()).engine;
       if (actualEngine !== "NOWEB") {
         logger.warn("[waha] engine incompatível; não vou reescrever o filtro da sessão", {});
-        return;
+        return false;
       }
 
       // `groups` NÃO entra no que este método impõe: desde a funcionalidade de
@@ -387,7 +492,6 @@ export class WahaClient {
         ? sessao.config.ignore
         : {}) as Record<string, unknown>;
       const groupsAtual = typeof ignoreAtual.groups === "boolean" ? ignoreAtual.groups : CONVERSAS_IGNORADAS.groups;
-      const config = { ...sessao.config, ignore: { ...CHAVES_DO_FILTRO_FIXAS, groups: groupsAtual } };
       // Já está como queremos: não reiniciar a sessão à toa. Este caminho roda
       // em TODA reconexão, e um restart desnecessário por rodada seria pior que
       // o gasto que ele evita.
@@ -395,8 +499,14 @@ export class WahaClient {
       // à ORDEM das chaves, então o dia em que o WAHA devolver o mesmo objeto
       // com as chaves noutra sequência, esta guarda passa a dizer "mudou" e a
       // sessão reinicia a cada reconexão — sem que nada tenha mudado.
-      const jaConvergida = Object.entries(CHAVES_DO_FILTRO_FIXAS).every(([k, v]) => ignoreAtual[k] === v);
-      if (jaConvergida) return;
+      const guardarHistorico = opcoes.guardarHistorico;
+      const filtroConferido = Object.entries(CHAVES_DO_FILTRO_FIXAS).every(([k, v]) => ignoreAtual[k] === v);
+      // O acervo entra na MESMA régua do filtro: sem isto, quem ligou a opção em
+      // um número já pareado nunca teria o PUT (o filtro já estava certo), e
+      // quem desligou levaria um restart para reafirmar o default da engine.
+      if (filtroConferido && acervoEstaConferido(sessao.config, guardarHistorico)) return true;
+      const config: Record<string, unknown> = { ...sessao.config, ignore: { ...CHAVES_DO_FILTRO_FIXAS, groups: groupsAtual } };
+      aplicarAcervoNaConfig(config, guardarHistorico);
 
       const res = await this.fetchComTeto(url, {
         method: "PUT",
@@ -405,7 +515,9 @@ export class WahaClient {
       });
       if (!res.ok) {
         logger.warn("[waha] não consegui convergir a config da sessão", { status: res.status });
+        return false;
       }
+      return true;
     } catch (err) {
       // Rede fora aqui não é assunto de quem só quer iniciar a sessão — a
       // convergência é oportunista e a sessão sobe do mesmo jeito. Mas os
@@ -415,6 +527,7 @@ export class WahaClient {
       logger.warn("[waha] não consegui falar com o WAHA para convergir a config", {
         erro: err instanceof Error ? err.message : "unknown",
       });
+      return false;
     }
   }
 
@@ -452,6 +565,166 @@ export class WahaClient {
       grupos.push({ chatId, subject });
     }
     return grupos;
+  }
+
+  /**
+   * Conversas do acervo, paginadas por offset. Medido no WAHA real (2026.7.2,
+   * NOWEB): o id vem como `id` (string) OU `id._serialized`, e a lista traz
+   * `@s.whatsapp.net`, `@lid`, `@g.us` e `status@broadcast`. Grupo e status
+   * ficam de fora: o importador só lê conversa 1:1.
+   */
+  async listarConversas(
+    session: string,
+    opts: { limit: number; offset: number },
+  ): Promise<Array<{ chatId: string; ultimaEm: number | null }>> {
+    const { conversas } = await this.paginaDeConversas(session, opts);
+    return conversas.map(({ chatId, ultimaEm }) => ({ chatId, ultimaEm }));
+  }
+
+  /**
+   * A mesma página de `listarConversas`, com o que o paginador precisa para
+   * não confundir "acabou" com "a página só tinha grupo": `lidas` é quantos
+   * itens o canal devolveu ANTES do corte de grupo/status, e `posicao` é o
+   * offset de cada conversa 1:1 na lista do canal (o cursor da importação).
+   *
+   * `sortBy=id&sortOrder=asc`: a ordem padrão é pela última mensagem, e uma
+   * mensagem nova move a conversa para o topo — o cursor por posição pularia
+   * uma conversa inteira. Por id, conversa nova só desloca as seguintes (uma
+   * repetida, que a deduplicação recusa), nunca some uma. NÃO medido no
+   * servidor real: um canal que ignore os parâmetros volta à ordem padrão.
+   *
+   * Resposta 200 que não é lista lança `waha_chats_invalido`: virar lista vazia
+   * faria o paginador concluir a importação no meio.
+   */
+  async paginaDeConversas(
+    session: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ conversas: Array<{ chatId: string; ultimaEm: number | null; posicao: number }>; lidas: number }> {
+    const qs = new URLSearchParams({
+      limit: String(opts.limit),
+      offset: String(opts.offset),
+      sortBy: "id",
+      sortOrder: "asc",
+    });
+    const res = await this.fetchComTeto(`${this.baseUrl}/api/${encodeURIComponent(session)}/chats?${qs}`, {
+      headers: { "X-Api-Key": this.apiKey },
+    });
+    if (!res.ok) throw new Error(`waha_chats_${res.status}`);
+    const bruto = (await res.json().catch(() => null)) as unknown;
+    if (!Array.isArray(bruto)) throw new Error("waha_chats_invalido");
+    const conversas: Array<{ chatId: string; ultimaEm: number | null; posicao: number }> = [];
+    bruto.forEach((item, i) => {
+      if (!item || typeof item !== "object") return;
+      const o = item as Record<string, unknown>;
+      const id = o.id;
+      const chatId =
+        typeof id === "string" ? id
+        : id && typeof id === "object" && typeof (id as Record<string, unknown>)._serialized === "string"
+          ? ((id as Record<string, unknown>)._serialized as string)
+          : null;
+      if (!chatId || chatId.endsWith("@g.us") || chatId === "status@broadcast") return;
+      const ultima = o.conversationTimestamp ?? (o.lastMessage as Record<string, unknown> | null | undefined)?.timestamp;
+      conversas.push({ chatId, ultimaEm: typeof ultima === "number" ? ultima : null, posicao: opts.offset + i });
+    });
+    return { conversas, lidas: bruto.length };
+  }
+
+  /**
+   * Mensagens de uma conversa, SEM mídia, do mais antigo para o mais novo.
+   * Medido no 2026.7.2: o servidor ordena por `sortBy`/`sortOrder` e já filtra
+   * por `filter.timestamp.gte` (epoch em segundos); o filtro local fica por
+   * defesa. Item que o schema recusa é descartado sem derrubar a lista.
+   */
+  async listarMensagens(
+    session: string,
+    chatId: string,
+    opts: { limit: number; offset: number; desde: number },
+  ): Promise<WahaPayload[]> {
+    return (await this.paginaDeMensagens(session, chatId, opts)).mensagens;
+  }
+
+  /**
+   * A mesma página de `listarMensagens`, com `lidas` = quantos itens o canal
+   * devolveu ANTES do schema e do filtro local. O paginador avança o offset por
+   * `lidas` e só dá a conversa por terminada com `lidas === 0`: avançar pelo
+   * limite pedido pularia mensagens quando o canal devolve menos que o pedido,
+   * e medir o fim pelo que sobrou do schema terminaria a conversa numa página
+   * inteira recusada.
+   */
+  async paginaDeMensagens(
+    session: string,
+    chatId: string,
+    opts: { limit: number; offset: number; desde: number },
+  ): Promise<{ mensagens: WahaPayload[]; lidas: number }> {
+    const qs = new URLSearchParams({
+      limit: String(opts.limit),
+      offset: String(opts.offset),
+      downloadMedia: "false",
+      sortBy: "timestamp",
+      sortOrder: "asc",
+      "filter.timestamp.gte": String(opts.desde),
+    });
+    const res = await this.fetchComTeto(
+      `${this.baseUrl}/api/${encodeURIComponent(session)}/chats/${encodeURIComponent(chatId)}/messages?${qs}`,
+      { headers: { "X-Api-Key": this.apiKey } },
+    );
+    if (!res.ok) throw new Error(`waha_messages_${res.status}`);
+    const bruto = (await res.json().catch(() => null)) as unknown;
+    // 200 que não é lista NÃO é conversa vazia: o paginador a daria por terminada.
+    if (!Array.isArray(bruto)) throw new Error("waha_messages_invalido");
+    const mensagens: WahaPayload[] = [];
+    for (const item of bruto) {
+      const p = wahaPayloadSchema.safeParse(item);
+      if (!p.success) continue;
+      if (typeof p.data.timestamp !== "number" || p.data.timestamp < opts.desde) continue;
+      mensagens.push(p.data);
+    }
+    return { mensagens, lidas: bruto.length };
+  }
+
+  /**
+   * Pede a mídia de UMA mensagem. `erro: true` quando o WhatsApp não guarda
+   * mais o arquivo (`media.error` na resposta); `url: null` sem `erro` quando
+   * a mensagem simplesmente não traz URL. `opts.tetoMs` troca o teto do
+   * cliente: o importador passa o que cabe no prazo da rodada.
+   *
+   * O teto do `AbortSignal` vale também para a LEITURA do corpo: estourar ali é
+   * `waha_timeout`, não "sem URL". Engolir esse estouro (o `.catch(() => null)`
+   * de antes) fazia o importador tratar a mídia como "não veio agora" e pedi-la
+   * de novo a cada página refeita, sem nunca contar tentativa.
+   */
+  async baixarMidiaDaMensagem(
+    session: string,
+    chatId: string,
+    messageId: string,
+    opts: { tetoMs?: number } = {},
+  ): Promise<{ url: string | null; erro: boolean }> {
+    const res = await this.fetchComTeto(
+      `${this.baseUrl}/api/${encodeURIComponent(session)}/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}?downloadMedia=true`,
+      { headers: { "X-Api-Key": this.apiKey } },
+      opts.tetoMs,
+    );
+    if (!res.ok) throw new Error(`waha_media_${res.status}`);
+    let texto: string;
+    try {
+      texto = await res.text();
+    } catch (e) {
+      const nome = e instanceof Error ? e.name : "";
+      if (nome === "TimeoutError" || nome === "AbortError") {
+        throw new Error(`waha_timeout: o WAHA não terminou de responder em ${opts.tetoMs ?? this.tetoMs}ms (mídia)`);
+      }
+      throw e;
+    }
+    let bruto: Record<string, unknown> | null = null;
+    try {
+      bruto = JSON.parse(texto) as Record<string, unknown> | null;
+    } catch {
+      bruto = null;
+    }
+    const media = bruto && typeof bruto.media === "object" ? (bruto.media as Record<string, unknown> | null) : null;
+    if (!media) return { url: null, erro: false };
+    if (media.error) return { url: null, erro: true };
+    return { url: typeof media.url === "string" && media.url ? media.url : null, erro: false };
   }
 
   /**
@@ -574,13 +847,23 @@ export class WahaClient {
    * vazia e enche conforme as conversas acontecem. `null` aqui significa "ainda
    * não sei", não "não existe" — quem chama precisa poder tentar de novo depois
    * sem tratar isto como erro.
+   *
+   * `falhaLanca`: quem decide algo de segurança pela resposta (a trava de
+   * apagamento a pedido da importação do histórico) precisa separar "não sei"
+   * de "não consegui perguntar". Com ele, falha de transporte e 5xx lançam;
+   * 4xx e `pn` vazio seguem `null`.
    */
-  async resolvePhoneForLid(session: string, lid: string): Promise<string | null> {
+  async resolvePhoneForLid(
+    session: string,
+    lid: string,
+    opts: { falhaLanca?: boolean } = {},
+  ): Promise<string | null> {
     try {
       const res = await this.fetchComTeto(
         `${this.baseUrl}/api/${encodeURIComponent(session)}/lids/${encodeURIComponent(lid)}`,
         { headers: { "X-Api-Key": this.apiKey } },
       );
+      if (res.status >= 500 && opts.falhaLanca) throw new Error(`waha_lid_${res.status}`);
       if (!res.ok) return null;
       const body = (await res.json()) as { pn?: string | null };
       // `595981402525@c.us` → `+595981402525`. O sufixo é endereçamento do
@@ -589,7 +872,8 @@ export class WahaClient {
       if (!pn) return null;
       const digitos = String(pn).split("@")[0]?.replace(/\D/g, "") ?? "";
       return digitos.length >= 8 ? `+${digitos}` : null;
-    } catch {
+    } catch (err) {
+      if (opts.falhaLanca) throw err;
       return null;
     }
   }

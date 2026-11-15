@@ -303,6 +303,13 @@ export const AUDIT_ACTIONS = [
   "channel.webchat_created",
   "channel.webchat_updated",
   "channel.ai_access_updated",
+  "channel.acervo_updated",
+  "channel.historico_previa",
+  "channel.historico_import_started",
+  "channel.historico_import_cancelled",
+  "channel.historico_import_resumed",
+  "channel.historico_import_completed",
+  "channel.historico_import_failed",
   "channel.reconnected",
   // Duas ações distintas de propósito: `deleted` apagou a linha (canal virgem),
   // `archived` só a escondeu porque conversas/mensagens ainda a referenciam.

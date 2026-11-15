@@ -6694,6 +6694,82 @@ export type Database = {
           },
         ]
       }
+      importacoes_de_historico: {
+        Row: {
+          channel_session_id: string
+          conversas_feitas: number
+          created_at: string
+          criada_por: string | null
+          cursor: NonNullable<Json>
+          dias: number
+          erro: string | null
+          id: string
+          mensagens_existentes: number
+          mensagens_gravadas: number
+          mensagens_ignoradas: number
+          midias_baixadas: number
+          midias_indisponiveis: number
+          organization_id: string
+          previa: Json | null
+          status: string
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          channel_session_id: string
+          conversas_feitas?: number
+          created_at?: string
+          criada_por?: string | null
+          cursor?: NonNullable<Json>
+          dias: number
+          erro?: string | null
+          id?: string
+          mensagens_existentes?: number
+          mensagens_gravadas?: number
+          mensagens_ignoradas?: number
+          midias_baixadas?: number
+          midias_indisponiveis?: number
+          organization_id: string
+          previa?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          channel_session_id?: string
+          conversas_feitas?: number
+          created_at?: string
+          criada_por?: string | null
+          cursor?: NonNullable<Json>
+          dias?: number
+          erro?: string | null
+          id?: string
+          mensagens_existentes?: number
+          mensagens_gravadas?: number
+          mensagens_ignoradas?: number
+          midias_baixadas?: number
+          midias_indisponiveis?: number
+          organization_id?: string
+          previa?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "importacoes_de_historico_channel_session_id_fkey"
+            columns: ["channel_session_id"]
+            isOneToOne: false
+            referencedRelation: "channel_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "importacoes_de_historico_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incidents: {
         Row: {
           acknowledged_at: string | null
@@ -7207,6 +7283,42 @@ export type Database = {
           },
           {
             foreignKeyName: "lead_state_transitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lgpd_marcas_de_apagamento: {
+        Row: {
+          created_at: string
+          id: string
+          marca_lid: string | null
+          marca_telefone: string | null
+          organization_id: string
+          sal: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          id?: string
+          marca_lid?: string | null
+          marca_telefone?: string | null
+          organization_id: string
+          sal: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          marca_lid?: string | null
+          marca_telefone?: string | null
+          organization_id?: string
+          sal?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lgpd_marcas_de_apagamento_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -10770,6 +10882,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: number
       }
+      fn_titular_apagado_a_pedido: {
+        Args: { p_lid: string; p_org: string; p_telefone: string }
+        Returns: boolean
+      }
       fn_upsert_wa_contact: {
         Args: {
           p_chat_id: string
@@ -10783,6 +10899,10 @@ export type Database = {
       }
       fn_upsert_wa_conversation: {
         Args: { p_contact: string; p_org: string; p_session: string }
+        Returns: string
+      }
+      fn_upsert_wa_conversation_importada: {
+        Args: { p_contact: string; p_last_message_at: string; p_org: string; p_session: string }
         Returns: string
       }
       fn_user_org_ids: { Args: never; Returns: string[] }
