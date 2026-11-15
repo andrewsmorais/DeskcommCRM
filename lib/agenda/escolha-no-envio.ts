@@ -104,7 +104,8 @@ export function decidirNoEnvio(protecao: ProtecaoAgenda, escolha: EscolhaNoEnvio
   if (escolha === "enviar") {
     return { acao: "enviar", motivo: protecao.motivo, appointment_id: protecao.appointment_id };
   }
-  return { acao: "pular", motivo: MOTIVO_DO_PULO, appointment_id: protecao.appointment_id };
+  // literal, e não a constante: a cerca motivo-de-parada-tem-frase só lê literais no produtor. O tipo typeof MOTIVO_DO_PULO obriga os dois a baterem.
+  return { acao: "pular", motivo: "compromisso_na_agenda", appointment_id: protecao.appointment_id };
 }
 
 /**
