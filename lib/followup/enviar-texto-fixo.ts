@@ -1,6 +1,8 @@
 import {sendWithLedger,supabaseSendLedger} from "@/lib/agent-engine/edge/crm/send-ledger";
 import { randomUUID } from "node:crypto";
 import { assertAgendaEffectSupabase } from "@/lib/agenda/efeito";
+import { AgendaPuladoError, MOTIVO_DO_PULO } from "@/lib/agenda/escolha-no-envio";
+import { escolhaDoFluxo } from "@/lib/agenda/escolha-no-envio-leitura";
 import { AgendaDeferredError } from "@/lib/agenda/protecao-followup";
 import { parseServiceBoundary, StaleServiceBoundaryError } from "@/lib/atendimento/fronteira";
 import { assertServiceBoundarySupabase } from "@/lib/atendimento/origem";
@@ -157,8 +159,29 @@ export async function enviarTextoFixoPendente(
         continue;
       }
 
-      const proactiveContext={organizationId:job.organization_id as string,contactId,enrollmentId,nodeId,jobId:job.id,jobClaim};
-      await assertAgendaEffectSupabase(admin,proactiveContext);
+      // "Quando o contato tiver horário marcado" é escolha do FLUXO, lida da
+      // configuração publicada do follow-up (ao lado de `send_window`). Ausente =
+      // `adiar`, o comportamento de sempre. A escolha viaja NO contexto: o handler
+      // de envio repete a guarda, e sem ela leria `adiar` e desfaria o `enviar`.
+      const escolhaDaAgenda = await escolhaDoFluxo(admin, job.organization_id as string, enrollmentId);
+      const proactiveContext={organizationId:job.organization_id as string,contactId,enrollmentId,nodeId,jobId:job.id,jobClaim,escolhaNoEnvio:escolhaDaAgenda};
+      try {
+        await assertAgendaEffectSupabase(admin,proactiveContext);
+      } catch (err) {
+        // `nao_enviar`: o pulo tem MOTIVO e volta para o enrollment como `skipped`,
+        // não como falha que o dead-man leria como worker morto.
+        if (!(err instanceof AgendaPuladoError)) throw err;
+        logger.info("[followup] texto fixo pulado — contato com horário marcado", {
+          organization_id: job.organization_id,
+          conversation_id: conversationId,
+          enrollment_id: enrollmentId,
+          motivo: MOTIVO_DO_PULO,
+          appointment_id: err.protection.appointment_id,
+        });
+        await completeTurnForEnrollment(ponte, job.organization_id, enrollmentId, nodeId, { kind: "skipped", reason: MOTIVO_DO_PULO }, undefined, job.id, jobClaim);
+        await settle(job.organization_id, job.id, jobClaim.acquired_at, true, MOTIVO_DO_PULO);
+        continue;
+      }
       // CANAL OFICIAL, JANELA FECHADA: a mídia não sai, e o texto NÃO sai sozinho.
       if (midia) {
         const recusa = await recusaDeMidiaForaDaJanela(admin, {

@@ -55,6 +55,11 @@ import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
 import { HandoffKeywordsInput } from "./HandoffKeywordsInput";
 import { FollowupFlowPicker } from "./FollowupFlowPicker";
 import { FollowupWindowEditor, type FollowupWindowValue } from "./FollowupWindowEditor";
+import {
+  EscolhaQuandoHaCompromisso,
+  lerEscolhaNoEnvio,
+} from "@/components/agenda/EscolhaQuandoHaCompromisso";
+import type { EscolhaNoEnvio } from "@/lib/agenda/escolha-no-envio";
 import { PainelDoOperador } from "./PainelDoOperador";
 import { PainelDeSeguranca } from "./PainelDeSeguranca";
 import { BasesDoAgente, type MaterialDoAcervo } from "./BasesDoAgente";
@@ -212,6 +217,12 @@ interface FollowupValue {
   callback_enabled: boolean;
   /** Ausente em versões antigas; null = sem janela própria. */
   send_window?: FollowupWindowValue | null;
+  /**
+   * "Quando o contato tiver horário marcado" DESTE agente. Ausente nas versões
+   * antigas, e ausente é `adiar` (leitura tolerante). Mora ao lado de
+   * `send_window` porque as duas são regras de envio PROATIVO.
+   */
+  quando_ha_compromisso?: EscolhaNoEnvio;
 }
 
 const DEFAULT_FOLLOWUP: FollowupValue = {
@@ -1428,6 +1439,22 @@ export function AgentForm(props: Props) {
               onChange={(send_window) => patch({ followup: { ...form.followup, send_window } })}
               disabled={disabled || !form.followup.enabled}
             />
+            {/*
+              Grava SEMPRE a chave, inclusive `adiar`: o PATCH da versão funde o
+              `followup`, então omitir o padrão não apagaria a escolha anterior.
+            */}
+            <EscolhaQuandoHaCompromisso
+              escolha={lerEscolhaNoEnvio(form.followup)}
+              onChange={(quando_ha_compromisso: EscolhaNoEnvio) =>
+                patch({ followup: { ...form.followup, quando_ha_compromisso } })
+              }
+              disabled={disabled || !form.followup.enabled}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Vale para todos os fluxos de follow-up deste agente. Cada passo de automação tem a escolha própria.",
+              )}
+            </p>
             <FollowupFlowPicker
               value={form.followup.flow_pointer_ids}
               onChange={(ids) => patch({ followup: { ...form.followup, flow_pointer_ids: ids } })}

@@ -18888,6 +18888,10 @@ export const DICIONARIO: Traducoes = {
   "Este canal não permite reações.": { es: "Este canal no permite reacciones." },
   "O WhatsApp recusou a reação.": { es: "WhatsApp rechazó la reacción." },
   "Reação enviada, mas histórico não atualizado.": { es: "Reacción enviada, pero el historial no se actualizó." },
+  "Vale para todos os fluxos de follow-up deste agente. Cada passo de automação tem a escolha própria.":
+    {
+      es: "Vale para todos los flujos de seguimiento de este agente. Cada paso de automatización tiene su propia elección.",
+    },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

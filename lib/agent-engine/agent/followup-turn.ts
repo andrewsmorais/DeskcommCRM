@@ -1,4 +1,7 @@
 import {claimOfJob,type JobClaim} from "../queue/claim";
+import { AgendaPuladoError, MOTIVO_DO_PULO, decidirNoEnvio } from '@/lib/agenda/escolha-no-envio';
+import { escolhaDoFluxoPg } from '@/lib/agenda/escolha-no-envio-leitura';
+import { protecaoAgendaPg } from '@/lib/agenda/protecao-followup';
 import { classificarMidiaComLegenda, type TipoDeMidiaComLegenda } from '@/lib/messaging/media/midia-com-legenda';
 import {resultadoDoEnvioDoFollowup} from "../edge/crm/send-ledger";
 import { parseServiceBoundary } from "@/lib/atendimento/fronteira";
@@ -446,6 +449,33 @@ async function runFlowDrivenTurn(
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: target.tenantId, lead_id: target.leadId, enrollment_id: enrollmentId });
 
   if (input.purpose === 'send_message') {
+    // O PULO PELA AGENDA ACONTECE ANTES DE QUALQUER GASTO, E TEM NOME. A escolha
+    // do FLUXO (`quando_ha_compromisso` na configuração publicada do follow-up)
+    // vale aqui como no caminho inline (`enviar-texto-fixo.ts`). Só `nao_enviar`
+    // paga a leitura da proteção: em `adiar` e `enviar` a decisão nunca é pular.
+    const escolhaDaAgenda = await escolhaDoFluxoPg(pool, target.tenantId, enrollmentId);
+    if (escolhaDaAgenda === 'nao_enviar') {
+      const decisaoDaAgenda = decidirNoEnvio(
+        await protecaoAgendaPg(pool, target.tenantId, target.leadId, clock()),
+        escolhaDaAgenda,
+      );
+      if (decisaoDaAgenda.acao === 'pular') {
+        runLog.info('passo do fluxo pulado — o contato tem horário marcado', {
+          motivo: MOTIVO_DO_PULO,
+          appointment_id: decisaoDaAgenda.appointment_id,
+          node_id: nodeId,
+        });
+        await complete(pool, {
+          jobId: job.id,
+          jobClaim: claimOfJob(job),
+          organizationId: target.tenantId,
+          enrollmentId,
+          nodeId,
+          result: { kind: 'skipped', reason: MOTIVO_DO_PULO },
+        });
+        return;
+      }
+    }
     let passo = await resolveFlowSendBody(pool, target.tenantId, target.channelSessionId, input);
     // O PLANO B DA MENSAGEM POR IA. Com a janela de 24 h fechada, o canal recusa
     // qualquer texto livre — o da IA inclusive —, e o passo terminava sem mandar
@@ -484,11 +514,33 @@ async function runFlowDrivenTurn(
         return;
       }
       // Texto do operador: sem camada semântica (ver o cabeçalho de sendFixedOutbound).
-      const desfecho = await sendFixedOutbound(
-        deps, job, pool, ctx, clock, target, passo.body, false,
-        passo.tipo === 'modelo_aprovado' ? passo.modelo : undefined,
-        passo.tipo === 'texto' ? passo.midia : undefined,
-      );
+      let desfecho: Awaited<ReturnType<typeof sendFixedOutbound>>;
+      try {
+        desfecho = await sendFixedOutbound(
+          deps, job, pool, ctx, clock, target, passo.body, false,
+          passo.tipo === 'modelo_aprovado' ? passo.modelo : undefined,
+          passo.tipo === 'texto' ? passo.midia : undefined,
+        );
+      } catch (err) {
+        // CORRIDA: o compromisso nasceu entre a leitura acima e o envio, e a
+        // guarda do envio pulou por `nao_enviar`. O desfecho continua sendo o
+        // PULO NOMEADO — não vira falha de job.
+        if (!(err instanceof AgendaPuladoError)) throw err;
+        runLog.info('passo do fluxo pulado na guarda do envio — o contato tem horário marcado', {
+          motivo: MOTIVO_DO_PULO,
+          appointment_id: err.protection.appointment_id,
+          node_id: nodeId,
+        });
+        await complete(pool, {
+          jobId: job.id,
+          jobClaim: claimOfJob(job),
+          organizationId: target.tenantId,
+          enrollmentId,
+          nodeId,
+          result: { kind: 'skipped', reason: MOTIVO_DO_PULO },
+        });
+        return;
+      }
       // TODO OS TRÊS DESFECHOS VOLTAM PARA O ENROLLMENT. O adiado era o que não
       // voltava, e o silêncio dele custava o enrollment inteiro: o motor ficava
       // rechecando um turno que ninguém ia fechar e, esgotado o orçamento do
