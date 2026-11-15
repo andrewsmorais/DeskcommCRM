@@ -125,7 +125,7 @@
 - Comparação com a Umbler Talk: ver [`comparacao-umbler-talk.md`](comparacao-umbler-talk.md) —
   faltando (seção 9 de lá): nada da lista — o webchat entrou em 14/11. Agendar mensagem, Fechar com despedida/chatbot, assinatura, Pedir para digitar com várias respostas e opções dos blocos já foram feitos.
 - Respostas rápidas: o teste de "foto não sai duas vezes" foi feito em 15/11 e achou o defeito, já corrigido.
-- Correções de defeitos do produto original (grupo 4): em andamento, começando pelas de segurança.
+- Correções de defeitos do produto original (grupo 4): segurança, lote 1 (39) e lote 2 (10) já entraram. Faltam as que precisam ser refeitas à mão, listadas por área em `docs/chataionline/grupo-4-pendentes.md` (504 com todos os arquivos aqui + 540 parciais; 245 não se aplicam).
   Ficou para depois (segurança, no banco): `fn_is_platform_admin()` não exige o código na LEITURA pela REST (a escrita já exige, pela 0500). No produto original isso é a 0757 (`fn_is_platform_admin_full`); trazer pede mexer também no `proxy.ts`, que usa a mesma função para mandar ao `/admin`.
 - Novidades do produto original (grupos 1 a 3: conversas, agentes, chatbot, follow-up, radar, painel, ligações): todas trazidas até 15/11. Ficou de fora, por decisão, a análise do histórico por IA.
 
