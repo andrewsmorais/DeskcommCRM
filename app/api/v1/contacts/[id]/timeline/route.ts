@@ -70,7 +70,7 @@ export async function GET(
   // Verify contact accessible (RLS will filter); 404 if not.
   const { data: contactRow, error: cErr } = await supabase
     .from("contacts")
-    .select("id")
+    .select("id, organization_id")
     .eq("id", contactId)
     .maybeSingle();
   if (cErr) return fail("internal_error", cErr.message, 500, { requestId });

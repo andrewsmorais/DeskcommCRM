@@ -30,7 +30,7 @@ describe('provedor personalizado', () => {
     try {
       const { generateText } = await import('ai');
       const registry = createDefaultRegistry({ allowedHosts: ['gateway.exemplo.test'] });
-      const modelo = registry.custom('chave', 'qualquer-modelo', 'https://gateway.exemplo.test/v1');
+      const modelo = registry.custom!('chave', 'qualquer-modelo', 'https://gateway.exemplo.test/v1');
       await generateText({ model: modelo, prompt: 'oi' });
       expect(visto.accept).toBe('application/json');
     } finally {

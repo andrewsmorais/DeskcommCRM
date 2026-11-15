@@ -82,7 +82,7 @@ export async function GET(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   // O lead vem pela RLS do caller — é ele que prova a org, nunca o body.
   const { data: lead, error: leadErr } = await supabase
     .from("crm_leads")
-    .select("id, contact_id")
+    .select("id, contact_id, organization_id")
     .eq("id", leadId)
     .maybeSingle();
   if (leadErr) return fail("internal_error", leadErr.message, 500, { requestId });

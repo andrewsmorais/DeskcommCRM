@@ -157,6 +157,8 @@ async function ehEcoDeEnvioNosso(
   // As formas que o id desta mensagem pode ter no banco: o composto que o webhook
   // entregou e a cauda que o envio grava (`marcarEnviada` → `canonicalExternalId`).
   // Mesmo par que a re-checagem pós-insert usa, algumas linhas acima.
+  // Sem id não há como casar com uma linha nossa: não é eco provado.
+  if (!p.id) return false;
   const bare = bareWaMessageId(p.id);
   const idsDaMensagem = bare === p.id ? [p.id] : [p.id, bare];
 

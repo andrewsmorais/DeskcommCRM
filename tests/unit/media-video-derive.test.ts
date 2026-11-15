@@ -42,7 +42,7 @@ describe("deriveVideoText", () => {
     const d = deps();
     await deriveVideoText(Buffer.from([9]), d);
     expect(d.runFfmpeg).toHaveBeenCalledTimes(2);
-    for (const [args] of d.runFfmpeg.mock.calls as Array<[string[]]>) {
+    for (const [args] of (d.runFfmpeg as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string[]]>) {
       const antes = args.slice(0, args.indexOf("-i"));
       expect(args.indexOf("-i")).toBeGreaterThan(0);
       for (let k = 0; k < ENTRADA_DE_VIDEO.length; k += 2) {
