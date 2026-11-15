@@ -76,6 +76,13 @@ const COMO_CONSERTAR =
  */
 const ORIGENS: DeclaracaoDeOrigem[] = [
   {
+    arquivo: "lib/automation/actions/send-whatsapp.ts",
+    expressao: "classificada.motivo",
+    porque:
+      "a recusa da mídia sem tipo identificável chega à tela pelo `error` do resultado; o motivo é a frase de gente que o produtor escreve, e o produtor é varrido ao lado",
+    produtor: { arquivo: "lib/messaging/media/midia-com-legenda.ts" },
+  },
+  {
     arquivo: "lib/automation/actions/send-ai-message.ts",
     expressao: "guarda.reason",
     porque:
