@@ -143,6 +143,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // resposta rápida (imagens e áudio, na ordem gravada). O diálogo mostra o
   // primeiro; enviado, o próximo aparece. Nada sai sem o atendente ver.
   const [fila, setFila] = useState<File[]>([]);
+  /** O que cada arquivo da fila já subiu ao Storage — para o retry não subir de novo. */
+  const subidos = useRef(new WeakMap<File, Awaited<ReturnType<ReturnType<typeof useUploadMedia>["mutateAsync"]>>>());
   const [totalDaFila, setTotalDaFila] = useState(0);
   const [legendaInicial, setLegendaInicial] = useState<string | null>(null);
   const pendingFile = fila[0] ?? null;
@@ -581,7 +583,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         onSend={async (caption) => {
           if (!pendingFile) return;
           try {
-            const uploaded = await upload.mutateAsync({ conversationId, file: pendingFile });
+            // O arquivo que JÁ subiu não sobe de novo: se o envio falhou (a rede
+            // caiu na volta), o retry usa o MESMO caminho no Storage, e com o
+            // mesmo conteúdo o envio repete a mesma chave de idempotência — o
+            // servidor devolve o recibo do primeiro em vez de mandar a foto
+            // duas vezes ao cliente.
+            const arquivo = pendingFile;
+            const uploaded =
+              subidos.current.get(arquivo) ?? (await upload.mutateAsync({ conversationId, file: arquivo }));
+            subidos.current.set(arquivo, uploaded);
             send.mutate(
               {
                 conversation_id: conversationId,
@@ -593,7 +603,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 media_size_bytes: uploaded.media_size_bytes,
               },
               // Enviado este, o próximo da fila aparece (a legenda era só do primeiro).
-              { onSuccess: () => setFila((atual) => atual.slice(1)) },
+              {
+                onSuccess: () => {
+                  subidos.current.delete(arquivo);
+                  setFila((atual) => atual.slice(1));
+                },
+              },
             );
           } catch {
             // toast já disparado pelo onError de useUploadMedia; dialog fica aberto p/ retry
