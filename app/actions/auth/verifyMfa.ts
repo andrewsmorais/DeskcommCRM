@@ -8,6 +8,7 @@ import { safeNext } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 import { audit } from "@/lib/audit";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
+import { mfaBloqueadoPorFalhas, registrarFalhaDeMfa } from "@/lib/auth/rate-limit";
 
 export type VerifyMfaResult =
   | { ok: false; error: "mfa_invalid" }
@@ -23,8 +24,8 @@ const MAX_ATTEMPTS = 3;
  * stored in a short-lived cookie. After 3 failures within 60s, the user is
  * locked out and must wait.
  *
- * Note: per-cookie counter is MVP. Hardening = Upstash Redis sliding window
- * keyed on user_id + IP.
+ * O cookie dá a contagem na tela; o bloqueio de verdade é o contador no servidor
+ * (`mfaBloqueadoPorFalhas`), por pessoa e por IP, com teto diário.
  */
 export async function verifyMfa(code: string, next?: string): Promise<VerifyMfaResult> {
   const supabase = await createClient();
@@ -51,7 +52,9 @@ export async function verifyMfa(code: string, next?: string): Promise<VerifyMfaR
     const parsed = parseInt(raw, 10);
     if (!Number.isNaN(parsed)) attempts = parsed;
   }
-  if (attempts >= MAX_ATTEMPTS) {
+  // O cookie é só a experiência da tela; quem trava de verdade é o contador do
+  // servidor, que não depende de o navegador devolver o cookie.
+  if (attempts >= MAX_ATTEMPTS || (await mfaBloqueadoPorFalhas(user.id))) {
     return { ok: false, error: "mfa_locked", retry_in_seconds: ATTEMPT_TTL_SECONDS };
   }
 
@@ -74,6 +77,7 @@ export async function verifyMfa(code: string, next?: string): Promise<VerifyMfaR
   });
 
   if (verifyErr) {
+    await registrarFalhaDeMfa(user.id);
     const newAttempts = attempts + 1;
     store.set(ATTEMPT_COOKIE, String(newAttempts), {
       httpOnly: true,

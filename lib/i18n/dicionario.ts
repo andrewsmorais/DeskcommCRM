@@ -18925,6 +18925,7 @@ export const DICIONARIO: Traducoes = {
   "Abra a conversa e responda o cliente — ele escreveu enquanto o número estava fora do ar.": { es: "Abra la conversación y responda al cliente: escribió mientras el número estaba sin conexión." },
   "A conexão voltou de uma queda — recuperação das conversas": { es: "La conexión volvió de una caída — recuperación de las conversaciones" },
   "Um cliente escreveu enquanto o número estava fora e ainda não teve resposta": { es: "Un cliente escribió mientras el número estaba fuera y todavía no tuvo respuesta" },
+  "Muitas tentativas com o código. Aguarde um minuto e tente de novo.": { es: "Demasiados intentos con el código. Espera un minuto e inténtalo de nuevo." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
