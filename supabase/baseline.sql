@@ -4203,11 +4203,6 @@ END IF; END $baseline_guard$;
 
 
 
-DO $baseline_guard$ BEGIN
-IF NOT EXISTS (SELECT 1 FROM pg_policy
-                WHERE polname = 'recovery_codes_self' AND polrelid = '"public"."user_recovery_codes"'::regclass) THEN
-CREATE POLICY "recovery_codes_self" ON "public"."user_recovery_codes" USING (("user_id" = "auth"."uid"())) WITH CHECK (("user_id" = "auth"."uid"()));
-END IF; END $baseline_guard$;
 
 
 
@@ -4699,8 +4694,6 @@ GRANT ALL ON TABLE "public"."user_organizations" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."user_recovery_codes" TO "anon";
-GRANT ALL ON TABLE "public"."user_recovery_codes" TO "authenticated";
 GRANT ALL ON TABLE "public"."user_recovery_codes" TO "service_role";
 
 
@@ -46439,11 +46432,10 @@ notify pgrst, 'reload schema';
 -- verdade para ele); o cadastro grava os códigos já em `aal2` e cai para a
 -- service role se o token ainda não tiver sido trocado (`confirmMfaEnroll`);
 -- o resgate e a regeneração já usam a service role / exigem `aal2`.
-drop policy if exists recovery_codes_mfa_provada on public.user_recovery_codes;
-create policy recovery_codes_mfa_provada on public.user_recovery_codes
-  as restrictive for all to authenticated
-  using ((select public.fn_rls_mfa_provada()))
-  with check ((select public.fn_rls_mfa_provada()));
+--
+-- Superada pela 0527 (só o servidor lê e grava a tabela): a restritiva não é
+-- mais criada aqui, e o bloco da 0527, no fim do arquivo, a remove de quem já
+-- a tinha.
 revoke all on table public.user_recovery_codes from anon;
 
 notify pgrst, 'reload schema';
@@ -47357,3 +47349,36 @@ revoke all on table public.figurinhas from anon, authenticated;
 grant select on table public.figurinhas to authenticated;
 grant all on table public.figurinhas to service_role;
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
+
+-- ---- user_recovery_codes: lida e gravada só pelo servidor, e a forma antiga sai (migration 0527) ----
+--
+-- Trazido do produto original (0755 + 0759). As três ações que escrevem aqui
+-- (confirmar o cadastro da verificação em duas etapas, gerar códigos novos,
+-- usar um código na entrada) usam o client de serviço, depois das checagens de
+-- sessão de cada uma; nenhuma tela lê pelo client do usuário. O corpo deste
+-- arquivo já não concede nada a anon nem a authenticated, nem cria a policy
+-- antiga; a revogação abaixo cura quem instalou antes. Bloco DO: sem
+-- ON_ERROR_STOP, drop + create soltos podem deixar a tabela sem a policy nova.
+do $$
+begin
+  revoke all on table public.user_recovery_codes from anon, authenticated;
+
+  drop policy if exists recovery_codes_self on public.user_recovery_codes;
+  -- A restritiva da 0502 perde o sentido sem privilégio nenhum para o login.
+  drop policy if exists recovery_codes_mfa_provada on public.user_recovery_codes;
+  drop policy if exists user_recovery_codes_ninguem_le on public.user_recovery_codes;
+  create policy user_recovery_codes_ninguem_le
+    on public.user_recovery_codes
+    for select
+    using (false);
+end
+$$;
+
+-- O servidor grava `code_hash` como o HMAC-SHA256 de 32 bytes
+-- (`lib/auth/recovery-codes.ts`); nenhuma linha gravada antes casa com ele (a
+-- forma antiga era um Buffer que virava o texto JSON `{"type":"Buffer",...}`).
+-- O critério é o formato, não a data: re-aplicar não apaga código novo.
+delete from public.user_recovery_codes
+ where octet_length(code_hash) <> 32;
+
+notify pgrst, 'reload schema';

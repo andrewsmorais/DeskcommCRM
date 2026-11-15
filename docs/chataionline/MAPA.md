@@ -108,6 +108,7 @@
 | 15/11 | **Foto/áudio não sai duas vezes quando a rede cai no envio** (teste que faltava das respostas rápidas; o defeito existia aqui). `Composer.tsx` guarda o que cada arquivo da fila já subiu (retry não sobe de novo, mesmo caminho no Storage); `useSendMessage` repete a mesma `Idempotency-Key` para o mesmo conteúdo que falhou há menos de 2 min e espera `TETO_DE_MIDIA_MS + 30s` em envio com mídia (`lib/waha/teto-de-midia.ts`). Testes: `tests/unit/resposta-rapida-midia-nao-sai-duas-vezes.test.tsx` (falhava antes da correção), `use-send-message-idempotencia`, `use-send-message-prazo-de-midia` (do produto original). | `chataionline/seguranca-auditoria` |
 | 15/11 | **Segurança: limite do código de duas etapas contado no servidor** (trazido do produto original, alerta GHSA-vgq7-h88j-vqrq). O contador de erros do código TOTP ficava só num cookie; agora `lib/auth/rate-limit.ts` (`mfaBloqueadoPorFalhas`/`registrarFalhaDeMfa`: 3 erros/min por pessoa, 30 por IP, 15/dia) vale em `app/actions/auth/verifyMfa.ts` e `updatePassword.ts` (erro `mfa_locked` com frase no `ResetPasswordForm`). Teste: `app/actions/auth/limite-do-segundo-fator.test.ts`. |
 | 15/11 | **Senha nova acima de 72 bytes recusada com explicação** (trazido do produto original, #4313). `lib/auth/schemas.ts` mede bytes (`TextEncoder`), `updatePassword.ts` devolve `password_too_long` e o `ResetPasswordForm` mostra o motivo, em vez de "não foi possível". Testes: `lib/auth/schemas.test.ts`, `app/actions/auth/updatePassword.test.ts`. |
+| 15/11 | **Códigos de recuperação da verificação em duas etapas consertados** (trazido do produto original: 41a645b49, f188c6ca0, 10acf360f, eb8eb0c56, 41e3f958b, 88ae386ca, 7179b25f8). Antes nenhum código funcionava (o hash era gravado como texto JSON de um Buffer e o login nunca achava). `lib/auth/recovery-codes.ts` grava HMAC-SHA256 com o `INTERNAL_SECRET` (`\x`+hex, a mesma forma na gravação e na busca) e normaliza espaços/hífen/minúsculas; `confirmMfaEnroll`, `regenerateRecoveryCodes` e `useRecoveryCode` escrevem só pelo client de serviço; `enrollMfa`/`confirmMfaEnroll` exigem `aal2` para cadastrar segunda verificação; `useRecoveryCode` percorre todas as páginas de usuários (antes só os 200 primeiros). Migration **0527**: só o servidor lê e grava `user_recovery_codes`, e os códigos da forma antiga são apagados. Tela de Segurança avisa "sem códigos válidos" (`app/app/settings/security/page.tsx` + `_client.tsx`). Testes: `tests/unit/codigos-de-recuperacao-ida-e-volta.test.ts`, `tests/unit/codigos-de-recuperacao-exigem-prova-na-sessao.test.ts`, `tests/invariants/codigos-de-recuperacao-so-o-servidor-grava.test.ts`, `tests/invariants/codigos-de-recuperacao-antigos-saem.test.ts`. Evidência: `evidence/codigos-de-recuperacao/1-aviso-sem-codigos.png`, `evidence/codigos-de-recuperacao/2-confirmar-gerar.png`. |
 
 ## 5. O que falta / pendências conhecidas
 
@@ -128,7 +129,8 @@
 
 No `.env` da instalação (achar a pasta com `docker compose ls`):
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL=suporte@chataionline.io`, `SUPPORT_EMAIL`, `SUPPORT_WHATSAPP`
-- trocar o `INTERNAL_SECRET` (apareceu num print)
+- trocar o `INTERNAL_SECRET` (apareceu num print) — troque ANTES de gerar códigos de recuperação: trocar depois invalida os códigos já emitidos
+- quem já tinha verificação em duas etapas: gerar códigos de recuperação novos em Configurações › Segurança (a migration 0527 apaga os antigos, que nunca funcionaram)
 - marca: `APP_NAME` etc.
 - `SENTRY_DSN` (se quiser receber erros)
 - `WAHA_WEBHOOK_REQUIRE_SIGNATURE`

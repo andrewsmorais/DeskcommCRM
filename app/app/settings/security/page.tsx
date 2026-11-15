@@ -36,6 +36,19 @@ export default async function SecurityPage() {
   // ter uma segunda noção de "é obrigatório", ou ofereceria desligar o que o
   // layout volta a exigir no próximo carregamento.
   const obrigatorio = await requiresMfa(org?.role, user.is_platform_admin, user.id, org?.orgId);
+  // Quem tem a verificação ligada e nenhum código de recuperação por usar fica
+  // sem saída se perder o celular — e é o estado de todo mundo depois da 0527,
+  // que apagou os códigos da forma antiga. Só o servidor lê a tabela.
+  // Erro na leitura não mostra o aviso: "não sei" não vira "você não tem".
+  let semCodigos = false;
+  if (enrolled) {
+    const { count, error } = await createAdminClient()
+      .from("user_recovery_codes")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("used_at", null);
+    semCodigos = !error && count === 0;
+  }
   const idioma = user.idioma;
 
   return (
@@ -55,6 +68,7 @@ export default async function SecurityPage() {
         obrigatorio={obrigatorio}
         podeExigirDaEquipe={org?.role === "admin"}
         empresaExige={empresaExige}
+        semCodigos={semCodigos}
       />
     </div>
   );
