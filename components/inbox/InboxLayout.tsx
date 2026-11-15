@@ -637,6 +637,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
                   nome: selectedConversation.assigned_to_user_name ?? null,
                 }}
                 contatoId={selectedConversation.contacts?.id ?? null}
+                contatoRecusaEnvio={Boolean(selectedConversation.contacts?.is_blocked)}
               />
             </div>
             <RetentionNotice conversationId={selectedConversation.id} />

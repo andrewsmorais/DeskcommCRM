@@ -4,7 +4,9 @@ import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { format } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
 import { ArrowBendUpLeft, ArrowBendUpRight, CaretDown, Check, Checks, PencilSimple, Robot, Star, Sticker, Trash, WarningOctagon } from "@/lib/ui/icons";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
@@ -14,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Message } from "@/lib/types/messaging";
+import type { ReacaoNoBalao } from "@/lib/inbox/reacoes-no-fio";
 import { motivoDaFalhaDaMensagem } from "@/lib/inbox/motivo-da-falha";
 import { reenvioDaMensagem } from "@/lib/messaging/reenvio";
 import { lerRemetenteDeGrupo, rotuloDoRemetente } from "@/lib/messaging/remetente-de-grupo";
@@ -27,6 +30,42 @@ import {
   isAiGeneratedMessage,
 } from "@/lib/ai/citations/types";
 
+const PickerDeReacao = lazy(() => import("@emoji-mart/react"));
+const REACOES_INICIAIS = ["👍", "❤️", "😂", "😮", "🙏"];
+/**
+ * Colunas do seletor completo que CABEM no modal: largura do emoji-mart =
+ * colunas × 36 + 28; área útil do modal = janela − 58. A 375px, 9 colunas
+ * (352px) vazavam 22px pela borda.
+ */
+export function colunasDoSeletorDeReacao(larguraDaJanela: number): number {
+  return Math.max(6, Math.min(9, Math.floor((larguraDaJanela - 58 - 28) / 36)));
+}
+// Identificador persistido no navegador; não é texto de marca exibido ao usuário.
+const REACOES_STORAGE = "inbox:reacoes-frequentes:v1";
+
+function lerContagens(): Record<string, number> {
+  try {
+    const data: unknown = JSON.parse(localStorage.getItem(REACOES_STORAGE) ?? "{}");
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    return Object.fromEntries(Object.entries(data).filter(([emoji, n]) =>
+      emoji.length > 0 && emoji.length <= 64 && typeof n === "number" && Number.isFinite(n) && n > 0,
+    ));
+  } catch { return {}; }
+}
+
+function cincoMaisUsados(contagens: Record<string, number>): string[] {
+  const usados = Object.entries(contagens).sort((a, b) => b[1] - a[1]).map(([emoji]) => emoji);
+  return [...new Set([...usados, ...REACOES_INICIAIS])].slice(0, 5);
+}
+
+/** Quem não tem histórico recebe cinco opções; as escolhas confirmadas sobem para o início. */
+function registrarReacao(emoji: string): string[] {
+  const contagens = lerContagens();
+  contagens[emoji] = (contagens[emoji] ?? 0) + 1;
+  try { localStorage.setItem(REACOES_STORAGE, JSON.stringify(contagens)); } catch { /* Sem armazenamento, o menu ainda funciona. */ }
+  return cincoMaisUsados(contagens);
+}
+
 interface Props {
   message: Message;
   searchMatch?: boolean;
@@ -35,6 +74,10 @@ interface Props {
   onResponder?: (m: Message) => void;
   /** A mensagem citada por ESTA, quando houver — desenha o fio. */
   citada?: Message | null;
+  /** As reações a ESTA mensagem — marca no canto do balão, nunca balão próprio. */
+  reacoes?: ReacaoNoBalao[];
+  /** Reagir a esta mensagem no WhatsApp do cliente; ausente = o menu não oferece. */
+  onReagir?: (emoji: string) => Promise<void>;
   /**
    * QUEM está lendo a conversa. É o que separa "Você" de "Atendente": a coluna
    * `sent_via='user'` só diz *"um humano digitou no CRM"*, nunca QUAL humano.
@@ -85,6 +128,8 @@ export function MessageBubble({
   debugCitations,
   onResponder,
   citada,
+  reacoes,
+  onReagir,
   viewerUserId,
   onEditar,
   onApagar,
@@ -102,6 +147,19 @@ export function MessageBubble({
   const [apagando, setApagando] = useState(false);
   const [ocultando, setOcultando] = useState(false);
   const [confirmandoReenvio, setConfirmandoReenvio] = useState(false);
+  const [seletorDeReacaoAberto, setSeletorDeReacaoAberto] = useState(false);
+  const [reacoesFrequentes, setReacoesFrequentes] = useState(REACOES_INICIAIS);
+  const reacaoPendente = useRef(false);
+  const enviarReacao = async (emoji: string) => {
+    if (!onReagir || reacaoPendente.current) return;
+    reacaoPendente.current = true;
+    try {
+      await onReagir(emoji);
+      setReacoesFrequentes(registrarReacao(emoji));
+    } finally {
+      reacaoPendente.current = false;
+    }
+  };
   const [ocupado, setOcupado] = useState(false);
   const salvandoEdicao = useRef(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -161,7 +219,8 @@ export function MessageBubble({
   const reenvio = onReenviar
     ? reenvioDaMensagem(message, { userId: viewerUserId, podeReenviarDeOutros, agora })
     : "nenhum";
-  const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar || podeEncaminhar || podeFavoritar || podeSalvarFigurinha);
+  const podeReagir = Boolean(onReagir) && !apagada && !ocultaNoCrm;
+  const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar || podeEncaminhar || podeFavoritar || podeSalvarFigurinha || podeReagir);
   const aiGenerated = isAiGeneratedMessage(message.metadata);
   const citations = extractCitations(message.metadata);
   const showCitationButton =
@@ -267,12 +326,15 @@ export function MessageBubble({
           // a mensagem, e trocá-lo apagaria essa leitura justo na bolha achada.
           searchMatch && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
           apagada && "opacity-70",
+          // Espaço para a marca de reação, que fica metade para fora do balão.
+          Boolean(reacoes?.length) && "mb-3",
         )}
       >
         {temMenu && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" aria-label={t("Opções da mensagem")} disabled={ocupado}
+                onClick={() => setReacoesFrequentes(cincoMaisUsados(lerContagens()))}
                 className={cn(
                   "absolute right-1 top-1 z-10 rounded-md p-0.5 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-1",
                   "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100",
@@ -295,6 +357,21 @@ export function MessageBubble({
                 <DropdownMenuItem onSelect={() => onResponder(message)}>
                   <ArrowBendUpLeft size={16} aria-hidden />{t("Responder a esta mensagem")}
                 </DropdownMenuItem>
+              )}
+              {podeReagir && (
+                <div role="group" aria-label={t("Reagir")} className="flex items-center gap-0.5 px-1 py-0.5" data-testid="menu-reacoes">
+                  {reacoesFrequentes.map((emoji) => (
+                    <DropdownMenuItem key={emoji} className="justify-center px-1.5 text-lg leading-none"
+                      aria-label={t("Reagir com {emoji}").replace("{emoji}", emoji)}
+                      onSelect={() => void enviarReacao(emoji).catch(() => undefined)}>
+                      {emoji}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuItem className="justify-center px-1.5 text-base leading-none"
+                    aria-label={t("Mais emojis")} onSelect={() => setSeletorDeReacaoAberto(true)}>
+                    +
+                  </DropdownMenuItem>
+                </div>
               )}
               {podeFavoritar && onFavoritar && (
                 <DropdownMenuItem onSelect={() => onFavoritar(!favorita)}>
@@ -507,7 +584,52 @@ export function MessageBubble({
             )}
           </div>
         )}
+        {reacoes?.length ? (
+          <span
+            role="img"
+            data-testid="message-reactions"
+            aria-label={reacoes
+              .map((r) =>
+                t(r.direction === "inbound" ? "Cliente reagiu com {emoji}" : "Atendente reagiu com {emoji}").replace(
+                  "{emoji}",
+                  r.emoji,
+                ),
+              )
+              .join(", ")}
+            className={cn(
+              "absolute -bottom-3 flex items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-0.5 text-xs leading-none text-foreground shadow-sm",
+              isOutbound ? "right-2" : "left-2",
+            )}
+          >
+            {[...new Set(reacoes.map((r) => r.emoji))].join("")}
+            {reacoes.length > 1 && <span className="text-[10px] text-muted-foreground">{reacoes.length}</span>}
+          </span>
+        ) : null}
       </div>
+      <Dialog open={seletorDeReacaoAberto} onOpenChange={setSeletorDeReacaoAberto}>
+        <DialogContent className="w-fit max-w-[calc(100vw-2rem)] p-3 sm:max-w-fit">
+          <DialogHeader>
+            <DialogTitle>{t("Escolha uma reação")}</DialogTitle>
+          </DialogHeader>
+          {seletorDeReacaoAberto && (
+            <Suspense fallback={<Skeleton className="h-[420px] w-[min(352px,calc(100vw-4rem))]" />}>
+              <PickerDeReacao
+                data={async () => (await import("@emoji-mart/data")).default}
+                // O idioma vem do pacote instalado: sem isto o seletor busca o pt.json numa
+                // CDN externa e fica em branco quando ela não responde.
+                i18n={async () => (await import("@emoji-mart/data/i18n/pt.json")).default}
+                locale="pt"
+                previewPosition="none"
+                perLine={colunasDoSeletorDeReacao(window.innerWidth)}
+                onEmojiSelect={(e: { native: string }) => {
+                  setSeletorDeReacaoAberto(false);
+                  void enviarReacao(e.native).catch(() => undefined);
+                }}
+              />
+            </Suspense>
+          )}
+        </DialogContent>
+      </Dialog>
       <AlertDialog open={confirmandoReenvio} onOpenChange={setConfirmandoReenvio}>
         <AlertDialogContent>
           <AlertDialogHeader>

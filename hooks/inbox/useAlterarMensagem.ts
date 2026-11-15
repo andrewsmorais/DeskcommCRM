@@ -72,5 +72,13 @@ export function useAlterarMensagem(conversationId: string | null) {
       showApiError(err);
     },
   });
-  return { editar, apagar, ocultar, restaurar, reenviar };
+  const reagir = useMutation({
+    mutationFn: ({ id, emoji }: { id: string; emoji: string }) =>
+      apiClient.post(`/api/v1/messages/${id}/reactions`, { emoji }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["messages", conversationId] });
+    },
+    onError: showApiError,
+  });
+  return { editar, apagar, ocultar, restaurar, reenviar, reagir };
 }

@@ -47,6 +47,9 @@ function EmojiPickerLazy({ onPick }: { onPick: (emoji: string) => void }) {
   return (
     <Picker
       data={async () => (await import("@emoji-mart/data")).default}
+      // O idioma vem do pacote instalado: sem isto o seletor busca o pt.json numa
+      // CDN externa e fica em branco quando ela não responde.
+      i18n={async () => (await import("@emoji-mart/data/i18n/pt.json")).default}
       locale="pt"
       previewPosition="none"
       onEmojiSelect={(e: { native: string }) => onPick(e.native)}

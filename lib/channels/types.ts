@@ -64,6 +64,8 @@ export interface ChannelCapabilities {
   costPerMessage: boolean;
   /** O atendente pode editar e apagar para todos uma mensagem já enviada. */
   alteraMensagemEnviada: boolean;
+  /** O adapter deste canal aceita reagir a mensagens. */
+  podeReagir: boolean;
 }
 
 /**
@@ -366,6 +368,14 @@ export interface ChannelAdapter {
     externalId: string;
     text: string;
   }): Promise<void>;
+
+  /** Reage à mensagem existente; sem id retornado o transporte depende do eco. */
+  sendReaction?(input: ChannelTenantScope & {
+    sessionRef: string;
+    recipient: string | null;
+    externalId: string;
+    emoji: string;
+  }): Promise<{ externalId: string | null }>;
 
   /** Apaga para todos uma mensagem enviada. Mesmo contrato de `editMessage`. */
   revokeMessage?(input: ChannelTenantScope & {

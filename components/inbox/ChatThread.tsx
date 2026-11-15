@@ -12,6 +12,7 @@ import { format, isToday, isYesterday } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageBubble } from "./MessageBubble";
+import { separarReacoes } from "@/lib/inbox/reacoes-no-fio";
 import { NoteCard } from "./NoteCard";
 import { PassagemCard } from "./PassagemCard";
 import { useMessagesRealtime } from "@/hooks/inbox/useMessagesRealtime";
@@ -48,6 +49,8 @@ interface Props {
    */
   dono?: { userId: string | null; nome: string | null } | null;
   contatoId?: string | null;
+  /** Contato bloqueado (opt-out): a rota recusa a reação, então o menu não a oferece. */
+  contatoRecusaEnvio?: boolean;
 }
 
 /**
@@ -92,6 +95,7 @@ export function ChatThread({
   onResponder,
   dono,
   contatoId,
+  contatoRecusaEnvio = false,
   searchTerm = "",
   soNaCaixa = false,
 }: Props) {
@@ -115,7 +119,7 @@ export function ChatThread({
   const activeOrg = useActiveOrg();
   const currentUser = useUser();
   const deleteNote = useDeleteNote(conversationId ?? "");
-  const { editar, apagar, ocultar, restaurar, reenviar } = useAlterarMensagem(conversationId);
+  const { editar, apagar, ocultar, restaurar, reenviar, reagir } = useAlterarMensagem(conversationId);
   const canManage = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   // Favoritar e encaminhar (paridade Umbler): atendente para cima.
   const podeAgir = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent;
@@ -126,6 +130,8 @@ export function ChatThread({
   const [encaminhando, setEncaminhando] = useState<string | null>(null);
   const canalAlteraEnviada = transportaMensagem(provider)
     && capabilitiesOf(provider as ChannelProvider).alteraMensagemEnviada;
+  const canalPermiteReacao = transportaMensagem(provider)
+    && capabilitiesOf(provider as ChannelProvider).podeReagir;
   const { enabled: debugCitations } = useDebugToggle(activeOrg?.role ?? null);
 
   const messages: Message[] = useMemo(
@@ -183,9 +189,12 @@ export function ChatThread({
     [passagens, currentUser.id, dono?.userId, dono?.nome],
   );
 
+  // A reação não é balão: vira marca no balão da mensagem reagida.
+  const { falas, reacoesPorAlvo } = useMemo(() => separarReacoes(messages), [messages]);
+
   const items: ThreadItem[] = useMemo(
-    () => mergeThreadItems(messages, notes, cartoes),
-    [messages, notes, cartoes],
+    () => mergeThreadItems(falas, notes, cartoes),
+    [falas, notes, cartoes],
   );
 
   const paginas = q.data?.pages.length ?? 0;
@@ -408,6 +417,12 @@ export function ChatThread({
                   // citada é antiga demais e ficou fora da página, o fio some —
                   // que é melhor que segurar a conversa esperando.
                   citada={porId.get(item.data.reply_to_message_id ?? "") ?? null}
+                  reacoes={reacoesPorAlvo.get(item.data.id)}
+                  onReagir={podeAgir && canalPermiteReacao && !contatoRecusaEnvio
+                    && Boolean(item.data.external_id) && item.data.type !== "reaction"
+                    && !item.data.metadata?._optimistic
+                    ? (emoji) => reagir.mutateAsync({ id: item.data.id, emoji }).then(() => undefined)
+                    : undefined}
                   // Sem isto o balão diz "Você" em toda mensagem digitada no
                   // CRM — inclusive nas do colega, porque `sent_via='user'` só
                   // registra que um humano digitou, nunca qual.
