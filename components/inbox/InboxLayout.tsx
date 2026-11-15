@@ -2,7 +2,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/hooks/auth/AuthProvider";
+import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
+import { useBulkConversations, type AcaoEmLote } from "@/hooks/inbox/useBulkConversations";
+import { useSelecaoEmLote } from "@/hooks/inbox/useSelecaoEmLote";
+import { BarraDeAcoesEmLote } from "./BarraDeAcoesEmLote";
 import { fonteDeTemplates } from "@/lib/channels/templates-fonte";
 import { estadoDaJanela, formatarDecorrido } from "@/lib/channels/janela";
 import { JanelaFechadaAviso } from "@/components/inbox/JanelaFechadaAviso";
@@ -235,6 +238,11 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       channel_session_id: filterValue.channel_session_id,
       setor_id: filterValue.setor_id,
       tag: filterValue.tag,
+      modo: filterValue.tagMode === "ou" ? ("ou" as const) : undefined,
+      // O atendente escolhido vale em toda aba menos Minhas (que já é "as minhas").
+      ...(filterValue.assigned_to && filterValue.tab !== "mine"
+        ? { assigned_to: filterValue.assigned_to }
+        : {}),
       unread: filterValue.onlyUnread || undefined,
       is_group: filterValue.onlyGroups || undefined,
       ocultas: filterValue.onlyOcultas ? ("so" as const) : undefined,
@@ -246,6 +254,8 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       filterValue.channel_session_id,
       filterValue.setor_id,
       filterValue.tag,
+      filterValue.tagMode,
+      filterValue.assigned_to,
       filterValue.onlyUnread,
       filterValue.onlyGroups,
       filterValue.onlyOcultas,
@@ -256,6 +266,24 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   // We need the selected conversation object for header / composer / side panel.
   // Source it from the same query the list uses to avoid an extra request.
   const listQ = useConversationsRealtime(filters, orgId);
+
+  // LOTE (vindo do produto original): seleção múltipla e barra de ações. Quem
+  // pode responder pode agir em lote; a rota valida de novo, item por item.
+  const podeAgirEmLote = usePermission("inbox.reply");
+  const selecao = useSelecaoEmLote();
+  const lote = useBulkConversations();
+  const rodarLote = useCallback(
+    (action: AcaoEmLote, toUserId?: string, reason?: string) => {
+      const ids = Array.from(selecao.selecionados);
+      if (ids.length === 0) return;
+      lote.mutate(
+        { ids, action, to_user_id: toUserId, reason },
+        // A seleção é limpa depois do lote, aconteça o que acontecer.
+        { onSuccess: () => selecao.limpar() },
+      );
+    },
+    [lote, selecao],
+  );
   const inList = useMemo(() => {
     const all = listQ.data?.pages.flatMap((p) => p.data) ?? [];
     return all.find((c) => c.id === selectedId) ?? null;
@@ -464,6 +492,19 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
         )}
       >
         <InboxFilters value={filterValue} onChange={setFilterValue} />
+        {podeAgirEmLote && (
+          <BarraDeAcoesEmLote
+            quantidade={selecao.quantidade}
+            pendente={lote.isPending}
+            onFechar={() => rodarLote("close")}
+            onArquivar={() => rodarLote("archive")}
+            onMarcarComoLida={() => rodarLote("mark-read")}
+            onPausarIa={() => rodarLote("pause-ai")}
+            onDevolverAoAutomatico={() => rodarLote("reactivate-bot")}
+            onTransferir={(toUserId, reason) => rodarLote("transfer", toUserId, reason)}
+            onLimpar={selecao.limpar}
+          />
+        )}
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
             listQuery={listQ}
@@ -472,6 +513,13 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
             onSelect={handleSelect}
             onVisibleChange={handleVisibleChange}
             onLimparFiltros={limparFiltrosAuxiliares}
+            selecionados={selecao.selecionados}
+            onAlternarSelecao={podeAgirEmLote ? selecao.alternar : undefined}
+            onSelecionarTodosVisiveis={
+              podeAgirEmLote
+                ? () => selecao.selecionarTodos((listQ.data?.pages.flatMap((p) => p.data) ?? []).map((c) => c.id))
+                : undefined
+            }
           />
         </div>
       </div>

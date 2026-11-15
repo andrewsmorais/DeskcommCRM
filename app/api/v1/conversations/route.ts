@@ -55,7 +55,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     // meio: `InboxFilters` mostra o select "Filtrar por tag" sempre que a org tem
     // vocabulário, o browser manda `?tag=vip`, e a lista voltava inteira, sem erro.
     // Achado por @jmpo, no cabeçalho do teste que ele escreveu no PR #199.
-    tag: url.searchParams.get("tag") ?? undefined,
+    // `getAll`: várias etiquetas viajam como `?tag=a&tag=b`.
+    tag: url.searchParams.getAll("tag"),
+    modo: url.searchParams.get("modo") ?? undefined,
     unread: url.searchParams.get("unread") ?? undefined,
     channel_session_id: url.searchParams.get("channel_session_id") ?? undefined,
     setor_id: url.searchParams.get("setor_id") ?? undefined,

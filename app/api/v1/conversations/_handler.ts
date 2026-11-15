@@ -18,7 +18,7 @@ import type {
 import type { Conversation } from "@/lib/types/messaging";
 import { normalizarTermoDeBusca } from "@/lib/inbox/termo-de-busca";
 import { ORDEM_DA_ESPERA, ehAFila } from "@/lib/inbox/comando-da-conversa";
-import { aplicarMarcador } from "@/lib/inbox/marcador-da-conversa";
+import { aplicarMarcadores } from "@/lib/inbox/marcador-da-conversa";
 import { aplicarOcultas } from "@/lib/inbox/visibilidade";
 
 /**
@@ -224,7 +224,7 @@ export async function listConversationsHandler(
   // A régua do marcador mora num lugar só (`lib/inbox/marcador-da-conversa.ts`),
   // porque a segunda régua sempre diverge: foi assim que a contagem das abas
   // passou a pedir uma coluna que não existe (#1223). Aqui ela é só aplicada.
-  if (q.tag) query = aplicarMarcador(query, q.tag);
+  if (q.tag) query = aplicarMarcadores(query, q.tag, q.modo);
   // Conversa oculta (migration 0510) sai da caixa de entrada; o filtro "Ocultas"
   // pede só elas. A contagem das abas aplica a MESMA régua.
   query = aplicarOcultas(query, q.ocultas);

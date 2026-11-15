@@ -5,7 +5,7 @@ import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import type { Locale } from "date-fns";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { Robot } from "@/lib/ui/icons";
+import { Check, Robot } from "@/lib/ui/icons";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,10 @@ interface Props {
    * afirme nada".
    */
   automaticoDaOrg?: boolean;
+  /** Marcada para a ação em lote (vindo do produto original). */
+  selecionado?: boolean;
+  /** Sem ele não há caixa de marcação (quem não pode agir em lote). */
+  onAlternarSelecao?: (id: string) => void;
 }
 
 /**
@@ -129,6 +133,8 @@ export function ConversationListItem({
   mostrarAtendente,
   mostrarAutomatico = true,
   automaticoDaOrg,
+  selecionado = false,
+  onAlternarSelecao,
 }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
@@ -202,14 +208,42 @@ export function ConversationListItem({
     Boolean(c?.is_anonymized);
 
   return (
+    <div
+      className={cn(
+        "relative flex w-full items-start border-b border-border/70",
+        selecionado && "bg-accent-soft",
+      )}
+    >
+      {/* A CAIXA DE SELEÇÃO do lote fica FORA do botão da linha: marcar e
+          abrir a conversa são gestos diferentes. */}
+      {onAlternarSelecao && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selecionado}
+          aria-label={t("Selecionar conversa")}
+          title={t("Selecionar conversa")}
+          data-testid={`selecao-em-lote-${conversation.id}`}
+          onClick={() => onAlternarSelecao(conversation.id)}
+          className={cn(
+            "mt-3 ml-2 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent",
+            selecionado
+              ? "border-accent bg-accent text-accent-foreground"
+              : "border-muted-foreground bg-background hover:bg-surface-elevated",
+          )}
+        >
+          {selecionado && <Check size={12} weight="bold" aria-hidden />}
+        </button>
+      )}
     <button
       type="button"
       data-conversation-id={conversation.id}
       onClick={() => onSelect(conversation.id)}
       className={cn(
-        "group relative flex w-full items-start gap-3 border-b border-border/70 px-3 py-2.5 text-left transition-colors hover:bg-surface-elevated",
+        "group relative flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-elevated",
         "focus-visible:outline-hidden focus-visible:bg-surface-elevated",
-        isSelected && "bg-accent-50 hover:bg-accent-50",
+        isSelected && !selecionado && "bg-accent-50 hover:bg-accent-50",
       )}
       aria-current={isSelected ? "true" : undefined}
     >
@@ -347,5 +381,6 @@ export function ConversationListItem({
         )}
       </div>
     </button>
+    </div>
   );
 }

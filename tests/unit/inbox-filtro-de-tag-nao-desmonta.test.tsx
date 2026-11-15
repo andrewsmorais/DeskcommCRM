@@ -77,9 +77,9 @@ async function abreOMenu() {
   // vermelho que não ensina nada.
   const user = userEvent.setup({ delay: null });
   const tela = render(<InboxFilters value={VALUE} onChange={() => {}} />);
-  await user.click(screen.getByRole("combobox", { name: GATILHO }));
-  expect(screen.getByRole("option", { name: "vip" })).toBeInTheDocument();
-  expect(screen.getByRole("option", { name: "retorno" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: GATILHO }));
+  expect(screen.getByRole("menuitemcheckbox", { name: "vip" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitemcheckbox", { name: "retorno" })).toBeInTheDocument();
   return tela;
 }
 
@@ -94,8 +94,8 @@ describe("o menu de etiqueta aberto sobrevive à oscilação do vocabulário", (
     // Com o menu aberto o Radix marca o resto da árvore com `aria-hidden`, e é
     // por `hidden: true` que o gatilho é alcançável — o que se afirma aqui é que
     // ele não DESMONTOU, não que esteja exposto à leitura de tela.
-    expect(screen.queryByRole("combobox", { name: GATILHO, hidden: true })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "vip" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: GATILHO, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "vip" })).toBeInTheDocument();
   });
 
   it("vocabulário voltando VAZIO por um render não derruba o menu", async () => {
@@ -108,8 +108,8 @@ describe("o menu de etiqueta aberto sobrevive à oscilação do vocabulário", (
     // Com o menu aberto o Radix marca o resto da árvore com `aria-hidden`, e é
     // por `hidden: true` que o gatilho é alcançável — o que se afirma aqui é que
     // ele não DESMONTOU, não que esteja exposto à leitura de tela.
-    expect(screen.queryByRole("combobox", { name: GATILHO, hidden: true })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "vip" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: GATILHO, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "vip" })).toBeInTheDocument();
   });
 });
 
@@ -118,20 +118,20 @@ describe("não-regressão: o que a condicional protegia", () => {
     tagsRef.current = [];
     tagsDoContatoRef.current = [];
     render(<InboxFilters value={VALUE} onChange={() => {}} />);
-    expect(screen.queryByRole("combobox", { name: GATILHO })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: GATILHO })).not.toBeInTheDocument();
   });
 
   it("vocabulário em voo, sem nada conhecido ainda, também não desenha o seletor", () => {
     tagsRef.current = undefined;
     tagsDoContatoRef.current = undefined;
     render(<InboxFilters value={VALUE} onChange={() => {}} />);
-    expect(screen.queryByRole("combobox", { name: GATILHO })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: GATILHO })).not.toBeInTheDocument();
   });
 
   it("filtro órfão mantém a válvula: o seletor aparece com a etiqueta que sumiu do vocabulário", () => {
     tagsRef.current = ["retorno"];
     tagsDoContatoRef.current = [];
     render(<InboxFilters value={{ ...VALUE, tag: "apagada" }} onChange={() => {}} />);
-    expect(screen.getByRole("combobox", { name: GATILHO })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: GATILHO })).toBeInTheDocument();
   });
 });

@@ -95,7 +95,10 @@ export interface ConversationsFilters {
   channel_session_id?: string;
   /** Só as do setor (migration 0496). */
   setor_id?: string;
-  tag?: string;
+  /** Uma etiqueta ou várias (vindo do produto original). */
+  tag?: string | readonly string[];
+  /** OU entre as etiquetas; ausente = E (todas). */
+  modo?: "ou";
   /** A aba "Grupos" do inbox (Task 10). Ausente = sem filtro, mostra tudo. */
   is_group?: boolean;
   /** `so` = só as ocultas (migration 0510). Ausente = a rota esconde as ocultas. */
@@ -137,7 +140,8 @@ export function useConversationsRealtime(
       if (filters.unread) qs.set("unread", "true");
       if (filters.channel_session_id) qs.set("channel_session_id", filters.channel_session_id);
       if (filters.setor_id) qs.set("setor_id", filters.setor_id);
-      if (filters.tag) qs.set("tag", filters.tag);
+      for (const tag of typeof filters.tag === "string" ? [filters.tag] : (filters.tag ?? [])) qs.append("tag", tag);
+      if (filters.modo) qs.set("modo", filters.modo);
       if (filters.is_group !== undefined) qs.set("is_group", filters.is_group ? "true" : "false");
       if (filters.ocultas) qs.set("ocultas", filters.ocultas);
       if (pageParam) qs.set("cursor", pageParam);

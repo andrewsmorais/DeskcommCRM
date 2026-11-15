@@ -63,7 +63,7 @@ describe("GET /api/v1/conversations — o `tag` da query string chega ao handler
   beforeEach(() => listConversationsHandler.mockClear());
 
   it("com `?tag=vip`, o handler recebe `tag: \"vip\"`", async () => {
-    expect((await queryRecebidaCom("?tag=vip")).tag).toBe("vip");
+    expect((await queryRecebidaCom("?tag=vip")).tag).toEqual(["vip"]);
   });
 
   /**
@@ -99,6 +99,6 @@ describe("GET /api/v1/conversations — o `tag` da query string chega ao handler
 
   it("os dois juntos convivem — `?status=open&tag=vip`", async () => {
     const q = await queryRecebidaCom("?status=open&tag=vip");
-    expect([q.status, q.tag]).toEqual([["open"], "vip"]);
+    expect([q.status, q.tag]).toEqual([["open"], ["vip"]]);
   });
 });

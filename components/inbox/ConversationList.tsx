@@ -2,6 +2,7 @@
 import { ehAFila } from "@/lib/inbox/comando-da-conversa";
 import { useEffect, useMemo } from "react";
 import { useT } from "@/hooks/i18n/useT";
+import { Check } from "@/lib/ui/icons";
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,6 +35,10 @@ interface Props {
   onLimparFiltros?: () => void;
   /** Notifies parent when the visible list changes (used by keyboard nav). */
   onVisibleChange?: (ids: string[]) => void;
+  /** Lote (vindo do produto original): sem `onAlternarSelecao`, nada de caixa. */
+  selecionados?: Set<string>;
+  onAlternarSelecao?: (id: string) => void;
+  onSelecionarTodosVisiveis?: () => void;
 }
 
 export function ConversationList({
@@ -43,6 +48,9 @@ export function ConversationList({
   onSelect,
   onVisibleChange,
   onLimparFiltros,
+  selecionados,
+  onAlternarSelecao,
+  onSelecionarTodosVisiveis,
 }: Props) {
   const t = useT();
   // Só mostra POR ONDE a conversa entrou quando há mais de um número. Com um
@@ -165,6 +173,26 @@ export function ConversationList({
         {items.length === 0 && filtrosAtivos.length > 0 && (
           <EmptyPorFiltro filtros={filtrosAtivos} onLimpar={onLimparFiltros} />
         )}
+        {/* Cabeça da seleção em lote: marca de uma vez tudo o que está na tela. */}
+        {onAlternarSelecao && items.length > 0 && (
+          <div className="flex items-center gap-2 border-b border-border/70 px-3 py-1.5">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={selecionados ? items.every((c) => selecionados.has(c.id)) : false}
+              aria-label={t("Selecionar todas as conversas visíveis")}
+              title={t("Selecionar todas")}
+              data-testid="selecionar-todas-visiveis"
+              onClick={onSelecionarTodosVisiveis}
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-muted-foreground bg-background transition-colors hover:bg-surface-elevated focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {selecionados && items.every((c) => selecionados.has(c.id)) && (
+                <Check size={12} weight="bold" aria-hidden />
+              )}
+            </button>
+            <span className="text-xs text-text-muted">{t("Selecionar todas")}</span>
+          </div>
+        )}
         {items.map((c, i) => (
           <ConversationListItem
             key={c.id}
@@ -176,6 +204,8 @@ export function ConversationList({
             mostrarAtendente={mostrarAtendente}
             mostrarAutomatico={mostrarAutomatico}
             automaticoDaOrg={automaticoDaOrg.data}
+            selecionado={selecionados?.has(c.id)}
+            onAlternarSelecao={onAlternarSelecao}
           />
         ))}
         {q.hasNextPage && (

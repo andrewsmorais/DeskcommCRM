@@ -17,7 +17,7 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { CONVERSATION_TERMINAL_STATUSES } from "@/lib/schemas";
 import { orgTemAutomatico } from "@/lib/ai/agents/org-tem-automatico";
 import { comandosDaFila } from "@/lib/inbox/comando-da-conversa";
-import { aplicarMarcador } from "@/lib/inbox/marcador-da-conversa";
+import { aplicarMarcadores, modoDeEtiqueta } from "@/lib/inbox/marcador-da-conversa";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +59,9 @@ export function filtrosAuxiliaresDaContagem(
   // mesmo valor no schema (`setor_id: z.string().uuid()`).
   const setor = sp.get("setor_id");
   if (setor && UUID.test(setor)) filtros.push(["setor_id", setor]);
+  // O atendente escolhido pelo gerente, como na lista. Só uuid.
+  const atendente = sp.get("assigned_to");
+  if (atendente && UUID.test(atendente)) filtros.push(["assigned_to_user_id", atendente]);
   // O MARCADOR não entra nesta lista, e não é esquecimento: ele não é
   // IGUALDADE numa coluna, é um `or=` sobre DUAS caixas — `conversations.tags`
   // e o campo calculado do contato. `conversations` não tem coluna `tag` (`tag`
@@ -102,7 +105,9 @@ export async function GET(req: NextRequest): Promise<Response> {
   const sp = req.nextUrl.searchParams;
   const auxiliares = filtrosAuxiliaresDaContagem(sp);
   const soNaoLidas = contagemSoNaoLidas(sp);
-  const marcador = sp.get("tag");
+  // `getAll` + `modo`: o badge conta o MESMO filtro de várias etiquetas da lista.
+  const marcadores = sp.getAll("tag");
+  const modo = modoDeEtiqueta(sp.get("modo")) ?? "e";
   const ocultas = filtroDeOcultas(sp.get("ocultas"));
 
   // ⚠️ TODA contagem nasce daqui, e daqui já sai com `organization_id` E com os
@@ -115,7 +120,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       .eq("organization_id", org);
     for (const [coluna, valor] of auxiliares) q = q.eq(coluna, valor);
     // O marcador entra pela régua da LISTA — a mesma função, não uma segunda.
-    q = aplicarMarcador(q, marcador);
+    q = aplicarMarcadores(q, marcadores, modo);
     if (soNaoLidas) q = q.gt("unread_count_for_assignee", 0);
     // As ocultas (migration 0510), pela MESMA régua da lista.
     q = aplicarOcultas(q, ocultas);
