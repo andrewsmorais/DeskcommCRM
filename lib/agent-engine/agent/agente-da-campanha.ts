@@ -87,6 +87,10 @@ export async function agenteDaCampanhaDaConversa(
  * `active_intent = 'chatbot'` e vale até o atendimento acabar
  * (`service_started_at`): o atendimento seguinte começa do zero. Mesma régua de
  * falha da campanha — `null` em qualquer dúvida, o turno segue pela régua normal.
+ *
+ * `'transferido'` é a mesma escolha feita por OUTRO AGENTE (ferramenta
+ * `transfer_to_agent`, `transferir-agente.ts`): vale igual, até o fim do
+ * atendimento.
  */
 export async function agenteEscolhidoPeloChatbot(
   db: pg.Pool,
@@ -99,7 +103,7 @@ export async function agenteEscolhidoPeloChatbot(
          from conversations c
         where c.organization_id = $1
           and c.id = $2
-          and c.active_intent = 'chatbot'
+          and c.active_intent in ('chatbot', 'transferido')
           and c.active_ai_agent_id is not null
           and c.active_agent_set_at >= coalesce(c.service_started_at, c.created_at)`,
       [tenantId, conversationId],

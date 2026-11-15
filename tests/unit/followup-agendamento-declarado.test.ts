@@ -85,6 +85,12 @@ const ESCRITORES: Record<string, { agenda: "agora" | "futuro" | "nenhum"; nota: 
       "menção é `next_eval_at: null` no cancelamento por caso fechado — desagendar não é agendar, " +
       "e `null` não tem relógio para escolher errado.",
   },
+  "saida-da-etapa.ts": {
+    agenda: "nenhum",
+    nota:
+      "Só DESAGENDA: cancelar a inscrição quando o negócio SAI da etapa que a armou grava " +
+      "`next_eval_at = null` — `null` não tem relógio para escolher errado.",
+  },
   "atendimento.ts": {
     agenda: "nenhum",
     nota:

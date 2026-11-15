@@ -43,6 +43,7 @@ import {
 } from '@/lib/escalacao/passagem';
 import { traduzir } from '@/lib/i18n/dicionario';
 import { normalizarIdioma, type Idioma } from '@/lib/i18n/idiomas';
+import { sqlContatoInterno } from '@/lib/contacts/tags-internas';
 import { ehOptOutProvavel } from '@/lib/opt-out/deteccao';
 import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
 
@@ -111,6 +112,10 @@ export async function isLeadInHandoff(db: pg.Pool, tenantId: string, leadId: str
   const { rows } = await db.query<{ handoff: boolean }>(
     `select (
        c.force_human
+       -- Contato interno (equipe, sócio, família, fornecedor): também não recebe
+       -- envio automático — inclusive o texto FIXO do follow-up, que não passa
+       -- pelo gate de elegibilidade. Régua única em lib/contacts/tags-internas.ts.
+       or ${sqlContatoInterno('c')}
        or exists (
          select 1 from conversations v
          where v.organization_id = $1 and v.contact_id = c.id

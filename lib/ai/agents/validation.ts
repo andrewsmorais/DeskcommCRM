@@ -37,6 +37,9 @@ const triggerConfigSchema = z
             start: z.string(),
             end: z.string(),
             weekdays: z.array(z.number().int().min(0).max(6)),
+            // "Não atender em feriado nacional" (vindo do produto original).
+            // DESLIGADA de fábrica; sem esta linha o Zod descartaria a chave.
+            fechado_em_feriado_nacional: z.boolean().optional(),
           })
           .nullable()
           .optional()
@@ -280,9 +283,30 @@ export const agentMcpPatchSchema = z
 
 export const publishSchema = z.object({ version_id: UUID }).strict();
 
+/**
+ * Limites do histórico do Testar como conversa (vindo do produto original).
+ * O histórico vive só no estado da tela e viaja no corpo do POST. Sem teto,
+ * cada turno reenviaria a conversa inteira e o custo cresceria sem limite.
+ * Depois deste recorte o motor ainda aplica a janela da versão.
+ */
+import {
+  LIMITE_DO_HISTORICO_EM_CARACTERES,
+  LIMITE_DO_HISTORICO_EM_MENSAGENS,
+} from "./limites-do-teste";
+export { LIMITE_DO_HISTORICO_EM_CARACTERES, LIMITE_DO_HISTORICO_EM_MENSAGENS };
+
+/** Uma mensagem anterior do teste — o cliente digitou ou a IA respondeu. */
+export const testeHistoryMessageSchema = z
+  .object({
+    direction: z.enum(["inbound", "outbound"]),
+    body: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+
 export const testRunSchema = z
   .object({
     sample_message: z.string().trim().min(1).max(4000),
+    history: z.array(testeHistoryMessageSchema).max(LIMITE_DO_HISTORICO_EM_MENSAGENS).optional(),
     sample_contact: z
       .object({
         name: z.string().trim().min(1).max(120).optional(),

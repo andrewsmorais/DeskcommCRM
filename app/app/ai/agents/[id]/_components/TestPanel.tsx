@@ -6,6 +6,10 @@
  * "Mensagem que SERIA enviada". Não toca WAHA, não cria messages.outbound.
  * Quando `INTERNAL_AGENT_RUN_STUB=true` o backend devolve trace stub com
  * `stub: true`; o componente mostra um aviso amigável.
+ *
+ * O Testar é uma CONVERSA (vindo do produto original): cada disparo leva os
+ * turnos anteriores no corpo (`history`), e a tela mostra o que o cliente disse
+ * e o que a IA respondeu. O rascunho vive só no estado da tela.
  */
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,6 +23,10 @@ import { Badge } from "@/components/ui/badge";
 
 import { apiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/types";
+import {
+  LIMITE_DO_HISTORICO_EM_CARACTERES,
+  LIMITE_DO_HISTORICO_EM_MENSAGENS,
+} from "@/lib/ai/agents/limites-do-teste";
 import { agentRunsKey } from "@/hooks/ai/useAgentRuns";
 import { useT } from "@/hooks/i18n/useT";
 import type { AgentRow } from "@/hooks/ai/useAgent";
@@ -57,6 +65,22 @@ interface TestResponse {
       naoAvaliados: Array<{ gate: string; porque: string }>;
     };
   };
+}
+
+interface MensagemDoTeste {
+  direction: "inbound" | "outbound";
+  body: string;
+}
+
+/**
+ * O histórico que cabe no limite do transporte: as mensagens mais ANTIGAS saem
+ * primeiro, para a conversa seguir sem a rota recusar o corpo.
+ */
+export function historicoQueCabe(conversa: readonly MensagemDoTeste[]): MensagemDoTeste[] {
+  let lista = conversa.slice(-LIMITE_DO_HISTORICO_EM_MENSAGENS);
+  const total = (l: readonly MensagemDoTeste[]) => l.reduce((n, m) => n + m.body.trim().length, 0);
+  while (lista.length > 0 && total(lista) > LIMITE_DO_HISTORICO_EM_CARACTERES) lista = lista.slice(1);
+  return lista;
 }
 
 /**
@@ -141,6 +165,7 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
   const [contactPhone, setContactPhone] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [result, setResult] = React.useState<TestResponse["data"] | null>(null);
+  const [conversa, setConversa] = React.useState<MensagemDoTeste[]>([]);
 
   if (!target) {
     return (
@@ -164,7 +189,10 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
     setPending(true);
     setResult(null);
     try {
-      const body: Record<string, unknown> = { sample_message: message.trim() };
+      const enviada = message.trim();
+      const body: Record<string, unknown> = { sample_message: enviada };
+      const historico = historicoQueCabe(conversa);
+      if (historico.length > 0) body.history = historico;
       if (contactName.trim() || contactPhone.trim()) {
         body.sample_contact = {
           ...(contactName.trim() ? { name: contactName.trim() } : {}),
@@ -187,6 +215,13 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
         { timeoutMs: 120_000 },
       );
       setResult(res.data);
+      const resposta = (res.data.final_text ?? "").trim();
+      setConversa((antes) => [
+        ...antes,
+        { direction: "inbound", body: enviada },
+        ...(resposta ? [{ direction: "outbound" as const, body: resposta }] : []),
+      ]);
+      setMessage("");
       qc.invalidateQueries({ queryKey: agentRunsKey(agent.id) });
       toast.success(t("Teste executado."));
     } catch (err) {
@@ -209,9 +244,6 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
           </p>
           <div className="flex items-center gap-2 text-sm">
             <Badge variant="outline">{versionLabel}</Badge>
-            <span className="font-mono text-xs">
-              {target.provider} / {target.model}
-            </span>
           </div>
         </div>
 
@@ -224,8 +256,47 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
           </p>
         </div>
 
+        {conversa.length > 0 ? (
+          <div className="space-y-2" data-testid="teste-conversa">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                {t("Conversa de teste")}
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setConversa([]);
+                  setResult(null);
+                }}
+                disabled={pending}
+              >
+                {t("Recomeçar conversa")}
+              </Button>
+            </div>
+            <div className="flex max-h-80 flex-col gap-2 overflow-y-auto rounded-md border border-border/60 p-3">
+              {conversa.map((m, i) => (
+                <div
+                  key={i}
+                  data-testid={m.direction === "inbound" ? "teste-msg-cliente" : "teste-msg-ia"}
+                  className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${
+                    m.direction === "inbound"
+                      ? "self-start bg-muted text-foreground"
+                      : "self-end bg-primary text-primary-foreground"
+                  }`}
+                >
+                  {m.body}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="space-y-2">
-          <Label htmlFor="test-message">{t("Mensagem do cliente (sample)")}</Label>
+          <Label htmlFor="test-message">
+            {conversa.length > 0 ? t("Próxima mensagem do cliente") : t("Mensagem do cliente (sample)")}
+          </Label>
           <Textarea
             id="test-message"
             value={message}
@@ -260,7 +331,7 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
         </div>
 
         <Button onClick={handleRun} disabled={pending || readOnly} className="self-start">
-          {pending ? t("Executando…") : t("Executar teste")}
+          {pending ? t("Executando…") : conversa.length > 0 ? t("Enviar") : t("Executar teste")}
         </Button>
       </div>
 

@@ -6,6 +6,7 @@ import {
   lerModoDoGate,
   ttlDaAutorizacaoMs,
   type EstadoDeElegibilidade,
+  montarEstadoDeElegibilidade,
 } from "./gate";
 
 const AGORA = new Date("2026-08-27T12:00:00Z");
@@ -14,6 +15,7 @@ const DIA = 24 * 60 * 60 * 1000;
 const base: EstadoDeElegibilidade = {
   modo: "open",
   forceHuman: false,
+  contatoInterno: false,
   botSilencedUntil: null,
   assigneeKind: "ai",
   aiAuthorizedAt: null,
@@ -173,5 +175,65 @@ describe("ttlDaAutorizacaoMs", () => {
   });
   it("respeita o valor configurado", () => {
     expect(ttlDaAutorizacaoMs({ AI_ALLOWLIST_TTL_DAYS: "7" })).toBe(7 * DIA);
+  });
+});
+
+describe("#2353 · contato interno não é atendido pela IA", () => {
+  it("contato interno → NÃO responde, com motivo 'contato_interno' e sem bloqueio por allowlist", () => {
+    const d = decidirElegibilidade({ ...base, modo: "open", contatoInterno: true });
+    expect(d).toEqual({ permite: false, motivo: "contato_interno", bloqueioPorAllowlist: false });
+  });
+
+  it("o veto vale com o gate ABERTO (não é exigência do allowlist): é veto de contato", () => {
+    // O caso da issue: o robô está ligado no número; quem não pode ser atendido
+    // é a equipe, o sócio, a família — não uma questão de autorização positiva.
+    expect(decidirElegibilidade({ ...base, modo: "open", contatoInterno: true }).motivo).toBe(
+      "contato_interno",
+    );
+  });
+
+  it("como 'Assumir' (conversa_de_humano), o bloqueioPorAllowlist é false: não gasta job nem vira erro", () => {
+    const interno = decidirElegibilidade({ ...base, modo: "allowlist", contatoInterno: true });
+    const humano = decidirElegibilidade({ ...base, modo: "allowlist", assigneeKind: "user" });
+    expect(interno.bloqueioPorAllowlist).toBe(humano.bloqueioPorAllowlist);
+    expect(interno.bloqueioPorAllowlist).toBe(false);
+  });
+
+  it("ordem declarada: um veto mais duro (force_human) vence o contato interno", () => {
+    const d = decidirElegibilidade({ ...base, modo: "open", contatoInterno: true, forceHuman: true });
+    expect(d.motivo).toBe("force_human");
+  });
+
+  it("regressão: contato SEM a tag segue sendo atendido com o gate aberto", () => {
+    const d = decidirElegibilidade({ ...base, modo: "open", contatoInterno: false });
+    expect(d).toEqual({ permite: true, motivo: "gate_aberto", bloqueioPorAllowlist: false });
+  });
+
+  it("montarEstadoDeElegibilidade: a tag interna cruza com settings.crm.internal_contact_tags", () => {
+    const comTag = montarEstadoDeElegibilidade({
+      aiGate: "open",
+      forceHuman: false,
+      assigneeKind: null,
+      botSilencedUntil: null,
+      aiAuthorizedAt: null,
+      contactTags: [" Interno "],
+      orgSettings: { crm: { internal_contact_tags: ["interno"] } },
+      agora: AGORA,
+      ttlMs: DIA,
+    });
+    expect(comTag.contatoInterno).toBe(true);
+
+    const semLista = montarEstadoDeElegibilidade({
+      aiGate: "open",
+      forceHuman: false,
+      assigneeKind: null,
+      botSilencedUntil: null,
+      aiAuthorizedAt: null,
+      contactTags: ["interno"],
+      orgSettings: {},
+      agora: AGORA,
+      ttlMs: DIA,
+    });
+    expect(semLista.contatoInterno).toBe(false);
   });
 });

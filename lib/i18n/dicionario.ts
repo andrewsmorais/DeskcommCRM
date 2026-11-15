@@ -18793,6 +18793,29 @@ export const DICIONARIO: Traducoes = {
   // Frases da falha da mensagem
   "Envio automático bloqueado pelo modo de teste do canal.": { es: "Envío automático bloqueado por el modo de prueba del canal." },
   "Envio automático bloqueado: a organização está suspensa.": { es: "Envío automático bloqueado: la organización está suspendida." },
+  // Agente: não atender em feriado nacional
+  "Não atender em feriado nacional": { es: "No atender en feriado nacional" },
+  "Ligado, feriado nacional (Natal, Tiradentes, Finados…) conta como dia fechado: o agente responde no próximo dia útil. Desligado, o feriado é um dia comum.": { es: "Activado, el feriado nacional (Navidad, Tiradentes, Difuntos…) cuenta como día cerrado: el agente responde el próximo día hábil. Desactivado, el feriado es un día común." },
+  // Contato interno (equipe, família…)
+  "Etiquetas de contato interno": { es: "Etiquetas de contacto interno" },
+  "Contato marcado com uma destas etiquetas não vira card no funil e não recebe resposta da IA — equipe, sócio, família, fornecedor. A conversa continua normal na Inbox, inclusive para envio manual. Uma etiqueta por linha.": {
+    es: "Contacto marcado con una de estas etiquetas no se convierte en tarjeta en el embudo y no recibe respuesta de la IA — equipo, socio, familia, proveedor. La conversación sigue normal en la Bandeja de entrada, incluso para el envío manual. Una etiqueta por línea.",
+  },
+  "Deixe em branco para nenhum contato ser interno — o comportamento de antes.": {
+    es: "Déjalo en blanco para que ningún contacto sea interno — el comportamiento de antes.",
+  },
+  // Testar o agente como conversa
+  "Conversa de teste": { es: "Conversación de prueba" },
+  "Recomeçar conversa": { es: "Reiniciar conversación" },
+  "Próxima mensagem do cliente": { es: "Próximo mensaje del cliente" },
+  "O histórico da conversa passou do limite: até 30 mensagens e 20.000 caracteres. Recomece a conversa para seguir.": { es: "El historial de la conversación superó el límite: hasta 30 mensajes y 20.000 caracteres. Reinicia la conversación para seguir." },
+  // Espera do follow-up só em horário comercial
+  "Só terminar a espera em horário comercial": { es: "Terminar la espera solo en horario comercial" },
+  "Se a espera vencer fora deste horário, o fluxo continua esperando até a próxima abertura. Vale o fuso da organização.": {
+    es: "Si la espera vence fuera de este horario, el flujo sigue esperando hasta la próxima apertura. Vale la zona horaria de la organización.",
+  },
+  "só em horário comercial": { es: "solo en horario comercial" },
+  "Quem espera resposta, quem está em atendimento e quem foi atendido hoje, por número.": { es: "Quién espera respuesta, quién está en atención y quién fue atendido hoy, por número." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

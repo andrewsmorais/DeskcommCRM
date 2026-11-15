@@ -4,6 +4,7 @@
  * messages.media_derived_text. Camada UNIVERSAL da Onda 3 — o texto alimenta
  * qualquer modelo de chat. Retry/backoff delegados ao drain (padrão do repo).
  */
+import { avisarPedidoDeParaEmAudio } from "@/workers/media-derive-worker.pedido-de-parar";
 import { generateText } from "ai";
 import type pg from "pg";
 
@@ -51,7 +52,14 @@ interface MessageRow {
   media_mime: string | null;
   media_storage_path: string | null;
   media_derived_status: string | null;
+  conversation_id: string | null;
+  /** Só a mensagem ENTRADA do cliente vira pedido de parar. */
+  direction: string | null;
+  /** Áudio do atendente não é pedido: `user` e `external_device` são gente nossa. */
+  sent_via: string | null;
 }
+
+const ENVIADO_POR_PESSOA: ReadonlySet<string> = new Set(["user", "external_device"]);
 
 export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> {
   const consumer_key = MEDIA_DERIVE_CONSUMER_KEY;
@@ -61,7 +69,7 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("messages")
-    .select("id, organization_id, type, media_mime, media_storage_path, media_derived_status")
+    .select("id, organization_id, type, media_mime, media_storage_path, media_derived_status, conversation_id, direction, sent_via")
     .eq("id", messageId)
     .eq("organization_id", row.organization_id)
     .maybeSingle();
@@ -268,6 +276,22 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
     await admin.from("messages")
       .update({ media_derived_text: text, media_derived_status: "ready" })
       .eq("id", msg.id).eq("organization_id", msg.organization_id);
+    // Pedido de parar DITO no áudio: a ingestão leu um corpo vazio. Só áudio,
+    // só entrada, nunca áudio do atendente; e só AVISA na Central — quem
+    // bloqueia é a pessoa (ver `./media-derive-worker.pedido-de-parar.ts`).
+    if (
+      msg.type === "audio" &&
+      msg.direction === "inbound" &&
+      msg.conversation_id &&
+      !ENVIADO_POR_PESSOA.has(msg.sent_via ?? "") &&
+      text.trim() !== ""
+    ) {
+      await avisarPedidoDeParaEmAudio(admin, {
+        organizationId: msg.organization_id,
+        conversationId: msg.conversation_id,
+        transcricao: text,
+      });
+    }
     return { consumer_key, status: "ok" };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

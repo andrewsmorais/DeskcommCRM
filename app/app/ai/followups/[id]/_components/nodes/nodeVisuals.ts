@@ -211,7 +211,9 @@ export function describeNodeConfig(
     case "wait": {
       const c = config as ConfigOf<"wait">;
       return c.mode === "fixed"
-        ? minutos(c.duration_ms)
+        ? c.ate_o_horario
+          ? `${minutos(c.duration_ms)} · ${t("só em horário comercial")}`
+          : minutos(c.duration_ms)
         : `${Math.round(c.min_ms / 60_000)}–${minutos(c.max_ms)} ${t("(adaptativo)")}`;
     }
     case "condition": {

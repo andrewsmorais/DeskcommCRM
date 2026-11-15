@@ -136,6 +136,11 @@ export interface AdminClient {
    * plano. Ausente (dublês de teste antigos) = a régua de sempre.
    */
   gatilhoDoFluxo?(enrollment: EnrollmentRow): Promise<string | null>;
+  /**
+   * Fuso da organização (`organizations.timezone`), lido só quando o grafo tem
+   * espera com horário. Ausente (dublês antigos) = padrão do produto.
+   */
+  loadFusoDaOrganizacao?(orgId: string): Promise<string | null>;
   loadLeadFacts(orgId: string, contactId: string): Promise<{
     lead_stage: string | null;
     tags: string[];
@@ -723,7 +728,17 @@ async function processEnrollment(
   }
 
   const leadRow = await db.loadLeadFacts(enrollment.organization_id, enrollment.contact_id);
+  // A espera com horário (`ate_o_horario`) pergunta pelo relógio da organização:
+  // "9h às 18h" sem fuso seria em UTC, e o toque sairia cedo demais.
+  const temEsperaComHorario = graph.nodes.some(
+    (n) => n.type === "wait" && n.config.mode === "fixed" && n.config.ate_o_horario !== undefined,
+  );
+  const fusoDaOrg =
+    temEsperaComHorario && db.loadFusoDaOrganizacao
+      ? await db.loadFusoDaOrganizacao(enrollment.organization_id)
+      : null;
   const lead: LeadFacts = {
+    fuso: fusoDaOrg,
     lead_stage: leadRow.lead_stage,
     tags: leadRow.tags,
     steps_taken: enrollment.steps_taken,
@@ -958,6 +973,10 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       if (error) throw new Error(error.message);
       if (!data) return null;
       return flowGraphSchema.parse(data.graph);
+    },
+    async loadFusoDaOrganizacao(orgId) {
+      const { data } = await admin.from("organizations").select("timezone").eq("id", orgId).maybeSingle();
+      return (data as { timezone?: string | null } | null)?.timezone ?? null;
     },
     async loadLeadFacts(orgId, contactId) {
       const [{ data: lead, error: leadErr }, { data: contact, error: contactErr }] = await Promise.all([

@@ -152,7 +152,12 @@ import { matchesHandoffKeyword, type PublishedAgentConfig } from './agent-config
 import { garantirPerguntaDoRoteiro, prepararRoteiroDoTurno } from './roteiro-no-turno';
 import { validarRespostaDoFluxo } from './flow-validate';
 import { moduloLigadoComMemo } from '@/lib/instalacao/modulos';
-import { msAteAJanelaAbrir } from './janela-de-atendimento';
+import { ferramentaDePassagemEntreAgentes } from './transferir-agente';
+import {
+  ehFeriadoNacionalNoFuso,
+  msAteAJanelaAbrir,
+  msAteAJanelaAbrirPulandoFeriado,
+} from './janela-de-atendimento';
 import { janelaDeEnvioAberta, proximaAberturaDaJanela } from '../pacing/engine';
 import { loadChannelKnobs } from '../pacing/store';
 import { avisarJanelaFechada, resolverAvisoDeJanela } from '../pacing/aviso-de-janela';
@@ -2161,7 +2166,16 @@ async function executarTurnoDoAgente(
   // attempts (`rescheduleJob`) — quem escreveu 22h é atendido às 8h. O throw é
   // o contrato de `JobSettledError`: o run já dispôs do job, main.ts no-opa.
   if (!preview && liveJob().kind === 'inbound_turn' && agentConfig?.janelaDeAtendimento != null) {
-    const esperaMs = msAteAJanelaAbrir(agentConfig.janelaDeAtendimento, clock());
+    const janela = agentConfig.janelaDeAtendimento;
+    // "Não atender em feriado nacional" (vindo do produto original): DESLIGADA
+    // de fábrica. Ligada, o feriado conta como dia fechado e o turno espera a
+    // próxima abertura que não é feriado.
+    const esperaMs =
+      agentConfig.naoAtenderEmFeriadoNacional === true
+        ? msAteAJanelaAbrirPulandoFeriado(janela, clock(), (instante) =>
+            ehFeriadoNacionalNoFuso(instante, janela.timezone),
+          )
+        : msAteAJanelaAbrir(janela, clock());
     if (esperaMs !== null) {
       await rescheduleJob(pool, liveJob().id, ctx.workerId, {
         acquiredAt: claimOfJob(liveJob())?.acquired_at,
@@ -3789,6 +3803,26 @@ async function executarTurnoDoAgente(
         }
       },
     });
+  }
+
+  // `transfer_to_agent` (vindo do produto original): o agente em turno passa a
+  // conversa a outro agente de IA da organização (motivo `pedido_do_agente`),
+  // até o fim do atendimento. Falha ao montar = turno sem a ferramenta.
+  if (!preview && agentConfig !== null) {
+    try {
+      const passagem = await ferramentaDePassagemEntreAgentes(pool, {
+        organizationId: tenantId,
+        conversationId: input.conversationId,
+        agenteAtualId: agentConfig.agentId,
+        jobId: liveJob().id,
+        noteRunError,
+      });
+      if (passagem !== null) rawTools.transfer_to_agent = passagem;
+    } catch (err) {
+      runLog.warn('ferramenta de passagem entre agentes não montada — turno segue sem ela', {
+        error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+      });
+    }
   }
 
   // Fase 2B: a tela pode DESLIGAR a tool de handoff do modelo (a detecção

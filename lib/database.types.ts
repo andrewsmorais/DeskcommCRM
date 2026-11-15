@@ -2696,6 +2696,10 @@ export type Database = {
       ai_router_decisions: {
         Row: {
           agent_id: string | null
+          agente_anterior_id: string | null
+          motivo: string | null
+          origem: string
+          solicitado_por: string | null
           confidence: number | null
           conversation_id: string | null
           created_at: string
@@ -2708,6 +2712,10 @@ export type Database = {
         }
         Insert: {
           agent_id?: string | null
+          agente_anterior_id?: string | null
+          motivo?: string | null
+          origem?: string
+          solicitado_por?: string | null
           confidence?: number | null
           conversation_id?: string | null
           created_at?: string
@@ -2720,6 +2728,10 @@ export type Database = {
         }
         Update: {
           agent_id?: string | null
+          agente_anterior_id?: string | null
+          motivo?: string | null
+          origem?: string
+          solicitado_por?: string | null
           confidence?: number | null
           conversation_id?: string | null
           created_at?: string

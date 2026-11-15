@@ -19,6 +19,8 @@ export interface BusinessHoursValue {
   start: string;
   end: string;
   weekdays: number[];
+  /** "Não atender em feriado nacional". Desligada de fábrica (ausente = `false`). */
+  fechado_em_feriado_nacional?: boolean;
 }
 
 export interface TriggerValue {
@@ -241,6 +243,22 @@ export function TriggerEditor({ value, onChange, disabled, organizationTimezone 
                   );
                 })}
               </div>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={bh.fechado_em_feriado_nacional === true}
+                  onCheckedChange={(v) => patchBh({ fechado_em_feriado_nacional: v })}
+                  disabled={disabled}
+                  id="bh_fechado_em_feriado_nacional"
+                />
+                <Label htmlFor="bh_fechado_em_feriado_nacional">{t("Não atender em feriado nacional")}</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Ligado, feriado nacional (Natal, Tiradentes, Finados…) conta como dia fechado: o agente responde no próximo dia útil. Desligado, o feriado é um dia comum.",
+                )}
+              </p>
             </div>
           </div>
         ) : null}
