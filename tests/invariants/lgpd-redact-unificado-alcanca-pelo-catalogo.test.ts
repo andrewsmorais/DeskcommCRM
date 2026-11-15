@@ -253,6 +253,14 @@ const DECISOES: Record<string, Decisao> = {
     razao: "0174: captured_name/captured_email/captured_phone (o payload cru de captação) zerados por gatilho — a entrada na dívida do invariante irmão é o aviso de que este instrumento não lia gatilho.",
   },
   // ── manter: a linha e o conteúdo ficam, por decisão ───────────────────────
+  automation_rule_contact_claims: {
+    decidida: "manter",
+    razao: "Reserva de 'uma vez por contato' (0524): só ids (organização, regra, contato, evento) e a data. Nenhum texto da pessoa; e manter a reserva é o que impede a automação de rodar de novo para o contato anonimizado.",
+  },
+  automation_rule_runs: {
+    decidida: "manter",
+    razao: "Execução da automação: status e resultado de cada ação (vocabulário e ids), mais o contact_id (0524) que só diz de QUEM foi a execução. O corpo de mensagem mora em messages, que a cascata redige.",
+  },
   ai_agent_runs: {
     decidida: "manter",
     razao: "Resultado da execução do agente: status, código de erro e ids das mensagens trocadas. Nenhum campo guarda nome, telefone ou corpo de mensagem — o texto da pessoa mora em messages/conversations, que a cascata redige.",

@@ -6,6 +6,7 @@
  * (Este cabeçalho já afirmou "exatamente os 5 eventos" — número que envelheceu
  * na primeira vez que alguém acrescentou um. Agora não há número a envelhecer.)
  */
+import { horasDoIntervalo } from "@/lib/automation/limite-por-contato";
 import { z } from "zod";
 
 import {
@@ -197,7 +198,37 @@ export const createAutomationRuleSchema = z
     trigger_config: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine(exigirConfigDoGatilhoDeData)
-  .superRefine(exigirConfigDosGatilhosDeTempo);
+  .superRefine(exigirConfigDosGatilhosDeTempo)
+  .superRefine(recusarLimitePorContatoTorto);
+
+/**
+ * Limite por contato (vindo do produto original). O motor lê
+ * `uma_vez_por_contato` com `=== true` e `repetir_apos_horas` como inteiro de
+ * 1 a 720: um `"sim"` ou `"24"` gravado por outra porta seria DESLIGADO em
+ * silêncio, e a tela mentiria. Recusar na porta é o desfecho honesto. Ausente
+ * ou `null` passa: é o comportamento de antes.
+ */
+function recusarLimitePorContatoTorto(
+  regra: { trigger_config?: Record<string, unknown> },
+  ctx: z.RefinementCtx,
+): void {
+  const umaVez = regra.trigger_config?.uma_vez_por_contato;
+  if (!(umaVez === undefined || umaVez === null || typeof umaVez === "boolean")) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["trigger_config", "uma_vez_por_contato"],
+      message: "A opção “uma vez por contato” só aceita ligado ou desligado.",
+    });
+  }
+  const horas = regra.trigger_config?.repetir_apos_horas;
+  if (horas !== undefined && horas !== null && horasDoIntervalo(horas) === null) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["trigger_config", "repetir_apos_horas"],
+      message: "O intervalo por contato é um número inteiro de horas, de 1 a 720.",
+    });
+  }
+}
 
 /**
  * O gatilho de data sem a configuração dele é uma regra que NUNCA dispara — a
@@ -275,7 +306,8 @@ export const updateAutomationRuleSchema = z
     // configuração, produz o mesmo calado da criação (#1540): regra salva que
     // a varredura não sabe avaliar.
     exigirConfigDosGatilhosDeTempo(patch as { trigger_event: string; trigger_config?: Record<string, unknown> }, ctx);
-  });
+  })
+  .superRefine(recusarLimitePorContatoTorto);
 
 export type CreateWebhookSourceInput = z.infer<typeof createWebhookSourceSchema>;
 export type UpdateWebhookSourceInput = z.infer<typeof updateWebhookSourceSchema>;

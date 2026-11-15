@@ -3064,9 +3064,37 @@ export type Database = {
           },
         ]
       }
+      automation_rule_contact_claims: {
+        Row: {
+          contact_id: string
+          created_at: string
+          event_id: string | null
+          id: string
+          organization_id: string
+          rule_id: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          organization_id: string
+          rule_id: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          organization_id?: string
+          rule_id?: string
+        }
+        Relationships: []
+      }
       automation_rule_runs: {
         Row: {
           actions_result: Json
+          contact_id: string | null
           created_at: string
           error: string | null
           event_id: string | null
@@ -3077,6 +3105,7 @@ export type Database = {
         }
         Insert: {
           actions_result?: Json
+          contact_id?: string | null
           created_at?: string
           error?: string | null
           event_id?: string | null
@@ -3087,6 +3116,7 @@ export type Database = {
         }
         Update: {
           actions_result?: Json
+          contact_id?: string | null
           created_at?: string
           error?: string | null
           event_id?: string | null

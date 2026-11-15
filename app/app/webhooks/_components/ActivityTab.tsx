@@ -74,6 +74,12 @@ function statusBadgeLabel(
  * que nascem no próprio executor.
  */
 const MOTIVO_DA_PARADA: Record<string, string> = {
+  /* Limite por contato — a decisão do MOTOR (lib/automation/engine.ts), no run
+     que registra que a regra não rodou para este contato. */
+  uma_vez_por_contato:
+    "Esta automação está configurada para rodar no máximo uma vez por contato, e este contato já passou por ela. Nada foi enviado agora e nada será.",
+  intervalo_por_contato:
+    "Esta automação não repete para o mesmo contato dentro do intervalo configurado, e este contato passou por ela há menos tempo que isso. Nada foi enviado agora; ela volta a valer quando a janela terminar.",
   no_contact: "Esse lead entrou sem contato vinculado, então não havia para quem escrever.",
   contact_blocked: "O contato pediu para não receber mensagens (opt-out).",
   no_phone: "O contato não tem telefone cadastrado.",

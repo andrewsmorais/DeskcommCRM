@@ -44103,6 +44103,32 @@ alter table public.ai_router_decisions
 alter table public.ai_router_decisions
   add column if not exists solicitado_por uuid;
 
+-- ---- automação: limite por contato (migration 0524) ----
+
+alter table public.automation_rule_runs
+  add column if not exists contact_id uuid references public.contacts(id) on delete set null;
+
+create index if not exists idx_automation_rule_runs_org_regra_contato
+  on public.automation_rule_runs (organization_id, rule_id, contact_id, created_at)
+  where contact_id is not null;
+
+create table if not exists public.automation_rule_contact_claims (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  rule_id uuid not null references public.automation_rules(id) on delete cascade,
+  contact_id uuid not null references public.contacts(id) on delete cascade,
+  event_id uuid references public.event_log(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists uq_automation_rule_contact_claims_org_regra_contato
+  on public.automation_rule_contact_claims (organization_id, rule_id, contact_id);
+
+-- Só o motor (service role) escreve e lê: RLS ligada e nenhuma policy, e os
+-- papéis do PostgREST sem grant nenhum (o default ACL do Supabase daria tudo).
+alter table public.automation_rule_contact_claims enable row level security;
+revoke all on public.automation_rule_contact_claims from anon, authenticated;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria

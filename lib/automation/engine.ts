@@ -24,6 +24,7 @@ import { regraDoEvento } from "@/lib/automation/gatilho-de-data-do-funil";
 import { ENTIDADE_ESPERADA_POR_GATILHO } from "@/lib/schemas/webhooks";
 import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
 import { logger } from "@/lib/logger";
+import { horasDoIntervaloNaConfig } from "@/lib/automation/limite-por-contato";
 
 export const AUTOMATION_CONSUMER_KEY = "automation-rules";
 
@@ -32,6 +33,7 @@ const EXPECTED_ENTITY_KIND: Record<string, string> = ENTIDADE_ESPERADA_POR_GATIL
 interface RuleRow {
   id: string;
   name: string;
+  trigger_config?: Record<string, unknown> | null;
   conditions: RuleCondition[];
   actions: Array<{ type: string; config?: Record<string, unknown> }>;
 }
@@ -155,6 +157,189 @@ async function registrarAdiamento(
   }
 }
 
+// ═══ LIMITE POR CONTATO (vindo do produto original) ═══
+//
+// Duas respostas para "quando esta regra pode rodar de novo para a MESMA
+// pessoa": `trigger_config.uma_vez_por_contato` (nunca mais) e
+// `trigger_config.repetir_apos_horas` (só depois de N horas). Ausentes = a regra
+// roda em todo evento que casa, como sempre. Decidido pelo ESTADO PERSISTIDO em
+// `automation_rule_runs.contact_id` (migration 0524), que sobrevive a reinício
+// do worker. Toda leitura que falha é FAIL-OPEN: calar por erro de leitura
+// esconderia automação legítima sem rastro.
+
+type MotivoDoBloqueio = "uma_vez_por_contato" | "intervalo_por_contato";
+
+export function regraRodaUmaVezPorContato(rule: Pick<RuleRow, "trigger_config">): boolean {
+  return rule.trigger_config?.uma_vez_por_contato === true;
+}
+
+export function intervaloPorContatoHoras(rule: Pick<RuleRow, "trigger_config">): number | null {
+  return horasDoIntervaloNaConfig(rule.trigger_config);
+}
+
+/** O contato do evento: o do payload, a conversa dele, ou o hidratado no contexto. */
+async function contatoDoEventoOuContexto(
+  admin: SupabaseClient,
+  row: EventRow,
+  context: Record<string, unknown>,
+): Promise<string | null> {
+  const direto = typeof row.payload.contact_id === "string" ? row.payload.contact_id : null;
+  if (direto) return direto;
+  const doContexto = (context.contact as { id?: unknown } | undefined)?.id;
+  if (typeof doContexto === "string") return doContexto;
+  const conversa = typeof row.payload.conversation_id === "string" ? row.payload.conversation_id : null;
+  if (!conversa) return null;
+  const { data } = await admin
+    .from("conversations")
+    .select("contact_id")
+    .eq("id", conversa)
+    .eq("organization_id", row.organization_id)
+    .maybeSingle();
+  return (data as { contact_id?: string } | null)?.contact_id ?? null;
+}
+
+/** Esta regra já tem execução registrada para este contato? (`limit(1)`, nunca `maybeSingle`). */
+async function regraJaRodouParaOContato(
+  admin: SupabaseClient,
+  organizationId: string,
+  ruleId: string,
+  contactId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("automation_rule_runs")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("rule_id", ruleId)
+    .eq("contact_id", contactId)
+    .limit(1);
+  if (error) {
+    logger.warn("[automation.engine] limite por contato não conferido — a regra segue (fail-open)", {
+      rule_id: ruleId,
+      organization_id: organizationId,
+      error: error.message,
+    });
+    return false;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * A regra RODOU (sucesso ou parcial) para este contato nas últimas N horas? Só
+ * execução que saiu move a janela: a linha do próprio bloqueio rolando a janela
+ * viraria "uma vez para sempre".
+ */
+async function regraRodouNasUltimasHoras(
+  admin: SupabaseClient,
+  organizationId: string,
+  ruleId: string,
+  contactId: string,
+  horas: number,
+): Promise<boolean> {
+  const desde = new Date(Date.now() - horas * 60 * 60 * 1000).toISOString();
+  const { data, error } = await admin
+    .from("automation_rule_runs")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("rule_id", ruleId)
+    .eq("contact_id", contactId)
+    .in("status", ["success", "partial"])
+    .gte("created_at", desde)
+    .limit(1);
+  if (error) {
+    logger.warn("[automation.engine] intervalo por contato não conferido — a regra segue (fail-open)", {
+      rule_id: ruleId,
+      organization_id: organizationId,
+      error: error.message,
+    });
+    return false;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * Reserva a chave (organização, regra, contato) ANTES de executar "uma vez por
+ * contato": dois eventos do mesmo contato processados ao mesmo tempo (worker,
+ * cron, dreno) passariam os dois pela leitura acima. Quem insere executa; quem
+ * recebe vazio (conflito) não executa. Erro = fail-open.
+ */
+async function reservarExecucaoPorContato(
+  admin: SupabaseClient,
+  row: EventRow,
+  rule: RuleRow,
+  contactId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("automation_rule_contact_claims")
+    .upsert(
+      { organization_id: row.organization_id, rule_id: rule.id, contact_id: contactId, event_id: row.id },
+      { onConflict: "organization_id,rule_id,contact_id", ignoreDuplicates: true },
+    )
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    logger.warn("[automation.engine] reserva por contato falhou — a regra segue (fail-open)", {
+      rule_id: rule.id,
+      organization_id: row.organization_id,
+      error: error.message,
+    });
+    return true;
+  }
+  return data !== null;
+}
+
+/**
+ * A DECISÃO DE NÃO RODAR, gravada com a razão: sem esta linha "não apareceu
+ * nada na Atividade" e "a regra não rodou" voltariam a ser a mesma tela. Não
+ * mexe em `run_count`/`last_run_at` — a regra não rodou.
+ */
+async function registrarBloqueioPorLimite(
+  admin: SupabaseClient,
+  row: EventRow,
+  rule: RuleRow,
+  contactId: string,
+  motivo: MotivoDoBloqueio,
+): Promise<void> {
+  const results: ActionResultDetail[] = (rule.actions ?? []).map((action) => ({
+    type: action.type,
+    status: "skipped" as const,
+    error: motivo,
+  }));
+  const { error } = await admin.from("automation_rule_runs").insert({
+    organization_id: row.organization_id,
+    rule_id: rule.id,
+    event_id: row.id,
+    contact_id: contactId,
+    status: statusDoRun(results),
+    actions_result: results,
+  });
+  if (error) {
+    logger.error("[automation.engine] bloqueio por contato não registrado", {
+      rule_id: rule.id,
+      organization_id: row.organization_id,
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * O estado do run a partir do desfecho de cada ação. `skipped` conta junto de
+ * `failed` (as duas significam "não saiu, e a fila não resolve sozinha"), e
+ * falha vence adiamento. Fonte única: o run normal e o bloqueio por contato.
+ */
+export function statusDoRun(
+  results: readonly ActionResultDetail[],
+): "success" | "partial" | "failed" | "adiado" {
+  const naoEnviadas = results.filter((r) => r.status === "failed" || r.status === "skipped").length;
+  const adiados = results.filter((r) => r.status === "postponed").length;
+  return naoEnviadas > 0
+    ? naoEnviadas === results.length
+      ? "failed"
+      : "partial"
+    : adiados > 0
+      ? "adiado"
+      : "success";
+}
+
 export async function runAutomationForEvent(
   admin: SupabaseClient,
   row: EventRow,
@@ -179,7 +364,7 @@ export async function runAutomationForEvent(
 
   const { data: rules, error } = await admin
     .from("automation_rules")
-    .select("id, name, conditions, actions")
+    .select("id, name, trigger_config, conditions, actions")
     .eq("organization_id", row.organization_id)
     .eq("trigger_event", row.event_type)
     .eq("is_active", true)
@@ -236,9 +421,55 @@ export async function runAutomationForEvent(
   }
 
   const context = await buildContext(admin, row);
-  const applicable = matched.filter((r) => evaluateConditions(r.conditions ?? [], context));
+
+  // Limite por contato: a pergunta ao banco é feita UMA vez por regra, antes do
+  // filtro (que é síncrono). Sem contato resolvível a regra segue (fail-open).
+  const temAlgumLimite = matched.some(
+    (rule) => regraRodaUmaVezPorContato(rule) || intervaloPorContatoHoras(rule) !== null,
+  );
+  const contatoIdDoEvento = temAlgumLimite ? await contatoDoEventoOuContexto(admin, row, context) : null;
+  const motivoDoBloqueio = new Map<string, MotivoDoBloqueio>();
+  if (contatoIdDoEvento) {
+    for (const rule of matched) {
+      // Com as duas chaves, o intervalo vence (a tela não deixa configurar as duas).
+      const horas = intervaloPorContatoHoras(rule);
+      if (horas !== null) {
+        if (await regraRodouNasUltimasHoras(admin, row.organization_id, rule.id, contatoIdDoEvento, horas)) {
+          motivoDoBloqueio.set(rule.id, "intervalo_por_contato");
+        }
+        continue;
+      }
+      if (!regraRodaUmaVezPorContato(rule)) continue;
+      if (await regraJaRodouParaOContato(admin, row.organization_id, rule.id, contatoIdDoEvento)) {
+        motivoDoBloqueio.set(rule.id, "uma_vez_por_contato");
+      }
+    }
+  }
+
+  const barradasPeloLimite: Array<{ rule: RuleRow; motivo: MotivoDoBloqueio }> = [];
+  const applicable = matched.filter((rule) => {
+    if (!evaluateConditions(rule.conditions ?? [], context)) return false;
+    const motivo = motivoDoBloqueio.get(rule.id);
+    if (motivo) {
+      barradasPeloLimite.push({ rule, motivo });
+      return false;
+    }
+    return true;
+  });
+  for (const { rule, motivo } of barradasPeloLimite) {
+    if (contatoIdDoEvento) await registrarBloqueioPorLimite(admin, row, rule, contatoIdDoEvento, motivo);
+  }
   if (!applicable.length) {
-    return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "ok", detail: "no_match" };
+    const motivos = barradasPeloLimite.map((b) => b.motivo);
+    return {
+      consumer_key: AUTOMATION_CONSUMER_KEY,
+      status: "ok",
+      detail: !motivos.length
+        ? "no_match"
+        : motivos.includes("intervalo_por_contato")
+          ? "intervalo_por_contato"
+          : "uma_vez_por_contato",
+    };
   }
 
   // Pré-checagem de postpone (throttle etc.): all-or-nothing ANTES de executar
@@ -271,7 +502,25 @@ export async function runAutomationForEvent(
     }
   }
 
-  for (const rule of applicable) {
+  // A RESERVA de "uma vez por contato" vem DEPOIS do adiamento (reservar e
+  // adiar consumiria a chave sem rodar) e ANTES de executar: é o árbitro da
+  // corrida entre dois eventos do mesmo contato. O intervalo não reserva.
+  const barradasPelaReserva: RuleRow[] = [];
+  if (contatoIdDoEvento) {
+    for (const rule of applicable) {
+      if (intervaloPorContatoHoras(rule) !== null || !regraRodaUmaVezPorContato(rule)) continue;
+      if (!(await reservarExecucaoPorContato(admin, row, rule, contatoIdDoEvento))) {
+        barradasPelaReserva.push(rule);
+        await registrarBloqueioPorLimite(admin, row, rule, contatoIdDoEvento, "uma_vez_por_contato");
+      }
+    }
+  }
+  const paraExecutar = applicable.filter((rule) => !barradasPelaReserva.includes(rule));
+  if (!paraExecutar.length) {
+    return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "ok", detail: "uma_vez_por_contato" };
+  }
+
+  for (const rule of paraExecutar) {
     const results: ActionResultDetail[] = [];
     // O índice é o da lista INTEIRA — a posição do resultado em
     // `actions_result` e parte do id da entrega do webhook (#1529).
@@ -341,24 +590,17 @@ export async function runAutomationForEvent(
     // A ordem importa: falha (+ skip) vence adiamento. Uma regra em que uma
     // ação falhou/pulou e outra ficou esperando é `partial` — quem lê precisa
     // saber que algo quebrou, não que está tudo a caminho.
-    const naoEnviadas = results.filter(
-      (r) => r.status === "failed" || r.status === "skipped",
-    ).length;
-    const adiados = results.filter((r) => r.status === "postponed").length;
-    const status =
-      naoEnviadas > 0
-        ? naoEnviadas === results.length
-          ? "failed"
-          : "partial"
-        : adiados > 0
-          ? "adiado"
-          : "success";
+    // (A régua mora em `statusDoRun`: o bloqueio por contato também precisa dela.)
+    const status = statusDoRun(results);
     const { data: runRow, error: runErr } = await admin
       .from("automation_rule_runs")
       .insert({
         organization_id: row.organization_id,
         rule_id: rule.id,
         event_id: row.id,
+        // O contato da execução: é esta linha que barra a próxima passagem do
+        // MESMO contato. Nulo quando não há limite ou o evento não o resolve.
+        contact_id: contatoIdDoEvento,
         status,
         actions_result: results,
       })

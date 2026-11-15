@@ -50,6 +50,8 @@ export async function decidirElegibilidadeDaConversa(
        on ct.id = cv.contact_id and ct.organization_id = cv.organization_id
      join channel_sessions cs
        on cs.id = cv.channel_session_id and cs.organization_id = cv.organization_id
+     join organizations o
+       on o.id = cv.organization_id
      where cv.organization_id = $1 and cv.id = $2`,
     [input.organizationId, input.conversationId],
   );

@@ -37,6 +37,11 @@ import {
 } from "@/lib/automation/gatilhos-de-tempo";
 import { camposDoFunil } from "@/lib/leads/campos-do-funil";
 import {
+  horasDoIntervaloDaTela,
+  horasDoIntervaloNaConfig,
+  INTERVALO_POR_CONTATO_MAX_HORAS,
+} from "@/lib/automation/limite-por-contato";
+import {
   useCreateAutomationRule,
   useUpdateAutomationRule,
   type AutomationRuleRow,
@@ -224,6 +229,11 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
     proteger_pela_agenda: false,
   });
 
+  // Limite por contato (vindo do produto original): "uma vez" OU "só depois de
+  // N horas" — a tela não deixa as duas ao mesmo tempo.
+  const [umaVezPorContato, setUmaVezPorContato] = React.useState(false);
+  const [repetirAposHoras, setRepetirAposHoras] = React.useState("");
+
   const create = useCreateAutomationRule();
   const update = useUpdateAutomationRule();
   const saving = create.isPending || update.isPending;
@@ -264,6 +274,9 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
       direcao: silencioGuardado ? silencioGuardado.direcao : "da_equipe",
       proteger_pela_agenda: tempoGuardado ? tempoGuardado.proteger_pela_agenda : false,
     });
+    setUmaVezPorContato(rule?.trigger_config?.uma_vez_por_contato === true);
+    const horasGuardadas = horasDoIntervaloNaConfig(rule?.trigger_config);
+    setRepetirAposHoras(horasGuardadas === null ? "" : String(horasGuardadas));
   }, [open, rule]);
 
   const curatedFields = triggerEvent ? CURATED_FIELDS[triggerEvent] : [];
@@ -309,6 +322,19 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
   };
 
   const onSubmit = async () => {
+    // O que este formulário não edita no `trigger_config`, ele CONSERVA; as duas
+    // chaves do limite são reescritas sempre (desligar tem de chegar ao banco).
+    const { uma_vez_por_contato: _u, repetir_apos_horas: _r, ...configGuardada } =
+      (rule?.trigger_config ?? {}) as Record<string, unknown>;
+    const horas = horasDoIntervaloDaTela(repetirAposHoras, umaVezPorContato);
+    if (!umaVezPorContato && repetirAposHoras.trim() !== "" && horas === null) {
+      toast.error(t("O intervalo por contato é um número inteiro de horas, de 1 a 720."));
+      return;
+    }
+    const limite = {
+      ...(umaVezPorContato ? { uma_vez_por_contato: true } : {}),
+      ...(horas !== null ? { repetir_apos_horas: horas } : {}),
+    };
     const payload = {
       name,
       trigger_event: triggerEvent,
@@ -333,8 +359,9 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
               ...(triggerEvent === GATILHO_SILENCIO ? { direcao: configDoTempo.direcao } : {}),
               proteger_pela_agenda: configDoTempo.proteger_pela_agenda,
             }
-          : undefined,
+          : configGuardada,
     };
+    payload.trigger_config = { ...payload.trigger_config, ...limite };
     const parsed = createAutomationRuleSchema.safeParse(payload);
     if (!parsed.success) {
       toast.error(t(parsed.error.issues[0]?.message ?? "Revise os campos da automação."));
@@ -560,6 +587,37 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
                 </label>
               </div>
             ) : null}
+          </section>
+
+          <section className="space-y-2 rounded-sm border border-border p-3" data-testid="limite-por-contato">
+            <p className="text-sm font-medium text-text">{t("Para o mesmo contato")}</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={umaVezPorContato}
+                onChange={(e) => setUmaVezPorContato(e.target.checked)}
+              />
+              {t("Rodar no máximo uma vez por contato")}
+            </label>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Label htmlFor="repetir-apos-horas" className={umaVezPorContato ? "opacity-50" : ""}>
+                {t("Não repetir para o mesmo contato por")}
+              </Label>
+              <Input
+                id="repetir-apos-horas"
+                inputMode="numeric"
+                className="w-20"
+                placeholder="—"
+                value={umaVezPorContato ? "" : repetirAposHoras}
+                disabled={umaVezPorContato}
+                onChange={(e) => setRepetirAposHoras(e.target.value)}
+              />
+              <span className={umaVezPorContato ? "opacity-50" : ""}>{t("horas")}</span>
+            </div>
+            <p className="text-xs text-text-muted">
+              {t("Em branco, a automação roda toda vez que o gatilho acontecer. Máximo:")}{" "}
+              {INTERVALO_POR_CONTATO_MAX_HORAS} {t("horas")}.
+            </p>
           </section>
 
           <section className="space-y-3">

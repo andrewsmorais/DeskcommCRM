@@ -18816,6 +18816,15 @@ export const DICIONARIO: Traducoes = {
   },
   "só em horário comercial": { es: "solo en horario comercial" },
   "Quem espera resposta, quem está em atendimento e quem foi atendido hoje, por número.": { es: "Quién espera respuesta, quién está en atención y quién fue atendido hoy, por número." },
+  // Automação: limite por contato
+  "Para o mesmo contato": { es: "Para el mismo contacto" },
+  "Rodar no máximo uma vez por contato": { es: "Ejecutar como máximo una vez por contacto" },
+  "Não repetir para o mesmo contato por": { es: "No repetir para el mismo contacto durante" },
+  "Em branco, a automação roda toda vez que o gatilho acontecer. Máximo:": { es: "En blanco, la automatización se ejecuta cada vez que ocurre el disparador. Máximo:" },
+  "O intervalo por contato é um número inteiro de horas, de 1 a 720.": { es: "El intervalo por contacto es un número entero de horas, de 1 a 720." },
+  "A opção “uma vez por contato” só aceita ligado ou desligado.": { es: "La opción “una vez por contacto” solo acepta activado o desactivado." },
+  "Esta automação está configurada para rodar no máximo uma vez por contato, e este contato já passou por ela. Nada foi enviado agora e nada será.": { es: "Esta automatización está configurada para ejecutarse como máximo una vez por contacto, y este contacto ya pasó por ella. No se envió nada ahora ni se enviará." },
+  "Esta automação não repete para o mesmo contato dentro do intervalo configurado, e este contato passou por ela há menos tempo que isso. Nada foi enviado agora; ela volta a valer quando a janela terminar.": { es: "Esta automatización no se repite para el mismo contacto dentro del intervalo configurado, y este contacto pasó por ella hace menos tiempo. No se envió nada ahora; vuelve a valer cuando termine la ventana." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
