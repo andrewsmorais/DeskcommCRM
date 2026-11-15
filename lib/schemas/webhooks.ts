@@ -6,6 +6,7 @@
  * (Este cabeçalho já afirmou "exatamente os 5 eventos" — número que envelheceu
  * na primeira vez que alguém acrescentou um. Agora não há número a envelhecer.)
  */
+import { ESCOLHAS_NO_ENVIO } from "@/lib/agenda/escolha-no-envio";
 import { horasDoIntervalo } from "@/lib/automation/limite-por-contato";
 import { z } from "zod";
 
@@ -110,6 +111,8 @@ export const actionSchema = z.discriminatedUnion("type", [
        * segunda verdade. `nullish`: regra antiga (só texto) segue idêntica.
        */
       media_url: z.string().url().max(2000).nullish(),
+      /** "Quando o contato tiver horário marcado": `adiar` (padrão), `enviar` ou `nao_enviar`. */
+      quando_ha_compromisso: z.enum(ESCOLHAS_NO_ENVIO).optional(),
     }),
   }),
   z.object({ type: z.literal("add_tag"), config: z.object({ tags: z.array(z.string().min(1).max(60)).min(1).max(10) }) }),
@@ -126,6 +129,8 @@ export const actionSchema = z.discriminatedUnion("type", [
        * mais que isso está tentando pôr o prompt do agente aqui dentro.
        */
       instruction: z.string().min(1).max(1000),
+      /** Mesma escolha da irmã `send_whatsapp_message`. */
+      quando_ha_compromisso: z.enum(ESCOLHAS_NO_ENVIO).optional(),
     }),
   }),
   z.object({

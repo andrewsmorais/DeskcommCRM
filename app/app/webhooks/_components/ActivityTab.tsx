@@ -74,6 +74,8 @@ function statusBadgeLabel(
  * que nascem no próprio executor.
  */
 const MOTIVO_DA_PARADA: Record<string, string> = {
+  /* "Quando o contato tiver horário marcado" = Não enviar (lib/agenda/escolha-no-envio.ts). */
+  compromisso_na_agenda: "Contato com horário marcado: a automação não enviou, como a regra pede.",
   /* Limite por contato — a decisão do MOTOR (lib/automation/engine.ts), no run
      que registra que a regra não rodou para este contato. */
   uma_vez_por_contato:

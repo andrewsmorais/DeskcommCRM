@@ -6,6 +6,12 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { Input } from "@/components/ui/input";
+import {
+  CHAVE_DA_ESCOLHA,
+  ESCOLHA_PADRAO,
+  lerEscolhaNoEnvio,
+  type EscolhaNoEnvio,
+} from "@/lib/agenda/escolha-no-envio";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,7 +33,13 @@ export type ActionItem =
   | { type: "create_or_move_lead"; config: { pipeline_id: string; stage_id: string } }
   | {
       type: "send_whatsapp_message";
-      config: { channel_session_id: string; template: string; media_url?: string | null };
+      config: {
+        channel_session_id: string;
+        template: string;
+        media_url?: string | null;
+        /** O que o passo faz com quem tem horário marcado. Ausente = `adiar`. */
+        quando_ha_compromisso?: EscolhaNoEnvio;
+      };
     }
   | {
       type: "send_ai_message";
@@ -80,6 +92,99 @@ interface FormProps<T> {
   config: T;
   onChange: (config: T) => void;
 }
+
+/**
+ * AS TRÊS RESPOSTAS PARA "E SE O CONTATO TIVER HORÁRIO MARCADO?".
+ *
+ * A escolha mora no `config` do PASSO que envia, e não no `trigger_config`:
+ * é de lá que `lerEscolhaNoEnvio` a lê no disparo (`send-whatsapp.ts:24`,
+ * `send-ai-message.ts:64`), e gravar no gatilho daria uma tela que o motor não
+ * obedece. Cada passo tem a sua — a mesma regra pode adiar o lembrete de
+ * cobrança e mandar o pós-atendimento na hora.
+ *
+ * A ajuda de cada opção diz o EFEITO, não o nome do campo: quem lê esta gaveta
+ * é quem descobriu que os parabéns saíram duas semanas atrasados.
+ */
+const ESCOLHAS_DA_AGENDA: Array<{ valor: EscolhaNoEnvio; rotulo: string; ajuda: string }> = [
+  {
+    valor: "adiar",
+    rotulo: "Adiar e enviar depois do horário",
+    ajuda:
+      "A mensagem espera o atendimento terminar e sai logo depois. É o comportamento de sempre e o que continua valendo em quem nunca mexeu aqui.",
+  },
+  {
+    valor: "enviar",
+    rotulo: "Enviar mesmo assim",
+    ajuda:
+      "A mensagem sai na hora, mesmo com atendimento marcado. Serve para o pós-atendimento e o aniversário, que perdem o sentido se esperarem.",
+  },
+  {
+    valor: "nao_enviar",
+    rotulo: "Não enviar",
+    ajuda:
+      "A mensagem não sai e o pulo fica registrado na Atividade com o motivo “contato com horário marcado”, para a equipe saber que a automação passou.",
+  },
+];
+
+/**
+ * O config do passo com a escolha nova — preservando o resto.
+ *
+ * `...config` é o que impede a escolha de apagar o número, a mensagem e a
+ * mídia que a pessoa acabou de preencher. `adiar` é o padrão declarado da
+ * leitura tolerante, então voltar para ele REMOVE a chave: a regra de antes
+ * desta entrega não a tem, e um payload sem ela é byte a byte o de sempre.
+ */
+function configComEscolha<T extends object>(config: T, escolha: EscolhaNoEnvio): T {
+  const { [CHAVE_DA_ESCOLHA]: _anterior, ...resto } = config as Record<string, unknown>;
+  return (
+    escolha === ESCOLHA_PADRAO ? resto : { ...resto, [CHAVE_DA_ESCOLHA]: escolha }
+  ) as T;
+}
+
+function EscolhaQuandoHaCompromisso({
+  escolha,
+  onChange,
+}: {
+  /** O valor JÁ lido com `lerEscolhaNoEnvio` — quem chama não reimplementa a leitura. */
+  escolha: EscolhaNoEnvio;
+  onChange: (escolha: EscolhaNoEnvio) => void;
+}) {
+  const t = useT();
+  const grupo = React.useId();
+
+  return (
+    <div className="space-y-1">
+      <Label id={`${grupo}-rotulo`}>{t("Quando o contato tiver horário marcado")}</Label>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "Em qualquer das três continuam valendo o descadastro do contato, a janela de envio do número e o limite diário.",
+        )}
+      </p>
+      <div role="radiogroup" aria-labelledby={`${grupo}-rotulo`} className="space-y-1">
+        {ESCOLHAS_DA_AGENDA.map((opcao) => (
+          <label
+            key={opcao.valor}
+            className="flex cursor-pointer items-start gap-2 rounded-md border p-3"
+          >
+            <input
+              type="radio"
+              name={grupo}
+              value={opcao.valor}
+              checked={escolha === opcao.valor}
+              onChange={() => onChange(opcao.valor)}
+              className="mt-1"
+            />
+            <span className="space-y-0.5">
+              <span className="block text-sm font-medium">{t(opcao.rotulo)}</span>
+              <span className="block text-xs text-muted-foreground">{t(opcao.ajuda)}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 function CreateOrMoveLeadForm({
   config,
@@ -143,7 +248,12 @@ function CreateOrMoveLeadForm({
 function SendWhatsappForm({
   config,
   onChange,
-}: FormProps<{ channel_session_id: string; template: string; media_url?: string | null }>) {
+}: FormProps<{
+  channel_session_id: string;
+  template: string;
+  media_url?: string | null;
+  quando_ha_compromisso?: EscolhaNoEnvio;
+}>) {
   const t = useT();
   const { data: sessions } = useChannelSessions();
 
@@ -203,6 +313,10 @@ function SendWhatsappForm({
           {t("Cole o link direto do arquivo. Com uma imagem, um vídeo ou um documento, a mensagem acima vira a legenda; o áudio sai como mensagem de voz, sem legenda. Em número oficial, fora da janela de 24h a mídia não sai — só um modelo aprovado.")}
         </p>
       </div>
+      <EscolhaQuandoHaCompromisso
+        escolha={lerEscolhaNoEnvio(config)}
+        onChange={(escolha) => onChange(configComEscolha(config, escolha))}
+      />
     </div>
   );
 }
@@ -223,7 +337,12 @@ function SendWhatsappForm({
 function SendAiMessageForm({
   config,
   onChange,
-}: FormProps<{ agent_id: string; channel_session_id: string; instruction: string }>) {
+}: FormProps<{
+  agent_id: string;
+  channel_session_id: string;
+  instruction: string;
+  quando_ha_compromisso?: EscolhaNoEnvio;
+}>) {
   const t = useT();
   const { data: agentes } = useAgentsList();
   const { data: sessions } = useChannelSessions();
@@ -292,6 +411,10 @@ function SendAiMessageForm({
           {t("O agente já sabe que é a PRIMEIRA mensagem, logo depois de a pessoa preencher o formulário, e recebe todos os campos que ela respondeu. Aqui você diz o que fazer com eles — quanto mais concreto, melhor a mensagem.")}
         </p>
       </div>
+      <EscolhaQuandoHaCompromisso
+        escolha={lerEscolhaNoEnvio(config)}
+        onChange={(escolha) => onChange(configComEscolha(config, escolha))}
+      />
     </div>
   );
 }

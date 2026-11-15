@@ -18828,6 +18828,32 @@ export const DICIONARIO: Traducoes = {
   // Mídia nas automações e no follow-up
   "Imagem, vídeo, áudio ou documento (opcional)": { es: "Imagen, video, audio o documento (opcional)" },
   "Cole o link direto do arquivo. Com uma imagem, um vídeo ou um documento, a mensagem acima vira a legenda; o áudio sai como mensagem de voz, sem legenda. Em número oficial, fora da janela de 24h a mídia não sai — só um modelo aprovado.": { es: "Pega el enlace directo del archivo. Con una imagen, un video o un documento, el mensaje de arriba se vuelve la leyenda; el audio sale como mensaje de voz, sin leyenda. En número oficial, fuera de la ventana de 24h el archivo no sale — solo una plantilla aprobada." },
+  // #3813 — a escolha "Quando o contato tiver horário marcado", no passo que
+  // envia (WhatsApp e mensagem escrita pela IA). As três opções dizem o EFEITO:
+  // o operador não precisa saber que existe uma chave `quando_ha_compromisso`.
+  "Quando o contato tiver horário marcado": {
+    es: "Cuando el contacto tenga un horario agendado",
+  },
+  "Em qualquer das três continuam valendo o descadastro do contato, a janela de envio do número e o limite diário.":
+    {
+      es: "En cualquiera de las tres siguen valiendo la baja del contacto, la ventana de envío del número y el límite diario.",
+    },
+  "Adiar e enviar depois do horário": { es: "Posponer y enviar después del horario" },
+  "A mensagem espera o atendimento terminar e sai logo depois. É o comportamento de sempre e o que continua valendo em quem nunca mexeu aqui.":
+    {
+      es: "El mensaje espera a que termine la cita y sale justo después. Es el comportamiento de siempre y el que sigue valiendo en quien nunca tocó esto.",
+    },
+  "Enviar mesmo assim": { es: "Enviar de todas formas" },
+  "A mensagem sai na hora, mesmo com atendimento marcado. Serve para o pós-atendimento e o aniversário, que perdem o sentido se esperarem.":
+    {
+      es: "El mensaje sale en el momento, aunque haya una cita agendada. Sirve para el posatención y el cumpleaños, que pierden sentido si esperan.",
+    },
+  "Não enviar": { es: "No enviar" },
+  "A mensagem não sai e o pulo fica registrado na Atividade com o motivo “contato com horário marcado”, para a equipe saber que a automação passou.":
+    {
+      es: "El mensaje no sale y el salto queda registrado en la Actividad con el motivo «contacto con horario agendado», para que el equipo sepa que la automatización pasó.",
+    },
+  "Contato com horário marcado: a automação não enviou, como a regra pede.": { es: "Contacto con horario agendado: la automatización no envió, como pide la regla." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
