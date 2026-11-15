@@ -6,6 +6,7 @@ import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
 import { useBulkConversations, type AcaoEmLote } from "@/hooks/inbox/useBulkConversations";
 import { useSelecaoEmLote } from "@/hooks/inbox/useSelecaoEmLote";
 import { BarraDeAcoesEmLote } from "./BarraDeAcoesEmLote";
+import { composerBloqueadoAteAssumir } from "@/lib/inbox/bloqueio-ate-assumir";
 import { fonteDeTemplates } from "@/lib/channels/templates-fonte";
 import { estadoDaJanela, formatarDecorrido } from "@/lib/channels/janela";
 import { JanelaFechadaAviso } from "@/components/inbox/JanelaFechadaAviso";
@@ -664,6 +665,13 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               blockedReason={supportReadonly ? "Acompanhamento somente leitura" : blockedReason}
               janelaFechada={motivoDaJanela}
               disabled={selectedConversation.status === "closed"}
+              // "Bloquear até assumir" é da ORGANIZAÇÃO (Configurações › Empresa).
+              // Desligado (o padrão), a expressão é `false` em todo estado.
+              aguardandoAssumir={composerBloqueadoAteAssumir({
+                ligada: activeOrg?.interface_settings?.bloquearAteAssumir === true,
+                donoDaConversa: selectedConversation.assigned_to_user_id,
+                atendenteId: user.id,
+              })}
               contactName={selectedConversation.contacts?.name ?? null}
               respondendo={respondendo}
               onCancelarResposta={() => setRespondendo(null)}

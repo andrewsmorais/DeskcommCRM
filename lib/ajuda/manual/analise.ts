@@ -70,6 +70,7 @@ export const MANUAL_ANALISE: ManualDoGrupo = {
     ],
     cuidados: [
       "Cada lista mostra no máximo 100 conversas; quando há mais, a tela avisa.",
+      "Esta tela não aparece no menu lateral; ela está no hub de Análise e na busca do sistema.",
     ],
   },
 

@@ -826,14 +826,15 @@ export const NAV_CATALOG = [
   {
     // Painel de atendimento (vindo do produto original; paridade com a Umbler):
     // quem espera resposta, quem está em atendimento e quem foi atendido hoje.
-    // Aqui sempre ligado — no produto original é módulo opcional.
+    // Aqui sempre ligado — no produto original é módulo opcional. SEM
+    // `sidebar`: o menu lateral está no teto da dobra (15 itens a 1280x900,
+    // tests/unit/interface-por-empresa.test.ts); a porta é o hub de Análise.
     href: "/app/painel",
     label: "Painel de atendimento",
     description: "Quem espera resposta, quem está em atendimento e quem foi atendido hoje, por número.",
     icon: "ListChecks",
     group: "analise",
     section: "Os números do período",
-    sidebar: true,
   },
   {
     // Logo abaixo de Desempenho porque responde a metade da MESMA pergunta: lá

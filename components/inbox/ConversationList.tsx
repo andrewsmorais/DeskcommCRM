@@ -1,8 +1,10 @@
 "use client";
 import { ehAFila } from "@/lib/inbox/comando-da-conversa";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { Check } from "@/lib/ui/icons";
+import { useConversasComMencao } from "@/hooks/inbox/useConversasComMencao";
+import { desmarcarConversaMencionada } from "@/lib/notifications/mencao-na-lista";
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,6 +61,16 @@ export function ConversationList({
   //
   // `?? []` e não `undefined`: enquanto a lista de canais carrega, o certo é
   // NÃO mostrar. Mostrar e sumir depois é pior que aparecer um instante tarde.
+  // A conversa em que a pessoa foi mencionada fica marcada até ser ABERTA:
+  // abrir é o que a consome — por isso o clique passa por `abrirConversa`.
+  const mencionadas = useConversasComMencao();
+  const abrirConversa = useCallback(
+    (id: string) => {
+      desmarcarConversaMencionada(id);
+      onSelect(id);
+    },
+    [onSelect],
+  );
   const canais = useChannelSessions().data ?? [];
   const maisDeUmCanal = canais.length > 1;
 
@@ -198,7 +210,8 @@ export function ConversationList({
             key={c.id}
             conversation={c}
             isSelected={c.id === selectedId}
-            onSelect={onSelect}
+            onSelect={abrirConversa}
+            mencionado={mencionadas.has(c.id)}
             queuePosition={isQueue ? i + 1 : undefined}
             mostrarCanal={maisDeUmCanal}
             mostrarAtendente={mostrarAtendente}

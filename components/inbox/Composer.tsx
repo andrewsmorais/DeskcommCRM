@@ -76,6 +76,11 @@ interface Props {
   onDraftChange?: (text: string, mode: "reply" | "note") => void;
   active?: boolean;
   disabled?: boolean;
+  /**
+   * A empresa ligou "bloquear até assumir" e a conversa não é sua (vindo do
+   * produto original): a caixa trava até clicar em Assumir no cabeçalho.
+   */
+  aguardandoAssumir?: boolean;
   /** Set true when contact is blocked / anonymized — explanation shown. */
   blockedReason?: string | null;
   /**
@@ -117,6 +122,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     active = true,
     onDraftChange,
     disabled,
+    aguardandoAssumir = false,
     blockedReason,
     janelaFechada,
     contactName,
@@ -167,7 +173,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   // send/createNote fora do disable: o texto some na hora do envio; travar o campo
   // até a API voltar impedia digitar a próxima mensagem com o campo ainda cheio.
-  const isDisabled = disabled || !!blockedReason || upload.isPending;
+  const isDisabled = disabled || !!blockedReason || upload.isPending || aguardandoAssumir;
   // A janela só alcança o que SAI. Em modo nota o composer segue liberado: a
   // nota interna nunca chega ao cliente, e é onde o atendente registra por que
   // a conversa esfriou — barrá-la tira exatamente o que ainda dá para fazer.
@@ -385,6 +391,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 avisoDeRascunhoIndisponivel(rascunho.leitura.motivo, t)
               )}
             </p>
+          </div>
+        )}
+        {/* O AVISO DO BLOQUEIO ATÉ ASSUMIR: o motivo fica junto da caixa
+            travada; a saída é o "Assumir" do cabeçalho. */}
+        {aguardandoAssumir && (
+          <div
+            data-testid="aviso-assumir"
+            className="mb-1.5 flex items-start gap-2 rounded-md border-l-2 border-primary bg-muted/60 px-2 py-1.5 text-xs"
+          >
+            <p className="min-w-0 flex-1 text-muted-foreground">{t("Assuma esta conversa para responder.")}</p>
           </div>
         )}
         <div className="mb-1.5 flex gap-1">

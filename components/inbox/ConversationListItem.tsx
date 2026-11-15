@@ -60,6 +60,8 @@ interface Props {
   selecionado?: boolean;
   /** Sem ele não há caixa de marcação (quem não pode agir em lote). */
   onAlternarSelecao?: (id: string) => void;
+  /** Há uma menção a você numa nota desta conversa, ainda não aberta. */
+  mencionado?: boolean;
 }
 
 /**
@@ -135,6 +137,7 @@ export function ConversationListItem({
   automaticoDaOrg,
   selecionado = false,
   onAlternarSelecao,
+  mencionado = false,
 }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
@@ -313,6 +316,18 @@ export function ConversationListItem({
             {conversation.is_group && (
               <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]">
                 {t("Grupo")}
+              </Badge>
+            )}
+            {/* O SELO "MENCIONADO" (vindo do produto original): o sino diz que
+                houve menção; a lista diz ONDE. Some no clique que abre a conversa. */}
+            {mencionado && (
+              <Badge
+                variant="default"
+                data-testid="selo-mencionado"
+                title={t("Você foi mencionado")}
+                className="h-4 shrink-0 gap-1 px-1.5 text-[10px] font-normal"
+              >
+                {t("Mencionado")}
               </Badge>
             )}
           </span>

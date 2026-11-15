@@ -115,7 +115,7 @@ export function ChatThread({
   const activeOrg = useActiveOrg();
   const currentUser = useUser();
   const deleteNote = useDeleteNote(conversationId ?? "");
-  const { editar, apagar, ocultar, restaurar } = useAlterarMensagem(conversationId);
+  const { editar, apagar, ocultar, restaurar, reenviar } = useAlterarMensagem(conversationId);
   const canManage = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   // Favoritar e encaminhar (paridade Umbler): atendente para cima.
   const podeAgir = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent;
@@ -428,6 +428,10 @@ export function ChatThread({
                   onFavoritar={podeAgir ? (f) => favoritar.mutate({ id: item.data.id, favorita: f }) : undefined}
                   onEncaminhar={podeAgir ? () => setEncaminhando(item.data.id) : undefined}
                   onSalvarFigurinha={podeAgir ? () => salvarFigurinha.mutate({ message_id: item.data.id }) : undefined}
+                  onReenviar={podeAgir
+                    ? (confirmado) => reenviar.mutateAsync({ id: item.data.id, confirmado }).then(() => undefined)
+                    : undefined}
+                  podeReenviarDeOutros={canManage}
                 />
               ),
             )}

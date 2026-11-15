@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { useActiveOrg, useUser } from "@/hooks/auth/AuthProvider";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
 import { entregarAviso } from "@/lib/notifications/deliver";
 import { mencaoAtingeUsuario } from "@/lib/notifications/mentions";
+import {
+  limparMencoesDaLista,
+  marcarConversaMencionada,
+} from "@/lib/notifications/mencao-na-lista";
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
@@ -31,6 +35,14 @@ function sides(payload: unknown): {
 export function useCrmAlerts(): void {
   const orgId = useActiveOrg()?.orgId ?? null;
   const user = useUser();
+
+  // A marca "Mencionado" é da organização em que a nota nasceu: trocar de
+  // empresa apaga as marcas, senão um id da outra empresa ficaria marcado.
+  const orgAnterior = useRef(orgId);
+  useEffect(() => {
+    if (orgAnterior.current !== orgId) limparMencoesDaLista();
+    orgAnterior.current = orgId;
+  }, [orgId]);
 
   const onLead = useCallback(
     (payload: unknown) => {
@@ -95,6 +107,9 @@ export function useCrmAlerts(): void {
         return;
       }
       const conversationId = str(novo.conversation_id);
+      // A conversa fica marcada na lista até ser aberta (vindo do produto
+      // original). Marca ANTES de entregar, e não depende do aviso na tela.
+      if (conversationId) marcarConversaMencionada(conversationId);
       entregarAviso({
         category: "mention",
         kind: "mention",

@@ -14,6 +14,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Message } from "@/lib/types/messaging";
+import { motivoDaFalhaDaMensagem } from "@/lib/inbox/motivo-da-falha";
+import { reenvioDaMensagem } from "@/lib/messaging/reenvio";
 import { lerRemetenteDeGrupo, rotuloDoRemetente } from "@/lib/messaging/remetente-de-grupo";
 import { CitationButton } from "@/components/ai/CitationButton";
 import { MediaRenderer } from "@/components/inbox/media/MediaRenderer";
@@ -55,6 +57,13 @@ interface Props {
   onEncaminhar?: () => void;
   /** Guarda a figurinha recebida na biblioteca da empresa (migration 0516). */
   onSalvarFigurinha?: () => void;
+  /**
+   * Enviar de novo a mensagem que falhou ou ficou parada (vindo do produto
+   * original). Quem decide SE pode é `reenvioDaMensagem`, a mesma regra da rota.
+   */
+  onReenviar?: (confirmado: boolean) => Promise<void>;
+  /** Gerente para cima reenvia mensagem de colega — a mesma régua da rota. */
+  podeReenviarDeOutros?: boolean;
 }
 
 function AckIndicator({ status, t }: { status: string; t: (texto: string) => string }) {
@@ -85,14 +94,29 @@ export function MessageBubble({
   onFavoritar,
   onEncaminhar,
   onSalvarFigurinha,
+  onReenviar,
+  podeReenviarDeOutros = false,
 }: Props) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(message.body ?? "");
   const [apagando, setApagando] = useState(false);
   const [ocultando, setOcultando] = useState(false);
+  const [confirmandoReenvio, setConfirmandoReenvio] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const salvandoEdicao = useRef(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
+  async function reenviar(confirmado: boolean) {
+    if (!onReenviar) return;
+    setOcupado(true);
+    try {
+      await onReenviar(confirmado);
+      setConfirmandoReenvio(false);
+    } catch {
+      /* O hook já informa a falha; a confirmação fica aberta. */
+    } finally {
+      setOcupado(false);
+    }
+  }
   const abrindoEdicao = useRef(false);
   const [agora, setAgora] = useState(() => Date.now());
   useEffect(() => {
@@ -134,6 +158,9 @@ export function MessageBubble({
     && (message.type === "text" ? Boolean(message.body) : ["image", "video", "audio", "document"].includes(message.type) && Boolean(message.media_storage_path));
   const podeFavoritar = !apagada && Boolean(onFavoritar);
   const podeSalvarFigurinha = !apagada && message.type === "sticker" && Boolean(message.media_storage_path) && Boolean(onSalvarFigurinha);
+  const reenvio = onReenviar
+    ? reenvioDaMensagem(message, { userId: viewerUserId, podeReenviarDeOutros, agora })
+    : "nenhum";
   const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar || podeEncaminhar || podeFavoritar || podeSalvarFigurinha);
   const aiGenerated = isAiGeneratedMessage(message.metadata);
   const citations = extractCitations(message.metadata);
@@ -454,14 +481,49 @@ export function MessageBubble({
                     <WarningOctagon size={10} weight="fill" aria-hidden /> {t("Falhou")}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>
-                  {message.error_message ? t(message.error_message) : (message.error_code ?? t("Erro desconhecido"))}
-                </TooltipContent>
+                <TooltipContent>{motivoDaFalhaDaMensagem(message, t)}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
         </div>
+        {/* O MOTIVO à vista (o dedo não abre Tooltip) e o "Tentar de novo",
+            quando a regra da rota deixa (vindo do produto original). */}
+        {(isFailed || reenvio !== "nenhum") && (
+          <div className="mt-1.5 space-y-1.5 border-t border-current/20 pt-1.5">
+            {isFailed && (
+              <p data-testid="motivo-da-falha" className="text-xs leading-snug">
+                {motivoDaFalhaDaMensagem(message, t)}
+              </p>
+            )}
+            {reenvio !== "nenhum" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={ocupado}
+                onClick={() => (reenvio === "confirmar" ? setConfirmandoReenvio(true) : void reenviar(false))}
+              >
+                {t("Tentar de novo")}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
+      <AlertDialog open={confirmandoReenvio} onOpenChange={setConfirmandoReenvio}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Enviar de novo?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("Esta mensagem pode ter chegado ao cliente. Se chegou, ele vai receber duas vezes.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={ocupado}>{t("Cancelar")}</AlertDialogCancel>
+            <Button disabled={ocupado} onClick={() => void reenviar(true)}>
+              {t("Enviar de novo")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={apagando} onOpenChange={setApagando}>
         <AlertDialogContent>
           <AlertDialogHeader>

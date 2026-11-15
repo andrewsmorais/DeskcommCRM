@@ -63,9 +63,20 @@ export async function atualizarInterfaceDaEmpresa(input: InterfaceSettings): Pro
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
 
+  // O MENU NUNCA GRAVA A TRAVA DO INBOX: as duas moram no mesmo campo, e o
+  // editor do menu monta o objeto do zero. O valor gravado da trava fica.
+  const { data: atual } = await supabase
+    .from("organizations")
+    .select("interface_settings")
+    .eq("id", activeOrg.orgId)
+    .maybeSingle();
+  const travaGravada =
+    (atual as { interface_settings?: Record<string, unknown> | null } | null)?.interface_settings
+      ?.bloquearAteAssumir === true;
+  const { bloquearAteAssumir: _doInput, ...menu } = parsed.data;
   const { error } = await supabase
     .from("organizations")
-    .update({ interface_settings: parsed.data })
+    .update({ interface_settings: { ...menu, ...(travaGravada ? { bloquearAteAssumir: true } : {}) } })
     .eq("id", activeOrg.orgId);
   if (error) return { ok: false, error: "internal_error" };
 
@@ -103,6 +114,58 @@ export async function atualizarInterfaceDaEmpresa(input: InterfaceSettings): Pro
   revalidatePath("/app/settings/tenant");
   // O menu vive no layout do /app: sem isto quem acabou de escolher continuaria
   // vendo o menu antigo até o próximo carregamento completo.
+  revalidatePath("/app", "layout");
+  return { ok: true };
+}
+
+/**
+ * Liga e desliga o bloqueio da caixa de mensagem até assumir (vindo do produto
+ * original), e SÓ ele: lê o que está gravado e troca a chave, para não desfazer
+ * a escolha de menu. Desligar REMOVE a chave. Mesmos portões do menu.
+ */
+export async function atualizarBloqueioAteAssumir(ligado: boolean): Promise<InterfaceDaEmpresaResult> {
+  // Server Action é endpoint público: o tipo do parâmetro não chega ao servidor.
+  if (typeof ligado !== "boolean") return { ok: false, error: "validation_failed" };
+  const authUser = await loadAuthUser();
+  if (!authUser) return { ok: false, error: "unauthenticated" };
+  if (supportWriteError(authUser.support)) return { ok: false, error: "forbidden" };
+  const activeOrg = await resolveActiveOrg(authUser);
+  if (!activeOrg) return { ok: false, error: "forbidden_tenant" };
+  if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+    return { ok: false, error: "forbidden_role" };
+  }
+  const supabase = createAdminClient();
+  const { data: atual, error: erroDeLeitura } = await supabase
+    .from("organizations")
+    .select("interface_settings")
+    .eq("id", activeOrg.orgId)
+    .maybeSingle();
+  if (erroDeLeitura) return { ok: false, error: "internal_error" };
+  const gravada =
+    ((atual as { interface_settings?: Record<string, unknown> | null } | null)?.interface_settings ?? {}) as Record<
+      string,
+      unknown
+    >;
+  const { bloquearAteAssumir: _anterior, ...resto } = gravada;
+  const proxima = ligado ? { ...resto, bloquearAteAssumir: true } : resto;
+  const { error } = await supabase
+    .from("organizations")
+    .update({ interface_settings: Object.keys(proxima).length > 0 ? proxima : null })
+    .eq("id", activeOrg.orgId);
+  if (error) return { ok: false, error: "internal_error" };
+  const hdrs = await headers();
+  await audit({
+    action: "org.interface_changed",
+    organizationId: activeOrg.orgId,
+    actorUserId: authUser.id,
+    resourceType: "organization",
+    resourceId: activeOrg.orgId,
+    requestId: hdrs.get("x-request-id"),
+    ip: hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    userAgent: hdrs.get("user-agent") ?? null,
+    metadata: { fields_changed: ["interface_settings.bloquearAteAssumir"], bloquear_ate_assumir: ligado },
+  });
+  revalidatePath("/app/settings/tenant");
   revalidatePath("/app", "layout");
   return { ok: true };
 }

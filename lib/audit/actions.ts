@@ -183,6 +183,8 @@ export const AUDIT_ACTIONS = [
   "message.favorite_changed",
   /** Mensagem encaminhada para outra conversa. */
   "message.forwarded",
+  // Mensagem que falhou enviada de novo pela conversa (vindo do produto original).
+  "message.retried",
   /** Reatribuição automática (migration 0514): o atendente saiu da conversa sozinho. */
   "conversation.reassigned_automatically",
   "signature.changed",

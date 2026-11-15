@@ -18777,6 +18777,22 @@ export const DICIONARIO: Traducoes = {
   "atualizadas": { es: "actualizadas" },
   "recusada": { es: "rechazada" },
   "recusadas": { es: "rechazadas" },
+  // Inbox: reenviar, mencionado e bloqueio até assumir (vindo do produto original)
+  "Bloqueio da caixa de mensagem salvo.": { es: "Bloqueo del cuadro de mensaje guardado." },
+  "Não foi possível salvar o bloqueio da caixa de mensagem.": { es: "No se pudo guardar el bloqueo del cuadro de mensaje." },
+  "Regras de atendimento que valem para esta empresa inteira. Não mudam permissões: papel e acesso continuam decidindo o que cada pessoa alcança.": { es: "Reglas de atención que valen para toda esta empresa. No cambian permisos: el rol y el acceso siguen decidiendo qué alcanza cada persona." },
+  "Bloquear a caixa de mensagem até o atendente assumir a conversa": { es: "Bloquear el cuadro de mensaje hasta que el agente asuma la conversación" },
+  "Com a opção ligada, quem abre uma conversa sem responsável não consegue digitar nem enviar até clicar em Assumir. O botão Assumir continua sempre visível, e quem já assumiu continua respondendo normalmente.": { es: "Con la opción activada, quien abre una conversación sin responsable no puede escribir ni enviar hasta hacer clic en Asumir. El botón Asumir sigue siempre visible, y quien ya asumió sigue respondiendo con normalidad." },
+  "Aplicar regras de atendimento": { es: "Aplicar reglas de atención" },
+  "Assuma esta conversa para responder.": { es: "Asume esta conversación para responder." },
+  "Mencionado": { es: "Te mencionaron" },
+  "Enviar de novo?": { es: "¿Enviar de nuevo?" },
+  "Esta mensagem pode ter chegado ao cliente. Se chegou, ele vai receber duas vezes.": { es: "Este mensaje puede haber llegado al cliente. Si llegó, lo recibirá dos veces." },
+  "A mensagem não saiu de novo.": { es: "El mensaje no salió de nuevo." },
+  "Não foi possível enviar esta mensagem.": { es: "No fue posible enviar este mensaje." },
+  // Frases da falha da mensagem
+  "Envio automático bloqueado pelo modo de teste do canal.": { es: "Envío automático bloqueado por el modo de prueba del canal." },
+  "Envio automático bloqueado: a organização está suspensa.": { es: "Envío automático bloqueado: la organización está suspendida." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

@@ -10,6 +10,7 @@ import { ZonaDePerigoDaOrganizacao } from "./_danger-zone";
 import { ExportarDados } from "./_exportar-dados";
 import { TenantForm } from "./_form";
 import { InterfaceDaEmpresaForm } from "./_interface";
+import { InboxDaEmpresaForm } from "./_inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,7 @@ export default async function TenantSettingsPage() {
           role={activeOrg.role}
         />
       )}
+      {row && <InboxDaEmpresaForm initial={row.interface_settings} />}
       {row && <ExportarDados />}
       {row && <ZonaDePerigoDaOrganizacao displayName={row.display_name} />}
     </div>
