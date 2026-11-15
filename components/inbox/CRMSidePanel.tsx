@@ -1,9 +1,11 @@
 "use client";
 
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
+import { FollowupDoContato } from "./FollowupDoContato";
 import { LeadEnrichment } from "./LeadEnrichment";
 import type { ProspectEnrichment } from "@/lib/prospecting/schema";
 import { useAuth } from "@/hooks/auth/AuthProvider";
+import { roleAtLeast } from "@/lib/auth/types";
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 
 import type { Locale } from "date-fns";
@@ -511,7 +513,7 @@ function CamposDoFunil({
 }
 
 export function CRMSidePanel({ conversation }: Props) {
-  const { user } = useAuth();
+  const { user, activeOrg } = useAuth();
   const readonly = user.support?.access_mode === "support_readonly";
   const localeDaData = useLocaleDeData();
   const t = useT();
@@ -820,6 +822,17 @@ export function CRMSidePanel({ conversation }: Props) {
       {/* O que os roteiros de atendimento coletaram (módulo opcional; desligado
           ou sem roteiro, não desenha nada). */}
       {contactId && !contact?.is_anonymized && <RoteirosDoContato contactId={contactId} variante="painel" />}
+
+      {/* O FOLLOW-UP DA CONVERSA (vindo do produto original): o que está rodando
+          para este contato, com Parar (manager+) e Iniciar (quando o servidor diz
+          que pode). Some quando não há follow-up vivo nem fluxo ativo. */}
+      {contactId && !contact?.is_anonymized ? (
+        <FollowupDoContato
+          contactId={contactId}
+          somenteLeitura={Boolean(user.support)}
+          podeParar={!readonly && ((user.is_platform_admin && !user.support) || roleAtLeast(activeOrg?.role, "manager"))}
+        />
+      ) : null}
 
       <section data-testid="inbox-campos-lead">
         <h3 className="text-xs font-semibold text-text">

@@ -18871,6 +18871,14 @@ export const DICIONARIO: Traducoes = {
   "A conversa abriu, mas a primeira mensagem não pôde ser enviada.": { es: "La conversación se abrió, pero el primer mensaje no se pudo enviar." },
   "Nova conversa": { es: "Nueva conversación" },
   "Diga para quem e o que dizer. O canal de saída é você quem escolhe quando há mais de um número.": { es: "Di para quién y qué decir. El canal de salida lo eliges tú cuando hay más de un número." },
+  // Follow-up na conversa
+  "Follow-up iniciado.": { es: "Seguimiento iniciado." },
+  "Conecte um número de WhatsApp antes de iniciar o follow-up.": { es: "Conecta un número de WhatsApp antes de iniciar el seguimiento." },
+  "Não foi possível iniciar o follow-up.": { es: "No se pudo iniciar el seguimiento." },
+  "Follow-up encerrado.": { es: "Seguimiento cerrado." },
+  "Não foi possível encerrar o follow-up.": { es: "No se pudo cerrar el seguimiento." },
+  "Parar follow-up": { es: "Detener seguimiento" },
+  "Escolha o fluxo": { es: "Elige el flujo" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
