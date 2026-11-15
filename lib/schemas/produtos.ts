@@ -118,19 +118,8 @@ export const produtoCreateSchema = z.object({
   imagem_url: z.string().trim().url().max(2000).optional(),
 });
 
-/**
- * Tudo opcional: o PATCH muda o que veio e não encosta no resto.
- *
- * ⚠️ `.partial()` sozinho NÃO basta: o Zod 4 mantém o `.default()` do campo, e
- * um PATCH só de preço saía com `quantidade: 0`, `controla_estoque: true` e
- * `ativo: true`, zerando o estoque e reativando o produto. Os campos com default
- * são redeclarados aqui, sem ele.
- */
-export const produtoPatchSchema = produtoCreateSchema.partial().extend({
-  controla_estoque: z.boolean().optional(),
-  quantidade: z.number().int().min(0).optional(),
-  ativo: z.boolean().optional(),
-});
+/** Tudo opcional: o PATCH muda o que veio e não encosta no resto. */
+export const produtoPatchSchema = produtoCreateSchema.partial();
 
 export type ProdutoCreate = z.infer<typeof produtoCreateSchema>;
 export type ProdutoPatch = z.infer<typeof produtoPatchSchema>;
