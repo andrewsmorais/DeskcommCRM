@@ -18991,6 +18991,7 @@ export const DICIONARIO: Traducoes = {
   "A empresa ativa mudou. Recarregue a página antes de continuar.": { es: "La empresa activa cambió. Recarga la página antes de continuar." },
   "Custo AI / dia (US$)": { es: "Costo de IA / día (US$)" },
   "chamadas sem preço": { es: "llamadas sin precio" },
+  "Dados do negócio para conferência": { es: "Datos del negocio para revisar" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
