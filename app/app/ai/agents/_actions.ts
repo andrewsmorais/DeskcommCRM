@@ -9,6 +9,7 @@
  * Mutations privilegiadas exigem role admin. Errors voltam em forma simples
  * `{ ok: false, error, message }` para a UI tratar com toast.
  */
+import { CODIGO_NOME_DE_AGENTE_EM_USO, ehNomeDeAgenteRepetido } from "@/lib/ai/agents/nome-repetido";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
@@ -203,6 +204,10 @@ export async function renameAgentAction(id: string, name: string): Promise<Actio
     .update({ name: trimmed, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("organization_id", activeOrg.orgId);
+  // Nome que a organização já usa (`ai_agents_name_unique`): código próprio, e
+  // a tela mostra a frase no campo (trazido do produto original, #3952). Antes
+  // o toast mostrava a mensagem crua do Postgres, em inglês.
+  if (error && ehNomeDeAgenteRepetido(error)) return { ok: false, error: CODIGO_NOME_DE_AGENTE_EM_USO };
   if (error) return { ok: false, error: "internal_error", message: error.message };
 
   void audit({
