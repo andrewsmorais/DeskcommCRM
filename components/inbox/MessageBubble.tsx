@@ -337,6 +337,9 @@ export function MessageBubble({
                 onClick={() => setReacoesFrequentes(cincoMaisUsados(lerContagens()))}
                 className={cn(
                   "absolute right-1 top-1 z-10 rounded-md p-0.5 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-1",
+                  // A setinha visível tem 20px; no toque a área de acerto cresce
+                  // 12px para cada lado (44px) sem empurrar o texto do balão.
+                  "pointer-coarse:before:absolute pointer-coarse:before:-inset-3",
                   "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100",
                   isOutbound ? "text-primary-foreground hover:bg-primary-foreground/15" : "text-muted-foreground hover:bg-background/70",
                 )}>
