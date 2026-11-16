@@ -27,6 +27,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { capabilitiesOf, transportaMensagem, type ChannelProvider } from "@/lib/channels/capabilities";
 import { montarCartoesDaPassagem, type CartaoDaPassagem } from "@/lib/escalacao/cartao-da-passagem";
 import type { Message, Note } from "@/lib/types/messaging";
+import { termoSemAcento } from "@/lib/inbox/termo-de-busca";
 
 interface Props {
   conversationId: string | null;
@@ -145,7 +146,9 @@ export function ChatThread({
    * existe na conversa". Apagada e oculta ficam de fora — o texto delas não
    * aparece na bolha, e marcar uma bolha sem o termo visível seria mentir.
    */
-  const termo = searchTerm.trim().toLocaleLowerCase();
+  // Os dois lados sem acento (`termoSemAcento`): `toLocaleLowerCase` dobra a
+  // caixa e não o acento, e "orcamento" não achava "orçamento".
+  const termo = termoSemAcento(searchTerm.trim());
   const resultados = useMemo(
     () =>
       new Set(
@@ -155,7 +158,7 @@ export function ChatThread({
               termo &&
               !m.revoked_at &&
               !m.metadata?.crm_hidden_at &&
-              m.body?.toLocaleLowerCase().includes(termo),
+              termoSemAcento(m.body ?? "").includes(termo),
           )
           .map((m) => m.id),
       ),
