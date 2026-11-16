@@ -188,12 +188,30 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
   }
 
+  /**
+   * Devolve o foco ao campo depois do envio (trazido do produto original,
+   * #4148). Quem tirava o foco era o CLIQUE no "Enviar": o botão recebe o foco,
+   * e o mesmo render que limpa o campo troca esse botão pelo gravador. O foco
+   * cai no `body` e a segunda mensagem só sai depois de clicar na caixa. Só
+   * devolve quando o foco ficou órfão ou ninguém o tomou, e nunca a campo travado.
+   */
+  function devolverFocoAoCampo() {
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta || ta.disabled) return;
+      const ativo = document.activeElement;
+      if (ativo && ativo !== document.body && ativo !== ta) return;
+      ta.focus();
+      autoresize();
+    });
+  }
+
   function handleSubmit() {
     const body = text.trim();
     if (!body || (mode === "note" ? isDisabled : respostaBarrada)) return;
 
     setText("");
-    requestAnimationFrame(() => autoresize());
+    devolverFocoAoCampo();
 
     const restoreOnError = () => {
       // Se a pessoa já começou a próxima resposta, preserve os dois textos.
