@@ -19002,6 +19002,9 @@ export const DICIONARIO: Traducoes = {
   "Cria uma tarefa para este atendimento com prazo e responsável": {
     es: "Crea una tarea para esta atención con plazo y responsable",
   },
+  'quantidade inválida ("{valor}") — use um inteiro de 0 a 2147483647': {
+    es: 'cantidad no válida ("{valor}") — usa un entero de 0 a 2147483647',
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
