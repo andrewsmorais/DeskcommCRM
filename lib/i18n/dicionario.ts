@@ -18980,6 +18980,7 @@ export const DICIONARIO: Traducoes = {
     es: "La cuenta que paga la suscripción rechazó el inicio de sesión. Reconéctala en IA › Credenciales; este aviso se cierra solo cuando el inicio de sesión vuelva.",
   },
   "Salvar e iniciar conversa": { es: "Guardar e iniciar conversación" },
+  "Atalhos do card": { es: "Accesos de la tarjeta" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
