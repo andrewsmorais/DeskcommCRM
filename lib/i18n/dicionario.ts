@@ -18969,6 +18969,10 @@ export const DICIONARIO: Traducoes = {
     es: "No fue posible reordenar la lista completa. Recarga la página.",
   },
   "Você não pode reordenar esta resposta rápida.": { es: "No puedes reordenar esta respuesta rápida." },
+  "O sistema voltou sozinho para a versão": { es: "El sistema volvió solo a la versión" },
+  ", porque o site não respondeu logo depois da atualização para a versão": {
+    es: ", porque el sitio no respondió justo después de la actualización a la versión",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
