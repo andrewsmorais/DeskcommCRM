@@ -18988,6 +18988,7 @@ export const DICIONARIO: Traducoes = {
   "Remover regra de remetente": { es: "Eliminar regla de remitente" },
   "Adicionar número do remetente": { es: "Añadir número del remitente" },
   "Escolha abaixo um fallback público diferente dos agentes reservados. Salve antes de testar. O teste de classificação de texto não simula o número de origem.": { es: "Elija abajo un agente público de reserva distinto de los agentes reservados. Guarde antes de probar. La prueba de clasificación de texto no simula el número de origen." },
+  "A empresa ativa mudou. Recarregue a página antes de continuar.": { es: "La empresa activa cambió. Recarga la página antes de continuar." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
