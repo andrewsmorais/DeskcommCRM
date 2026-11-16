@@ -18951,6 +18951,10 @@ export const DICIONARIO: Traducoes = {
     es: "No tienes códigos de recuperación válidos: los generados antes de la última actualización dejaron de valer, y cada código solo vale una vez. Sin ellos, perder el celular te deja sin acceso.",
   },
   "Gere novos códigos de recuperação": { es: "Genera nuevos códigos de recuperación" },
+  "Coluna": { es: "Columna" },
+  "Tabela:": { es: "Tabla:" },
+  "Coluna do id:": { es: "Columna del id:" },
+  "Coluna do título:": { es: "Columna del título:" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
