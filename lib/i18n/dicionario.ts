@@ -18958,6 +18958,12 @@ export const DICIONARIO: Traducoes = {
   "Quanto a empresa quer vender no mês, para o Desempenho medir o progresso.": {
     es: "Cuánto quiere vender la empresa en el mes, para que Rendimiento mida el progreso.",
   },
+  "Últimas compras": { es: "Últimas compras" },
+  "Não consegui ler as compras.": { es: "No pude leer las compras." },
+  "Ganho em {data}": { es: "Ganado el {data}" },
+  "Escolha até {max} campos do negócio para aparecerem em cada compra do contato. Sem escolha, a seção mostra a data do ganho, o título e o valor.": {
+    es: "Elige hasta {max} campos del negocio para que aparezcan en cada compra del contacto. Sin elección, la sección muestra la fecha en que se ganó, el título y el valor.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
