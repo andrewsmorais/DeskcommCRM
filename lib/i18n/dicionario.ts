@@ -18992,6 +18992,9 @@ export const DICIONARIO: Traducoes = {
   "Custo AI / dia (US$)": { es: "Costo de IA / día (US$)" },
   "chamadas sem preço": { es: "llamadas sin precio" },
   "Dados do negócio para conferência": { es: "Datos del negocio para revisar" },
+  "A trava de repetição (anti-ban) segurou este envio: o mesmo texto já saiu {n} vez(es) por este número. Varie o texto antes de reenviar.": {
+    es: "El bloqueo por repetición (anti-ban) detuvo este envío: el mismo texto ya salió {n} vez/veces por este número. Varía el texto antes de reenviar.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
