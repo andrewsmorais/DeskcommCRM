@@ -18981,6 +18981,13 @@ export const DICIONARIO: Traducoes = {
   },
   "Salvar e iniciar conversa": { es: "Guardar e iniciar conversación" },
   "Atalhos do card": { es: "Accesos de la tarjeta" },
+  "Com regras nesta lista, o telefone vinculado à conversa escolhe o agente antes da IA. Os demais números usam o fallback público. Intenções, campanhas e o agente anterior não mudam essa escolha.": { es: "Con reglas en esta lista, el teléfono vinculado a la conversación elige el agente antes de la IA. Los demás números usan el agente público de reserva. Las intenciones, campañas y el agente anterior no cambian esta elección." },
+  "Telefone com DDI": { es: "Teléfono con código de país" },
+  "Agente reservado": { es: "Agente reservado" },
+  "Escolha um agente": { es: "Elija un agente" },
+  "Remover regra de remetente": { es: "Eliminar regla de remitente" },
+  "Adicionar número do remetente": { es: "Añadir número del remitente" },
+  "Escolha abaixo um fallback público diferente dos agentes reservados. Salve antes de testar. O teste de classificação de texto não simula o número de origem.": { es: "Elija abajo un agente público de reserva distinto de los agentes reservados. Guarde antes de probar. La prueba de clasificación de texto no simula el número de origen." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
