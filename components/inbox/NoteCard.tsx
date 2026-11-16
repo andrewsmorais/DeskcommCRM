@@ -31,7 +31,9 @@ export function NoteCard({ note, onDelete }: Props) {
             <button
               type="button"
               onClick={onDelete}
-              className="opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+              // Visível no toque e com o foco do teclado; só some esperando o hover
+              // onde há hover (trazido do produto original, #4562).
+              className="rounded-md opacity-100 transition-opacity hover:text-destructive focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
               aria-label={t("Excluir nota")}
             >
               <Trash size={12} weight="bold" />
