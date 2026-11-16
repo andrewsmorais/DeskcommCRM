@@ -18955,6 +18955,9 @@ export const DICIONARIO: Traducoes = {
   "Tabela:": { es: "Tabla:" },
   "Coluna do id:": { es: "Columna del id:" },
   "Coluna do título:": { es: "Columna del título:" },
+  "Quanto a empresa quer vender no mês, para o Desempenho medir o progresso.": {
+    es: "Cuánto quiere vender la empresa en el mes, para que Rendimiento mida el progreso.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
