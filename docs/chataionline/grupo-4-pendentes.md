@@ -6,6 +6,23 @@ Gerado em 15/11/2026. Cada linha é um commit de correção do produto original 
 - **parcial**: parte dos arquivos não existe aqui — avaliar se o recurso existe.
 - **nada-existe-aqui** e **so-teste-ou-doc**: só a contagem; em geral não se aplicam.
 
+### Medição de 16/11/2026 (o que "refazer à mão" realmente esconde)
+
+Para cada commit, contei quantas linhas de código que ele ACRESCENTA já existem
+no arquivo daqui. Nas 504 de "refazer-a-mao": 59 já estão aqui (≥80% das linhas),
+72 não têm código (comentário/teste), 34 estão pela metade e 339 faltam. Abrindo
+uma a uma as da caixa de mensagens, a maioria das que "faltam" corrige um recurso
+que este fork NÃO TEM (devolver ao automático ao fechar, custo de mídia,
+motivo_codigo da passagem, embeddings do Gemini, restrição comercial…): não há
+o que consertar sem antes trazer o recurso inteiro.
+
+Já trazidas nesta rodada: 12 sem conflito de código, 21 só de espanhol no
+dicionário, e à mão: busca da conversa sem acento (c534a034f), foco volta ao
+campo depois do envio (957e7d519), setinha de opções com 44px no toque
+(5db82b344), "Excluir nota" visível no toque e no teclado (3c0a0511e).
+Desfeitas por quebrar teste daqui: 3e14e4395 (pausa da IA no atendimento
+manual), 41c5ed287 (credencial reserva do canal oficial).
+
 ## refazer-a-mao (504)
 
 ### #3023 (1)
