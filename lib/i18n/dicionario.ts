@@ -18973,6 +18973,12 @@ export const DICIONARIO: Traducoes = {
   ", porque o site não respondeu logo depois da atualização para a versão": {
     es: ", porque el sitio no respondió justo después de la actualización a la versión",
   },
+  "A conta do ChatGPT desconectou — a IA parou de responder": {
+    es: "La cuenta de ChatGPT se desconectó — la IA dejó de responder",
+  },
+  "A conta que paga a assinatura recusou o login. Reconecte em IA › Credenciais; este aviso se resolve sozinho quando o login voltar.": {
+    es: "La cuenta que paga la suscripción rechazó el inicio de sesión. Reconéctala en IA › Credenciales; este aviso se cierra solo cuando el inicio de sesión vuelva.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
