@@ -18964,6 +18964,11 @@ export const DICIONARIO: Traducoes = {
   "Escolha até {max} campos do negócio para aparecerem em cada compra do contato. Sem escolha, a seção mostra a data do ganho, o título e o valor.": {
     es: "Elige hasta {max} campos del negocio para que aparezcan en cada compra del contacto. Sin elección, la sección muestra la fecha en que se ganó, el título y el valor.",
   },
+  "Vizinho que não pertence a esta organização.": { es: "Vecino que no pertenece a esta organización." },
+  "Não foi possível reordenar a lista inteira. Recarregue a página.": {
+    es: "No fue posible reordenar la lista completa. Recarga la página.",
+  },
+  "Você não pode reordenar esta resposta rápida.": { es: "No puedes reordenar esta respuesta rápida." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
