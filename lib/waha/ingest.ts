@@ -94,7 +94,7 @@ async function ehEcoDeEnvioNosso(
   const desde = new Date(Date.now() - JANELA_DO_ECO_MS).toISOString();
   const { data, error } = await admin
     .from("messages")
-    .select("id, body, type")
+    .select("id, body, type, external_id, status")
     .eq("organization_id", organizationId)
     .eq("conversation_id", conversationId)
     .eq("direction", "outbound")
@@ -113,10 +113,15 @@ async function ehEcoDeEnvioNosso(
     // integração deixa de ser reconhecida como envio NOSSO, o eco do próprio
     // envio vira "resposta pelo celular" e cala a IA por três horas.
     .in("sent_via", ["ai", "user", "automation", "system"])
-    // Sem `external_id` = ainda não confirmada pelo canal = ainda em voo. É esta
-    // a janela exata em que o eco é indistinguível de digitação humana.
-    .is("external_id", null)
-    .in("status", ["queued", "sending"])
+    // ⚠️ O `external_id` NÃO é filtro aqui, de propósito (trazido do produto
+    // original, #3165): as duas marcas da prova — id nulo (em voo) e id igual ao
+    // que o canal entregou (carimbado DURANTE a ingestão) — são decididas sobre a
+    // MESMA linha desta leitura, no laço abaixo. Com `.is("external_id", null)`
+    // no SQL, o carimbo do envio (`marcarEnviada`, que grava `sent` mais o id)
+    // caindo entre a re-checagem pós-insert e esta decisão deixava a linha fora
+    // do alcance: o eco virava "resposta pelo celular" e a IA pausava.
+    // `sent` entra porque é o status gravado JUNTO do id.
+    .in("status", ["queued", "sending", "sent"])
     // `updated_at`, e não `created_at`: o reenvio (`POST /messages/{id}/retry`)
     // põe na fila uma linha criada há muito tempo, e o eco dele tem de casar do
     // mesmo jeito. Para o envio novo dá no mesmo (`updated_at` nasce igual a
@@ -132,8 +137,23 @@ async function ehEcoDeEnvioNosso(
   }
 
   const corpo = (p.body ?? "").trim();
+  // As formas que o id desta mensagem pode ter no banco: o composto que o webhook
+  // entregou e a cauda que o envio grava (`canonicalExternalId`).
+  const idsDaMensagem = p.id ? [...new Set([p.id, bareWaMessageId(p.id)])] : [];
   for (const linha of data ?? []) {
-    const l = linha as { body: string | null; type?: string | null };
+    const l = linha as {
+      body: string | null;
+      type?: string | null;
+      external_id?: string | null;
+      status?: string | null;
+    };
+    // MARCA 2: o carimbo do envio já está NESTA linha, com o id que o canal
+    // acabou de entregar. É a MESMA mensagem — o corpo nem precisa ser comparado.
+    if (l.external_id != null && idsDaMensagem.includes(l.external_id)) return true;
+    // MARCA 1: linha ainda EM VOO — sem id e no status de antes do canal. Linha
+    // com id de OUTRA mensagem nunca foi a janela do eco desta.
+    if (l.external_id != null) continue;
+    if (l.status !== "queued" && l.status !== "sending") continue;
     if (p.type && p.type !== "chat") {
       // Mídia: sem corpo para comparar, a existência do envio em voo é a prova
       // possível. Mais fraco, e escrito para ninguém supor o contrário.
