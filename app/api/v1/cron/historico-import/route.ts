@@ -41,6 +41,7 @@ import type { NextRequest } from "next/server";
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { autorizaCron } from "@/lib/auth/cron-auth";
+import { recursoOcioso } from "@/lib/cron/piso-ocioso";
 import { fecharAvisosDeClienteRespondido } from "@/lib/channels/historico/avisos-da-queda";
 import { MARGEM_PARA_CHAMADA_MS, PRAZO_DA_CHAMADA_MS } from "@/lib/channels/historico/prazo";
 import {
@@ -80,6 +81,11 @@ async function handle(req: NextRequest): Promise<Response> {
   if (!autorizaCron(req)) {
     return fail("forbidden", "Cron secret missing or invalid.", 403, { requestId });
   }
+
+  // O PISO OCIOSO (#3731): sem trabalho deste recurso na instalação, a rodada
+  // sai antes de tocar o PostgREST. O retrato é UMA consulta por janela para
+  // todas as rotas (`lib/cron/piso-ocioso.ts`); na dúvida, a rota roda.
+  if (await recursoOcioso("historico")) return ok({ pulado: "recurso_ocioso" }, { requestId });
 
   const admin = createAdminClient();
   const agora = new Date();
