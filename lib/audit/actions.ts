@@ -298,6 +298,15 @@ export const AUDIT_ACTIONS = [
   "prospecting.unarchived",
   // A voz de quem envia a prospecção (nome, o que faz, diferencial).
   "prospecting.settings_updated",
+  // Prospecção completa (vindo do produto original): busca, site, saída,
+  // prévias e conferência de WhatsApp.
+  "prospecting.search_completed",
+  "prospecting.site_enriched",
+  "prospecting.exit_offered",
+  "prospecting.exit_offer_withdrawn",
+  "prospecting.preview_saved",
+  "prospecting.previews_generated",
+  "prospecting.whatsapp_checked",
   "channel.pairing_code_requested",
   "channel.social_configured",
   "channel.webchat_created",

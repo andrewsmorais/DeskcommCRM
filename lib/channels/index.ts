@@ -33,6 +33,16 @@ export function getAdapter(provider: ChannelProvider): ChannelAdapter {
   return adapter;
 }
 
+/**
+ * Os providers cujo adapter sabe perguntar se um número TEM conta
+ * (`numeroTemConta`). Derivado dos adapters, não de uma lista à mão.
+ */
+export function provedoresQueConferemNumero(): ProviderDeMensagem[] {
+  return (Object.keys(ADAPTERS) as ProviderDeMensagem[]).filter(
+    (p) => typeof ADAPTERS[p]?.numeroTemConta === "function",
+  );
+}
+
 export {
   capabilitiesOf,
   CHANNEL_CAPABILITIES,

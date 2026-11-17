@@ -1,24 +1,32 @@
+import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
 import { randomUUID } from "node:crypto";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 import { ok, fail } from "@/lib/api/wrappers";
 import { agentChatInputSchema } from "@/lib/prospecting/agent-chat-schema";
 import { chatAboutAgent } from "@/lib/prospecting/agent-chat";
-import { provedorOferecido } from "@/lib/ai/pontos/provedores-oferecidos";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { AgentSetupError } from "@/lib/prospecting/agent-setup";
 import { beginAgentChat, finishAgentChat } from "@/lib/prospecting/agent-session";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const support = await requireSupportWrite();
   if (support) return support;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
+  // Chama o modelo da chave da plataforma: sem assinatura ativa, não chama.
+  const semAssinatura = await exigirAssinaturaAtiva(auth.org.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
+  const rl = await enforceRateLimit(req, "agent-chat", auth.user.id, 30, 60 * 1000);
+  if (rl) return rl;
   const parsed = agentChatInputSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success)
     return fail("validation_failed", "Confira a mensagem e o tamanho da conversa.", 422, {
@@ -30,13 +38,7 @@ export async function POST(req: Request) {
     req.signal.throwIfAborted();
     const pending =
       parsed.data.revision === undefined ? null : await beginAgentChat(pool, actor, parsed.data);
-    const data = await chatAboutAgent(
-      pool,
-      auth.org.orgId,
-      parsed.data,
-      await provedorOferecido(createAdminClient()),
-      req.signal,
-    );
+    const data = await chatAboutAgent(pool, auth.org.orgId, parsed.data, req.signal);
     const saved = pending
       ? await finishAgentChat(
           pool,

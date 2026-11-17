@@ -230,6 +230,13 @@ const MODULOS_NA_TELA: ReadonlyArray<{ modulo: ModuloPorFlag; id: string; rotulo
     descricao:
       "Ligado, cada empresa ganha no CRM a tela Cold Call: um funil próprio, a importação da lista e a ligação para um lead por vez, pelo canal de voz quando ele está pareado ou pelo discador do aparelho. Quem pediu para não ser incomodado, contato pessoal e contato anonimizado não recebem ligação. Desligado, a tela e o menu somem.",
   },
+  {
+    modulo: "conferir_whatsapp",
+    id: "modulo-conferir-whatsapp",
+    rotulo: "Conferir WhatsApp na prospecção",
+    descricao:
+      "Ligado, a prospecção pergunta ao WhatsApp, pela conexão por QR da empresa, se cada telefone achado numa busca tem conta, e quem não tem sai da abordagem. A pergunta sai do número da empresa, para todo telefone achado; consulta em massa assim pode chamar a atenção do WhatsApp e arriscar o número. Desligado, nada é consultado e a abordagem segue como antes.",
+  },
 ];
 
 export function FormularioDeModulos({ ligados }: { ligados: readonly ModuloOpcional[] }) {

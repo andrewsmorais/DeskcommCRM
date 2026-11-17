@@ -3,21 +3,18 @@ import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { audit } from "@/lib/audit";
 import { createMcpAgentDraft } from "@/lib/ai/agents/create-draft";
+import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { publishAgentVersion } from "@/lib/ai/agents/publish";
 import { escolherModeloDoProvedor } from "@/lib/ai/agents/escolher-modelo";
-import { listarModelosDaAssinaturaOuVazio } from "@/lib/ai/catalogo/modelos-da-assinatura";
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
 import { versionCreateSchema } from "@/lib/ai/agents/validation";
 import { lockRouter, writeRouterMembers } from "@/lib/ai/agents/router-members";
 import { chaveDePlataforma } from "@/lib/ai/runtime/agent";
 import { PROVIDERS } from "@/lib/ai/agents/validation";
-import { provedorOferecido } from "@/lib/ai/pontos/provedores-oferecidos";
 import { capabilitiesOf } from "@/lib/channels/capabilities";
 import type { ChannelProvider } from "@/lib/channels/types";
 import { prospectingAgentSetupSchema, type ProspectingAgentSetupInput } from "./agent-setup-schema";
 import { agentSessionLock, agentSetupSessionSchema } from "./agent-session-schema";
-import { IDIOMA_DA_CONVERSA, idiomaDaOrganizacao } from "./idioma";
-import type { Idioma } from "@/lib/i18n/idiomas";
 
 export class AgentSetupError extends Error {
   constructor(
@@ -29,9 +26,6 @@ export class AgentSetupError extends Error {
   }
 }
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-
-/** A ferramenta com que o agente da prospecção grava o diagnóstico na ficha. */
-export const CAPACIDADE_DO_DIAGNOSTICO = "crm_save_lead_diagnosis";
 export function setupProposalHash(input: ProspectingAgentSetupInput) {
   return hash({ ...input, enable_router_continuity: false });
 }
@@ -39,22 +33,13 @@ export function setupAgentId(orgId: string, campaignId: string, requestId: strin
   const h = hash(["prospecting-agent", orgId, campaignId, requestId]);
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
-/**
- * `idioma` é o da ORGANIZAÇÃO (`idioma.ts`): antes a linha dizia "Converse em
- * português do Brasil" para toda organização, e numa em espanhol o agente da
- * campanha nascia escrevendo em português. O padrão segue português — quem não
- * passa idioma fica como antes.
- */
-export function prospectingAgentPrompt(
-  input: ProspectingAgentSetupInput,
-  idioma: Idioma = "pt-BR",
-) {
+export function prospectingAgentPrompt(input: ProspectingAgentSetupInput) {
   const tone = {
     cordial: "cordial e acolhedor",
     professional: "profissional e consultivo",
     direct: "direto e objetivo",
   }[input.tone];
-  return `Você é ${input.name}, assistente de IA comercial. Converse em ${IDIOMA_DA_CONVERSA[idioma]}, em tom ${tone}, com mensagens curtas e uma pergunta por vez.
+  return `Você é ${input.name}, assistente de IA comercial. Converse em português do Brasil, em tom ${tone}, com mensagens curtas e uma pergunta por vez.
 Identifique-se com transparência. A origem do contato é uma pesquisa de informações comerciais públicas; nunca alegue cadastro, pedido ou consentimento que a pessoa não confirmou.
 Oferta e objetivo definidos pelo responsável:
 ${input.instruction}
@@ -72,31 +57,15 @@ export interface ModelChoice {
   credential_id: string | null;
   label: string;
 }
-/**
- * `oferece` é `provedorOferecido` (#2458): o modelo escolhido aqui vira o provedor
- * GRAVADO na versão do agente de prospecção, então a assinatura do ChatGPT com o
- * módulo `login_codex` desligado é PULADA e a escolha segue para o próximo
- * provedor utilizável. Pular, e não recusar, porque aqui ninguém pediu aquele
- * provedor: é uma escolha automática, e a próxima chave válida é a resposta que
- * a pessoa esperaria.
- */
 export async function resolveSetupModel(
   db: pg.PoolClient,
   orgId: string,
-  channelId: string | null,
-  oferece: (provider: string) => boolean,
+  channelId: string | null = null,
 ): Promise<ModelChoice> {
-  let modelosDaAssinatura:
-    | Awaited<ReturnType<typeof listarModelosDaAssinaturaOuVazio>>
-    | null = null;
-  const catalogoDaAssinatura = async () => {
-    modelosDaAssinatura ??= await listarModelosDaAssinaturaOuVazio(orgId);
-    return modelosDaAssinatura;
-  };
   const published = await db.query(
-    `select v.provider,v.model,v.credential_id,m.display_name,m.supports_tools from ai_agents a
+    `select v.provider,v.model,v.credential_id,m.display_name from ai_agents a
      join ai_agent_versions v on v.organization_id=a.organization_id and v.id=a.published_version_id
-     left join ai_models m on m.provider=v.provider and m.model_id=v.model and m.deprecated_at is null
+     join ai_models m on m.provider=v.provider and m.model_id=v.model and m.supports_tools and m.deprecated_at is null
      left join ai_provider_credentials c on c.organization_id=a.organization_id and c.id=v.credential_id and c.provider=v.provider
      where a.organization_id=$1 and a.archived_at is null and a.paused_at is null and v.status='published'
      and (v.credential_id is null or (c.is_active and c.validated_at is not null))
@@ -104,29 +73,13 @@ export async function resolveSetupModel(
     [orgId, channelId],
   );
   for (const row of published.rows) {
-    if (
-      !PROVIDERS.includes(row.provider) ||
-      !oferece(row.provider) ||
-      (!row.credential_id && !chaveDePlataforma(row.provider))
-    ) {
-      continue;
-    }
-    const modeloDaAssinatura =
-      row.provider === "openai-assinatura"
-        ? (await catalogoDaAssinatura()).find((m) => m.model_id === row.model)
-        : null;
-    const temFerramentas =
-      row.provider === "openai-assinatura"
-        ? modeloDaAssinatura?.supports_tools === true
-        : row.supports_tools === true;
-    if (temFerramentas) {
+    if (PROVIDERS.includes(row.provider) && (row.credential_id || chaveDePlataforma(row.provider)))
       return {
         provider: row.provider,
         model: row.model,
         credential_id: row.credential_id,
         label: `${row.provider} · ${row.display_name ?? row.model}`,
       };
-    }
   }
   const org = await db.query("select settings from organizations where id=$1", [orgId]);
   const credentials = await db.query(
@@ -138,23 +91,9 @@ export async function resolveSetupModel(
     ...new Set([preferred, ...credentials.rows.map((c) => c.provider), ...PROVIDERS]),
   ];
   for (const provider of providers) {
-    if (!PROVIDERS.includes(provider) || !oferece(provider)) continue;
+    if (!PROVIDERS.includes(provider)) continue;
     const credential = credentials.rows.find((c) => c.provider === provider);
     if (!credential && !chaveDePlataforma(provider)) continue;
-    if (provider === "openai-assinatura") {
-      const models = await catalogoDaAssinatura();
-      const selected = escolherModeloDoProvedor(models);
-      if (selected.escolhido) {
-        const model = models.find((m) => m.model_id === selected.modelId);
-        return {
-          provider,
-          model: selected.modelId,
-          credential_id: credential?.id ?? null,
-          label: `${provider} · ${model?.display_name ?? selected.modelId}`,
-        };
-      }
-      continue;
-    }
     const models = await db.query(
       "select model_id,display_name,is_default_for_provider,supports_tools,input_price_per_million_cents,output_price_per_million_cents from ai_models where provider=$1 and deprecated_at is null",
       [provider],
@@ -248,7 +187,7 @@ interface SetupMetadata {
 // "O rascunho foi alterado" — o que a 0498 (inbound_debounce_ms) fez nas 5 specs de
 // tests/invariants/prospecting-agent-setup.test.ts.
 // ponytail: lista explícita; coluna nullable nova em ai_agent_versions entra aqui (#2004).
-const NULO_E_AUSENTE = new Set(["trigger_config", "inbound_debounce_ms", "reply_min_interval_ms"]);
+const NULO_E_AUSENTE = new Set(["trigger_config", "inbound_debounce_ms"]);
 
 function versionHash(row: Record<string, unknown>) {
   const keys = Object.keys(versionCreateSchema.shape);
@@ -266,7 +205,7 @@ function versionHash(row: Record<string, unknown>) {
 export async function setupProspectingAgent(
   pool: pg.Pool,
   admin: SupabaseClient,
-  context: { orgId: string; userId: string; requestId: string },
+  context: { orgId: string; userId: string; requestId: string; isento?: boolean },
   raw: unknown,
   options: { prepareOnly?: boolean } = {},
 ) {
@@ -274,9 +213,6 @@ export async function setupProspectingAgent(
   const agentId = setupAgentId(context.orgId, input.campaign_id, input.request_id);
   const requestHash = hash(input);
   const db = await pool.connect();
-  // #2624 — mesma marcação do #2621: o finally só libera COM erro quem falhou
-  // dentro da transação (release(err) → _remove no pg-pool, cliente descartado).
-  let erroNaTransacao: Error | undefined;
   let saved = false;
   const locked: string[] = [];
   let createdNow = false;
@@ -367,34 +303,28 @@ export async function setupProspectingAgent(
         );
       }
     } else {
+      // Agente NOVO conta na cota do plano como qualquer outro: a Prospecção é
+      // uma segunda porta de criação e cobrava nada. Retomar o agente desta
+      // mesma campanha (ramo de cima) não cria vaga nova e não confere.
+      const cota = await conferirCotaDeAgentes(admin, context.orgId, { isento: context.isento });
+      if (!cota.ok) throw new AgentSetupError(cota.message, cota.status);
       await preflight(db, context.orgId, input, agentId, options.prepareOnly);
-      const model = await resolveSetupModel(
-        db,
-        context.orgId,
-        input.channel_session_id,
-        await provedorOferecido(admin),
-      );
+      const model = await resolveSetupModel(db, context.orgId, input.channel_session_id);
       const version = versionCreateSchema.parse({
-        system_prompt: prospectingAgentPrompt(input, await idiomaDaOrganizacao(db, context.orgId)),
+        system_prompt: prospectingAgentPrompt(input),
         provider: model.provider,
         model: model.model,
         credential_id: model.credential_id,
         channel_session_id: input.channel_session_id,
-        tool_ids: [
-          ...capacidadesPadraoDoOnboarding().filter((id) =>
-            [
-              "crm_get_lead",
-              "crm_list_leads",
-              "crm_list_pipelines",
-              "crm_update_lead",
-              "crm_move_lead_stage",
-            ].includes(id),
-          ),
-          // O qualificador grava o diagnóstico da empresa na ficha (decisão D7).
-          // Por NOME, e não pelo filtro acima: ela é do pacote "reter", fora do
-          // agente do onboarding (ver `lib/mcp/tools/catalogo/retencao.ts`).
-          CAPACIDADE_DO_DIAGNOSTICO,
-        ],
+        tool_ids: capacidadesPadraoDoOnboarding().filter((id) =>
+          [
+            "crm_get_lead",
+            "crm_list_leads",
+            "crm_list_pipelines",
+            "crm_update_lead",
+            "crm_move_lead_stage",
+          ].includes(id),
+        ),
         pipeline_ids: [input.pipeline_id],
         knowledge_source_ids: [],
         handoff_tool_enabled: true,
@@ -581,9 +511,6 @@ export async function setupProspectingAgent(
       model_label: metadata.model_label,
     };
   } catch (error) {
-    // Marcado ANTES do rollback: se o próprio rollback estourar, o cliente ainda
-    // sai com erro e o pg-pool o descarta (release(err) → _remove → client.end()).
-    erroNaTransacao = error instanceof Error ? error : new Error(String(error));
     await db.query("rollback").catch(() => undefined);
     if (error instanceof AgentSetupError) {
       if (saved) error.agentId = agentId;
@@ -606,8 +533,6 @@ export async function setupProspectingAgent(
         break;
       }
     }
-    // #2624: quem falhou dentro da transação sai COM erro; quem só não conseguiu
-    // destravar o lock continua saindo com destroy explícito, como antes.
-    db.release(erroNaTransacao ?? destroy);
+    db.release(destroy);
   }
 }

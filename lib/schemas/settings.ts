@@ -365,12 +365,20 @@ export const agendaSettingsSchema = agendaSettingsWriteSchema.catch({confirmatio
  */
 export const internalContactTagsSchema = z.array(z.string()).catch([]);
 
+/**
+ * `team_contact_tags` (vindo do produto original, #3534): etiquetas que marcam
+ * um contato da EQUIPE — ele É atendido, mas a prospecção nunca o aborda.
+ * Ausente/lixo → lista vazia (ninguém é da equipe), o comportamento de antes.
+ */
+export const teamContactTagsSchema = z.array(z.string()).catch([]);
+
 export const crmSettingsSchema = z
   .object({
     cliente_pela_agenda: z.boolean().catch(false),
     internal_contact_tags: internalContactTagsSchema,
+    team_contact_tags: teamContactTagsSchema,
   })
-  .catch({ cliente_pela_agenda: false, internal_contact_tags: [] });
+  .catch({ cliente_pela_agenda: false, internal_contact_tags: [], team_contact_tags: [] });
 
 /** A regra "cliente pela agenda" está ligada nesta organização? Nunca lança. */
 export function clientePelaAgendaLigado(settings: unknown): boolean {
@@ -393,6 +401,18 @@ export function tagsInternasDaOrg(settings: unknown): string[] {
       ? (settings as Record<string, unknown>).crm
       : undefined;
   return normalizarTags(crmSettingsSchema.parse(crm ?? {}).internal_contact_tags);
+}
+
+/**
+ * Lê `organizations.settings.crm.team_contact_tags` já normalizada — a MESMA
+ * forma de `tagsInternasDaOrg`. Lixo → lista vazia.
+ */
+export function tagsDaEquipeDaOrg(settings: unknown): string[] {
+  const crm =
+    settings && typeof settings === "object" && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>).crm
+      : undefined;
+  return normalizarTags(crmSettingsSchema.parse(crm ?? {}).team_contact_tags);
 }
 
 /**

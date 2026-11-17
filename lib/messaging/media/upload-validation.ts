@@ -4,6 +4,19 @@ import { MAX_MEDIA_BYTES } from "@/lib/messaging/media/types";
 export type MessageKind = "image" | "video" | "audio" | "document";
 
 /**
+ * Leitura por service role: a organização vem da autorização no backend.
+ * Os escritores também guardam PDFs em `{org}/{proposta}.pdf`, então não se
+ * exige pasta de conversa. O SDK concatena o path na URL de sign/download:
+ * recuse escapes e separadores ambíguos, sem normalizar para outro objeto.
+ */
+export function isMediaPathInOrganization(path: string, orgId: string): boolean {
+  const segmentos = path.split("/");
+  if (segmentos.length < 2 || segmentos[0] !== orgId) return false;
+  if (/[%\\?#\p{Cc}]/u.test(path) || path.endsWith(" ")) return false;
+  return segmentos.every((segmento) => segmento !== "" && segmento !== "." && segmento !== "..");
+}
+
+/**
  * Posse do objeto no bucket: o path DEVE estar sob {org}/{conversation}/
  * (chaves do Storage são literais — sem semântica de traversal).
  *
