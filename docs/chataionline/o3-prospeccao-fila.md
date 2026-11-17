@@ -5,6 +5,8 @@ prospecção, quantas linhas acrescentadas por ele já existem aqui). O código 
 parou perto de **30/09/2026** e, de lá para cá, o original teve ~130 commits na
 prospecção. Quase todos dependem dos anteriores — por isso a ordem é a cronológica.
 
+**TERMINADO (17/11, noite):** em vez de commit por commit, os arquivos da prospecção foram para a versão final do original e as dependências vieram junto — ver a linha do O3 em `MAPA.md`. A fila abaixo fica como registro.
+
 **Já feito (17/11):** a fatia 1 — escolher onde buscar as empresas (Apify, Scavio
 ou motor próprio da instalação), com a busca no idioma da empresa.
 
