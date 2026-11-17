@@ -43,6 +43,10 @@ const SEM_CONSUMIDOR_ACEITO: Readonly<Record<string, string>> = {
   // Nome só para o log do turno: não muda o que o agente faz nem o que o
   // cliente recebe. Sai daqui no dia em que virar comportamento.
   agentName: "usado apenas no log do run, nunca em decisão",
+  // Fork ChatAI Online: a seleção do número lê o público direto do
+  // trigger_config (`escolherAgenteDoNumero`). Este campo existe para o
+  // ROTEADOR respeitar o público (#3722, fatia 2), ainda não portado.
+  publico: "lido na seleção do número pelo trigger_config; o roteador ainda não o consome",
 };
 
 function camposDaConfig(): string[] {

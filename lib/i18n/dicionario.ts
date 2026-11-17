@@ -19452,6 +19452,7 @@ export const DICIONARIO: Traducoes = {
     es: "Los mensajes del mismo contacto dentro de este tiempo se convierten en una sola respuesta. Vacío usa la ventana predeterminada de la instalación (máximo 60 segundos).",
   },
   "Vazio = padrão da instalação": { es: "Vacío = predeterminado de la instalación" },
+  "Agenda do celular": { es: "Agenda del celular" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

@@ -21,9 +21,10 @@ import {
   type JanelaDeAtendimento,
 } from './janela-de-atendimento';
 import {
+  avaliarPublico,
   carregarFatosDoContato,
   lerPublicoDoGatilho,
-  passaNoPublico,
+  type DecisaoDoPublico,
   type PublicoDoAgente,
 } from './publico-do-gatilho';
 
@@ -109,16 +110,17 @@ export interface PublishedAgentConfig {
   versionCreatedBy: string | null;
   agentCreatedBy: string | null;
   /**
-   * PÚBLICO do agente (#3722): `trigger_config.filters.include_tags` /
-   * `exclude_tags` / `include_pipeline_ids` / `exclude_pipeline_ids`.
-   * `null`/ausente = atende todo mundo (o comportamento de sempre).
+   * O PÚBLICO que a versão declara no `trigger_config` (#3722, fatia 2).
+   * `null`/ausente = atende todo mundo.
    *
-   * Quem obedece é a SELEÇÃO do agente — `escolherAgenteDoNumero`, abaixo —,
-   * não o turno: com dois agentes no mesmo número, o público é o que decide
-   * QUAL deles atende. A régua mora em `publico-do-gatilho.ts`.
-   * Opcional porque nasce depois das fixtures que montam esta interface à mão.
+   * Existe para o ROTEADOR: o fallback do router é carregado por
+   * `loadPublishedAgentConfigById`, e sem o público aqui ele assumiria o
+   * contato que a régua barrou. Opcional porque nasce depois das fixtures que
+   * montam este tipo à mão — ausente vale "sem público", o lado que não cala.
+   * Mora no jsonb, como `janelaDeAtendimento`/`filtroDePalavraChave`; nenhuma
+   * coluna nova, nenhuma migration.
    */
-  publicoDoAgente?: PublicoDoAgente | null;
+  publico?: PublicoDoAgente | null;
   /**
    * A resposta pode saír como nota de voz nesta versão (Fase 6b do plano de
    * voz). Default do banco é FALSE — mesma doutrina de `operatorEnabled`:
@@ -287,8 +289,9 @@ function mapAgentConfigRow(r: Row): PublishedAgentConfig {
     // `null` (sem janela ⇒ atende sempre), nunca uma mordaça acidental.
     janelaDeAtendimento: lerJanelaDeAtendimento(r.trigger_config),
     naoAtenderEmFeriadoNacional: lerFechadoEmFeriadoNacional(r.trigger_config),
-    // Mesma leitura defensiva: lista torta ⇒ `null` ⇒ atende todo mundo.
-    publicoDoAgente: lerPublicoDoGatilho(r.trigger_config),
+    // Mesma leitura defensiva de `janelaDeAtendimento`: lista torta ⇒ `null`
+    // (atende todo mundo), nunca uma mordaça acidental.
+    publico: lerPublicoDoGatilho(r.trigger_config),
     versionCreatedBy: r.version_created_by,
     agentCreatedBy: r.agent_created_by,
     // `?? false`: mesma direção segura de `operatorEnabled` — gasto novo nasce
@@ -322,6 +325,64 @@ export type MotivoDaEscolha =
 export interface EscolhaDoNumero {
   config: PublishedAgentConfig | null;
   motivo: MotivoDaEscolha;
+  /**
+   * QUEM foi considerado e a decisão de cada um (#3722). Só existe quando
+   * algum candidato declarou público — quem não usa o recurso não ganha rastro
+   * (e não paga uma linha de log por turno).
+   */
+  rastro?: RastroDoPublico;
+}
+
+/** Um candidato no rastro: quem entrou na fila e o que a régua disse dele. */
+export interface CandidatoNoRastroDoPublico {
+  agentId: string;
+  agentName: string;
+  /** Posição na ordem de precedência (0 = o primeiro da fila de sempre). */
+  posicao: number;
+  /** `true` = pausado, que vem por último na ordem. */
+  pausado: boolean;
+  /**
+   * `true` = este agente NÃO declarou público: atende qualquer contato e a
+   * régua não o avalia. Distinto de "barrado" — é o agente genérico que a
+   * issue não quer que assuma quando outro barrou.
+   */
+  semPublico: boolean;
+  /**
+   * A decisão da régua. `null` em dois casos, ambos com `semPublico`
+   * desambiguando: sem público declarado, ou candidato que veio DEPOIS de quem
+   * ganhou e por isso não chegou a ser avaliado (a seleção para no primeiro
+   * elegível — o rastro não inventa decisão para quem não foi julgado).
+   */
+  decisao: DecisaoDoPublico | null;
+}
+
+/**
+ * O rastro da decisão do público em UM turno.
+ *
+ * Existe porque o motivo agregado (`publico_barrou`) responde "ninguém atendeu"
+ * e nada mais: não diz QUAL candidato barrou o contato nem QUAL item do
+ * público o barrou. Sem isso, a pergunta "por que o agente de vendas não
+ * respondeu este cliente?" só tinha como resposta abrir o banco.
+ */
+export interface RastroDoPublico {
+  /** `false` = o chamador não trouxe contato: a régua NÃO foi aplicada. */
+  contatoAvaliado: boolean;
+  /** A fila inteira, na ordem de precedência, com a decisão de cada um. */
+  candidatos: CandidatoNoRastroDoPublico[];
+  /** Quem ganhou. `null` = o público barrou todo mundo (silêncio). */
+  escolhidoAgentId: string | null;
+  /**
+   * De ONDE veio a fila (#3722, fatia 2). Ausente/`'numero'` = a seleção do
+   * agente do número (fatia 1), comportamento e formato de antes. `'roteador'`
+   * = a régua passou sobre os MEMBROS do roteador antes da pergunta do
+   * classificador; aí `escolhidoAgentId` é o agente que o turno de fato
+   * escolheu (ou `null` no silêncio).
+   */
+  origem?: 'numero' | 'roteador';
+  /** Quantos candidatos (membros e, quando avaliado, o fallback) o público barrou. */
+  barrados?: number;
+  /** Por que o turno ficou sem agente, quando foi o público. */
+  motivo?: 'publico_barrou';
 }
 
 /**
@@ -376,8 +437,8 @@ export async function escolherAgenteDoNumero(
      where a.organization_id = $1
        and a.archived_at is null
        -- is_active é semântica do rag_bot legado; para mcp_agent "ativo" =
-       -- published_version_id preenchido + não arquivado (mesmo critério do
-       -- dispatcher nativo do CRM — pausar = despublicar).
+       -- published_version_id preenchido + não arquivado. Pausar NÃO despublica
+       -- (grava só paused_at): o pausado vem aqui, e o turno sai no pausedAt.
        and v.status = 'published'
        and v.channel_session_id = $2
      -- Quem está NO AR vem antes de qualquer pausado: sem isto um pausado de
@@ -387,31 +448,66 @@ export async function escolherAgenteDoNumero(
      order by (a.paused_at is not null) asc, a.priority desc, a.created_at asc`,
     [organizationId, channelSessionId],
   );
-  const candidatos = rows.map(mapAgentConfigRow);
+  // O público (#3722) é lido da linha crua, ao lado da config: quem o consome é
+  // só esta seleção, então ele não entra em `PublishedAgentConfig` (o turno não
+  // tem o que fazer com ele). Lista torta ⇒ `null` ⇒ atende todo mundo.
+  const candidatos = rows.map((r, posicao) => ({
+    config: mapAgentConfigRow(r),
+    publico: lerPublicoDoGatilho(r.trigger_config),
+    posicao,
+    // `!= null` cobre o fixture sem a coluna e o NULL do banco: pausado é
+    // "tem data", não "a chave existe".
+    pausado: r.paused_at != null,
+  }));
   const primeiro = candidatos[0];
   if (primeiro === undefined) return { config: null, motivo: 'sem_agente' };
 
   // Ninguém declarou público: comportamento de antes, sem tocar em `contacts`.
-  if (!candidatos.some((c) => c.publicoDoAgente != null)) {
-    return { config: primeiro, motivo: 'primeiro_da_fila' };
+  // Sem público não há decisão a rastrear — e não inventar rastro aqui é o que
+  // mantém o log do turno silencioso para quem não usa o recurso.
+  if (!candidatos.some((c) => c.publico !== null)) {
+    return { config: primeiro.config, motivo: 'primeiro_da_fila' };
   }
+
+  // A decisão de cada candidato, preenchida conforme a régua julga. Quem vem
+  // depois do escolhido fica `null` — a seleção para no primeiro elegível e o
+  // rastro não inventa decisão para quem não foi avaliado.
+  const decisoes: Array<DecisaoDoPublico | null> = candidatos.map(() => null);
+  const rastro = (escolhidoAgentId: string | null, contatoAvaliado: boolean): RastroDoPublico => ({
+    contatoAvaliado,
+    escolhidoAgentId,
+    candidatos: candidatos.map((c, i) => ({
+      agentId: c.config.agentId,
+      agentName: c.config.agentName,
+      posicao: c.posicao,
+      pausado: c.pausado,
+      semPublico: c.publico === null,
+      decisao: decisoes[i] ?? null,
+    })),
+  });
 
   // Público configurado mas sem contato no chamador: a régua não pode ser
   // aplicada, e chutar "barrou" calaria o número por um erro de fiação. Cai no
-  // primeiro da fila e o motivo fica registrado.
+  // primeiro da fila e o motivo + o rastro dizem que NADA foi avaliado.
   if (contactId == null) {
-    return { config: primeiro, motivo: 'sem_contato' };
+    return { config: primeiro.config, motivo: 'sem_contato', rastro: rastro(null, false) };
   }
 
   // Erro de leitura sobe de propósito: a fila re-tenta o job.
   const fatos = await carregarFatosDoContato(db, organizationId, contactId);
-  for (const candidato of candidatos) {
-    const publico = candidato.publicoDoAgente ?? null;
-    if (publico === null || passaNoPublico(publico, fatos)) {
-      return { config: candidato, motivo: 'publico_liberou' };
+  for (const [i, candidato] of candidatos.entries()) {
+    if (candidato.publico !== null) {
+      const decisao = avaliarPublico(candidato.publico, fatos);
+      decisoes[i] = decisao;
+      if (!decisao.passa) continue;
     }
+    return {
+      config: candidato.config,
+      motivo: 'publico_liberou',
+      rastro: rastro(candidato.config.agentId, true),
+    };
   }
-  return { config: null, motivo: 'publico_barrou' };
+  return { config: null, motivo: 'publico_barrou', rastro: rastro(null, true) };
 }
 
 /**
