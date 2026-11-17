@@ -1146,33 +1146,30 @@ const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTim
  */
 export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSendResult> {
   const gates = args.gates ?? BEFORE_SEND_GATES;
-  // ANTES de tomar conexão, de propósito: preferência de estilo não precisa do
-  // lock, e uma consulta que falha DENTRO da transação a deixa abortada — a
-  // próxima morreria com 25P02, longe daqui e com outro nome. Aqui, uma falha
-  // custa o default (desligado) e uma linha no trace, não o envio.
-  const estilo =
-    args.enforceInternalVocabulary !== undefined
-      ? await lerAjustesDeEstiloDaOrg(args.pool, args.tenantId)
-      : null;
-
-  // Conferência de fato (#2231) também ANTES de tomar conexão: ela grava em
+  // Conferência de fato (#2231) ANTES de tomar conexão: ela grava em
   // `llm_calls` (FK para `contacts`) por OUTRA conexão, e dentro da transação
   // que lê `contacts` sob lock isso fecha um ciclo que o Postgres não detecta
-  // (medido no original, #2363). O veredito só depende do corpo. Falha = não
+  // (medido no original, #2363). O veredito só depende do corpo — aqui o do
+  // modelo, sem os ajustes de estilo, que só trocam pontuação. Falha = não
   // conferido: quem não sabe o que a base diz não pode proibir a frase.
   // Começa junto com a pausa humana (fora do lock, nem conexão tomada): o
   // cliente espera o maior dos dois, não a soma.
   const [, factualClaim] = await Promise.all([
     args.esperaForaDoLock ? args.esperaForaDoLock() : undefined,
-    args.conferirAfirmacoes
-      ? args
-          .conferirAfirmacoes(estilo !== null ? aplicarAjustesDeEstilo(args.body, estilo.ajustes) : args.body)
-          .catch(() => null)
-      : null,
+    args.conferirAfirmacoes ? args.conferirAfirmacoes(args.body).catch(() => null) : null,
   ]);
 
   const client = await args.pool.connect();
   try {
+    // ANTES do `begin`, de propósito: preferência de estilo não precisa do lock,
+    // e uma consulta que falha DENTRO da transação a deixa abortada — a próxima
+    // morreria com 25P02, longe daqui e com outro nome. Aqui, uma falha custa o
+    // default (desligado) e uma linha no trace, não o envio.
+    const estilo =
+      args.enforceInternalVocabulary !== undefined
+        ? await lerAjustesDeEstiloDaOrg(client, args.tenantId)
+        : null;
+
     await client.query('begin');
     // Serialização por número: dois workers no MESMO channel_session esperam a vez.
     await client.query('select pg_advisory_xact_lock(hashtext($1))', [args.channelSessionId]);

@@ -176,8 +176,7 @@ describe("a cadeia REAL barra o vazamento — e só quando armada", () => {
       detail: { leaked_count: 1, leaked_kinds: "snake_case,tool" },
     });
     // E a medição sobrevive ao rollback do veto: escrita autônoma em before_send_traces.
-    // O pool também lê os ajustes de estilo ANTES de tomar conexão (fora do
-    // lock), então a escrita do trace é procurada entre as chamadas, não na 1ª.
+    // A escrita do trace é procurada entre as chamadas do pool, não presa à 1ª.
     const escrita = inserts.mock.calls.find((c) => /insert into before_send_traces/.test(String(c[0])));
     expect(String(escrita?.[0] ?? "")).toMatch(/insert into before_send_traces/);
     expect(escrita?.[1]).toContain("internal_vocabulary_leak");

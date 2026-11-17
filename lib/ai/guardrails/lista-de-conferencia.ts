@@ -51,6 +51,12 @@ export interface ConferenciaDeSaida {
   /** Por que não se desliga. Vazio quando há escolha. */
   porQueNaoSeDesliga: string;
   /**
+   * Sem interruptor NESTA tela, mas com escolha em outra (a conferência de fato
+   * liga no cartão do Jev). Toma o lugar do "Isto não se desliga.", que ali
+   * seria mentira.
+   */
+  escolhaEmOutraTela?: string;
+  /**
    * A chave da camada em `org_guardrail_layers`, quando há escolha.
    *
    * São DOIS vocabulários e eles não coincidem: aqui o nome é o do gate na cadeia
@@ -140,8 +146,9 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     oQueProtege:
       "Confere se o que o assistente afirma sobre o negócio (horário, preço, endereço) está no material que ele consultou para responder.",
     escolha: null,
+    escolhaEmOutraTela: "Liga-se no cartão do Jev, em Provedores de IA.",
     porQueNaoSeDesliga:
-      "Vem desligada e liga-se no cartão do Jev, em Provedores de IA. Nesta versão ela só anota o que encontrou e não barra nenhuma mensagem; ligada, custa +1 consulta ao Jev por resposta.",
+      "Vem desligada. Nesta versão ela só anota o que encontrou e não barra nenhuma mensagem; ligada, custa +1 consulta ao Jev por resposta.",
     camada: null,
   },
   {

@@ -145,7 +145,11 @@ describe("painel de segurança — o que se confere antes de enviar", () => {
   it("cada conferência sem escolha DIZ por que não se desliga", () => {
     renderPainel();
 
-    const fixas = CONFERENCIAS_DE_SAIDA.filter((c) => c.escolha === null);
+    // A conferência de fato (#2231) não tem interruptor AQUI, mas se liga no
+    // cartão do Jev: dizer "não se desliga" sobre ela seria mentira.
+    const fixas = CONFERENCIAS_DE_SAIDA.filter(
+      (c) => c.escolha === null && c.escolhaEmOutraTela === undefined,
+    );
     // 10 das 11 hoje (subiu de 9/10 quando `agenda_stall` entrou na cadeia — ver
     // `before-send.ts`). A contagem entra na asserção de propósito: se alguém tornar
     // uma delas "configurável", este número muda e a mudança tem de ser deliberada.
