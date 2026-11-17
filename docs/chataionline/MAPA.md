@@ -127,6 +127,8 @@
 
 - **O5b — Público do agente (dois agentes no mesmo número)** — porta do upstream #3722 (fa05a7f2b, c1118f652, 98ab14938): etiquetas, funis e origem do contato decidem qual agente do número atende; ninguém aceita = silêncio com a mensagem na caixa de entrada. A fatia 2 (o roteador respeitar o público, 80f94fc03) **não** foi portada: depende do contexto do CRM no roteador (#3917) e das regras de remetente, que o fork não tem. Prova: `evidence/publico-do-agente/`.
 
+- **O5c — Qualificar antes de distribuir** — porta do upstream #3966 (ad538741e), migration 0532: o `routing-worker` pula enquanto há IA publicada no número e não houve handoff (`lib/routing/qualificacao-da-ia.ts`, falha aberta); o handoff pede o roteamento uma vez (`fn_routing_assignment_changed` olha `last_handoff_at`). Sem IA, nada muda. Os ramos de caso da conversa e destino padrão do número do upstream não existem no fork e ficaram de fora.
+
 ## 5. O que falta / pendências conhecidas
 
 - **Nunca foi testado pela tela, numa instalação limpa, depois das duas auditorias:** criar conta →

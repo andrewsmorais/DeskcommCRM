@@ -38,6 +38,18 @@ export interface DecideRoutingInput {
   /** attempts atual do event_log (antes deste processamento). */
   attempts: number;
   now: Date;
+  /**
+   * A IA ESTÁ QUALIFICANDO ESTA CONVERSA? (#3966) — `true` = sim.
+   *
+   * O pedido de roteamento nasce no INSERT (`trg_conversation_routing_requested`),
+   * antes de qualquer resposta da IA. Num número com agente de qualificação, a
+   * fila entregava a conversa a uma pessoa em menos de 1 min: a atribuição grava
+   * `assignee_kind = 'user'`, o gate da IA cala o agente (`conversa_de_humano`) e
+   * o lead ficava sem resposta até alguém olhar. A pergunta vem pronta — quem a
+   * responde é `qualificacaoEmCurso` (`./qualificacao-da-ia`) —, para a decisão
+   * continuar sem banco. `false`/ausente = distribui no nascimento, como sempre.
+   */
+  iaQualificando?: boolean;
 }
 
 /**
@@ -62,6 +74,11 @@ export function decideRouting(input: DecideRoutingInput): RoutingAction {
 
   // Modo manual (acceptance 5): worker não roteia.
   if (input.mode === "manual") return { kind: "skip", reason: "manual_mode" };
+
+  // A IA AINDA ESTÁ QUALIFICANDO (#3966): enquanto a IA atende, a conversa não é
+  // trabalho de ninguém. O pedido volta UMA vez quando a qualificação termina
+  // (`last_handoff_at` novo ⇒ `fn_request_channel_routing`, migration 0532).
+  if (input.iaQualificando) return { kind: "skip", reason: "ia_qualificando" };
 
   // 'load' é INALCANÇÁVEL: routingConfigSchema só permite manual|round_robin
   // (G5-01). Tratado defensivamente como no-op (post-MVP), nunca dead code real.

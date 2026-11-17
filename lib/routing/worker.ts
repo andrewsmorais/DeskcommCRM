@@ -16,6 +16,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { decideRouting } from "@/lib/routing/decide";
+import { lerQualificacaoDaIA } from "@/lib/routing/qualificacao-da-ia";
 import { loadEligibleAttendants, InvalidRoutingChannel } from "@/lib/routing/eligibles";
 import { routingConfigSchema } from "@/lib/schemas/routing";
 import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
@@ -35,6 +36,8 @@ export type RoutingOutcome =
   | "skipped_conv_missing"
   | "skipped_invalid_payload"
   | "assign_lost_race"
+  /** #3966: a IA ainda está qualificando — a fila espera a passagem para humano. */
+  | "skipped_ia_qualificando"
   | "error";
 
 export interface RoutingSummary {
@@ -63,6 +66,7 @@ const EMPTY_OUTCOMES = (): Record<RoutingOutcome, number> => ({
   skipped_conv_missing: 0,
   skipped_invalid_payload: 0,
   assign_lost_race: 0,
+  skipped_ia_qualificando: 0,
   error: 0,
 });
 
@@ -144,7 +148,7 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
 
   const { data: conv, error: convError } = await admin
     .from("conversations")
-    .select("id, organization_id, contact_id, channel_session_id, assigned_to_user_id, status, setor_id")
+    .select("id, organization_id, contact_id, channel_session_id, assigned_to_user_id, status, setor_id, bot_silenced_until, last_handoff_at, active_ai_agent_id")
     .eq("id", conversationId)
     .eq("organization_id", orgId)
     .maybeSingle();
@@ -177,8 +181,28 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
   }
 
   const alreadyAssigned = Boolean(conv.assigned_to_user_id);
+
+  // A IA AINDA ESTÁ QUALIFICANDO? (#3966) — só pergunta quando há distribuição
+  // automática e a conversa não tem dono; antes da leitura de elegíveis, que
+  // seria pagar caro para nada. A leitura é fail-open (`qualificacao-da-ia.ts`).
+  const iaQualificando =
+    !alreadyAssigned && config.mode !== "manual"
+      ? await lerQualificacaoDaIA(
+          admin,
+          orgId,
+          {
+            channel_session_id: conv.channel_session_id,
+            active_ai_agent_id: conv.active_ai_agent_id,
+            bot_silenced_until: conv.bot_silenced_until,
+            last_handoff_at: conv.last_handoff_at,
+            assigned_to_user_id: conv.assigned_to_user_id,
+          },
+          now,
+        )
+      : false;
+
   let eligibles: Awaited<ReturnType<typeof loadEligibleAttendants>> = [];
-  if (!alreadyAssigned && config.mode === "round_robin") {
+  if (!alreadyAssigned && !iaQualificando && config.mode === "round_robin") {
     try {
       eligibles = await loadEligibleAttendants(admin, orgId, now, {
         kind: "conversation_channel", channelSessionId: conv.channel_session_id,
@@ -199,6 +223,7 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
     config,
     attempts: event.attempts,
     now,
+    iaQualificando,
   });
 
   switch (action.kind) {
@@ -238,7 +263,9 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
           ? "skipped_manual"
           : action.reason === "already_assigned"
             ? "skipped_already_assigned"
-            : "skipped_unsupported_mode";
+            : action.reason === "ia_qualificando"
+              ? "skipped_ia_qualificando"
+              : "skipped_unsupported_mode";
       if (action.reason.startsWith("unsupported_mode")) {
         logger.warn("[routing-worker] modo não suportado (post-MVP) — no-op", {
           organization_id: orgId,
