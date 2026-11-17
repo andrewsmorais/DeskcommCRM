@@ -10,9 +10,11 @@
 import { z } from "zod";
 
 import { normalizarTag, normalizarTags } from "@/lib/contacts/tag-normalizada";
-import { isValidCpf, type PerfilDoPais } from "@/lib/legal/perfil-do-pais";
+import { traduzir } from "@/lib/i18n/dicionario";
+import type { Idioma } from "@/lib/i18n/idiomas";
+import { isValidCpf, PAIS_PADRAO, type PerfilDoPais } from "@/lib/legal/perfil-do-pais";
 
-const PHONE_REGEX = /^\+\d{8,15}$/;
+export const PHONE_REGEX = /^\+\d{8,15}$/;
 
 /**
  * Teto de 32 KB no jsonb inteiro. O CHECK do banco só garante que é OBJETO —
@@ -60,8 +62,24 @@ export const contactCreateSchema = z.object({
 });
 export type ContactCreate = z.infer<typeof contactCreateSchema>;
 
+/**
+ * Tipo e WhatsApp de um número (vindo do produto original, Spec 31 B2). Os
+ * mesmos vocabulários do banco (`contacts_phone_type_check`,
+ * `contacts_phone_whatsapp_check` e os de `contact_phones`, migration 0541):
+ * uma palavra a mais aqui seria `23514` na gravação.
+ */
+export const TIPOS_DE_TELEFONE = ["fixo", "celular", "outro"] as const;
+export const WHATSAPP_DO_TELEFONE = ["sim", "nao", "nao_sei"] as const;
+export const telefoneTipoSchema = z.enum(TIPOS_DE_TELEFONE);
+export const telefoneWhatsappSchema = z.enum(WHATSAPP_DO_TELEFONE);
+export type TelefoneTipo = z.infer<typeof telefoneTipoSchema>;
+export type TelefoneWhatsapp = z.infer<typeof telefoneWhatsappSchema>;
+
 export const contactPatchSchema = contactCreateSchema.partial().extend({
   source: z.string().min(1).optional(),
+  // Tipo e WhatsApp do telefone PRINCIPAL. Ausente = a coluna fica como está.
+  phone_type: telefoneTipoSchema.optional(),
+  phone_whatsapp: telefoneWhatsappSchema.optional(),
 });
 export type ContactPatch = z.infer<typeof contactPatchSchema>;
 
@@ -155,3 +173,52 @@ export const contactsMergeSchema = z
     path: ["secondary_contact_ids"],
   });
 export type ContactsMergeInput = z.infer<typeof contactsMergeSchema>;
+
+/**
+ * Telefone extra da ficha: `POST /api/v1/contacts/{id}/phones`. O número passa
+ * pela MESMA leitura do canal (`normalizePhoneBR`, na rota), e não por esta
+ * régua de formato: quem recusa o número inválido é a rota, com
+ * `invalid_phone` (422), que é o código que a tela mostra.
+ */
+export const telefoneExtraCreateSchema = z.object({
+  phone_number: z.string().trim().min(1).max(40),
+  type: telefoneTipoSchema.optional(),
+  whatsapp: telefoneWhatsappSchema.optional(),
+  label: z.string().trim().max(60).optional(),
+});
+export type TelefoneExtraCreate = z.infer<typeof telefoneExtraCreateSchema>;
+
+/**
+ * `PATCH /api/v1/contacts/{id}/phones/{phoneId}`: pelo menos um campo. O número
+ * do extra não muda aqui (para trocar, remove-se e adiciona-se). `label: null`
+ * ou `""` apaga o rótulo.
+ */
+export const telefoneExtraPatchSchema = z
+  .object({
+    type: telefoneTipoSchema.optional(),
+    whatsapp: telefoneWhatsappSchema.optional(),
+    label: z.string().trim().max(60).nullable().optional(),
+  })
+  .refine((valor) => Object.values(valor).some((v) => v !== undefined), {
+    message: "Informe ao menos um campo para atualizar.",
+  });
+export type TelefoneExtraPatch = z.infer<typeof telefoneExtraPatchSchema>;
+
+/**
+ * A frase que ensina o formato do telefone, por país. O perfil deste fork não
+ * traz exemplo de número: fora do Brasil vale o E.164 genérico.
+ */
+export function mensagemDoTelefone(perfil: PerfilDoPais, idioma: Idioma = "pt-BR"): string {
+  if (perfil.codigo !== PAIS_PADRAO) {
+    return traduzir("Telefone deve estar em formato E.164 ({exemplo})", idioma).replace(
+      "{exemplo}",
+      "+15551234567",
+    );
+  }
+  return traduzir(
+    "Telefone deve ter DDD + número (ex.: {exemplo}) ou o formato E.164 ({exemploE164})",
+    idioma,
+  )
+    .replace("{exemplo}", "11999998888")
+    .replace("{exemploE164}", "+5511999998888");
+}

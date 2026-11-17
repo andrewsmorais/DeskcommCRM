@@ -19820,6 +19820,34 @@ export const DICIONARIO: Traducoes = {
   Instagram: { es: "Instagram" },
   "Dias da prospecção": { es: "Días de prospección" },
   "Não foi possível alterar a marca de atendimento humano.": { es: "No fue posible cambiar la marca de atención humana." },
+  "Principal": { es: "Principal" },
+  "WhatsApp: não sabemos": { es: "WhatsApp: no sabemos" },
+  "Veio da junção de fichas": { es: "Vino de la unión de fichas" },
+  "Adicionar telefone": { es: "Agregar teléfono" },
+  "Digite o número do telefone.": { es: "Escriba el número de teléfono." },
+  "Este número já está em outra ficha.": { es: "Este número ya está en otra ficha." },
+  "Torne outro número principal antes de remover este.": {
+    es: "Haga principal otro número antes de quitar este.",
+  },
+  "Número inválido. Informe o telefone no formato E.164, com o código do país.": {
+    es: "Número no válido. Informe el teléfono en formato E.164, con el código del país.",
+  },
+  "Telefone deve estar em formato E.164 ({exemplo})": {
+    es: "El teléfono debe estar en formato E.164 ({exemplo})",
+  },
+  "Telefone deve ter DDD + número (ex.: {exemplo}) ou o formato E.164 ({exemploE164})": {
+    es: "El teléfono debe tener código de área + número (ej.: {exemplo}) o el formato E.164 ({exemploE164})",
+  },
+  "Telefone inválido. Informe DDD e número.": {
+    es: "Teléfono no válido. Informa el código de área y el número.",
+  },
+  "leads": { es: "leads" },
+  "Celular": { es: "Móvil" },
+  "A resposta sai por:": { es: "La respuesta sale por:" },
+  "Não foi possível verificar o acesso da IA. Nenhuma mensagem foi enviada.": {
+    es: "No fue posible verificar el acceso de la IA. No se envió ningún mensaje.",
+  },
+  "Não foi possível ler a conversa.": { es: "No fue posible leer la conversación." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

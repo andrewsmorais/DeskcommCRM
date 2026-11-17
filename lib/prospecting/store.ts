@@ -407,11 +407,15 @@ async function telefonesQueSaoContato(
   const variantes = [...new Set(phones.flatMap((p) => phoneLookupVariants(p)))];
   if (variantes.length === 0) return new Set();
   const { rows } = await db.query<{ phone: string }>(
-    // Fork ChatAI Online: ainda sem `contact_phones` (telefones extras, O8 do plano);
-    // a conferência fica no telefone da ficha.
     `select c.phone_number as phone
        from contacts c
       where c.organization_id = $1 and c.phone_number = any($2::text[])
+        and c.is_merged_into is null
+     union
+     select cp.phone_number as phone
+       from contact_phones cp
+       join contacts c on c.id = cp.contact_id and c.organization_id = cp.organization_id
+      where cp.organization_id = $1 and cp.phone_number = any($2::text[])
         and c.is_merged_into is null`,
     [org, variantes],
   );
@@ -853,12 +857,19 @@ export async function triarCandidato(
   // seria escrever (e pagar) uma mensagem que ninguém recebe.
   const semWhatsapp = motivoSemWhatsapp(p.data);
   if (semWhatsapp) return { motivo: semWhatsapp };
-  const known = await db.query(
+  let known = await db.query(
     "select id from contacts where organization_id=$1 and phone_number=any($2::text[])",
     [org, phoneLookupVariants(p.phone)],
   );
-  // Fork ChatAI Online: o original confere também o telefone EXTRA da ficha
-  // (`contact_phones`); aqui ainda não há telefone extra (O8 do plano).
+  // Sem principal com o número, conta como existente a ficha que o tem como EXTRA
+  // (`contact_phones`, forma canônica). Sem isto, a prospecção criava um contato
+  // novo por cima de um atendimento que já existe no CRM.
+  if (known.rows.length === 0) {
+    known = await db.query(
+      "select cp.contact_id as id from contact_phones cp join contacts c on c.id = cp.contact_id and c.organization_id = cp.organization_id where cp.organization_id=$1 and cp.phone_number=$2 and c.is_merged_into is null limit 1",
+      [org, canonicalPhoneBR(p.phone)],
+    );
+  }
   let contactId = p.contact_id;
   if (known.rows.length && !contactId) {
     const owned = await db.query(

@@ -114,3 +114,11 @@ export function samePhone(a: string, b: string): boolean {
   const va = new Set(phoneLookupVariants(a));
   return phoneLookupVariants(b).some((v) => va.has(v));
 }
+
+/** O número da lista que é o mesmo telefone de `numero`, considerando o nono dígito. */
+export function mesmoTelefoneNaLista(
+  numeros: ReadonlyArray<string | null | undefined>,
+  numero: string,
+): string | undefined {
+  return numeros.find((n): n is string => Boolean(n) && samePhone(n as string, numero));
+}

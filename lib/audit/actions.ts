@@ -303,6 +303,12 @@ export const AUDIT_ACTIONS = [
   "contacts.personal_unmarked",
   "contacts.always_human_marked",
   "contacts.always_human_unmarked",
+  // Telefones extras da ficha (migration 0541). O metadata leva ids, tipo e
+  // WhatsApp, nunca o número: a trilha é append-only e a LGPD não a alcança.
+  "contact.extra_phone_added",
+  "contact.extra_phone_updated",
+  "contact.extra_phone_removed",
+  "contact.primary_phone_changed",
   // Prospecção completa (vindo do produto original): busca, site, saída,
   // prévias e conferência de WhatsApp.
   "prospecting.search_completed",

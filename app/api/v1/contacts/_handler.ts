@@ -165,9 +165,28 @@ export async function listContactsHandler(
         !digits.startsWith("55") && (digits.length === 10 || digits.length === 11)
           ? `55${digits}`
           : digits;
+      // Os critérios de TELEFONE do principal, reaproveitados para o extra abaixo.
+      const criteriosDeTelefone = [`phone_number.ilike.%${s}%`];
       for (const v of phoneLookupVariants(base)) {
         const d = v.replace(/\D/g, "");
-        if (d && d !== digits) orParts.push(`phone_number.ilike.%${d}%`);
+        if (d && d !== digits) {
+          orParts.push(`phone_number.ilike.%${d}%`);
+          criteriosDeTelefone.push(`phone_number.ilike.%${d}%`);
+        }
+      }
+      // Ficha cujo TELEFONE EXTRA (migration 0541) casa o termo também entra:
+      // sem isto, o número que não é o principal não acharia a pessoa que o
+      // tem. Filtrada por organização; só quando o termo tem cara de telefone.
+      if (/^[\d\s()+.-]+$/.test(q.search.trim())) {
+        const { data: extras } = await supabase
+          .from("contact_phones")
+          .select("contact_id")
+          .eq("organization_id", ctx.organization_id)
+          .or(criteriosDeTelefone.join(","));
+        const idsDeExtras = [
+          ...new Set(((extras ?? []) as { contact_id: string }[]).map((r) => r.contact_id)),
+        ];
+        if (idsDeExtras.length > 0) orParts.push(`id.in.(${idsDeExtras.join(",")})`);
       }
     }
     if (digits.length === 11) {
@@ -555,6 +574,10 @@ export async function patchContactHandler(
   if (input.phone_number !== undefined) {
     patch.phone_number = input.phone_number ? canonicalPhoneBR(input.phone_number) : input.phone_number;
   }
+  // Tipo e WhatsApp do principal (0541). Ausentes não entram no patch: o
+  // gatilho do banco recalcula só o que a pessoa não fixou.
+  if (input.phone_type !== undefined) patch.phone_type = input.phone_type;
+  if (input.phone_whatsapp !== undefined) patch.phone_whatsapp = input.phone_whatsapp;
   if (input.birthdate !== undefined) patch.birthdate = input.birthdate;
   if (input.tags !== undefined) patch.tags = input.tags;
   if (input.source !== undefined) patch.source = input.source;
@@ -595,6 +618,29 @@ export async function patchContactHandler(
       ctx.requestId,
       traduzir("Nenhum campo para atualizar.", ctx.idioma ?? "pt-BR"),
     );
+  }
+
+  // Apagar o principal com telefone extra deixaria os extras sem número de
+  // resposta ("Tornar principal" é o caminho). Recusa ANTES do UPDATE.
+  if (input.phone_number === null && (existing as { phone_number?: string | null }).phone_number) {
+    const { data: extras, error: errExtras } = await supabase
+      .from("contact_phones")
+      .select("id")
+      .eq("organization_id", ctx.organization_id)
+      .eq("contact_id", contactId)
+      .limit(1);
+    if (errExtras) {
+      throw new ApiError(500, "internal_error", undefined, ctx.requestId, errExtras.message);
+    }
+    if (extras && extras.length > 0) {
+      throw new ApiError(
+        409,
+        "primary_phone_has_extras",
+        undefined,
+        ctx.requestId,
+        traduzir("Torne outro número principal antes de remover este.", ctx.idioma ?? "pt-BR"),
+      );
+    }
   }
 
   const tagServiceOrigin = input.tags !== undefined

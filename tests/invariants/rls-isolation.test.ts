@@ -314,6 +314,15 @@ beforeAll(() => {
             values (v_org, v_contact, 'email', 'rls-invariant@exemplo.test', now() + interval '7 days');
         end if;
 
+        -- contact_phones (migration 0541): o segundo telefone da ficha. Número
+        -- diferente por organização (a regra "um número, uma ficha" é por
+        -- organização, então o mesmo número nas duas também passaria).
+        if not exists (select 1 from public.contact_phones where organization_id = v_org) then
+          insert into public.contact_phones (organization_id, contact_id, phone_number)
+            values (v_org, v_contact,
+                    '+55119' || lpad((abs(hashtext(v_org::text)) % 100000000)::text, 8, '0'));
+        end if;
+
         if not exists (select 1 from public.catalog_products where organization_id = v_org) then
           insert into public.catalog_products
             (organization_id, codigo, nome, preco_cents)
@@ -603,6 +612,9 @@ export const TABLES = [
   "knowledge_searches",
   // migration 0123 (spec 17 §4b) — guarda e-mail/telefone ditos na conversa.
   "contact_field_proposals",
+  // migration 0541 — o segundo telefone da ficha. Leitura por organização; a
+  // escrita exige `agent`, o papel semeado aqui.
+  "contact_phones",
   // migration 0142 — a escolha de camadas de segurança da organização. Entrou aqui
   // depois de uma auditoria medir que ela NÃO tinha prova comportamental nenhuma:
   // o teste de schema dela conecta como `postgres` (rolbypassrls = t), e com a policy

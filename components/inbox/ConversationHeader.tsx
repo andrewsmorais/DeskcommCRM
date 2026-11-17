@@ -52,6 +52,7 @@ import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { useEnderecoDaResposta } from "@/hooks/inbox/useEnderecoDaResposta";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -135,6 +136,8 @@ export function ConversationHeader({
   const c = conversation.contacts ?? null;
   const displayName = rotuloDoContato(c, t);
   const phone = c?.phone_number ? phoneForDisplay(c.phone_number) : null;
+  const enderecoDaResposta = useEnderecoDaResposta(conversation.id, conversation.last_inbound_at ?? null);
+  const endereco = enderecoDaResposta.data?.data ?? null;
   const status = conversation.status;
   const isMineAssigned = conversation.assigned_to_user_id === user.id;
   const isOpen = status === "open" || conversation.assigned_to_user_id == null;
@@ -258,6 +261,19 @@ export function ConversationHeader({
         {phone && (
           <p className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-xs text-muted-foreground">
             <Phone size={11} weight="regular" aria-hidden /> {phone}
+          </p>
+        )}
+        {/* Contato com telefone extra: diz por qual número a resposta sai. Sem
+            extra, nada muda na tela. No canal que responde pela última mensagem
+            recebida, a resposta vai para o número por onde ela chegou; nos outros
+            segue pelo principal, e a linha não aparece. */}
+        {endereco?.has_extras && c?.phone_number && endereco.follows_last_inbound && endereco.phone_number && (
+          <p
+            className="mt-0.5 min-w-0 truncate text-xs text-muted-foreground"
+            data-testid="resposta-sai-por"
+            title={`${t("A resposta sai por:")} ${phoneForDisplay(endereco.phone_number)}`}
+          >
+            {t("A resposta sai por:")} {phoneForDisplay(endereco.phone_number)}
           </p>
         )}
       </div>

@@ -35,6 +35,7 @@ import { EditContactDialog } from "@/components/contacts/EditContactDialog";
 import { AnonymizeDialog } from "@/components/contacts/AnonymizeDialog";
 import { PropostasDeDado } from "@/components/contacts/PropostasDeDado";
 import { MarcasDoContato } from "@/components/contacts/MarcasDoContato";
+import { TelefonesDaFicha } from "@/components/contacts/TelefonesDaFicha";
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
 import { ConversaNoDossie } from "@/components/kanban/ConversaNoDossie";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
@@ -270,12 +271,21 @@ export function ContactDetailClient({ contactId }: Props) {
                 <dt className="text-xs uppercase text-muted-foreground">Email</dt>
                 <dd className="mt-1">{contact.email ?? "—"}</dd>
               </div>
-              <div>
-                <dt className="text-xs uppercase text-muted-foreground">{t("Telefone")}</dt>
-                <dd className="mt-1">
-                  {contact.phone_number ? phoneForDisplay(contact.phone_number) : "—"}
-                </dd>
-              </div>
+              {/*
+                Os telefones da ficha (migration 0541). Sem extra, a linha segue
+                como antes ("Telefone", com o tipo ao lado); com extra,
+                "Telefones" lista o principal e os extras. Quem tem papel
+                `agent` ou acima edita aqui.
+              */}
+              <TelefonesDaFicha
+                contato={contact}
+                podeEditar={Boolean(
+                  activeOrg &&
+                    ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent &&
+                    !contact.is_anonymized &&
+                    user.support?.access_mode !== "support_readonly",
+                )}
+              />
               {/*
                 A data gravada pelo "Editar contato" (e pela proposta aprovada),
                 enxergada aqui — é ela que o cron `contact-birthdays` lê para

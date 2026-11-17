@@ -2,6 +2,25 @@
  * Domain types for Contacts (EPIC-05).
  * Mirror the verified `contacts` schema (see CLAUDE.md / Spec 05).
  */
+/** Vocabulários da ficha com vários telefones (migration 0541): o banco recusa outro valor. */
+export type TipoDeTelefone = "fixo" | "celular" | "outro";
+export type WhatsappDoTelefone = "sim" | "nao" | "nao_sei";
+export type OrigemDoTelefone = "manual" | "fusao" | "importacao" | "prospeccao" | "whatsapp";
+
+/**
+ * Um telefone extra da ficha, como a API o devolve (`GET /api/v1/contacts/{id}`).
+ * O `wa_lid` NÃO vai na API: é identificador interno do WhatsApp daquele número.
+ */
+export interface TelefoneExtra {
+  id: string;
+  phone_number: string;
+  type: TipoDeTelefone;
+  whatsapp: WhatsappDoTelefone;
+  label: string | null;
+  origin: OrigemDoTelefone;
+  created_at: string;
+}
+
 export interface Contact {
   id: string;
   organization_id: string;
@@ -10,6 +29,12 @@ export interface Contact {
   email: string | null;
   email_normalized: string | null;
   phone_number: string | null;
+  /** Tipo, WhatsApp e rótulo do número PRINCIPAL (0541). Opcionais: cache antigo pode não trazer. */
+  phone_type?: TipoDeTelefone | null;
+  phone_whatsapp?: WhatsappDoTelefone | null;
+  phone_label?: string | null;
+  /** Os telefones extras da ficha, `[]` quando não há nenhum. */
+  additional_phones?: TelefoneExtra[];
   cpf_hash: string | null;
   birthdate: string | null;
   is_blocked: boolean;

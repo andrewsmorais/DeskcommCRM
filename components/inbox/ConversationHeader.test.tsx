@@ -17,6 +17,9 @@ const closeMutate = vi.hoisted(() => vi.fn());
 const arquivarMutate = vi.hoisted(() => vi.fn());
 const startCall = vi.hoisted(() => vi.fn());
 
+vi.mock("@/hooks/inbox/useEnderecoDaResposta", () => ({
+  useEnderecoDaResposta: () => ({ data: undefined }),
+}));
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ user: { id: "u1", support: null } }),
   // O cadeado da conversa privada (migration 0495) pergunta por "inbox.privacy.any".
