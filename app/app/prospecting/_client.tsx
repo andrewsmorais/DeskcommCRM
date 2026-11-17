@@ -238,6 +238,7 @@ export function ProspectingClient() {
   const canSelect =
     !!campaign && campaign.status === "draft" && campaign.search_status === "succeeded";
   const allSelected = canSelect && candidates.every((c) => c.selected !== false);
+  const noneSelected = canSelect && candidates.every((c) => c.selected === false);
   async function setSelection(candidateIds: string[], selected: boolean) {
     if (!campaign) return;
     await perform(
@@ -1044,7 +1045,7 @@ export function ProspectingClient() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={busy || !allSelected}
+                            disabled={busy || noneSelected}
                             onClick={() => setSelection(candidates.map((c) => c.id), false)}
                           >
                             {t("Desmarcar todas")}
