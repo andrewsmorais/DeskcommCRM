@@ -34,6 +34,7 @@ import { TimelineView } from "@/components/contacts/TimelineView";
 import { EditContactDialog } from "@/components/contacts/EditContactDialog";
 import { AnonymizeDialog } from "@/components/contacts/AnonymizeDialog";
 import { PropostasDeDado } from "@/components/contacts/PropostasDeDado";
+import { MarcasDoContato } from "@/components/contacts/MarcasDoContato";
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
 import { ConversaNoDossie } from "@/components/kanban/ConversaNoDossie";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
@@ -170,6 +171,8 @@ export function ContactDetailClient({ contactId }: Props) {
             ))}
             {contact.is_blocked && <Badge variant="warning">{t("Bloqueado")}</Badge>}
             {contact.is_anonymized && <Badge variant="destructive">{t("Anonimizado")}</Badge>}
+            {contact.is_personal && <Badge variant="secondary">{t("Pessoal")}</Badge>}
+            {contact.ai_opt_out && <Badge variant="secondary">{t("Sempre humano")}</Badge>}
           </div>
         </div>
         {!contact.is_anonymized && user.support?.access_mode !== "support_readonly" && (
@@ -223,6 +226,15 @@ export function ContactDetailClient({ contactId }: Props) {
       </header>
 
       <ConversaNoDossie conversa={contact.conversa} />
+
+      {!contact.is_anonymized && user.support?.access_mode !== "support_readonly" && (
+        <MarcasDoContato
+          contactId={contactId}
+          pessoal={contact.is_personal === true}
+          sempreHumano={contact.ai_opt_out === true}
+          podeMexer={Boolean(activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager)}
+        />
+      )}
 
       {/* ANTES das abas, e não dentro de uma delas: é o único conteúdo desta
           tela que PEDE uma ação. Enterrado numa aba, viraria pendência que só

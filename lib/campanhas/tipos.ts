@@ -33,6 +33,8 @@ export const STATUS_DO_DESTINATARIO = [
   "skipped",
   "cancelled",
   "opted_out",
+  // Saída de quem virou contato PESSOAL (migration 0540): status próprio.
+  "personal",
 ] as const;
 
 export type StatusDoDestinatario = (typeof STATUS_DO_DESTINATARIO)[number];
@@ -54,6 +56,7 @@ export const TERMINAIS_DE_DESPACHO: ReadonlySet<StatusDoDestinatario> = new Set(
   "skipped",
   "cancelled",
   "opted_out",
+  "personal",
 ]);
 
 /**
@@ -73,6 +76,7 @@ export const MOTIVOS_DE_EXCLUSAO = [
   "variavel_ausente",
   "ja_em_campanha",
   "suprimido",
+  "contato_pessoal",
 ] as const;
 
 export type MotivoDeExclusao = (typeof MOTIVOS_DE_EXCLUSAO)[number];
@@ -89,4 +93,5 @@ export const TEXTO_DA_EXCLUSAO: Record<MotivoDeExclusao, string> = {
   variavel_ausente: "Falta um dado que a mensagem usa",
   ja_em_campanha: "Já está em outra campanha ainda não concluída",
   suprimido: "Está na lista de exclusão de campanhas",
+  contato_pessoal: "Contato marcado como pessoal",
 };

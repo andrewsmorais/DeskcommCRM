@@ -185,6 +185,8 @@ export async function devolverHandoffsVencidos(
     // pé. Ninguém atende dos dois lados, e a rodada reportava `falhas: 0` sem
     // auditar nada: um defeito real com cara de disputa benigna.
     if (r.erro === "assignment_conflict" && r.detalhe === undefined) continue;
+    // "Sempre atendimento humano" (0540): recusa esperada, não falha.
+    if (r.erro === "contato_sempre_humano") continue;
     falhas++;
     logger.error("[handoff-devolucao] devolução falhou", {
       conversation_id: conversa.id,

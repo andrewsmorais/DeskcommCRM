@@ -14,6 +14,10 @@ export interface Contact {
   birthdate: string | null;
   is_blocked: boolean;
   blocked_reason: string | null;
+  /** Ficha pessoal (migration 0540): nada automático sai para ela. */
+  is_personal?: boolean;
+  /** "Sempre atendimento humano" (migration 0540): a IA nunca responde. */
+  ai_opt_out?: boolean;
   is_anonymized: boolean;
   anonymized_at: string | null;
   is_merged_into: string | null;

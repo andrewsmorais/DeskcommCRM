@@ -38,7 +38,8 @@ export async function decidirElegibilidadeDaConversa(
   const { rows } = await pool.query<LinhaDeElegibilidade>(
     `select
        cs.metadata                  as channel_metadata,
-       ct.force_human               as force_human,
+       -- As marcas permanentes (0540) barram a IA como a trava de handoff.
+       (ct.force_human or coalesce(ct.ai_opt_out, false) or coalesce(ct.is_personal, false)) as force_human,
        cv.assignee_kind             as assignee_kind,
        cv.bot_silenced_until        as bot_silenced_until,
        ct.ai_authorized_at          as ai_authorized_at,

@@ -55,7 +55,14 @@ export type RetomadaFalha =
   /** Alguém assumiu a conversa entre a leitura e a escrita. */
   | "assignment_conflict"
   /** O sinal de retomada do follow-up não foi emitido — ver comentário abaixo. */
-  | "resume_signal_failed";
+  | "resume_signal_failed"
+  /**
+   * Contato marcado "sempre atendimento humano" (`contacts.ai_opt_out`,
+   * migration 0540). Não é falha técnica: é o estado que a operação pediu.
+   */
+  | "contato_sempre_humano"
+  /** A leitura da marca permanente falhou: sem ela, nada é devolvido. */
+  | "contact_state_unreadable";
 
 /**
  * De onde veio a devolução. Ausente = alguém clicou (tela ou tool do agente).
@@ -103,6 +110,22 @@ export async function devolverAtendimentoAoAgente(
   if (convErr) return { ok: false, erro: "conversation_not_found", detalhe: convErr.message };
   if (!convData) return { ok: false, erro: "conversation_not_found" };
   const conv = convData as unknown as ConversaRow;
+
+  // A TRAVA PERMANENTE (0540): contato "sempre atendimento humano" nunca volta
+  // para a IA — nem pelo botão, nem pelo cron de devolução. Lida ANTES de
+  // qualquer escrita; falha de leitura não devolve (fail-closed).
+  if (conv.contact_id !== null) {
+    const { data: marca, error: marcaErr } = await supabase
+      .from("contacts")
+      .select("ai_opt_out")
+      .eq("id", conv.contact_id)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (marcaErr) return { ok: false, erro: "contact_state_unreadable", detalhe: marcaErr.message };
+    if ((marca as { ai_opt_out?: boolean } | null)?.ai_opt_out === true) {
+      return { ok: false, erro: "contato_sempre_humano" };
+    }
+  }
 
   const jaEstavaComOAgente =
     conv.assigned_to_user_id === null &&
@@ -168,7 +191,9 @@ export async function devolverAtendimentoAoAgente(
       .from("contacts")
       .update({ force_human: false })
       .eq("id", conv.contact_id)
-      .eq("organization_id", organizationId);
+      .eq("organization_id", organizationId)
+      // A marca pode ter sido ligada entre a leitura acima e aqui.
+      .eq("ai_opt_out", false);
     if (contatoErr) {
       logger.error("[escalacao.retomada] force_human não foi limpo", {
         conversation_id: input.conversationId,

@@ -1444,8 +1444,10 @@ async function readStopFlags(
 ): Promise<boolean> {
   const { rows } = await db.query<{ stopped: boolean }>(
     humanMeetingCommand
-      ? 'select is_blocked as stopped from contacts where organization_id = $1 and id = $2'
-      : 'select (is_blocked or force_human) as stopped from contacts where organization_id = $1 and id = $2',
+      // Pessoal (0540) não recebe nem pelo encontro; "sempre humano" (0540)
+      // barra a IA como `force_human`, e nenhuma devolução a desfaz.
+      ? 'select (is_blocked or is_personal) as stopped from contacts where organization_id = $1 and id = $2'
+      : 'select (is_blocked or force_human or is_personal or ai_opt_out) as stopped from contacts where organization_id = $1 and id = $2',
     [organizationId, contactId],
   );
   return rows[0]?.stopped === true;

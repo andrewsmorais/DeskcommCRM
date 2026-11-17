@@ -34,6 +34,8 @@ export interface ContatoParaDecidir {
   anonimizado: boolean;
   /** `consent.marketing.declined_at` — recusa REGISTRADA, diferente de ausência. */
   recusouMarketing: boolean;
+  /** `contacts.is_personal` (migration 0540): ficha de vida pessoal, fora de envio automático. */
+  pessoal?: boolean;
 }
 
 /** O telefone que o canal aceita: E.164 com `+`, o mesmo CHECK de `contacts.phone_number`. */
@@ -50,6 +52,7 @@ const E164 = /^\+\d{8,15}$/;
 export function motivoParaExcluir(c: ContatoParaDecidir): MotivoDeExclusao | null {
   if (c.bloqueado) return "opt_out";
   if (c.anonimizado) return "anonimizado";
+  if (c.pessoal) return "contato_pessoal";
   if (c.recusouMarketing) return "recusou_marketing";
   const telefone = c.telefone?.trim() ?? "";
   if (telefone === "") return "sem_telefone";

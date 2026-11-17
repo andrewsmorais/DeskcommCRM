@@ -298,6 +298,11 @@ export const AUDIT_ACTIONS = [
   "prospecting.unarchived",
   // A voz de quem envia a prospecção (nome, o que faz, diferencial).
   "prospecting.settings_updated",
+  // Marcas do contato que vetam o automático (migration 0540).
+  "contacts.personal_marked",
+  "contacts.personal_unmarked",
+  "contacts.always_human_marked",
+  "contacts.always_human_unmarked",
   // Prospecção completa (vindo do produto original): busca, site, saída,
   // prévias e conferência de WhatsApp.
   "prospecting.search_completed",
