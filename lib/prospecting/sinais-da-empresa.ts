@@ -1,6 +1,5 @@
 /**
- * OS SINAIS PÚBLICOS DA EMPRESA, como LINHAS do prompt da 1ª mensagem
- * (vindo do produto original, #4459).
+ * OS SINAIS PÚBLICOS DA EMPRESA, como LINHAS do prompt da 1ª mensagem (#4459).
  *
  * ## O defeito que isto conserta
  *
@@ -36,10 +35,7 @@ export interface DadosDaFicha {
   socials?: string[] | null;
   /** E.164, como `normalizeProspectPhone` grava. */
   phone?: string | null;
-  /**
-   * Veredito do canal: o número tem WhatsApp. Nesta instalação a busca ainda não
-   * confere o número antes, então hoje sempre chega vazio e a linha diz só o tipo.
-   */
+  /** Veredito do canal: o número tem WhatsApp (`Prospect.whatsapp`). */
   whatsapp?: { existe: boolean; verificado_em: string } | null;
 }
 

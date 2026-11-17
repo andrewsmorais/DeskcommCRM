@@ -1,42 +1,70 @@
 import type pg from "pg";
+import { ZodError } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createContactHandler } from "@/app/api/v1/contacts/_handler";
 import { createLeadHandler } from "@/app/api/v1/leads/_handler";
 import { loadActiveRouter } from "@/lib/agent-engine/agent/router-config";
 import { loadPublishedAgentConfig } from "@/lib/agent-engine/agent/agent-config";
 import { createLeadSchema } from "@/lib/schemas/leads";
+import { logger } from "@/lib/logger";
 import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
 import { capabilitiesOf } from "@/lib/channels/capabilities";
 import type { ChannelProvider } from "@/lib/channels/types";
-import { phoneLookupVariants } from "@/lib/channels/phone-variants";
+import { canonicalPhoneBR, phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { decryptWebhookSecret, encryptWebhookSecret } from "@/lib/webhooks/secrets";
 import {
   campaignConfigSchema,
   normalizeProspect,
+  RAZAO_NAO_SELECIONADA,
   razaoDeAbordarSelecionado,
   type CampaignConfig,
+  type CampaignBriefing,
+  type CampaignPace,
   type SearchInput,
+  type BuscaDaPlanilha,
   type Prospect,
 } from "./schema";
+import { CanalReconectandoError, ProspectingError } from "./provider";
+import { arquivadaEm, semMarcadorDeArquivamento } from "./arquivamento";
+import type {
+  LeituraComMotivos,
+  LinhaExcluida,
+  MotivoDeExclusao,
+  PreviaDaImportacao,
+} from "./importacao-previa";
+import { montarPrevia, motivosDe, resumoVazio } from "./importacao-previa";
+import { audit } from "@/lib/audit";
+import { vereditoPuro } from "./site-classify";
+import { linksDoCandidato } from "./links-do-candidato";
+import { empresaDoCandidato, ligarContatoAEmpresa } from "./empresa-do-candidato";
+import { aplicarLinks } from "@/lib/leads/links-de-contato";
 import {
-  ARQUIVAR_CAMPANHA_SQL,
-  DESARQUIVAR_CAMPANHA_SQL,
-  arquivadaEm,
-  semMarcadorDeArquivamento,
-} from "./arquivamento";
-import { ProspectingError } from "./provider";
+  autoriaDoUsuario,
+  diagnosticoDoContatoNovo,
+  segmentoDoContatoNovo,
+} from "@/lib/contacts/diagnostico-do-contato";
+import { lerContextoDaEquipe } from "@/lib/prospecting/contexto-da-equipe";
+import { defsDoPadraoDaOrg } from "@/lib/leads/padrao-do-campo";
+import { pedidoDaProspeccao } from "./pedido-da-prospeccao";
+import { motivoSemWhatsapp } from "./whatsapp";
+import { idiomaDaOrganizacao } from "./idioma";
+import { isMediaPathInOrganization } from "@/lib/messaging/media/upload-validation";
+import {
+  palavraDeSaida,
+  problemaNoTextoDaSaidaNoIdioma,
+  TAMANHO_MAXIMO_DO_TEXTO_DA_SAIDA,
+} from "./rodape-de-saida";
 import {
   provedorDaOrganizacao,
   provedorExigeCredencialDaOrganizacao,
   validarCredencialDaOrganizacao,
 } from "./provedor";
-import { idiomaDaOrganizacao } from "./idioma";
 
 export interface Campaign {
   id: string;
   organization_id: string;
   name: string;
-  search: SearchInput;
+  search: SearchInput | BuscaDaPlanilha;
   config: CampaignConfig | null;
   status: string;
   search_status: string;
@@ -45,6 +73,30 @@ export interface Campaign {
   next_send_at: Date;
   created_at: Date;
   error: string | null;
+  /**
+   * O NÚMERO DE WHATSAPP DESTA CAMPANHA (issue #3896).
+   *
+   * Saiu do jsonb `config` e virou coluna porque é a CHAVE do produto: a
+   * unicidade da prospecção é "uma campanha `running` por (organização,
+   * número)", e índice único parcial não se faz sobre `config->>'...'` sem
+   * deixar escapar a linha de `config` nulo (chave NULL não colide).
+   *
+   * Nulo só em campanha antiga que nunca foi iniciada (o `config` nasce nulo e
+   * o backfill da migration 9221 copiou o que havia). Quem inicia grava.
+   */
+  channel_session_id: string | null;
+
+  /**
+   * DESDE QUANDO ESTA CAMPANHA ESPERA O CANAL VOLTAR AO `WORKING` (issue #3073).
+   *
+   * `null` = não está esperando. É gravado no primeiro adiamento por reconexão
+   * (`coalesce(channel_down_since, now())`) e LIMPO quando o tick observa o canal
+   * em `WORKING` (ou ao iniciar/retomar a campanha). É esta a régua do teto do
+   * adiamento — `channel_sessions.last_status_change_at` não serve: a ingestão a
+   * regrava a cada evento, então um canal que alterna `STARTING`↔`STOPPED`
+   * reiniciaria o relógio a cada volta.
+   */
+  channel_down_since: Date | null;
 }
 export interface Candidate {
   id: string;
@@ -67,6 +119,10 @@ export async function withProspectingLock<T>(
   fn: (db: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
   const db = await pool.connect();
+  // #2624: um cliente que falhou aqui NÃO pode voltar ao pool — sem erro, o
+  // pg-pool o reempresta com o pg_advisory_unlock pendente e o lock fica preso
+  // na conexão reaproveitada (o problema apontado na issue).
+  let erroNaTransacao: Error | undefined;
   let locked = false;
   try {
     locked =
@@ -82,13 +138,21 @@ export async function withProspectingLock<T>(
         409,
       );
     return await fn(db);
+  } catch (err) {
+    erroNaTransacao = err instanceof Error ? err : new Error(String(err));
+    throw err;
   } finally {
+    let erroNoUnlock: Error | undefined;
     try {
       if (locked)
         await db.query("select pg_advisory_unlock(hashtextextended($1,0))", [`prospecting:${org}`]);
-    } finally {
-      db.release();
+    } catch (unlockErr) {
+      // #2624: o unlock falhou. O lock de sessão só morre junto com a conexão,
+      // então o cliente é liberado COM erro — o pg-pool chama _remove e o
+      // client.end() derruba a conexão (e o lock) em vez de reemprestá-la.
+      erroNoUnlock = unlockErr instanceof Error ? unlockErr : new Error(String(unlockErr));
     }
+    db.release(erroNaTransacao ?? erroNoUnlock);
   }
 }
 export async function credential(db: pg.Pool | pg.PoolClient, admin: SupabaseClient, org: string) {
@@ -112,12 +176,14 @@ export async function configureCredential(
   org: string,
   key: string,
 ) {
-  // A régua é a DO PROVEDOR ESCOLHIDO. Sem escolha nenhuma, `apify` responde
-  // com a MESMA validação de sempre — então quem não pediu nada não muda.
+  // A régua é a DO PROVEDOR ESCOLHIDO (#1758). Sem escolha nenhuma, `apify`
+  // responde com a MESMA validação de sempre — `users/me`, mesma URL, mesmo
+  // erro — então quem não pediu nada não muda de comportamento.
   await validarCredencialDaOrganizacao(pool, org, key);
-  // O `local-http` NÃO tem segredo por organização — a URL do motor de busca
-  // vem da INSTALAÇÃO (`PROSPECTING_LOCAL_HTTP_URL`). Nessa escolha o valor
-  // recebido é só o gatilho da validação: não é gravado nem usado.
+  // #2942: o `local-http` NÃO tem segredo por organização — a URL do engine
+  // vem da INSTALAÇÃO (`PROSPECTING_LOCAL_HTTP_URL`). Nessa escolha o
+  // `configure` é só o gatilho de validação (o health check do engine) e o
+  // valor recebido é IGNORADO: não é gravado nem usado.
   if (!(await provedorExigeCredencialDaOrganizacao(pool, org))) return;
   const encrypted = await encryptWebhookSecret(admin, key);
   if (!encrypted)
@@ -140,10 +206,14 @@ export async function createSearch(
       [org, requestId],
     );
     if (prior.rows[0]) return prior.rows[0];
-    // O provedor é ESCOLHA desta organização e resolve-se ANTES de qualquer
-    // escrita: escolha desconhecida falha fechado sem deixar campanha órfã.
+    // O provedor é ESCOLHA desta organização (#1758) e resolve-se ANTES de
+    // qualquer escrita: escolha desconhecida falha fechado sem deixar campanha
+    // órfã no banco. As outras organizações resolvem as suas próprias — a
+    // escolha de uma não vaza para a outra.
     const provedor = await provedorDaOrganizacao(db, org);
-    // A credencial só é exigida de quem tem segredo POR ORGANIZAÇÃO.
+    // A credencial só é exigida de quem tem segredo POR ORGANIZAÇÃO: o
+    // `local-http` da #2942 lê a URL do engine da INSTALAÇÃO
+    // (`PROSPECTING_LOCAL_HTTP_URL`) e não tem o que buscar aqui.
     const key = (await provedorExigeCredencialDaOrganizacao(db, org))
       ? await credential(db, admin, org)
       : "";
@@ -181,11 +251,53 @@ export async function createSearch(
     ).rows[0]!;
   });
 }
+/**
+ * O ÚNICO lugar onde um candidato entra na base — a busca do provedor e a planilha passam
+ * por aqui, para não nascer a segunda verdade sobre "como um candidato é gravado".
+ *
+ * Fase pura do enriquecimento (spec 24, sem rede): agregador e sem-site já nascem
+ * resolvidos em `data.site`. O `website` cru é preservado — é a URL que a fase de rede vai
+ * buscar. O `on conflict do nothing` e o gatilho de supressão da LGPD (`return null`) são
+ * indistinguíveis por `rowCount`: quem chama conta "não entrou", sem separar o motivo.
+ * Não abre transação: quem chama decide.
+ */
+export async function gravarCandidatos(
+  db: pg.PoolClient,
+  org: string,
+  campaignId: string,
+  prospects: Prospect[],
+): Promise<{ inseridos: number; classesPuras: Record<string, number> }> {
+  let inseridos = 0;
+  const classesPuras: Record<string, number> = {};
+  const agoraIso = new Date().toISOString();
+  for (const p of prospects) {
+    const puro = vereditoPuro(p.website, agoraIso);
+    const data = puro ? { ...p, site: puro } : p;
+    const result = await db.query(
+      "insert into prospecting_candidates(organization_id,campaign_id,place_id,phone,data) values($1,$2,$3,$4,$5) on conflict do nothing",
+      [org, campaignId, p.key, p.phone, data],
+    );
+    const gravou = result.rowCount ?? 0;
+    inseridos += gravou;
+    if (gravou > 0 && puro) {
+      classesPuras[puro.classe] = (classesPuras[puro.classe] ?? 0) + 1;
+    }
+  }
+  return { inseridos, classesPuras };
+}
 export async function synchronizeSearch(db: pg.PoolClient, admin: SupabaseClient, c: Campaign) {
   if (!c.run_id) return;
-  // A escolha ATUAL desta organização, relida a cada tick (nada guarda quem
-  // lançou a execução: trocar de provedor com uma busca em andamento a perde).
+  // Campanha importada de planilha nasce `succeeded` e sem `run_id`; este ponto não a alcança,
+  // mas o tipo da união exige o guard para ler `limit`.
+  if ("origem" in c.search) return;
+  // A escolha ATUAL desta organização (#1758), relida a cada tick — e não
+  // necessariamente o provedor que lançou esta execução: nada aqui guarda quem
+  // lançou. Trocar de provedor com uma busca em andamento faz o novo ler um id
+  // que não é dele. Rotear pelo provedor que lançou fica para a fatia que
+  // trouxer um provedor real (#2174).
   const provedor = await provedorDaOrganizacao(db, c.organization_id);
+  // Como em `createSearch`: só quem tem segredo POR ORGANIZAÇÃO busca a
+  // credencial aqui (#2942, `local-http` lê a URL da instalação).
   const key = (await provedorExigeCredencialDaOrganizacao(db, c.organization_id))
     ? await credential(db, admin, c.organization_id)
     : "";
@@ -201,18 +313,23 @@ export async function synchronizeSearch(db: pg.PoolClient, admin: SupabaseClient
   const dataset = run.defaultDatasetId ?? c.dataset_id;
   if (!dataset) throw new ProspectingError("Busca concluída sem resultado disponível.");
   const items = await provedor.readResults(key, dataset, c.search.limit);
+  let invalidos = 0;
+  const validos: Prospect[] = [];
+  for (const item of items) {
+    const p = normalizeProspect(item);
+    if (!p) invalidos++;
+    else validos.push(p);
+  }
   let inserted = 0;
+  let classesPuras: Record<string, number> = {};
   await db.query("begin");
   try {
-    for (const item of items) {
-      const p = normalizeProspect(item);
-      if (!p) continue;
-      const result = await db.query(
-        "insert into prospecting_candidates(organization_id,campaign_id,place_id,phone,data) values($1,$2,$3,$4,$5) on conflict do nothing",
-        [c.organization_id, c.id, p.key, p.phone, p],
-      );
-      inserted += result.rowCount ?? 0;
-    }
+    ({ inseridos: inserted, classesPuras } = await gravarCandidatos(
+      db,
+      c.organization_id,
+      c.id,
+      validos,
+    ));
     await db.query(
       "update prospecting_campaigns set search_status='succeeded',dataset_id=$3,cost_usd=$4,result_count=$5,skipped_count=$6,error=null,updated_at=now() where organization_id=$1 and id=$2",
       [
@@ -229,9 +346,400 @@ export async function synchronizeSearch(db: pg.PoolClient, admin: SupabaseClient
     await db.query("rollback");
     throw error;
   }
+  // Funil de descarte (spec 24): inválidos + duplicados (já na base) + classes
+  // puras do enriquecimento. Uma vez por busca, no fechamento — a transição
+  // para `succeeded` acima é o efeito que autoriza o audit.
+  if (items.length > 0) {
+    void audit({
+      action: "prospecting.search_completed",
+      organizationId: c.organization_id,
+      bypassedRls: true,
+      resourceType: "prospecting",
+      resourceId: c.id,
+      metadata: {
+        campaign_id: c.id,
+        total: items.length,
+        inseridos: inserted,
+        duplicados: items.length - invalidos - inserted,
+        invalidos,
+        classes_puras: classesPuras,
+      },
+      requestId: `prospecting:search:${c.id}`,
+    });
+  }
 }
+/** O que o operador informa ao importar; o resto da `BuscaDaPlanilha` é fixo (`origem`). */
+export type CamposDaImportacao = Omit<BuscaDaPlanilha, "origem">;
+
+export interface ResultadoDaImportacao {
+  campaign: Campaign;
+  inseridos: number;
+  ja_na_base: number;
+  classesPuras: Record<string, number>;
+  repetida: boolean;
+  /** Quem ficou de fora, com o motivo — a mesma lista da prévia. */
+  fora: LinhaExcluida[];
+  resumo: Record<MotivoDeExclusao, number>;
+  total_linhas: number;
+}
+
+/** O mínimo do `pg` que a prévia usa: serve o `Pool` (rota) e o `PoolClient` (dentro do lock). */
+type Consulta = {
+  query<R extends pg.QueryResultRow = pg.QueryResultRow>(
+    sql: string,
+    params?: unknown[],
+  ): Promise<pg.QueryResult<R>>;
+};
+
+/**
+ * OS TELEFONES DA PLANILHA QUE JÁ SÃO CONTATO DO CRM — nas duas tabelas e nas duas grafias.
+ *
+ * "Já é contato" tem de valer para quem entrou à mão, para quem veio de outra campanha e para
+ * quem está em `contact_phones` (ficha com vários telefones). A comparação passa por
+ * `phoneLookupVariants` porque o MESMO celular está gravado com e sem o nono dígito em caminhos
+ * diferentes: comparar a string crua faz o operador abordar de novo alguém que já é cliente.
+ */
+async function telefonesQueSaoContato(
+  db: Consulta,
+  org: string,
+  phones: string[],
+): Promise<Set<string>> {
+  const variantes = [...new Set(phones.flatMap((p) => phoneLookupVariants(p)))];
+  if (variantes.length === 0) return new Set();
+  const { rows } = await db.query<{ phone: string }>(
+    `select c.phone_number as phone
+       from contacts c
+      where c.organization_id = $1 and c.phone_number = any($2::text[])
+        and c.is_merged_into is null
+     union
+     select cp.phone_number as phone
+       from contact_phones cp
+       join contacts c on c.id = cp.contact_id and c.organization_id = cp.organization_id
+      where cp.organization_id = $1 and cp.phone_number = any($2::text[])
+        and c.is_merged_into is null`,
+    [org, variantes],
+  );
+  const conhecidos = new Set(rows.map((r) => r.phone));
+  return new Set(phones.filter((p) => phoneLookupVariants(p).some((v) => conhecidos.has(v))));
+}
+
+/**
+ * OS TELEFONES QUE FORAM APAGADOS A PEDIDO DO TITULAR (supressão da LGPD).
+ *
+ * A comparação é o MESMO hmac do gatilho `prospecting_refuse_erased`
+ * (`20260921030200_0370_prospeccao_anonimizacao.sql`): o token é pseudônimo, salgado por linha,
+ * e só o servidor consegue reproduzi-lo. Não há tabela de supressão para "esquecer" de consultar —
+ * a fonte é a própria linha anonimizada em `prospecting_candidates`.
+ *
+ * Por que perguntar antes de inserir, se o gatilho já recusa: o gatilho é a garantia (fila
+ * nenhuma recebe quem pediu para sair), mas ele devolve `null` em silêncio. Sem esta consulta o
+ * operador vê o número na planilha, o número não entra e a tela diz "já estava na base" — a
+ * supressão some justamente de quem precisa vê-la.
+ */
+async function telefonesSuprimidos(
+  db: Consulta,
+  org: string,
+  phones: string[],
+): Promise<Set<string>> {
+  if (phones.length === 0) return new Set();
+  const { rows } = await db.query<{ phone: string }>(
+    `select t.phone
+       from unnest($2::text[]) as t(phone)
+      where exists (
+        select 1 from prospecting_candidates p
+         where p.organization_id = $1
+           and p.suppression_salt is not null
+           and p.suppression_phone = hmac(convert_to(t.phone,'UTF8'), p.suppression_salt, 'sha256')
+      )`,
+    [org, phones],
+  );
+  return new Set(rows.map((r) => r.phone));
+}
+
+/**
+ * A PRÉVIA: o que entra e o que fica de fora, com o motivo de cada exclusão.
+ *
+ * Não escreve nada e não abre transação — é o mesmo cálculo que a importação faz dentro do
+ * lock (`importarPlanilha`), chamado por fora só para mostrar antes de confirmar. As duas
+ * chamadas usam `montarPrevia`, então a prévia não pode prometer um número que a escrita
+ * não cumpre.
+ */
+export async function previaDaPlanilha(
+  db: Consulta,
+  org: string,
+  planilha: LeituraComMotivos,
+): Promise<PreviaDaImportacao> {
+  const phones = planilha.candidatos.map((c) => c.prospect.phone);
+  const [contatos, suprimidos] = await Promise.all([
+    telefonesQueSaoContato(db, org, phones),
+    telefonesSuprimidos(db, org, phones),
+  ]);
+  return montarPrevia(planilha, { contatos, suprimidos });
+}
+
+/**
+ * O candidato com o contexto da equipe ASSINADO: quem importou (`usuario:<id>`) e quando.
+ * Sem contexto, devolve o mesmo objeto — o candidato é gravado exatamente como antes.
+ */
+function carimbarContextoDaEquipe(p: Prospect, importadoPor: string | null, em: string): Prospect {
+  if (!p.contexto_da_equipe) return p;
+  return {
+    ...p,
+    contexto_da_equipe: {
+      ...p.contexto_da_equipe,
+      ...(importadoPor ? { por: autoriaDoUsuario(importadoPor), em } : {}),
+    },
+  };
+}
+
+/**
+ * Cria a campanha a partir da planilha já lida e validada (`lerPlanilhaDeProspeccao`).
+ *
+ * A campanha nasce `succeeded`, sem `run_id`: não há busca a sincronizar, e daí em diante é o
+ * caminho de sempre (seleção, auditoria de site, prévia, agente, fila). Repetir o envio com o
+ * mesmo `request_id` devolve a campanha que já existe e não grava nada. Tudo numa transação:
+ * ou entram campanha e candidatos, ou nenhum dos dois.
+ *
+ * A classificação (contatos do CRM e supressão da LGPD) roda AQUI DENTRO, sob o lock da
+ * organização: entre a prévia que o operador viu e o clique em "Importar" alguém pode ter
+ * cadastrado o telefone ou pedido a exclusão. Só o que `montarPrevia` deixou entrar vai para a
+ * tabela — e o gatilho do banco continua sendo a segunda barreira de quem pediu para sair.
+ */
+export async function importarPlanilha(
+  pool: pg.Pool,
+  org: string,
+  requestId: string,
+  campos: CamposDaImportacao,
+  planilha: LeituraComMotivos,
+  /**
+   * Quem importou — o id do usuário da SESSÃO (a rota recusa token), nunca do corpo. Vira a
+   * autoria (`usuario:<id>`) do contexto da equipe de cada candidato, e dali a autoria do
+   * diagnóstico do contato que a campanha criar. `null` = sem autoria (os textos entram).
+   */
+  importadoPor: string | null = null,
+): Promise<ResultadoDaImportacao> {
+  return withProspectingLock(pool, org, async (db) => {
+    const prior = await db.query<Campaign & { result_count: number | null; skipped_count: number | null }>(
+      "select * from prospecting_campaigns where organization_id=$1 and request_id=$2",
+      [org, requestId],
+    );
+    const existente = prior.rows[0];
+    if (existente) {
+      return {
+        campaign: existente,
+        inseridos: existente.result_count ?? 0,
+        ja_na_base: existente.skipped_count ?? 0,
+        classesPuras: {},
+        repetida: true,
+        fora: [],
+        resumo: resumoVazio(),
+        total_linhas: (existente.result_count ?? 0) + (existente.skipped_count ?? 0),
+      };
+    }
+    const previa = await previaDaPlanilha(db, org, planilha);
+    const search: BuscaDaPlanilha = { origem: "importacao", ...campos };
+    const importadaEm = new Date().toISOString();
+    await db.query("begin");
+    try {
+      const { rows } = await db.query<Campaign>(
+        "insert into prospecting_campaigns(organization_id,request_id,name,search,search_status) values($1,$2,$3,$4,'succeeded') returning *",
+        [org, requestId, campos.name, search],
+      );
+      const campaign = rows[0]!;
+      const { inseridos, classesPuras } = await gravarCandidatos(
+        db,
+        org,
+        campaign.id,
+        previa.entram.map((c) => carimbarContextoDaEquipe(c.prospect, importadoPor, importadaEm)),
+      );
+      // `skipped_count` é toda linha lida que não entrou: as que a prévia já explicava e a que
+      // o `unique` de telefone/identificador barrou (reimportação da mesma lista).
+      const foraDaBase = previa.total_linhas - inseridos;
+      await db.query(
+        "update prospecting_campaigns set result_count=$3,skipped_count=$4,updated_at=now() where organization_id=$1 and id=$2",
+        [org, campaign.id, inseridos, foraDaBase],
+      );
+      await db.query("commit");
+      return {
+        campaign,
+        inseridos,
+        ja_na_base: foraDaBase,
+        classesPuras,
+        repetida: false,
+        fora: previa.fora,
+        resumo: motivosDe(previa.fora),
+        total_linhas: previa.total_linhas,
+      };
+    } catch (error) {
+      await db.query("rollback");
+      throw error;
+    }
+  });
+}
+/**
+ * A SESSÃO VAI VOLTAR SOZINHA?
+ *
+ * `STARTING` é a reconexão em curso — é o estado que a linha assume no instante
+ * da queda, e a tela o rotula "Conectando…" (`lib/channels/estado.ts`). `STOPPED`
+ * é a sessão parada que o vigia religa sem ninguém (`deveRetomarSessao`,
+ * `session-reconciler.ts`). Desses dois a sessão volta por conta própria — e é
+ * por isso que eles ADIAM o envio em vez de pausar a campanha.
+ *
+ * `SCAN_QR_CODE` e `FAILED` ficam DE FORA de propósito: são os dois estados de
+ * ESCALADA (alguém precisa ler o QR no celular, ou o número caiu de vez — pode
+ * ser banimento, e religar sozinho piora). Neles a recusa de configuração
+ * continua valendo, como antes.
+ */
+function canalReconectando(status: string): boolean {
+  return status === "STARTING" || status === "STOPPED";
+}
+
+/**
+ * A FRASE DA ATIVAÇÃO E DA RETOMADA — UMA SÓ, porque a origem é uma só (issue #3073).
+ *
+ * Quem recusa a ativação (`activateCampaign`) e quem recusa a retomada
+ * (`POST /api/v1/prospecting` ação `resume`) passa pela MESMA `validateConfig`,
+ * então a tela dos dois caminhos recebe esta mensagem. Ela substituiu "o envio
+ * sai quando ela voltar", que era FALSA ali: a ativação/retomada foi RECUSADA e
+ * nada sai sozinho — o operador é que tenta de novo. No caminho do tick (onde a
+ * campanha de fato ADIA), a mesma frase nunca chega à tela: só é logada, e o
+ * envio sai sozinho quando `next_send_at` vencer com o canal de volta.
+ */
+export const MSG_CANAL_RECONECTANDO =
+  "A conexão de saída está reconectando. Tente de novo em instantes.";
+
+/**
+ * A RECUSA DO CANAL QUE NÃO VOLTA SOZINHO — e o motivo do TETO do adiamento.
+ *
+ * Fonte única: é lançada para `SCAN_QR_CODE`/`FAILED` (as escaladas) logo abaixo
+ * e é o motivo gravado quando a espera pela reconexão estoura
+ * `TETO_DO_ADIAMENTO_MS` (`worker.ts`): passado o teto, o canal "reconectando há
+ * tempo demais" cai exatamente nesta recusa, e a campanha pausa com a frase — a
+ * mesma que o operador já conhece do canal caído de vez.
+ */
+export const MSG_CANAL_DESCONECTADO =
+  "A conexão de saída está desconectada e precisa ser reconectada antes de a campanha continuar.";
+
+/**
+ * AS DUAS CAUSAS DO "O AGENTE AINDA NÃO SERVE" — SEPARADAS (issue #4118).
+ *
+ * A recusa existia numa frase só: "Publique o agente com a ferramenta de mover
+ * negócios e acesso ao funil escolhido." Uma frase para DUAS condições
+ * independentes (`tool_ids` sem `crm_move_lead_stage`, `pipeline_ids` sem o funil
+ * da campanha), nenhuma delas nomeada, e nenhuma pista de ONDE corrigir — a
+ * configuração fica em outra aba (`Organiza o sistema`), e as duas valem só para
+ * a versão PUBLICADA. Quem ligou o pacote "Vender e mover o funil" inteiro e viu
+ * a frase de novo não tinha como saber qual das duas faltava.
+ *
+ * Aqui a decisão é uma função pura sobre a linha que o banco devolve: cada falta
+ * vira uma frase com o nome do controle que a pessoa vê na tela ("Mover
+ * oportunidade de etapa", "Em que negócios ele pode mexer") e, no caso do funil,
+ * com o NOME do funil da campanha — o id não diz nada a quem configura.
+ *
+ * As duas podem faltar ao mesmo tempo: a lista devolve as duas, e a mensagem
+ * mostra as duas (parar na primeira faria o operador publicar, tentar de novo e
+ * bater na segunda).
+ */
+export type FaltaDoAgentePublicado = { causa: "ferramenta" | "funil"; frase: string };
+
+/** O id da ferramenta que a campanha precisa para mover o negócio de etapa. */
+export const FERRAMENTA_DE_MOVER_NEGOCIO = "crm_move_lead_stage";
+
+export function faltasDoAgentePublicado(
+  agent: { tool_ids?: string[] | null; pipeline_ids?: string[] | null },
+  funil: { id: string; name: string | null },
+): FaltaDoAgentePublicado[] {
+  const faltas: FaltaDoAgentePublicado[] = [];
+  if (!agent.tool_ids?.includes(FERRAMENTA_DE_MOVER_NEGOCIO))
+    faltas.push({
+      causa: "ferramenta",
+      frase:
+        'O agente publicado não pode mover oportunidade de etapa. Ligue "Mover oportunidade de etapa" na aba "Organiza o sistema" do agente.',
+    });
+  if (!agent.pipeline_ids?.includes(funil.id))
+    faltas.push({
+      causa: "funil",
+      frase: funil.name
+        ? `O agente publicado não tem acesso ao funil "${funil.name}". Marque esse funil em "Organiza o sistema" › "Em que negócios ele pode mexer".`
+        : 'O agente publicado não tem acesso ao funil desta campanha. Marque esse funil em "Organiza o sistema" › "Em que negócios ele pode mexer".',
+    });
+  return faltas;
+}
+
+/**
+ * O FECHO QUE FALA DA VERSÃO PUBLICADA — uma vez, depois das faltas.
+ *
+ * `validateConfig` lê `ai_agent_versions` pela `published_version_id`, então o
+ * rascunho não conta: quem liga a capacidade e salva vê a tela do agente mudada
+ * e a campanha continuar recusando. O fecho diz por que, sem repetir a instrução
+ * de publicar em cada frase.
+ */
+export const FECHO_DA_VERSAO_PUBLICADA =
+  "A campanha usa a versão publicada do agente: o ajuste só vale depois de publicar.";
+
+export function mensagemDoAgenteIncompleto(
+  faltas: readonly FaltaDoAgentePublicado[],
+): string {
+  return [...faltas.map((f) => f.frase), FECHO_DA_VERSAO_PUBLICADA].join(" ");
+}
+
+/**
+ * O TEXTO DA SAÍDA NO IDIOMA DA INSTALAÇÃO (#4370).
+ *
+ * O schema já recusa o texto sem NENHUMA palavra de saída, e o texto grande ou
+ * com link. Falta a parte que só existe onde o locale é conhecido: a palavra
+ * certa DESTA instalação. Um texto com PARAR numa organização em espanhol
+ * passaria na régua genérica e ofereceria uma palavra que ninguém ali responde —
+ * a pessoa escreveria "PARAR" e o detector, que exige a palavra sozinha, até
+ * bloquearia; mas o rodapé da plantilla em espanhol promete BAJA, e as duas
+ * redações convivendo na mesma campanha é o tipo de incoerência que o dono não vê.
+ *
+ * A recusa é da CAMPANHA (422, escopo `campanha`): é o mesmo escopo das outras
+ * recusas de configuração, e o operador conserta o campo e tenta de novo.
+ */
+async function validarTextoDaSaidaNoIdioma(
+  db: pg.PoolClient,
+  org: string,
+  texto: string | undefined,
+): Promise<void> {
+  const proprio = (texto ?? "").trim();
+  // Vazio é o contrato: usa a frase padrão, e nada há para recusar.
+  if (proprio === "") return;
+  const idioma = await idiomaDaOrganizacao(db, org);
+  const problema = problemaNoTextoDaSaidaNoIdioma(proprio, idioma);
+  if (problema === null) return;
+  if (problema === "sem_palavra")
+    throw new ProspectingError(
+      `O texto da opção de parar precisa conter "${palavraDeSaida(idioma)}", a palavra que a pessoa responde para sair nesta instalação.`,
+      422,
+      "campanha",
+    );
+  throw new ProspectingError(
+    problema === "longo"
+      ? `O texto da opção de parar tem até ${TAMANHO_MAXIMO_DO_TEXTO_DA_SAIDA} caracteres.`
+      : "O texto da opção de parar não pode ter link.",
+    422,
+    "campanha",
+  );
+}
+
 export async function validateConfig(db: pg.PoolClient, org: string, input: CampaignConfig) {
   const config = campaignConfigSchema.parse(input);
+  await validarTextoDaSaidaNoIdioma(db, org, config.texto_da_saida);
+  // A MÍDIA DA ABORDAGEM (#4581) é um arquivo que JÁ EXISTE — e tem de ser DESTA
+  // organização. Tipo e tamanho já foram conferidos pelo schema (regra pura, sem
+  // organização); a posse do caminho só pode ser conferida aqui, onde a
+  // organização é conhecida. Sem esta linha, uma configuração gravada à mão
+  // (PostgREST) apontaria para o arquivo de outro cliente, e a abordagem sairia
+  // com a mídia alheia — a mesma classe de furo que `midiaPertenceAoTemplate`
+  // fecha no upload de resposta rápida.
+  const midia = config.midia_da_abordagem;
+  if (midia && !isMediaPathInOrganization(midia.storage_path, org))
+    throw new ProspectingError(
+      "A mídia da abordagem precisa ser um arquivo desta organização. Escolha o arquivo de novo.",
+      422,
+      "campanha",
+    );
   const agent = (
     await db.query(
       "select v.tool_ids,v.pipeline_ids from ai_agents a join ai_agent_versions v on v.id=a.published_version_id and v.organization_id=a.organization_id where a.organization_id=$1 and a.id=$2 and v.status='published' and a.archived_at is null and a.paused_at is null and a.operation_mode='automatic'",
@@ -239,12 +747,35 @@ export async function validateConfig(db: pg.PoolClient, org: string, input: Camp
     )
   ).rows[0];
   if (!agent) throw new ProspectingError("Escolha um agente publicado e em operação automática.");
-  if (
-    !agent.tool_ids?.includes("crm_move_lead_stage") ||
-    !agent.pipeline_ids?.includes(config.pipeline_id)
-  )
+  // O NOME do funil só é buscado quando ele é a causa: o operador lê "Clínicas de
+  // Sorocaba", não um uuid — e a frase é a única coisa que ele tem para achar a
+  // caixa certa em "Em que negócios ele pode mexer".
+  const funilDaCampanha = agent.pipeline_ids?.includes(config.pipeline_id)
+    ? null
+    : ((
+        await db.query<{ name: string }>(
+          "select name from crm_pipelines where organization_id=$1 and id=$2",
+          [org, config.pipeline_id],
+        )
+      ).rows[0] ?? null);
+  const faltas = faltasDoAgentePublicado(agent, {
+    id: config.pipeline_id,
+    name: funilDaCampanha?.name ?? null,
+  });
+  if (faltas.length)
     throw new ProspectingError(
-      "Publique o agente com a ferramenta de mover negócios e acesso ao funil escolhido.",
+      mensagemDoAgenteIncompleto(faltas),
+      422,
+      "campanha",
+      // O código de wire: a tela usa `details.agent_id` para oferecer o link
+      // direto do agente. Sem ele, o aviso era só texto e o caminho da correção
+      // ficava a cargo de quem lê.
+      "prospecting_agent_incompleto",
+      {
+        agent_id: config.agent_id,
+        pipeline_id: config.pipeline_id,
+        faltando: faltas.map((f) => f.causa),
+      },
     );
   const channel = (
     await db.query<{ provider: ChannelProvider; status: string }>(
@@ -252,14 +783,27 @@ export async function validateConfig(db: pg.PoolClient, org: string, input: Camp
       [org, config.channel_session_id],
     )
   ).rows[0];
-  if (
-    !channel ||
-    channel.status !== "WORKING" ||
-    !capabilitiesOf(channel.provider).freeformOutsideWindow
-  )
+  // TRÊS MOTIVOS MUITO DIFERENTES, TRÊS RECUSAS DIFERENTES. Antes os três caíam
+  // na MESMA mensagem e no MESMO escopo `campanha` — que é o escopo que o tick
+  // lê para PAUSAR a fila. Foi assim que uma reconexão de segundos parou a
+  // campanha (issue #3073): o canal voltou a `WORKING` e a campanha não.
+  if (!channel)
     throw new ProspectingError(
-      "Escolha uma conexão ativa que permita iniciar conversas de texto. Canais que exigem modelo aprovado ainda não participam desta campanha.",
+      "A conexão escolhida não existe nesta organização ou foi arquivada. Escolha uma conexão ativa para esta campanha.",
     );
+  if (!capabilitiesOf(channel.provider).freeformOutsideWindow)
+    throw new ProspectingError(
+      "Esta conexão exige modelo aprovado e ainda não participa desta campanha. Escolha uma conexão que permita iniciar conversas de texto.",
+    );
+  // O ÚNICO dos três que NÃO é defeito: a sessão está voltando sozinha.
+  if (canalReconectando(channel.status))
+    throw new CanalReconectandoError(MSG_CANAL_RECONECTANDO);
+  if (channel.status !== "WORKING")
+    // Fora dos estados que voltam sozinhos (reconexão em curso / sessão parada
+    // que o vigia religa) e fora das escaladas: o canal está desconectado e
+    // alguém precisa reconectá-lo. A recusa continua valendo — falhar fechado é
+    // o certo para o que não se sabe explicar.
+    throw new ProspectingError(MSG_CANAL_DESCONECTADO);
   const router = await loadActiveRouter(db as unknown as pg.Pool, org, config.channel_session_id);
   if (router) {
     if (!router.sticky || !router.members.some((m) => m.agentId === config.agent_id))
@@ -289,6 +833,429 @@ export async function validateConfig(db: pg.PoolClient, org: string, input: Camp
     );
   return config;
 }
+/**
+ * TRIAGEM DE UMA EMPRESA: ela merece virar contato? Decide só olhando; não escreve nada.
+ *
+ * Mora fora de `activateCampaign` porque agora há DOIS momentos em que a pergunta é
+ * feita: ao iniciar (sempre — a contagem da fila precisa ser honesta desde o primeiro
+ * minuto) e, no modo `on_send`, de novo na hora do envio, porque entre uma coisa e
+ * outra o telefone pode ter virado contato do CRM por outro caminho. Atendimento que
+ * já existe nunca é atropelado por prospecção.
+ *
+ * `contatoDaCampanha` é o contato que ESTA campanha já criou numa execução
+ * interrompida (mesma origem, mesma campanha, mesmo lugar) — reaproveitado em vez de
+ * duplicado, que é o que torna a preparação idempotente.
+ */
+export async function triarCandidato(
+  db: pg.PoolClient,
+  org: string,
+  campaignId: string,
+  p: Candidate,
+): Promise<{ motivo: string } | { contatoDaCampanha: string | null }> {
+  if (!p.phone) return { motivo: "Sem telefone brasileiro válido." };
+  // O WhatsApp já respondeu que este número não existe lá (`whatsapp.ts`): abordar
+  // seria escrever (e pagar) uma mensagem que ninguém recebe.
+  const semWhatsapp = motivoSemWhatsapp(p.data);
+  if (semWhatsapp) return { motivo: semWhatsapp };
+  let known = await db.query(
+    "select id from contacts where organization_id=$1 and phone_number=any($2::text[])",
+    [org, phoneLookupVariants(p.phone)],
+  );
+  // Sem principal com o número, conta como existente a ficha que o tem como EXTRA
+  // (`contact_phones`, forma canônica). Sem isto, a prospecção criava um contato
+  // novo por cima de um atendimento que já existe no CRM.
+  if (known.rows.length === 0) {
+    known = await db.query(
+      "select cp.contact_id as id from contact_phones cp join contacts c on c.id = cp.contact_id and c.organization_id = cp.organization_id where cp.organization_id=$1 and cp.phone_number=$2 and c.is_merged_into is null limit 1",
+      [org, canonicalPhoneBR(p.phone)],
+    );
+  }
+  let contactId = p.contact_id;
+  if (known.rows.length && !contactId) {
+    const owned = await db.query(
+      "select id from contacts where organization_id=$1 and id=$2 and source='prospecting' and source_metadata->>'campaign_id'=$3 and source_metadata->>'place_id'=$4",
+      [org, known.rows[0].id, campaignId, p.data.key],
+    );
+    if (owned.rows[0]) contactId = owned.rows[0].id;
+  }
+  if (known.rows.length && !contactId)
+    return { motivo: "Contato já existe no CRM; atendimento preservado." };
+  // `p.contact_id` preenchido não é passe livre: ele precisa ser o MESMO contato
+  // que o telefone acha. Antes bastava vir preenchido para pular a recusa — e
+  // um telefone que virou atendimento de OUTRO contato depois da pegada seguia
+  // para a abordagem fria por cima dele.
+  if (contactId && known.rows.some((r: { id: string }) => r.id !== contactId))
+    return { motivo: "Contato já existe no CRM; atendimento preservado." };
+  return { contatoDaCampanha: contactId };
+}
+
+/**
+ * Põe as etiquetas da campanha no contato, pela MESMA junção atômica que a ação `add_tag`
+ * usa (`fn_contato_adicionar_etiquetas`, migration 0682), e anuncia `contact.tag_added` só
+ * quando alguma etiqueta é de fato nova — o mesmo critério da ação.
+ *
+ * Falha aqui NÃO derruba a abordagem: a empresa segue para o envio e a skill ainda pode
+ * entrar pela palavra-chave. A falha vai para o log, sem o texto da conversa.
+ */
+export async function marcarEtiquetasDaCampanha(
+  admin: SupabaseClient,
+  org: string,
+  campaignId: string,
+  contato: string,
+  etiquetas: readonly string[],
+): Promise<void> {
+  try {
+    const { data, error } = await admin.rpc("fn_contato_adicionar_etiquetas", {
+      p_org: org,
+      p_contato: contato,
+      p_etiquetas: [...etiquetas],
+    });
+    if (error) throw new Error(error.message);
+    const retorno = (data ?? {}) as { tags?: unknown; adicionadas?: unknown };
+    const adicionadas = Array.isArray(retorno.adicionadas) ? retorno.adicionadas.map(String) : [];
+    if (!adicionadas.length) return;
+    const tags = Array.isArray(retorno.tags) ? retorno.tags.map(String) : [];
+    // `service_origin: null` DE PROPÓSITO. A ação add_tag preenche esta chave com
+    // `originFromAutomationEvent(ctx, contactId)` (lib/atendimento/origem-automacao.ts), que
+    // só devolve `{ kind: "event", event_id: ctx.event.id, … }` a partir do evento raiz da
+    // execução de uma automação (`ctx.event`). A campanha não roda dentro de automação e não
+    // tem evento raiz: não há `event_id` a registrar, e inventar um quebraria o contrato do
+    // evento. O `observeServiceOrigin` (lib/atendimento/origem.ts) é outra origem (comando
+    // observado), que a add_tag não usa; trazê-la aqui mudaria o contrato do evento.
+    const { error: erroDoEvento } = await admin.rpc("emit_event", {
+      p_event_type: "contact.tag_added",
+      p_entity_kind: "contact",
+      p_entity_id: contato,
+      p_payload: { added_tags: adicionadas, tags, service_origin: null },
+      p_metadata: { caused_by_rule: null, campaign_id: campaignId },
+      p_organization_id: org,
+    });
+    if (erroDoEvento) throw new Error(erroDoEvento.message);
+  } catch (erro) {
+    logger.warn("etiquetas da campanha não gravadas no contato — a abordagem segue", {
+      organization_id: org,
+      campaign_id: campaignId,
+      contact_id: contato,
+      erro: erro instanceof Error ? erro.message : String(erro),
+    });
+  }
+}
+
+/**
+ * Os `link_<tipo>` que o contato NOVO já nasce carregando (Spec 26 §3.2), mais o
+ * `segmento` do diagnóstico da ficha, copiado da categoria da busca
+ * (`lib/contacts/diagnostico-do-contato.ts`). Fail-open: o mapeador não deveria lançar,
+ * mas se algo escapar o contato nasce sem esses campos e a criação segue. Devolve
+ * `undefined` quando não há nada, para não mandar `custom_fields` vazio.
+ *
+ * O segmento só entra se a organização NÃO tem campo de contato próprio chamado
+ * `segmento`: o `createContactHandler` confere o `custom_fields` contra o padrão desses
+ * campos e recusa com 422, e uma categoria do Maps fora do padrão derrubaria a criação
+ * de todo contato da campanha. A leitura das definições só acontece quando há
+ * categoria ou contexto da equipe, e é fail-open (`defsDoPadraoDaOrg` devolve lista
+ * vazia se falhar).
+ *
+ * O contexto da equipe (planilha: diagnóstico, oferta, contexto) vira `diag_resumo`,
+ * `diag_oferta` e `diag_observacoes` pelo MESMO schema central da aba Diagnóstico, com
+ * `diag_por`/`diag_em` de quem importou — só quando há diagnóstico ou oferta (a regra
+ * da autoria). Chave que a organização já tem como campo próprio fica de fora, pelo
+ * mesmo motivo do segmento.
+ */
+async function camposDoContatoNovo(
+  admin: SupabaseClient,
+  org: string,
+  p: Candidate,
+): Promise<Record<string, unknown> | undefined> {
+  try {
+    const equipe = lerContextoDaEquipe(p.data.contexto_da_equipe);
+    const chavesDaOrganizacao =
+      p.data.category?.trim() || equipe
+        ? (await defsDoPadraoDaOrg(admin, org, "contato")).map((def) => def.key)
+        : [];
+    const campos = {
+      ...aplicarLinks({}, linksDoCandidato(p.data)),
+      ...segmentoDoContatoNovo(p.data.category, chavesDaOrganizacao),
+      // O que a EQUIPE escreveu na planilha vira a aba Diagnóstico do contato novo,
+      // assinado por quem importou (`lib/prospecting/contexto-da-equipe.ts`).
+      ...diagnosticoDoContatoNovo(
+        equipe && {
+          resumo: equipe.diagnostico,
+          oferta: equipe.oferta,
+          observacoes: equipe.contexto,
+          autor: equipe.por,
+          em: equipe.em,
+        },
+        chavesDaOrganizacao,
+      ),
+    };
+    return Object.keys(campos).length > 0 ? campos : undefined;
+  } catch (error) {
+    logger.warn("[prospecting] mapeador de links falhou; o contato nasce sem links", {
+      candidate_id: p.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * A PEGADA DE UMA EMPRESA NO CRM: contato, negócio no funil e conversa.
+ *
+ * Era o corpo do laço de `activateCampaign`, que criava isso para TODA a fila no
+ * instante de "Iniciar". Foi separada para o modo `on_send` poder criar a pegada de
+ * uma empresa só quando chega a vez dela de ser abordada. Medido numa campanha real:
+ * 47 empresas esperando, todas na etapa de entrada do funil há dois dias sem uma
+ * mensagem enviada — o funil dizia "Abordado" de quem ninguém tinha abordado.
+ *
+ * Idempotente por construção (contato da campanha reaproveitado, negócio procurado
+ * por `external_id`): uma execução que caiu no meio recomeça sem duplicar nada.
+ * Devolve a linha do candidato já `queued`, com contato, negócio, conversa e fronteira.
+ */
+export async function criarPegadaDoCandidato(
+  db: pg.PoolClient,
+  admin: SupabaseClient,
+  org: string,
+  c: Pick<Campaign, "id" | "name">,
+  config: CampaignConfig,
+  p: Candidate,
+  contatoDaCampanha: string | null,
+): Promise<Candidate> {
+  // A triagem já recusou quem não tem telefone; esta guarda só diz isso ao compilador,
+  // que não enxerga a triagem daqui (no laço original o `continue` já estreitava o tipo).
+  if (!p.phone) throw new ProspectingError("Sem telefone brasileiro válido.", 422, "candidato");
+  // ─── O CARIMBO DO PEDIDO (#3072) ─────────────────────────────────────────
+  //
+  // Este `requestId` vai parar em `metadata.request_id` do `lead.created` que o
+  // `createLeadHandler` emite (`app/api/v1/leads/_handler.ts`). Era
+  // `rule:${c.id}` — a marca que o motor RESERVA para a ação de regra —, e por
+  // isso o motor pulava o negócio aberto pela campanha como se fosse laço de
+  // regra: nenhuma regra de "negócio criado" rodava para a empresa abordada.
+  // A campanha não é regra; o carimbo dela é próprio e o anti-laço das regras
+  // fica intacto.
+  const ctx = {
+    organization_id: org,
+    actor: { type: "webhook_source" as const, id: c.id },
+    requestId: pedidoDaProspeccao(c.id),
+  };
+  // O negócio é VALIDADO antes de qualquer escrita: `normalizeProspect` aceita um nome de
+  // uma letra, e o negócio exige duas. Sem isto o contato nascia, o negócio recusava, e a
+  // empresa ficava com um contato sem negócio nem conversa.
+  const negocioBase = createLeadSchema.parse({
+    pipeline_id: config.pipeline_id,
+    stage_id: config.stage_id,
+    title: p.data.name,
+    owner_agent_id: config.agent_id,
+    source: "prospecting",
+    // #4586 — AS MESMAS ETIQUETAS DO CONTATO VÃO PARA O CARD.
+    //
+    // A condição "Etiqueta do contato" do follow-up (tela em `lib/followup/vocabulario.ts`)
+    // lê `crm_leads.tags` — a etiqueta do CARD —, e `loadLeadFacts` do motor
+    // (`lib/followup/engine.ts`, `lib/followup/turn-bridge.ts`) confirma: é a lista do
+    // negócio, não `contacts.tags`. A campanha só etiquetava o CONTATO (logo abaixo, por
+    // `marcarEtiquetasDaCampanha`), então o par que a própria tela oferece com o nicho da
+    // campanha nunca casava: a pessoa montava o fluxo certo e ele nunca disparava.
+    //
+    // A saída é a da issue: a campanha também etiqueta o card. Nada muda no motor nem no
+    // significado de `crm_leads.tags`; o rótulo do vocabulário fica como está porque ele
+    // descreve o que o motor lê. `contact_tags` já chega normalizada (minúscula, sem
+    // repetida) pelo `campaignConfigSchema`; ausente/vazio cai no `[]` do schema.
+    tags: [...(config.contact_tags ?? [])],
+    description: `Campanha: ${c.name}\nQualificação: ${config.qualification}`.slice(0, 2000),
+  });
+  let contactId = contatoDaCampanha ?? p.contact_id;
+  // A EMPRESA DO MÓDULO "EMPRESAS E PESSOAS" (#3198, fatia 2) — só com o módulo
+  // LIGADO. Desligado, `empresaDoCandidato` devolve `null` sem escrever nada, e
+  // o caminho abaixo é exatamente o de hoje: contato, negócio e conversa.
+  const empresaId = await empresaDoCandidato(admin, org, p.data);
+  if (!contactId) {
+    const linksDoNovo = await camposDoContatoNovo(admin, org, p);
+    // Porta `prospeccao`: a conversa abre logo abaixo, no canal da CAMPANHA. Pela
+    // porta `manual` o cadastro abria antes outra, no telefone mais antigo da
+    // organização, e cada empresa abordada aparecia duas vezes na caixa.
+    const contact = await createContactHandler(
+      admin,
+      ctx,
+      {
+        name: p.data.name,
+        display_name: p.data.name,
+        phone_number: p.phone,
+        source: "prospecting",
+        source_metadata: { campaign_id: c.id, place_id: p.data.key, maps_url: p.data.maps_url },
+        consent: { legitimate_interest: { ref: config.legal_basis_ref } },
+        ...(linksDoNovo ? { custom_fields: linksDoNovo } : {}),
+      },
+      undefined,
+      { porta: "prospeccao" },
+    );
+    contactId = String(contact.contact.id);
+    // O contato NASCIDO da prospecção aponta para a empresa quando ela existe:
+    // o telefone do Google é o da recepção, e o vínculo é com a EMPRESA
+    // (#3198, fatia 2, decisão 1 do autor). Contato que já existia não é tocado.
+    if (empresaId) await ligarContatoAEmpresa(db, org, contactId, empresaId);
+    await db.query(
+      "update prospecting_candidates set contact_id=$3 where organization_id=$1 and id=$2",
+      [org, p.id, contactId],
+    );
+  }
+  // Contato que já existe (criado antes, ou reaproveitado da campanha) NÃO é tocado aqui.
+  // Decisão do dono (spec 26 §7.1): ficha que já existe só recebe links pelo botão
+  // "Completar fichas"; preencher sozinho a cada envio traria de volta um link que a pessoa
+  // apagou. O contato novo, acima, continua nascendo com os links.
+  // As etiquetas do ramo ficam no CONTATO antes da primeira mensagem: a skill que entra pela
+  // etiqueta precisa delas já no primeiro turno (spec 27, fatia 1). Ausente = nada muda.
+  // Diferente dos links acima, roda TAMBÉM no contato reaproveitado da campanha: a gravação é
+  // fail-open, e o reenvio é o que recupera uma primeira tentativa que falhou. A junção não
+  // duplica etiqueta. O custo conhecido: etiqueta que um humano apagou volta no próximo envio
+  // da MESMA campanha.
+  if (config.contact_tags?.length)
+    await marcarEtiquetasDaCampanha(admin, org, c.id, contactId, config.contact_tags);
+  let leadId = p.lead_id;
+  if (!leadId) {
+    const existing = await db.query(
+      "select id from crm_leads where organization_id=$1 and source='prospecting' and external_id=$2",
+      [org, p.id],
+    );
+    leadId = existing.rows[0]?.id ?? null;
+  }
+  if (!leadId) {
+    const lead = await createLeadHandler(admin, ctx, {
+      ...negocioBase,
+      contact_id: contactId,
+      external_id: p.id,
+    });
+    leadId = String(lead.id);
+    await db.query(
+      "update prospecting_candidates set lead_id=$3 where organization_id=$1 and id=$2",
+      [org, p.id, leadId],
+    );
+  }
+  await db.query(
+    "update prospecting_candidates set contact_id=$3,lead_id=$4 where organization_id=$1 and id=$2",
+    [org, p.id, contactId, leadId],
+  );
+  const boundary = await beginServiceAtOrigin(admin, org, contactId, config.channel_session_id);
+  await db.query(
+    "update conversations set active_ai_agent_id=$3,metadata=coalesce(metadata,'{}'::jsonb) || jsonb_build_object('prospecting_campaign_id',$4::text) where organization_id=$1 and id=$2",
+    [org, boundary.conversation_id, config.agent_id, c.id],
+  );
+  const { rows } = await db.query<Candidate>(
+    "update prospecting_candidates set status='queued',conversation_id=$3,service_boundary=$4,error=null,updated_at=now() where organization_id=$1 and id=$2 returning *",
+    [org, p.id, boundary.conversation_id, boundary],
+  );
+  return rows[0] as Candidate;
+}
+
+/**
+ * Modo `on_send`: prepara a empresa NA HORA de abordá-la. Devolve a linha pronta, ou
+ * `null` quando ela saiu da fila (pulada ou falhada) e o envio deve passar à próxima.
+ *
+ * O erro de uma empresa é DELA: uma recusa 4xx dos cadastros (telefone que o CRM não
+ * aceita, por exemplo) marca só essa empresa como `failed`, com o motivo. Sem isso o
+ * candidato continuaria `queued` e travaria a fila rodada após rodada — e o `catch` do
+ * envio só sabe marcar quem já está `sending`. Falha de infraestrutura (banco, rede)
+ * continua subindo: ela pausa a campanha com o motivo, como sempre pausou.
+ */
+export async function prepararCandidatoNoEnvio(
+  db: pg.PoolClient,
+  admin: SupabaseClient,
+  c: Pick<Campaign, "id" | "name" | "organization_id">,
+  config: CampaignConfig,
+  p: Candidate,
+): Promise<Candidate | null> {
+  const org = c.organization_id;
+  const triagem = await triarCandidato(db, org, c.id, p);
+  if ("motivo" in triagem) {
+    await db.query(
+      "update prospecting_candidates set status='skipped',error=$3,updated_at=now() where organization_id=$1 and id=$2 and status='queued'",
+      [org, p.id, triagem.motivo],
+    );
+    return null;
+  }
+  try {
+    return await criarPegadaDoCandidato(db, admin, org, c, config, p, triagem.contatoDaCampanha);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      // Dados da empresa que o cadastro não aceita (nome curto demais, por exemplo). A
+      // validação roda ANTES de qualquer escrita, então não sobra contato órfão.
+      await db.query(
+        "update prospecting_candidates set status='failed',error=$3,updated_at=now() where organization_id=$1 and id=$2 and status='queued'",
+        [
+          org,
+          p.id,
+          "Os dados desta empresa não passam na validação do cadastro (por exemplo, nome curto demais).",
+        ],
+      );
+      return null;
+    }
+    const status = (error as { status?: unknown } | null)?.status;
+    if (typeof status !== "number" || status < 400 || status >= 500) throw error;
+    const detalhe = error instanceof Error ? error.message.slice(0, 300) : "";
+    await db.query(
+      "update prospecting_candidates set status='failed',error=$3,updated_at=now() where organization_id=$1 and id=$2 and status='queued'",
+      [org, p.id, `Não foi possível colocar esta empresa no funil.${detalhe ? ` ${detalhe}` : ""}`],
+    );
+    return null;
+  }
+}
+/**
+ * Põe na fila as empresas que sobraram da busca, no instante de iniciar.
+ *
+ * Primeiro a escolha do operador (desmarcada nunca entra), depois a triagem (sem
+ * telefone, ou já é contato do CRM). O que acontece com quem passa depende de
+ * `config.funnel_entry`: `on_start` cria contato, negócio e conversa AGORA, para a fila
+ * inteira; `on_send` só enfileira, e cada empresa nasce no CRM na vez dela de ser
+ * abordada (`prepararCandidatoNoEnvio`).
+ */
+export async function enfileirarCandidatos(
+  db: pg.PoolClient,
+  admin: SupabaseClient,
+  org: string,
+  c: Pick<Campaign, "id" | "name">,
+  config: CampaignConfig,
+  candidates: Candidate[],
+) {
+  const id = c.id;
+  for (const p of candidates) {
+    // Quem saiu da seleção por NÃO TER WHATSAPP leva esse motivo, e não "não
+    // selecionada pelo operador": quem tirou foi o produto, e a tela não a devolve.
+    const selectionReason = motivoSemWhatsapp(p.data) ?? razaoDeAbordarSelecionado(p.selected);
+    if (selectionReason) {
+      await db.query(
+        "update prospecting_candidates set status='skipped',error=$3 where organization_id=$1 and id=$2",
+        [org, p.id, selectionReason],
+      );
+      continue;
+    }
+    const triagem = await triarCandidato(db, org, id, p);
+    if ("motivo" in triagem) {
+      await db.query(
+        "update prospecting_candidates set status='skipped',error=$3 where organization_id=$1 and id=$2",
+        [org, p.id, triagem.motivo],
+      );
+      continue;
+    }
+    if (config.funnel_entry === "on_send") {
+      // O contato, o negócio e a conversa NASCEM NO ENVIO (`prepararCandidatoNoEnvio`):
+      // aqui a empresa só entra na fila. O funil mostra quem foi abordado, e desmarcar
+      // uma empresa que ainda não foi abordada não deixa nada para desfazer.
+      await db.query(
+        "update prospecting_candidates set status='queued',error=null,updated_at=now() where organization_id=$1 and id=$2",
+        [org, p.id],
+      );
+      continue;
+    }
+    await criarPegadaDoCandidato(db, admin, org, c, config, p, triagem.contatoDaCampanha);
+  }
+}
+/**
+ * O NÚMERO DE UMA CAMPANHA e a TRAVA "uma campanha running por número".
+ * A implementação mora em `canal-da-campanha.ts` (sem banco) porque o worker e
+ * o teste do worker também precisam dela; aqui fica reexportada para quem já
+ * importa a loja.
+ */
+import { assertCanalLivre, canalDaCampanha } from "./canal-da-campanha";
+export { assertCanalLivre, canalDaCampanha };
+
 export async function activateCampaign(
   pool: pg.Pool,
   admin: SupabaseClient,
@@ -305,7 +1272,8 @@ export async function activateCampaign(
       )
     ).rows[0];
     if (!c) throw new ProspectingError("Campanha não encontrada.", 404);
-    // Rascunho arquivado que inicia ficaria invisível na lista e enviando.
+    // A MESMA recusa da retomada (#4359): rascunho arquivado que inicia fica
+    // invisível na lista e enviando. Desarquivar primeiro.
     if (arquivadaEm(c.config))
       throw new ProspectingError("Desarquive a campanha antes de iniciar.", 409);
     if (c.status !== "draft" || c.search_status !== "succeeded")
@@ -313,137 +1281,391 @@ export async function activateCampaign(
         "Aguarde a busca terminar; uma campanha já iniciada deve ser retomada.",
         409,
       );
-    if (
-      (
-        await db.query(
-          "select id from prospecting_campaigns where organization_id=$1 and status='running'",
-          [org],
-        )
-      ).rows.length
-    )
-      throw new ProspectingError("Pause a campanha atual antes de iniciar outra.", 409);
-    if (c.config && JSON.stringify(campaignConfigSchema.parse(c.config)) !== JSON.stringify(config))
-      throw new ProspectingError(
-        "A preparação já começou. Retome com a mesma configuração da campanha.",
-        409,
-      );
+    // A TRAVA É DO NÚMERO, não da organização (#3896). Duas campanhas em
+    // números diferentes convivem; a segunda no MESMO número é recusada com o
+    // código `prospecting_channel_busy` e o nome de quem ocupa a conexão.
+    await assertCanalLivre(db, org, id, config.channel_session_id);
+    if (c.config) {
+      // Config PARCIAL salva pelo meio (sem `agent_id`) não pode ser comparada:
+      // o `parse` cru estourava ZodError antes de qualquer comparação e a
+      // campanha ficava sem como ser iniciada (medido na VPS: 3 rascunhos).
+      const salva = campaignConfigSchema.safeParse(c.config);
+      if (salva.success && JSON.stringify(salva.data) !== JSON.stringify(config))
+        throw new ProspectingError(
+          "A preparação já começou. Retome com a mesma configuração da campanha.",
+          409,
+        );
+    }
     await db.query(
-      "update prospecting_campaigns set config=$3 where organization_id=$1 and id=$2",
-      [org, id, config],
+      "update prospecting_campaigns set config=$3,channel_session_id=$4 where organization_id=$1 and id=$2",
+      [org, id, config, config.channel_session_id],
     );
-    // Activation is the authorized origin. A later tick only uses this captured boundary.
+    // Activation is the authorized origin. In `on_start` the service boundary of every company
+    // is captured here; in `on_send` each company's is captured when its turn comes
+    // (`prepararCandidatoNoEnvio`), still under this campaign's own authority.
     const candidates = (
       await db.query<Candidate>(
         "select * from prospecting_candidates where organization_id=$1 and campaign_id=$2 and status='new' order by created_at,id",
         [org, id],
       )
     ).rows;
-    for (const p of candidates) {
-      const selectionReason = razaoDeAbordarSelecionado(p.selected);
-      if (selectionReason) {
-        await db.query(
-          "update prospecting_candidates set status='skipped',error=$3 where organization_id=$1 and id=$2",
-          [org, p.id, selectionReason],
-        );
-        continue;
-      }
-      if (!p.phone) {
-        await db.query(
-          "update prospecting_candidates set status='skipped',error='Sem telefone brasileiro válido.' where organization_id=$1 and id=$2",
-          [org, p.id],
-        );
-        continue;
-      }
-      const known = await db.query(
-        "select id from contacts where organization_id=$1 and phone_number=any($2::text[])",
-        [org, phoneLookupVariants(p.phone)],
-      );
-      if (known.rows.length && !p.contact_id) {
-        const owned = await db.query(
-          "select id from contacts where organization_id=$1 and id=$2 and source='prospecting' and source_metadata->>'campaign_id'=$3 and source_metadata->>'place_id'=$4",
-          [org, known.rows[0].id, id, p.data.key],
-        );
-        if (owned.rows[0]) p.contact_id = owned.rows[0].id;
-      }
-      if (known.rows.length && !p.contact_id) {
-        await db.query(
-          "update prospecting_candidates set status='skipped',error='Contato já existe no CRM; atendimento preservado.' where organization_id=$1 and id=$2",
-          [org, p.id],
-        );
-        continue;
-      }
-      const ctx = {
-        organization_id: org,
-        actor: { type: "webhook_source" as const, id },
-        requestId: `rule:${id}`,
-      };
-      let contactId = p.contact_id;
-      if (!contactId) {
-        const contact = await createContactHandler(admin, ctx, {
-          name: p.data.name,
-          display_name: p.data.name,
-          phone_number: p.phone,
-          source: "prospecting",
-          source_metadata: { campaign_id: id, place_id: p.data.key, maps_url: p.data.maps_url },
-          consent: { legitimate_interest: { ref: config.legal_basis_ref } },
-        });
-        contactId = String(contact.contact.id);
-        await db.query(
-          "update prospecting_candidates set contact_id=$3 where organization_id=$1 and id=$2",
-          [org, p.id, contactId],
-        );
-      }
-      let leadId = p.lead_id;
-      if (!leadId) {
-        const existing = await db.query(
-          "select id from crm_leads where organization_id=$1 and source='prospecting' and external_id=$2",
-          [org, p.id],
-        );
-        leadId = existing.rows[0]?.id ?? null;
-      }
-      if (!leadId) {
-        const lead = await createLeadHandler(admin, ctx, {
-          ...createLeadSchema.parse({
-            pipeline_id: config.pipeline_id,
-            stage_id: config.stage_id,
-            title: p.data.name,
-            contact_id: contactId,
-            owner_agent_id: config.agent_id,
-            source: "prospecting",
-            description: `Campanha: ${c.name}\nQualificação: ${config.qualification}`.slice(
-              0,
-              2000,
-            ),
-          }),
-          external_id: p.id,
-        });
-        leadId = String(lead.id);
-        await db.query(
-          "update prospecting_candidates set lead_id=$3 where organization_id=$1 and id=$2",
-          [org, p.id, leadId],
-        );
-      }
+    await enfileirarCandidatos(db, admin, org, c, config, candidates);
+    try {
       await db.query(
-        "update prospecting_candidates set contact_id=$3,lead_id=$4 where organization_id=$1 and id=$2",
-        [org, p.id, contactId, leadId],
+        "update prospecting_campaigns set config=$3,channel_session_id=$4,status='running',next_send_at=now()+interval '1 minute',error=null,channel_down_since=null,updated_at=now() where organization_id=$1 and id=$2",
+        [org, id, config, config.channel_session_id],
       );
-      const boundary = await beginServiceAtOrigin(admin, org, contactId, config.channel_session_id);
-      await db.query(
-        "update conversations set active_ai_agent_id=$3,metadata=coalesce(metadata,'{}'::jsonb) || jsonb_build_object('prospecting_campaign_id',$4::text) where organization_id=$1 and id=$2",
-        [org, boundary.conversation_id, config.agent_id, id],
-      );
-      await db.query(
-        "update prospecting_candidates set status='queued',conversation_id=$3,service_boundary=$4,error=null,updated_at=now() where organization_id=$1 and id=$2",
-        [org, p.id, boundary.conversation_id, boundary],
-      );
+    } catch (error) {
+      // O ÍNDICE ÚNICO PARCIAL é a última linha de defesa: quem chegar aqui sem
+      // o bloqueio da organização (processo antigo, escrita fora da rota) bate
+      // em `prospecting_one_running_canal` com 23505. Sem esta tradução, o
+      // conflito saía como 500 genérico (`failure()` só conhece
+      // `ProspectingError`), e a tela não tinha o que oferecer. A releitura
+      // abaixo dá o NOME de quem ocupa o número.
+      if ((error as { code?: string }).code === "23505") {
+        await assertCanalLivre(db, org, id, config.channel_session_id);
+      }
+      throw error;
     }
-    await db.query(
-      "update prospecting_campaigns set config=$3,status='running',next_send_at=now()+interval '1 minute',error=null,updated_at=now() where organization_id=$1 and id=$2",
-      [org, id, config],
-    );
     return { started: true };
   });
 }
+
+/**
+ * DESMARCAR UMA EMPRESA QUE JÁ ESTÁ NA FILA: ela vira "Não abordado", com o motivo do
+ * operador, e o envio (que só pega `queued`) nunca mais a alcança.
+ *
+ * Só `queued`: `sending`, `sent` e `failed` já tiveram tentativa e não voltam atrás por
+ * um clique. Em `on_send` a empresa ainda nem existe no CRM, então não há nada a desfazer;
+ * em `on_start` o contato e o negócio já foram criados ao iniciar e FICAM onde estão — o
+ * produto não tem como ocultar nem apagar negócio, e inventar isso aqui seria escrever
+ * código irreversível por conta do botão de uma tela.
+ */
+export const FILA_DESMARCAR_SQL =
+  "update prospecting_candidates set selected=false,status='skipped',error=$4,updated_at=now() where organization_id=$1 and campaign_id=$2 and id=any($3::uuid[]) and status='queued' returning id";
+
+/**
+ * MARCAR DE NOVO: só devolve à fila quem o OPERADOR tirou (`selected=false`, `skipped` e o
+ * motivo exato dele). "Sem telefone brasileiro válido" e "Contato já existe no CRM" são
+ * `skipped` por outra razão e NÃO voltam por aqui — marcar a caixa não pode ressuscitar
+ * quem o produto recusou de propósito.
+ *
+ * `$5` é "a campanha cria a empresa só no envio": nesse modo qualquer desmarcada pode voltar
+ * (será preparada na vez dela); no modo antigo só volta quem JÁ tem conversa criada, porque
+ * a empresa desmarcada antes de iniciar nunca ganhou contato nem negócio, e criá-los num
+ * clique de "marcar" seria refazer a ativação por baixo da tela.
+ */
+export const FILA_REMARCAR_SQL =
+  "update prospecting_candidates set selected=true,status='queued',error=null,updated_at=now() where organization_id=$1 and campaign_id=$2 and id=any($3::uuid[]) and status='skipped' and selected=false and error=$4 and ($5::boolean or conversation_id is not null) returning id";
+
+export async function selecionarNaFila(
+  pool: pg.Pool,
+  org: string,
+  campaignId: string,
+  candidateIds: string[],
+  selected: boolean,
+) {
+  return withProspectingLock(pool, org, async (db) => {
+    const c = (
+      await db.query<{ status: string; config: Record<string, unknown> | null }>(
+        "select status, config from prospecting_campaigns where organization_id=$1 and id=$2",
+        [org, campaignId],
+      )
+    ).rows[0];
+    if (!c) throw new ProspectingError("Campanha não encontrada.", 404);
+    // Pausada: o envio só roda em `running`, então ninguém está no meio de uma abordagem.
+    if (c.status !== "paused" || !c.config)
+      throw new ProspectingError("Pause a campanha antes de mudar quem está na fila.", 409);
+    const soNoEnvio = c.config.funnel_entry === "on_send";
+    const { rows } = selected
+      ? await db.query<{ id: string }>(FILA_REMARCAR_SQL, [
+          org,
+          campaignId,
+          candidateIds,
+          RAZAO_NAO_SELECIONADA,
+          soNoEnvio,
+        ])
+      : await db.query<{ id: string }>(FILA_DESMARCAR_SQL, [
+          org,
+          campaignId,
+          candidateIds,
+          RAZAO_NAO_SELECIONADA,
+        ]);
+    return { selected, changed_ids: rows.map((r) => r.id) };
+  });
+}
+
+/**
+ * EXCLUIR AS DESMARCADAS: apaga a LINHA DA BUSCA de quem o operador tirou, para a lista não
+ * crescer com quem ele nunca vai abordar.
+ *
+ * Três guardas, todas no `where`:
+ * - sem contato, negócio nem conversa: o que já virou registro do CRM não é daqui;
+ * - `suppression_salt is null`: a linha de quem exerceu opt-out ou exclusão é a TOMBA que o
+ *   gatilho `prospecting_refuse_erased` consulta para barrar a reimportação — apagá-la
+ *   reabriria a porta que a anonimização fechou;
+ * - só o que o operador marcou: `new` desmarcada (rascunho) ou `skipped` com o motivo dele.
+ *
+ * O telefone dessas linhas é o que impede a mesma empresa de reaparecer como "nova" numa
+ * busca futura (índice único por organização + `on conflict do nothing`). Excluir é decidir
+ * que ela PODE voltar — por isso a tela pede confirmação e diz isso.
+ */
+export const DESCARTAR_DESMARCADAS_SQL =
+  "delete from prospecting_candidates where organization_id=$1 and campaign_id=$2 and selected=false and (status='new' or (status='skipped' and error=$3)) and contact_id is null and lead_id is null and conversation_id is null and suppression_salt is null returning id";
+
+export async function descartarDesmarcadas(pool: pg.Pool, org: string, campaignId: string) {
+  return withProspectingLock(pool, org, async (db) => {
+    const c = (
+      await db.query<{ status: string }>(
+        "select status from prospecting_campaigns where organization_id=$1 and id=$2",
+        [org, campaignId],
+      )
+    ).rows[0];
+    if (!c) throw new ProspectingError("Campanha não encontrada.", 404);
+    if (c.status !== "draft" && c.status !== "paused")
+      throw new ProspectingError("Pause a campanha antes de excluir as desmarcadas.", 409);
+    const { rows } = await db.query<{ id: string }>(DESCARTAR_DESMARCADAS_SQL, [
+      org,
+      campaignId,
+      RAZAO_NAO_SELECIONADA,
+    ]);
+    return { discarded: rows.length };
+  });
+}
+
+/**
+ * O ajuste do ritmo é UM `update`, e as três guardas moram na própria cláusula
+ * `where`, não só no `if` que vem antes dela:
+ *
+ * - `organization_id = $1`: a organização vem da sessão, nunca do corpo;
+ * - `status = 'paused'`: com a campanha rodando, o envio pode estar no meio de uma
+ *   abordagem, e trocar o intervalo ali seria trocar a régua no meio da medida;
+ * - `config is not null`: `null || jsonb` é `null`, e o merge apagaria a
+ *   configuração inteira de uma campanha que ainda não foi iniciada.
+ *
+ * `||` entre jsonb troca só as duas chaves e preserva as demais — conexão, agente,
+ * funil, base legal e instrução não são tocados, por construção e não por cuidado.
+ *
+ * `next_send_at = least(next_send_at, now())` existe porque a hora do próximo envio
+ * foi gravada com o ritmo ANTIGO — ou com o fim da janela de 24 horas, quando o
+ * limite do dia estourou — e o envio sai cedo enquanto ela está no futuro. Sem isto,
+ * baixar o intervalo (ou subir o limite) só valeria depois de esperar o ritmo velho,
+ * que é o contrário do que a tela promete. Antecipar é seguro: janela, ritmo do
+ * canal, teto da esteira fria, limite do dia e intervalo desde o último envio são
+ * RECALCULADOS a cada rodada do envio, e quem não puder enviar só reagenda.
+ * Aumentar o intervalo também vale na hora, porque o envio compara com o último envio.
+ */
+export const AJUSTE_DE_RITMO_SQL =
+  "update prospecting_campaigns set config = config || jsonb_build_object('daily_limit', $3::int, 'interval_minutes', $4::int), next_send_at = least(next_send_at, now()), updated_at = now() where organization_id = $1 and id = $2 and status = 'paused' and config is not null returning id";
+
+/**
+ * Troca o limite por dia e o intervalo de uma campanha PAUSADA.
+ *
+ * O envio lê `campaignConfigSchema.parse(c.config)` a cada rodada, então o valor
+ * novo vale já na próxima rodada depois de "Retomar", que revalida a configuração
+ * gravada.
+ * Devolve também o ritmo ANTERIOR, para a auditoria dizer "de quanto para quanto":
+ * lido cru, sem `parse`, para que uma campanha cuja configuração antiga já não
+ * passa no schema atual ainda possa ser consertada por aqui.
+ */
+export async function adjustPace(pool: pg.Pool, org: string, id: string, pace: CampaignPace) {
+  return withProspectingLock(pool, org, async (db) => {
+    const c = (
+      await db.query<{ status: string; config: Record<string, unknown> | null }>(
+        "select status, config from prospecting_campaigns where organization_id=$1 and id=$2",
+        [org, id],
+      )
+    ).rows[0];
+    if (!c) throw new ProspectingError("Campanha não encontrada.", 404);
+    if (c.status !== "paused" || !c.config)
+      throw new ProspectingError("Pause a campanha antes de ajustar o ritmo.", 409);
+    const changed = await db.query(AJUSTE_DE_RITMO_SQL, [
+      org,
+      id,
+      pace.daily_limit,
+      pace.interval_minutes,
+    ]);
+    // Alguém retomou entre o select e o update: o `where` recusou, e é isso que vale.
+    if (!changed.rows.length)
+      throw new ProspectingError("Pause a campanha antes de ajustar o ritmo.", 409);
+    return {
+      previous: {
+        daily_limit: c.config.daily_limit ?? null,
+        interval_minutes: c.config.interval_minutes ?? null,
+      },
+      next: { daily_limit: pace.daily_limit, interval_minutes: pace.interval_minutes },
+    };
+  });
+}
+
+/**
+ * Troca as etiquetas de contato de uma campanha PAUSADA (spec 27). A nova lista vale para os
+ * próximos envios: o contato criado daqui em diante a recebe, e o que a campanha já criou a
+ * recebe de novo no reenvio (a junção é idempotente e é a única recuperação se a primeira
+ * gravação falhou). O `where` repete a régua de `adjust_pace` (organização, id, pausada, com configuração) e o `||` troca só a chave.
+ */
+export const AJUSTE_DE_ETIQUETAS_SQL =
+  "update prospecting_campaigns set config = config || jsonb_build_object('contact_tags', $3::jsonb), updated_at = now() where organization_id = $1 and id = $2 and status = 'paused' and config is not null returning id";
+
+/** Devolve a lista anterior (cruda, como `adjustPace` faz com o ritmo) e a nova para a auditoria. */
+export async function adjustTags(pool: pg.Pool, org: string, id: string, etiquetas: string[]) {
+  return withProspectingLock(pool, org, async (db) => {
+    const c = (
+      await db.query<{ status: string; config: Record<string, unknown> | null }>(
+        "select status, config from prospecting_campaigns where organization_id=$1 and id=$2",
+        [org, id],
+      )
+    ).rows[0];
+    if (!c) throw new ProspectingError("Campanha não encontrada.", 404);
+    if (c.status !== "paused" || !c.config)
+      throw new ProspectingError("Pause a campanha antes de ajustar as etiquetas.", 409);
+    const changed = await db.query(AJUSTE_DE_ETIQUETAS_SQL, [
+      org,
+      id,
+      JSON.stringify(etiquetas),
+    ]);
+    // Alguém retomou entre o select e o update: o `where` recusou, e é isso que vale.
+    if (!changed.rows.length)
+      throw new ProspectingError("Pause a campanha antes de ajustar as etiquetas.", 409);
+    return {
+      previous: { contact_tags: c.config.contact_tags ?? null },
+      next: { contact_tags: etiquetas },
+    };
+  });
+}
+
+/**
+ * Troca a INSTRUÇÃO, os CRITÉRIOS e as OFERTAS de uma campanha PAUSADA (#4570).
+ *
+ * O TEXTO NOVO VALE SÓ PARA QUEM AINDA NÃO FOI ABORDADO (decisão do dono, 15/11,
+ * doc 358 › 1A). O contexto do turno é montado da `config` a cada turno
+ * (`context.ts`), então trocar a `config` sozinha mudaria a oferta no meio de uma
+ * conversa que já andou. Por isso, na MESMA transação:
+ *
+ * 1. quem já foi abordado (`sending`/`sent`) e ainda não tem o seu, ganha em
+ *    `data.briefing` o texto com que começou — o texto ANTERIOR à edição. O turno
+ *    lê esse congelado antes da `config`. Só esta função troca o briefing, e ela
+ *    congela todo abordado antes de trocar: quem foi abordado entre duas edições
+ *    recebe o texto da primeira na segunda, e o `not ?` mantém o primeiro;
+ * 2. a prévia guardada de quem ainda está na fila (`data.previa`) é descartada.
+ *    Ela foi escrita com o texto velho e entraria no envio como "Rascunho"; sem
+ *    ela, o preparo escreve outra com o texto novo;
+ * 3. a `config` ganha `briefing_editado_em`. A prévia carrega o carimbo da
+ *    `config` com que nasceu, e o envio só usa a que tem o carimbo atual
+ *    (`previaDoAgente`): uma prévia que o preparo estava gerando com o texto velho
+ *    durante a edição (ele não toma este bloqueio) nasce vencida.
+ *
+ * O histórico não é tocado: mensagens, candidatos e negócios ficam como estão.
+ *
+ * Mesma régua de `adjust_pace`/`adjust_tags`, nas duas camadas de propósito: o `if`
+ * dá o 409 com a mensagem certa, e o `where` repete organização, id, `paused` e
+ * `config is not null` — se alguém retomar entre a leitura e a escrita, quem recusa
+ * é o banco. `||` troca só as três chaves; conexão, agente, funil, base legal e
+ * ritmo seguem intactos por construção.
+ *
+ * Devolve o `previous` CRU (sem `parse`, como as irmãs) para a auditoria dizer de
+ * que texto para que texto — uma configuração antiga que já não passa no schema
+ * atual ainda pode ser consertada por aqui.
+ */
+export const EDICAO_DO_BRIEFING_SQL =
+  "update prospecting_campaigns set config = config || jsonb_build_object('instruction', $3::text, 'qualification', $4::text, 'ofertas', $5::jsonb, 'briefing_editado_em', $6::text), updated_at = now() where organization_id = $1 and id = $2 and status = 'paused' and config is not null returning id";
+
+/** Passo 1: o texto anterior fica com quem já foi abordado. `jsonb_strip_nulls`: chave ausente na config antiga não vira `null` no congelado. */
+export const CONGELA_BRIEFING_DOS_ABORDADOS_SQL =
+  "update prospecting_candidates set data = data || jsonb_build_object('briefing', jsonb_strip_nulls($3::jsonb)), updated_at = now() where organization_id = $1 and campaign_id = $2 and status in ('sending','sent') and not (data ? 'briefing')";
+
+/** Passo 2: a prévia escrita com o texto velho não sai para quem ainda está na fila. */
+export const DESCARTA_PREVIAS_DA_FILA_SQL =
+  "update prospecting_candidates set data = data - 'previa', updated_at = now() where organization_id = $1 and campaign_id = $2 and status in ('new','queued') and data ? 'previa'";
+
+export const MENSAGEM_DE_CAMPANHA_PAUSADA_PARA_EDITAR =
+  "Pause a campanha antes de editar a instrução e os critérios.";
+
+export async function editBriefing(
+  pool: pg.Pool,
+  org: string,
+  id: string,
+  briefing: CampaignBriefing,
+) {
+  return withProspectingLock(pool, org, async (db) => {
+    const c = (
+      await db.query<{ status: string; config: Record<string, unknown> | null }>(
+        "select status, config from prospecting_campaigns where organization_id=$1 and id=$2",
+        [org, id],
+      )
+    ).rows[0];
+    if (!c) throw new ProspectingError("Campanha não encontrada.", 404);
+    if (c.status !== "paused" || !c.config)
+      throw new ProspectingError(MENSAGEM_DE_CAMPANHA_PAUSADA_PARA_EDITAR, 409);
+    const anterior = {
+      instruction: c.config.instruction ?? null,
+      qualification: c.config.qualification ?? null,
+      ofertas: c.config.ofertas ?? null,
+    };
+    await db.query("begin");
+    try {
+      const changed = await db.query(EDICAO_DO_BRIEFING_SQL, [
+        org,
+        id,
+        briefing.instruction,
+        briefing.qualification,
+        JSON.stringify(briefing.ofertas),
+        new Date().toISOString(),
+      ]);
+      // Alguém retomou entre o select e o update: o `where` recusou, e é isso que vale.
+      if (!changed.rows.length)
+        throw new ProspectingError(MENSAGEM_DE_CAMPANHA_PAUSADA_PARA_EDITAR, 409);
+      await db.query(CONGELA_BRIEFING_DOS_ABORDADOS_SQL, [org, id, JSON.stringify(anterior)]);
+      await db.query(DESCARTA_PREVIAS_DA_FILA_SQL, [org, id]);
+      await db.query("commit");
+    } catch (error) {
+      await db.query("rollback");
+      throw error;
+    }
+    return {
+      previous: anterior,
+      next: {
+        instruction: briefing.instruction,
+        qualification: briefing.qualification,
+        ofertas: briefing.ofertas,
+      },
+    };
+  });
+}
+
+/**
+ * ARQUIVAR UMA CAMPANHA (#4359) — some da lista, NADA é apagado.
+ *
+ * O pedido é de quem tem a lista entupida de campanha que falhou ou veio zerada. O
+ * gesto NÃO pode ser exclusão: os negócios, as conversas, os candidatos e o custo
+ * daquela campanha ficam onde estão — quem já foi abordado continua no funil. Por
+ * isso o único `update` é na própria campanha, e só em duas coisas:
+ *
+ *   - `config.arquivada_em` — o marcador que a lista lê (sem coluna nova);
+ *   - `status` — e AQUI está a regra dura: campanha `running` vira `paused` no
+ *     mesmo `update` que a esconde. O tick relê a campanha exigindo
+ *     `status='running'` antes de cada envio (`worker.ts`, "RELÊ A CAMPANHA ANTES
+ *     DE ENVIAR"), então arquivar um clique depois do operador pausar teria o
+ *     mesmo efeito. Campanha invisível continuando a disparar mensagem seria o
+ *     pior desfecho possível.
+ *
+ * Idempotente pela guarda do `where` (`arquivada_em` vazio): clicar duas vezes, ou
+ * dois operadores ao mesmo tempo, não reescreve o marcador nem mexe no `status`.
+ */
+export const ARQUIVAR_CAMPANHA_SQL =
+  "update prospecting_campaigns set config = coalesce(config, '{}'::jsonb) || jsonb_build_object('arquivada_em', $3::text), status = case when status='running' then 'paused' else status end, updated_at=now() where organization_id=$1 and id=$2 and coalesce(config->>'arquivada_em','') = '' returning id,status";
+
+/**
+ * DESARQUIVAR (#4359): tira o marcador e a campanha volta para a lista — PAUSADA,
+ * como estava quando foi arquivada. Retomar é outro clique, de propósito: voltar a
+ * enviar sozinha porque alguém desarquivou para conferir o histórico seria enviar
+ * sem ninguém ter pedido.
+ */
+// O `nullif` devolve `null` ao rascunho que não tinha configuração: o arquivar
+// gravou `{arquivada_em}` sobre `null`, e um `{}` no lugar faria a tela tomá-lo como
+// configuração gravada e perder os padrões do rascunho (#4430).
+export const DESARQUIVAR_CAMPANHA_SQL =
+  "update prospecting_campaigns set config = nullif(coalesce(config, '{}'::jsonb) - 'arquivada_em', '{}'::jsonb), updated_at=now() where organization_id=$1 and id=$2 and coalesce(config->>'arquivada_em','') <> '' returning id,status";
 
 export interface ResultadoDoArquivamento {
   arquivada: boolean;
@@ -454,16 +1676,21 @@ export interface ResultadoDoArquivamento {
   arquivada_em: string | null;
 }
 
+/** Lê o estado para o caminho idempotente — e é ele que transforma "outra organização" em 404. */
+const LER_ARQUIVAMENTO_SQL =
+  "select status, config->>'arquivada_em' as arquivada_em from prospecting_campaigns where organization_id=$1 and id=$2";
+
 async function lerArquivamento(
   db: pg.PoolClient,
   org: string,
   id: string,
 ): Promise<{ status: string; arquivada_em: string | null }> {
   const { rows } = await db.query<{ status: string; arquivada_em: string | null }>(
-    "select status, config->>'arquivada_em' as arquivada_em from prospecting_campaigns where organization_id=$1 and id=$2",
+    LER_ARQUIVAMENTO_SQL,
     [org, id],
   );
-  // Sem linha = não é desta organização: 404, nunca "arquivei a de outro cliente".
+  // Sem linha = não é desta organização (o filtro é sempre `organization_id`): 404,
+  // nunca "arquivei a campanha de outro cliente".
   if (!rows[0]) throw new ProspectingError("Campanha não encontrada.", 404);
   return rows[0];
 }
@@ -479,7 +1706,12 @@ export async function arquivarCampanha(
     if (mudou.rows.length)
       return { arquivada: true, ja_estava: false, status: mudou.rows[0]!.status, arquivada_em: agora };
     const atual = await lerArquivamento(db, org, id);
-    return { arquivada: true, ja_estava: true, status: atual.status, arquivada_em: atual.arquivada_em };
+    return {
+      arquivada: true,
+      ja_estava: true,
+      status: atual.status,
+      arquivada_em: atual.arquivada_em,
+    };
   });
 }
 
@@ -491,8 +1723,18 @@ export async function desarquivarCampanha(
   return withProspectingLock(pool, org, async (db) => {
     const mudou = await db.query<{ status: string }>(DESARQUIVAR_CAMPANHA_SQL, [org, id]);
     if (mudou.rows.length)
-      return { arquivada: false, ja_estava: false, status: mudou.rows[0]!.status, arquivada_em: null };
+      return {
+        arquivada: false,
+        ja_estava: false,
+        status: mudou.rows[0]!.status,
+        arquivada_em: null,
+      };
     const atual = await lerArquivamento(db, org, id);
-    return { arquivada: false, ja_estava: true, status: atual.status, arquivada_em: atual.arquivada_em };
+    return {
+      arquivada: false,
+      ja_estava: true,
+      status: atual.status,
+      arquivada_em: atual.arquivada_em,
+    };
   });
 }
