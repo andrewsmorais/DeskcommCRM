@@ -218,7 +218,13 @@ export const searchSchema = z
   .strict();
 export const prospectingInputSchema = z.discriminatedUnion("action", [
   z
-    .object({ action: z.literal("configure"), api_key: z.string().trim().min(10).max(500) })
+    .object({
+      action: z.literal("configure"),
+      // O motor de busca desta empresa. Ausente = mantém a escolha de antes.
+      provider: z.enum(["apify", "scavio", "local-http"]).optional(),
+      // Vazio só faz sentido para o `local-http`, que não tem chave por empresa.
+      api_key: z.string().trim().max(500).default(""),
+    })
     .strict(),
   z
     .object({ action: z.literal("search"), search: searchSchema, request_id: z.string().uuid() })
