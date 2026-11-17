@@ -201,6 +201,8 @@ interface FormState {
   split_max_chars: number;
   /** Janela de rajada (ms) do agente. `null` = usa a env da instalação. */
   inbound_debounce_ms: number | null;
+  /** O agente vê as fotos que o cliente envia (migration 0533). */
+  image_vision_enabled: boolean;
   followup: FollowupValue;
   voz_enabled: boolean;
   voz_quando: "nunca" | "espelhar" | "sempre" | "quando_pede";
@@ -308,6 +310,7 @@ export function buildState(args: {
     voz_enabled: version?.voz_enabled ?? false,
     voz_quando: version?.voz_quando ?? "espelhar",
     inbound_debounce_ms: version?.inbound_debounce_ms ?? null,
+    image_vision_enabled: version?.image_vision_enabled ?? true,
     followup: version?.followup
       ? {
           ...DEFAULT_FOLLOWUP,
@@ -372,6 +375,7 @@ function toVersionPayload(s: FormState) {
     split_messages: s.split_messages,
     split_max_chars: s.split_max_chars,
     inbound_debounce_ms: s.inbound_debounce_ms,
+    image_vision_enabled: s.image_vision_enabled,
     followup: s.followup,
     voz_enabled: s.voz_enabled,
     voz_quando: s.voz_quando,
@@ -1329,6 +1333,26 @@ export function AgentForm(props: Props) {
             {validation.system_prompt ? (
               <p className="text-xs text-destructive">{validation.system_prompt}</p>
             ) : null}
+          </Card>
+
+          {/* Fotos do cliente (migration 0533): ver a foto custa uma leitura paga
+              por um modelo com visão. Ligado por padrão; quem não precisa desliga. */}
+          <Card className="space-y-3 p-4" data-testid="cartao-fotos-do-cliente">
+            <h3 className="text-sm font-medium">{t("Fotos do cliente")}</h3>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="image_vision_enabled"
+                checked={form.image_vision_enabled}
+                onCheckedChange={(v) => patch({ image_vision_enabled: v })}
+                disabled={disabled}
+              />
+              <Label htmlFor="image_vision_enabled">{t("Ver as fotos que o cliente envia")}</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Ligado, o agente entende o que está na foto. Desligado, ele só sabe que chegou uma foto e pode pedir que o cliente descreva em texto. Se nenhum agente da empresa vê fotos, a leitura paga da foto deixa de ser feita.",
+              )}
+            </p>
           </Card>
 
           {/* Estilo de resposta (split de mensagens — Onda 4) */}

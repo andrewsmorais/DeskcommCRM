@@ -17,7 +17,7 @@ import { createDefaultRegistry } from "@/lib/agent-engine/edge/llm/providers";
 import { createPool } from "@/lib/agent-engine/db/pool";
 import { env } from "@/lib/env";
 import type { EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
-import { deriveMediaText, type DeriveDeps } from "@/lib/messaging/media/derive";
+import { deriveMediaText, fotoSemLeitorNoAtendimento, type DeriveDeps } from "@/lib/messaging/media/derive";
 import { TIPOS_DERIVAVEIS } from "@/lib/messaging/media/derivable";
 import { deriveVideoText } from "@/lib/messaging/media/video-derive";
 import {
@@ -107,6 +107,20 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
       .limit(1)
       .maybeSingle();
     if (!flag) return markSkipped("video_frames_disabled");
+  }
+  // Foto: a descrição é uma chamada paga à visão. Quando a empresa TEM agente
+  // publicado e TODOS desligaram "Ver as fotos que o cliente envia" (migration
+  // 0533), ninguém do atendimento automático lê a descrição — não pagamos por
+  // ela. Empresa sem agente publicado segue descrevendo: a descrição pode ter
+  // outro leitor (integração, MCP, rascunho), e na dúvida a foto é lida.
+  if (msg.type === "image") {
+    const { data: publicadas } = await admin
+      .from("ai_agent_versions")
+      .select("image_vision_enabled")
+      .eq("organization_id", row.organization_id)
+      .eq("status", "published")
+      .limit(50);
+    if (fotoSemLeitorNoAtendimento(publicadas ?? [])) return markSkipped("image_vision_disabled");
   }
 
   /** O que o operador chama de "isto" — o aviso não pode falar em `msg.type`. */

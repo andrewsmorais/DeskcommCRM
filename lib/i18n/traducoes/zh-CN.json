@@ -5510,5 +5510,8 @@
   "menor que": "小于",
   "Fluxo de atendimento": "接待流程",
   "Valor fora do formato esperado para este campo.": "此字段的值不符合预期格式。",
-  "Padrão inválido configurado neste campo: a gravação está bloqueada até a correção.": "此字段配置的格式无效：修正前无法保存。"
+  "Padrão inválido configurado neste campo: a gravação está bloqueada até a correção.": "此字段配置的格式无效：修正前无法保存。",
+  "Salve o agente antes de publicar.": "发布前请先保存 AI 智能体。",
+  "Agente criado.": "AI 智能体已创建。",
+  "Ver as fotos que o cliente envia": "查看客户发送的照片"
 }

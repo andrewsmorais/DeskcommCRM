@@ -39,6 +39,7 @@ import { currentExecutionBoundary, guardServiceEffect } from '@/lib/atendimento/
 import type pg from 'pg';
 import { z } from 'zod';
 import { auxModelArgs, type AuxModelArgs } from './aux-model-args';
+import { corpoSemVisaoDeFoto } from './visao-de-foto';
 import {
   CAMPO_ENCERRA_TURNO,
   criarParadaAposEnvioFinal,
@@ -585,7 +586,7 @@ export async function loadInboundBodyForJob(
 export async function loadInboundForJob(
   db: Queryable,
   input: { tenantId: string; conversationId: string; inboundMessageId: string },
-): Promise<{ body: string; sender: RemetenteDeGrupo | null } | null> {
+): Promise<{ body: string; sender: RemetenteDeGrupo | null; type?: string } | null> {
   const result = await db.query<CorpoDaMensagemRow & { metadata: unknown }>(
     `select type, body, media_url, media_storage_path, media_derived_text, metadata
        from messages
@@ -598,7 +599,7 @@ export async function loadInboundForJob(
   );
   const row = result.rows[0];
   if (row === undefined) return null;
-  return { body: corpoDaMensagem(row), sender: lerRemetenteDeGrupo(row.metadata) };
+  return { body: corpoDaMensagem(row), sender: lerRemetenteDeGrupo(row.metadata), type: row.type };
 }
 
 /**
@@ -2411,7 +2412,20 @@ async function executarTurnoDoAgente(
           conversationId: input.conversationId,
           inboundMessageId: input.inboundMessageId,
         });
-  const currentInboundText = inboundDoJob === null ? null : inboundDoJob.body;
+  // O agente que não vê fotos (migration 0533): a foto vira aviso no contexto e
+  // na mensagem canônica, e a legenda fica (`visao-de-foto.ts`).
+  const veFotos = agentConfig?.imageVisionEnabled !== false;
+  if (!veFotos) {
+    for (const m of openingContext.context.messages) {
+      if (m.type === 'image') m.body = corpoSemVisaoDeFoto(m.body);
+    }
+  }
+  const currentInboundText =
+    inboundDoJob === null
+      ? null
+      : !veFotos && inboundDoJob.type === 'image'
+        ? corpoSemVisaoDeFoto(inboundDoJob.body)
+        : inboundDoJob.body;
   const currentInboundSender = inboundDoJob === null ? null : inboundDoJob.sender;
 
   // Voz (Fase 6b do plano de voz): resolvida UMA vez por turno, antes de
@@ -4486,6 +4500,7 @@ async function executarTurnoDoAgente(
             provider: agentConfig?.provider ?? 'anthropic',
             model: agentConfig?.model ?? '',
             multimodalInput: agentConfig?.multimodalInput ?? false,
+            verImagens: agentConfig?.imageVisionEnabled !== false,
             admin: deps.crmCfg.supabase,
           });
     const openingTextOnly: ModelMessage[] = [{ role: 'user', content: openingText }];

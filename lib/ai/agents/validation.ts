@@ -227,6 +227,8 @@ const versionShapeSchema = z
     // doutrina de `operator_enabled` logo abaixo: feature que gasta dinheiro
     // não se liga por acidente.
     voz_enabled: z.boolean().default(false),
+    // O agente vê as fotos do cliente (migration 0533). Ligado por padrão.
+    image_vision_enabled: z.boolean().default(true),
     // `quando_pede` (#4345) é o quarto comportamento: espelhar o áudio do
     // cliente OU falar quando ele pedir por escrito / avisar que não lê. Os
     // três valores antigos continuam com o mesmo significado — o default segue
@@ -305,6 +307,7 @@ export const versionPatchSchema = versionShapeSchema
     knowledge_source_ids: versionShapeSchema.shape.knowledge_source_ids.removeDefault(),
     // Sem `removeDefault`, um PATCH de outro campo gravaria a voz como desligada.
     voz_enabled: versionShapeSchema.shape.voz_enabled.removeDefault(),
+    image_vision_enabled: versionShapeSchema.shape.image_vision_enabled.removeDefault(),
     voz_quando: versionShapeSchema.shape.voz_quando.removeDefault(),
   })
   .partial();

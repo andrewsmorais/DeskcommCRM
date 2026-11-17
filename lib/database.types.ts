@@ -1824,6 +1824,7 @@ export type Database = {
           max_steps: number
           model: string
           multimodal_input: boolean
+          image_vision_enabled: boolean
           operator_enabled: boolean
           operator_model: string | null
           operator_tool_ids: string[]
@@ -1862,6 +1863,7 @@ export type Database = {
           max_steps?: number
           model: string
           multimodal_input?: boolean
+          image_vision_enabled?: boolean
           operator_enabled?: boolean
           operator_model?: string | null
           operator_tool_ids?: string[]
@@ -1900,6 +1902,7 @@ export type Database = {
           max_steps?: number
           model?: string
           multimodal_input?: boolean
+          image_vision_enabled?: boolean
           operator_enabled?: boolean
           operator_model?: string | null
           operator_tool_ids?: string[]

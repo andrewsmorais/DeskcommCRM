@@ -26,6 +26,8 @@ export interface BuildNativeMediaPartsArgs {
   provider: string;
   model: string;
   multimodalInput: boolean;
+  /** O agente vê fotos (migration 0533). `false` = imagem nunca anexada; PDF segue. */
+  verImagens?: boolean;
   admin: SupabaseClient;
   /** teto de mídias anexadas (default 1: só a inbound mais recente). */
   maxItems?: number;
@@ -85,7 +87,7 @@ export async function buildNativeMediaParts(args: BuildNativeMediaPartsArgs): Pr
     for (const m of candidates) {
       try {
         const mime = (m.media_mime ?? "").split(";")[0]!.trim().toLowerCase();
-        const isImage = m.type === "image" && mime.startsWith("image/") && caps.image;
+        const isImage = m.type === "image" && mime.startsWith("image/") && caps.image && args.verImagens !== false;
         const isPdf = m.type === "document" && mime === "application/pdf" && caps.pdf;
         if (!isImage && !isPdf) continue;
 

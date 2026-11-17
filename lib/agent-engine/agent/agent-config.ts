@@ -51,6 +51,13 @@ export interface PublishedAgentConfig {
   inboundDebounceMs: number | null;
   /** input multimodal (imagem/áudio/pdf) habilitado no turno (Onda 3). */
   multimodalInput: boolean;
+  /**
+   * O agente vê as fotos que o cliente envia (migration 0533, ligado por padrão).
+   * Desligado: a imagem e a descrição dela ficam fora do turno, e o agente só
+   * recebe o aviso de que chegou uma foto que ele não viu. Opcional porque nasce
+   * depois das fixtures que montam este tipo à mão — ausente vale `true`.
+   */
+  imageVisionEnabled?: boolean;
   /** tools open_human_case/provide_case_update habilitadas no turno (spec 15). */
   casesEnabled: boolean;
   /** JSON versionado com `followup.callback_enabled` e os fluxos normais. */
@@ -160,6 +167,7 @@ interface Row {
   split_max_chars: number;
   inbound_debounce_ms: number | null;
   multimodal_input: boolean;
+  image_vision_enabled?: boolean | null;
   cases_enabled: boolean;
   followup: unknown;
   tool_ids: string[] | null;
@@ -194,6 +202,7 @@ const SELECT_AGENT_CONFIG_COLUMNS = `a.operation_mode,a.paused_at,a.operation_re
             v.split_max_chars,
             v.inbound_debounce_ms,
             v.multimodal_input,
+            v.image_vision_enabled,
             v.cases_enabled,
             v.followup,
             v.tool_ids,
@@ -265,6 +274,7 @@ function mapAgentConfigRow(r: Row): PublishedAgentConfig {
     splitMaxChars: r.split_max_chars,
     inboundDebounceMs: r.inbound_debounce_ms ?? null,
     multimodalInput: r.multimodal_input,
+    imageVisionEnabled: r.image_vision_enabled !== false,
     casesEnabled: r.cases_enabled,
     followup: r.followup,
     toolIds: r.tool_ids ?? [],

@@ -44,7 +44,7 @@ import { VALID_TOOL_IDS } from "@/lib/mcp/tools";
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const VERSION_COLUMNS =
-  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, voz_enabled, voz_quando, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin,inbound_debounce_ms";
+  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, voz_enabled, voz_quando, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin,inbound_debounce_ms,image_vision_enabled";
 
 type ActionResult<T = void> =
   { ok: true; data?: T } | { ok: false; error: string; message?: string; details?: unknown };
@@ -350,6 +350,8 @@ export async function saveAgentDraftAction(
         followup: v.followup,
         voz_enabled: v.voz_enabled,
         voz_quando: v.voz_quando,
+        inbound_debounce_ms: v.inbound_debounce_ms ?? null,
+        image_vision_enabled: v.image_vision_enabled,
         status: "draft",
         created_by: authUser.id,
       })
@@ -568,6 +570,8 @@ export async function revertToVersionAction(
     split_max_chars: number;
     voz_enabled: boolean;
     voz_quando: "nunca" | "espelhar" | "sempre" | "quando_pede";
+    inbound_debounce_ms: number | null;
+    image_vision_enabled: boolean | null;
   };
   const src = source as unknown as SourceRow;
 
@@ -617,6 +621,8 @@ export async function revertToVersionAction(
         knowledge_source_ids: src.knowledge_source_ids ?? [],
         split_messages: src.split_messages,
         split_max_chars: src.split_max_chars,
+        inbound_debounce_ms: src.inbound_debounce_ms ?? null,
+        image_vision_enabled: src.image_vision_enabled ?? true,
         status: "draft",
         created_by: authUser.id,
       })
@@ -790,6 +796,8 @@ export async function createMcpAgentAction(
     split_max_chars: v.split_max_chars,
     voz_enabled: v.voz_enabled,
     voz_quando: v.voz_quando,
+    inbound_debounce_ms: v.inbound_debounce_ms ?? null,
+    image_vision_enabled: v.image_vision_enabled,
     // O corpo ACEITAVA estes cinco e o INSERT os descartava: criar o assistente
     // pela tela com papel Operador, escopo de funil ou material marcado produzia
     // uma versão com tudo no default do banco — desligado e vazio.
