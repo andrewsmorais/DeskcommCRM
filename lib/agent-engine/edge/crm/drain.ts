@@ -9,7 +9,8 @@
  *     (organization_id, source_event_id) em job_queue com captura de 23505;
  *   - coalescência de rajada: mensagens do MESMO contato dentro da janela de
  *     debounce viram UM job (o turno lê o histórico completo e responde a todas);
- *   - grupos @g.us: skip (regra dura nº 12) — evento marcado done sem job;
+ *   - grupos @g.us: skip (regra dura nº 12), exceto quando a chave POR GRUPO
+ *     `ia_responde` liberou a IA (#2729) — evento marcado done sem job;
  *   - eventos 'processing' órfãos (crash do worker) voltam a 'pending' por timeout.
  */
 import { executarMensagemAgendada } from "@/lib/agendadas/executar";
@@ -21,6 +22,7 @@ import { insertInboxItem } from "../../db/repository";
 import type { Logger } from "../../obs/logger";
 import { enqueueJob } from "../../queue/queue";
 import { decidirRajada } from "./debounce";
+import { grupoLiberaIa } from "@/lib/grupos/ia-no-grupo";
 import { avisoDeEventoMorto, IA_QUE_NAO_RESPONDEU } from "@/lib/event-log/aviso-de-evento-morto";
 import { TIPOS_DERIVAVEIS, DERIVACAO_TERMINADA } from "@/lib/messaging/media/derivable";
 import { decidirElegibilidadeDaConversa } from "@/lib/ai/elegibilidade/consulta-pg";
@@ -248,23 +250,47 @@ async function processEvent(
     return "processado";
   }
 
-  // Grupos: skip, sem exceção (regra dura nº 12).
-  const { rows: convRows } = await pool.query<{ is_group: boolean }>(
-    "select is_group from conversations where organization_id = $1 and id = $2",
+  // Grupos: skip, com UMA exceção estreita (regra dura nº 12 + #2729) — o
+  // evento marcado done sem job continua sendo o padrão de 100% das
+  // instalações.
+  // A consulta já traz a chave POR GRUPO (`channel_session_groups.ia_responde`)
+  // junto do `is_group`, por um LEFT JOIN no MESMO select: é a leitura que o
+  // ingest do grupo também faz, e a régua que decide é a MESMA função
+  // (`grupoLiberaIa`, `=== true`, falha fechada) — divergência entre as duas
+  // leituras é como a régua local do worker já passou a discordar da tela em
+  // produção (ver `pos-entrada.ts`). Conversa sem linha na fila (LEFT JOIN sem
+  // par) chega com `ia_responde` nulo, que é "não sei se liberaram" — e não sei
+  // não responde.
+  const { rows: convRows } = await pool.query<{ is_group: boolean; ia_responde: boolean | null }>(
+    `select c.is_group, g.ia_responde
+       from conversations c
+       left join channel_session_groups g
+         on g.organization_id = c.organization_id
+        and g.channel_session_id = c.channel_session_id
+        and g.group_chat_id = c.group_chat_id
+      where c.organization_id = $1 and c.id = $2`,
     [event.organization_id, p.conversation_id],
   );
   if (convRows[0]?.is_group !== false) {
-    log.info("drain: conversa de grupo ou inexistente — evento pulado", { event_id: event.id });
-    return "processado";
+    if (!grupoLiberaIa(convRows[0]?.ia_responde)) {
+      log.info("drain: conversa de grupo sem a chave da IA liberada — evento pulado", { event_id: event.id });
+      return "processado";
+    }
+    log.info("drain: grupo liberado pela chave por grupo (#2729) — turno segue o caminho normal", {
+      event_id: event.id,
+    });
   }
 
+  // O chatbot nunca conduz grupo (decisão do dono: sem grupos no chatbot);
+  // num grupo liberado, só a IA responde.
+  const ehGrupo = convRows[0]?.is_group === true;
   // CHATBOT (fluxo visual, sem IA): fala ANTES da IA. Se a conversa está num
   // fluxo — esperando a resposta de um menu — ou se um fluxo ligado deve
   // começar agora, o chatbot conduz esta mensagem e a IA nem é acordada. Fica
   // antes do portão "tem agente publicado" de propósito: a empresa que só usa
   // chatbot não tem agente nenhum. Qualquer falha dele devolve `nao_atende`
   // (fail-open) e o caminho da IA segue como sempre. Ver lib/chatbot/executar.ts.
-  try {
+  if (!ehGrupo) try {
     const desfechoDoChatbot = await atenderPeloChatbot(
       pool,
       createAdminClient(),

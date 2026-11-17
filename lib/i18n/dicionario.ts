@@ -19006,6 +19006,12 @@ export const DICIONARIO: Traducoes = {
     es: 'cantidad no válida ("{valor}") — usa un entero de 0 a 2147483647',
   },
   "Já existe um agente com esse nome.": { es: "Ya existe un agente con este nombre." },
+  "Grupos ligados aparecem no chat para os atendentes responderem. A IA só responde em grupo quando você liberar a chave de cada grupo.": {
+    es: "Los grupos activados aparecen en el chat para que los agentes respondan. La IA solo responde en un grupo cuando habilitas la llave de cada grupo.",
+  },
+  "Permitir que a IA responda neste grupo": {
+    es: "Permitir que la IA responda en este grupo",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

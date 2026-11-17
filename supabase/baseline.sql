@@ -47382,3 +47382,14 @@ delete from public.user_recovery_codes
  where octet_length(code_hash) <> 32;
 
 notify pgrst, 'reload schema';
+
+-- ---- channel_session_groups.ia_responde: a IA pode responder num grupo (migration 0528) ----
+-- Trazido do produto original (0653 de lá, #2729). A chave POR GRUPO, desligada
+-- por padrão: sem ela, a mensagem de grupo entra na Inbox e ninguém responde.
+alter table public.channel_session_groups
+  add column if not exists ia_responde boolean not null default false;
+
+comment on column public.channel_session_groups.ia_responde is
+  'A chave POR GRUPO "Permitir que a IA responda neste grupo". DESLIGADA por padrão: a mensagem de grupo entra na inbox e a IA não responde. LIGADA, o ingest do grupo pede o turno do agente (mesmo evento ai_agent.dispatch_requested da conversa individual) e o motor deixa de pular o evento; as proteções de envio seguem valendo. O chatbot nunca conduz grupo.';
+
+notify pgrst, 'reload schema';

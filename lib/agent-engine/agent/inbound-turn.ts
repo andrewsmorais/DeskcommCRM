@@ -1,4 +1,5 @@
 import { acessoPeloPlanoDaOrganizacao, verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { lerRemetenteDeGrupo, type RemetenteDeGrupo } from "@/lib/messaging/remetente-de-grupo";
 import { prospectingConversationContext } from "@/lib/prospecting/context";
 import { setExecutionAgentOperation } from '@/lib/atendimento/fronteira-server';
 import { TIPOS_DE_CASO, TIPOS_DE_CASO_PARA_A_IA } from "@/lib/ai/case-copy";
@@ -561,8 +562,21 @@ export async function loadInboundBodyForJob(
   db: Queryable,
   input: { tenantId: string; conversationId: string; inboundMessageId: string },
 ): Promise<string | null> {
-  const result = await db.query<CorpoDaMensagemRow>(
-    `select type, body, media_url, media_storage_path, media_derived_text
+  const linha = await loadInboundForJob(db, input);
+  return linha === null ? null : linha.body;
+}
+
+/**
+ * A linha canônica do job — corpo E autor (trazido do produto original, #2729).
+ * O `sender` é o `metadata.group_sender` que o ingest de grupo grava; numa
+ * conversa 1:1 ele é `null`. Uma consulta só: é o caminho quente da abertura.
+ */
+export async function loadInboundForJob(
+  db: Queryable,
+  input: { tenantId: string; conversationId: string; inboundMessageId: string },
+): Promise<{ body: string; sender: RemetenteDeGrupo | null } | null> {
+  const result = await db.query<CorpoDaMensagemRow & { metadata: unknown }>(
+    `select type, body, media_url, media_storage_path, media_derived_text, metadata
        from messages
       where organization_id = $1
         and conversation_id = $2
@@ -572,7 +586,8 @@ export async function loadInboundBodyForJob(
     [input.tenantId, input.conversationId, input.inboundMessageId],
   );
   const row = result.rows[0];
-  return row === undefined ? null : corpoDaMensagem(row);
+  if (row === undefined) return null;
+  return { body: corpoDaMensagem(row), sender: lerRemetenteDeGrupo(row.metadata) };
 }
 
 /**
@@ -1501,6 +1516,8 @@ export interface AgentTurnInput {
     compromissosBlock?: string;
     /** Texto exato da mensagem que acordou este turno inbound. */
     currentInboundText?: string;
+    /** Quem escreveu a mensagem que acordou este turno, quando ela veio de um GRUPO. */
+    currentInboundSender?: RemetenteDeGrupo;
     /**
      * Projetar o contexto (spec 16 §4)? Decidido pelo turno, ver `turnoProjeta`.
      *
@@ -2368,14 +2385,18 @@ async function executarTurnoDoAgente(
     // sumiu) — ambos re-tentam pela fila e morrem em 'dead' se persistirem.
     throw new Error(`abertura do turno falhou em get_lead_context (${openingContext.error.code})`);
   }
-  const currentInboundText =
+  // A mensagem canônica do job: o TEXTO que este turno responde e, num grupo,
+  // QUEM a escreveu. As duas saem da mesma linha, numa leitura só.
+  const inboundDoJob =
     input.inboundMessageId === undefined
       ? null
-      : await loadInboundBodyForJob(pool, {
+      : await loadInboundForJob(pool, {
           tenantId,
           conversationId: input.conversationId,
           inboundMessageId: input.inboundMessageId,
         });
+  const currentInboundText = inboundDoJob === null ? null : inboundDoJob.body;
+  const currentInboundSender = inboundDoJob === null ? null : inboundDoJob.sender;
 
   // Voz (Fase 6b do plano de voz): resolvida UMA vez por turno, antes de
   // qualquer `send_message` — a pergunta "o agente fala agora" não muda
@@ -4286,6 +4307,7 @@ async function executarTurnoDoAgente(
       entregues,
       compromissosBlock,
       ...(currentInboundText !== null ? { currentInboundText } : {}),
+      ...(currentInboundSender !== null ? { currentInboundSender } : {}),
     });
     // Sufixos por-lead (situacionais, voláteis — depois do prefixo cacheável F2-17): corpos de
     // skill casadas (F3-09) + hint do classificador (F3-11) + instrução de split (F4-xx, quando
@@ -5050,6 +5072,7 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
         entregues,
         compromissosBlock,
         currentInboundText,
+        currentInboundSender,
       }) =>
         buildOpeningMessage(
           previous,
@@ -5060,6 +5083,7 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
           entregues,
           compromissosBlock,
           currentInboundText,
+          currentInboundSender,
         ),
     });
   };
