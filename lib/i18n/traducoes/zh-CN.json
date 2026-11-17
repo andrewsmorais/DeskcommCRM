@@ -5535,5 +5535,7 @@
   "lista própria": "自定义列表",
   "Este número já está em outra campanha em andamento.": "此号码已被另一个进行中的活动占用。",
   "Abrir essa campanha": "打开该活动",
-  "Conexão removida.": "连接已移除。"
+  "Conexão removida.": "连接已移除。",
+  "O cliente disse que não tem interesse": "客户表示没有兴趣",
+  "tarefa aberta": "项未完成任务"
 }

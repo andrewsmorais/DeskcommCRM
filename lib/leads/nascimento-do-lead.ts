@@ -48,6 +48,7 @@
  * imobiliária e um infoprodutor montam funis diferentes, e nenhum nome de funil
  * aparece neste arquivo.
  */
+import { campanhaDeProspeccaoDaConversa, recusaSemInteresseRecente } from "@/lib/lgpd/sem-interesse";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { marcaDaOrigem, origemDeCampanhaDaConversa } from "@/lib/campanhas/origem-do-lead";
 
@@ -107,6 +108,7 @@ export type MotivoSemLead =
   | "ja_existe" // o contato já tem lead aberto: um por demanda, não um por mensagem
   | "contato_bloqueado" // pediu para sair; criar oportunidade seria desrespeito registrado
   | "contato_interno" // equipe/sócio/família/fornecedor — tag interna, não é negócio
+  | "sem_interesse_na_prospeccao" // disse "não tenho interesse" na conversa da prospecção
   | "sem_funil_de_entrada" // a organização não tem funil padrão — falha de configuração, visível
   | "sem_etapa" // o funil existe e não tem etapa utilizável
   | "erro"; // qualquer falha de escrita
@@ -272,12 +274,27 @@ export async function garantirLeadDaConversa(
     // `first_service_at` viaja no select que JÁ existe: decidir o funil não custa
     // uma consulta a mais no caminho quente da ingestão. É por isso que o fato
     // mora numa coluna de `contacts`, e não é derivado da agenda a cada inbound.
-    .select("is_blocked,display_name,name,phone_number,source,source_metadata,first_service_at,tags")
+    .select("is_blocked,display_name,name,phone_number,source,source_metadata,first_service_at,tags,consent")
     .eq("organization_id", organizationId)
     .eq("id", contactId)
     .maybeSingle();
 
   if (contato?.is_blocked === true) return { criado: false, motivo: "contato_bloqueado" };
+
+  // 1a · quem disse "não tenho interesse" NA PROSPECÇÃO não ganha card novo na
+  // mesma conversa: a mensagem que gravou a recusa (ou o "ok, obrigado" que vem
+  // depois) faria nascer o negócio que a recusa acabou de encerrar. Fora da
+  // conversa de prospecção, nada muda.
+  if (recusaSemInteresseRecente((contato as { consent?: unknown } | null)?.consent, Date.now())) {
+    const { data: conversa } = await db
+      .from("conversations")
+      .select("metadata")
+      .eq("organization_id", organizationId)
+      .eq("id", conversationId)
+      .maybeSingle();
+    if (campanhaDeProspeccaoDaConversa((conversa as { metadata?: unknown } | null)?.metadata))
+      return { criado: false, motivo: "sem_interesse_na_prospeccao" };
+  }
 
   // 1b · #2353 · contato INTERNO (equipe, sócio, família, fornecedor) não vira
   // card. A tag pode ter sido posta ANTES da primeira mensagem (cadastro ou

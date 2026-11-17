@@ -19453,6 +19453,10 @@ export const DICIONARIO: Traducoes = {
   },
   "Vazio = padrão da instalação": { es: "Vacío = predeterminado de la instalación" },
   "Agenda do celular": { es: "Agenda del celular" },
+  "Retomar a prospecção: {{contact.name}} pediu para falar depois": {
+    es: "Retomar la prospección: {{contact.name}} pidió hablar después",
+  },
+  "O cliente disse que não tem interesse": { es: "El cliente dijo que no tiene interés" },
   "Sempre humano": { es: "Siempre humano" },
   "Para a ficha da sua vida pessoal. Nada automático sai para este contato: a IA não responde, a prospecção não aborda e as campanhas não enviam.": { es: "Para la ficha de tu vida personal. Nada automático sale para este contacto: la IA no responde, la prospección no lo aborda y las campañas no envían." },
   "A IA nunca responde este contato, e nem o botão de devolver nem o prazo automático a trazem de volta. Só desmarcando aqui.": { es: "La IA nunca responde a este contacto, y ni el botón de devolver ni el plazo automático la traen de vuelta. Solo desmarcando aquí." },
