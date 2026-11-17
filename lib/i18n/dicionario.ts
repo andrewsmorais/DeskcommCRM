@@ -19464,13 +19464,6 @@ export const DICIONARIO: Traducoes = {
   "Sem arquivo: só texto": { es: "Sin archivo: solo texto" },
   "Marque pelo menos um dia.": { es: "Marca al menos un día." },
   "A prospecção só aborda empresas nestes dias, no mesmo horário da janela acima. A resposta a quem escreveu segue o domingo de cima.": { es: "La prospección solo aborda empresas en estos días, en el mismo horario de la ventana de arriba. La respuesta a quien escribió sigue el domingo de arriba." },
-  "Seg": { es: "Lun" },
-  "Ter": { es: "Mar" },
-  "Qua": { es: "Mié" },
-  "Qui": { es: "Jue" },
-  "Sex": { es: "Vie" },
-  "Sáb": { es: "Sáb" },
-  "Dom": { es: "Dom" },
   "Este número está em modo de teste: a IA só fala com os números da lista de teste. Para liberar o atendimento ao público, abra Conexões, toque em \"Configurar acesso da IA\" no cartão do número e escolha \"Liberar atendimento ao público\".":
     {
       es: "Este número está en modo de prueba: la IA solo habla con los números de la lista de prueba. Para habilitar la atención al público, abre Conexiones, toca \"Configurar acceso de la IA\" en la tarjeta del número y elige \"Habilitar atención al público\".",
