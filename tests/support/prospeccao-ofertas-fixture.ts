@@ -44,7 +44,7 @@ export async function criarFixtureDeOfertas(
       [ids.channel, org, `ofertas-qa-${ids.channel}`],
     );
     await client.query(
-      "insert into channel_knobs(organization_id,channel_session_id,window_start_hour,window_end_hour,resposta_start_hour,resposta_end_hour,timezone,allow_sunday,throttle_ms,jitter_max_ms) values($1,$2,0,24,0,24,'UTC',true,0,0)",
+      "insert into channel_knobs(organization_id,channel_session_id,window_start_hour,window_end_hour,timezone,allow_sunday,throttle_ms,jitter_max_ms) values($1,$2,0,24,'UTC',true,0,0)",
       [org, ids.channel],
     );
     await client.query("insert into crm_pipelines(id,organization_id,name,slug) values($1,$2,$3,$4)", [ids.pipeline, org, nome, `ofertas-${ids.pipeline.slice(0, 8)}`]);

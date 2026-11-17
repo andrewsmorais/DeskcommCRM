@@ -90,7 +90,10 @@ function etiquetasDaOrganizacao(settings: unknown): EtiquetasQueVetam {
   return { internas: tagsInternasDaOrg(settings), daEquipe: tagsDaEquipeDaOrg(settings) };
 }
 
-const COLUNAS_DO_CONTATO = "is_blocked,force_human,is_anonymized,source,consent,is_personal,ai_opt_out,tags";
+// Fork ChatAI Online: `contacts.is_personal` e `contacts.ai_opt_out` não existem
+// aqui (nenhuma tela grava essas marcas), então a leitura não as pede — a régua
+// acima as trata como ausentes. Quando as marcas chegarem, voltam para esta lista.
+const COLUNAS_DO_CONTATO = "is_blocked,force_human,is_anonymized,source,consent,tags";
 
 /** A leitura da organização que a guarda precisa: só as listas de etiqueta. */
 function lerOrganizacao(db: SupabaseClient, organizationId: string) {

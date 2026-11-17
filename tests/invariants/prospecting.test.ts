@@ -44,7 +44,9 @@ describe("prospecting tenant boundary and durable deduplication", () => {
     ).toThrow();
     expect(sql("select count(*) from prospecting_candidates")).toBe("2");
   });
-  it("allows only one running campaign per tenant, including concurrent commands", () => {
+  // Uma campanha por NÚMERO desde a 0537 (#3896): o caso vive em
+  // prospeccao-uma-campanha-por-numero.test.ts.
+  it.skip("allows only one running campaign per tenant, including concurrent commands", () => {
     sql(
       `update prospecting_campaigns set status='running' where id in ('${campaignA}','${campaignB}')`,
     );

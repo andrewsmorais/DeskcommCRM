@@ -48,14 +48,11 @@ export const SQL_LINHAS_DA_LISTA = `select p.status,p.attempted_at,p.place_id,p.
  * pelo telefone da ficha e pelo telefone extra. As DUAS metades filtram a
  * organização, e o `join` do extra também.
  */
-export const SQL_CONTATOS_DA_LISTA = `select c.id,c.phone_number as telefone,c.is_blocked,c.is_personal,c.is_anonymized,c.consent
+// Fork ChatAI Online: sem `contacts.is_personal` e sem a tabela `contact_phones`
+// (telefones extras) — a leitura fica no telefone da ficha e a marca pessoal vale falso.
+export const SQL_CONTATOS_DA_LISTA = `select c.id,c.phone_number as telefone,c.is_blocked,false as is_personal,c.is_anonymized,c.consent
                from contacts c
-              where c.organization_id=$1 and (c.id=any($2::uuid[]) or c.phone_number=any($3::text[]))
-             union all
-             select c.id,cp.phone_number as telefone,c.is_blocked,c.is_personal,c.is_anonymized,c.consent
-               from contact_phones cp
-               join contacts c on c.organization_id=cp.organization_id and c.id=cp.contact_id
-              where cp.organization_id=$1 and c.organization_id=$1 and cp.phone_number=any($3::text[])`;
+              where c.organization_id=$1 and (c.id=any($2::uuid[]) or c.phone_number=any($3::text[]))`;
 
 /**
  * A TRILHA da abordagem: a última passagem de `prospecting.approach_sent` por
