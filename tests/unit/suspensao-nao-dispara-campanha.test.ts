@@ -15,7 +15,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { rodarUmaRodadaDeCampanha } from "@/lib/campanhas/rodada";
+import { registrarExcecaoDoEnvio, rodarUmaRodadaDeCampanha } from "@/lib/campanhas/rodada";
+import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
 
 const ORG_SUSPENSA = "11111111-1111-4111-8111-111111111111";
 
@@ -100,6 +101,34 @@ describe("suspensão × campanha", () => {
     await rodarUmaRodadaDeCampanha(admin as never);
     expect(chamadas[0]?.tabela).toBe("organizations");
     expect(chamadas.slice(1).every((c) => c.tabela === "campaigns")).toBe(true);
+  });
+});
+
+describe("exceção do envio × organização parada", () => {
+  /** Supabase falso que só registra o que o `update` gravaria. */
+  function adminQueGrava() {
+    const gravados: Array<Record<string, unknown>> = [];
+    const b: Record<string, unknown> = {
+      update: (payload: Record<string, unknown>) => {
+        gravados.push(payload);
+        return b;
+      },
+      eq: () => b,
+      then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(resolve),
+    };
+    return { admin: { from: () => b } as never, gravados };
+  }
+
+  it("org parada no meio do envio devolve o destinatário à fila, sem send_exception", async () => {
+    const { admin, gravados } = adminQueGrava();
+    await expect(registrarExcecaoDoEnvio(admin, "dest-1", new OrgNaoOperanteError("org"))).resolves.toBe("org_nao_operante");
+    expect(gravados).toEqual([{ status: "pending", sending_at: null }]);
+  });
+
+  it("controle: outro erro segue marcando failed/send_exception com o motivo", async () => {
+    const { admin, gravados } = adminQueGrava();
+    await expect(registrarExcecaoDoEnvio(admin, "dest-1", new Error("rede"))).resolves.toBe("falhou");
+    expect(gravados).toEqual([{ status: "failed", last_error_code: "send_exception", last_error_detail: "rede" }]);
   });
 });
 

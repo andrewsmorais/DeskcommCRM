@@ -44,6 +44,7 @@ import { decidePacing, dayStartInTz } from "@/lib/agent-engine/pacing/engine";
 import { loadChannelKnobs, loadPacingState, recordSend } from "@/lib/agent-engine/pacing/store";
 import { beginServiceAtOrigin } from "@/lib/atendimento/origem";
 import { logger } from "@/lib/logger";
+import { OrgNaoOperanteError, idsDeOrgsParadas } from "@/lib/organizacao/operante";
 
 import { motivoParaExcluir, recusouMarketing } from "./elegibilidade";
 import { hashDoEndereco } from "./exclusoes";
@@ -506,19 +507,45 @@ async function rodarUmaCampanha(
       detalhe: `enviado:${status ?? "?"}:${escolha.motivo}`,
     };
   } catch (err) {
-    const motivoErro = err instanceof Error ? err.message : String(err);
     logger.warn("[campanha] envio falhou", { campanha: campanha.id, destinatario: alvo.id });
+    return { enviadas: 0, pulados: 0, concluidas: 0, detalhe: await registrarExcecaoDoEnvio(admin, alvo.id, err) };
+  }
+}
+
+/**
+ * O que a exceção do envio faz com o destinatário já reservado (`sending`).
+ * Exportada para o teste: o caminho inteiro da rodada precisa de ritmo, canal
+ * e pool.
+ *
+ * Organização parada entre a leitura da rodada e o envio (`OrgNaoOperanteError`
+ * da porta de saída) NÃO é falha do destinatário: ele volta a `pending` e sai
+ * na reativação, no ritmo da campanha. Marcar `send_exception` o tiraria da
+ * campanha para sempre por algo que não é dele.
+ */
+export async function registrarExcecaoDoEnvio(
+  admin: SupabaseClient,
+  destinatarioId: string,
+  err: unknown,
+): Promise<string> {
+  if (err instanceof OrgNaoOperanteError) {
     await admin
       .from("campaign_recipients")
-      .update({
-        status: "failed",
-        last_error_code: "send_exception",
-        last_error_detail: motivoErro.slice(0, 300),
-      })
-      .eq("id", alvo.id)
+      .update({ status: "pending", sending_at: null })
+      .eq("id", destinatarioId)
       .eq("status", "sending");
-    return { enviadas: 0, pulados: 0, concluidas: 0, detalhe: "falhou" };
+    return "org_nao_operante";
   }
+  const motivoErro = err instanceof Error ? err.message : String(err);
+  await admin
+    .from("campaign_recipients")
+    .update({
+      status: "failed",
+      last_error_code: "send_exception",
+      last_error_detail: motivoErro.slice(0, 300),
+    })
+    .eq("id", destinatarioId)
+    .eq("status", "sending");
+  return "falhou";
 }
 
 /**

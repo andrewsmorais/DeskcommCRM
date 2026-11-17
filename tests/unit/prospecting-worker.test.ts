@@ -59,6 +59,8 @@ vi.mock("@/lib/prospecting/store", () => ({
   validateConfig: vi.fn().mockResolvedValue(undefined),
 }));
 import { sendNextCandidate, tickProspecting } from "@/lib/prospecting/worker";
+import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
+import { withProspectingLock } from "@/lib/prospecting/store";
 import type { Campaign } from "@/lib/prospecting/store";
 const id = "10000000-0000-4000-8000-000000000001";
 const campaign = {
@@ -243,5 +245,43 @@ describe("tick da prospecção × organização parada", () => {
     expect(sql).toMatch(/organization_id <> all\(\$1::uuid\[\]\)/);
     expect(sql.indexOf("<> all")).toBeLessThan(sql.indexOf("limit 20"));
     expect(params).toEqual([[parada]]);
+  });
+});
+
+describe("tick da prospecção × organização que para no meio do envio", () => {
+  function tickComEnvioQueFalha(erro: Error) {
+    mocks.paradas.mockResolvedValue([]);
+    mocks.send.mockRejectedValueOnce(erro);
+    const base = database();
+    const db = {
+      query: vi.fn(async (sql: string) =>
+        sql.startsWith("select * from prospecting_campaigns where organization_id=$1 and status='running'")
+          ? { rows: [campaign] }
+          : base.query(sql),
+      ),
+    };
+    (withProspectingLock as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_pool: unknown, _org: unknown, fn: (d: unknown) => Promise<unknown>) => fn(db),
+    );
+    const pool = { query: vi.fn(async () => ({ rows: [{ organization_id: id }] })) };
+    return { db, rodar: () => tickProspecting(pool as never, {} as never) };
+  }
+  const gravou = (db: { query: ReturnType<typeof vi.fn> }, trecho: string) =>
+    db.query.mock.calls.some(([sql]) => String(sql).includes(trecho));
+
+  it("OrgNaoOperanteError no envio NÃO pausa a campanha nem queima o candidato: ele volta à fila", async () => {
+    const { db, rodar } = tickComEnvioQueFalha(new OrgNaoOperanteError(id, "suspended"));
+    await rodar();
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+    expect(gravou(db, "status='paused'")).toBe(false);
+    expect(gravou(db, "update prospecting_candidates set status='failed',error=$3")).toBe(false);
+    expect(gravou(db, "update prospecting_candidates set status='queued'")).toBe(true);
+  });
+
+  it("controle: falha inesperada do envio continua pausando a campanha e marcando o candidato failed", async () => {
+    const { db, rodar } = tickComEnvioQueFalha(new Error("provedor fora do ar"));
+    await rodar();
+    expect(gravou(db, "status='paused'")).toBe(true);
+    expect(gravou(db, "update prospecting_candidates set status='failed',error=$3")).toBe(true);
   });
 });
