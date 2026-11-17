@@ -35,17 +35,3 @@ export async function deriveMediaText(
   // sticker/document-não-pdf (e vídeo sem deriveVideo): sem derivado.
   return (text ?? "").slice(0, MAX_DERIVED_CHARS);
 }
-
-/**
- * A empresa tem agente publicado e NENHUM deles quer ver fotos (migration 0533)?
- * Então a descrição da foto não tem leitor no atendimento automático e não é
- * feita. Sem agente publicado a resposta é `false`: a descrição pode ter outro
- * leitor, e na dúvida a foto é lida. Coluna ausente (`undefined`) vale `true`,
- * o padrão do banco.
- */
-export function fotoSemLeitorNoAtendimento(
-  versoesPublicadas: ReadonlyArray<{ image_vision_enabled?: boolean | null }>,
-): boolean {
-  if (versoesPublicadas.length === 0) return false;
-  return versoesPublicadas.every((v) => v.image_vision_enabled === false);
-}

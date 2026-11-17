@@ -22,7 +22,7 @@ describe('agente que não vê fotos — o corpo da foto vira aviso e a legenda f
   });
 });
 
-import { fotoSemLeitorNoAtendimento } from '@/lib/messaging/media/derive';
+import { fotoSemLeitorNoAtendimento } from '@/lib/messaging/media/visao-da-empresa';
 
 describe('a descrição paga da foto só é pulada quando nenhum agente a lê', () => {
   it('sem agente publicado: descreve (pode haver outro leitor)', () => {

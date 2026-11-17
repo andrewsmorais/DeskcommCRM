@@ -17,7 +17,8 @@ import { createDefaultRegistry } from "@/lib/agent-engine/edge/llm/providers";
 import { createPool } from "@/lib/agent-engine/db/pool";
 import { env } from "@/lib/env";
 import type { EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
-import { deriveMediaText, fotoSemLeitorNoAtendimento, type DeriveDeps } from "@/lib/messaging/media/derive";
+import { deriveMediaText, type DeriveDeps } from "@/lib/messaging/media/derive";
+import { fotoSemLeitorNoAtendimento } from "@/lib/messaging/media/visao-da-empresa";
 import { TIPOS_DERIVAVEIS } from "@/lib/messaging/media/derivable";
 import { deriveVideoText } from "@/lib/messaging/media/video-derive";
 import {
