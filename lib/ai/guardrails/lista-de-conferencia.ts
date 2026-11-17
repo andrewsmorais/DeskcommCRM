@@ -135,6 +135,16 @@ export const CONFERENCIAS_DE_SAIDA: readonly ConferenciaDeSaida[] = [
     camada: "promessa_semantica",
   },
   {
+    nome: "factual_claim",
+    rotulo: "Conferir afirmações de fato na resposta",
+    oQueProtege:
+      "Confere se o que o assistente afirma sobre o negócio (horário, preço, endereço) está no material que ele consultou para responder.",
+    escolha: null,
+    porQueNaoSeDesliga:
+      "Vem desligada e liga-se no cartão do Jev, em Provedores de IA. Nesta versão ela só anota o que encontrou e não barra nenhuma mensagem; ligada, custa +1 consulta ao Jev por resposta.",
+    camada: null,
+  },
+  {
     nome: "case_promise",
     rotulo: "Não prometer atendimento humano que não existe",
     oQueProtege:
