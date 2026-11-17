@@ -1,88 +1,83 @@
 /**
- * ARQUIVAR UMA CAMPANHA DE PROSPECÇÃO (vindo do produto original, #4359) — o SQL
- * de verdade, num Postgres de verdade.
+ * ARQUIVAR E DESARQUIVAR UMA CAMPANHA, NUM POSTGRES DE VERDADE — #4359 / #4430.
  *
- * O que fica travado:
- *   1. arquivar campanha RODANDO pausa no mesmo gesto (campanha escondida não envia);
- *   2. arquivar não apaga nada — candidatos ficam;
- *   3. desarquivar devolve PAUSADA (retomar é outro clique) e devolve `null` à
- *      configuração do rascunho que não tinha nenhuma;
- *   4. clicar duas vezes não reescreve o marcador;
- *   5. o filtro de organização: a mesma chamada com outra organização não toca nada.
+ * `tests/unit/prospeccao-arquivar-campanha.test.ts` prova o texto dos `update` contra
+ * um banco de mentira, que só aplica o que ele próprio imita. Aqui se prova o que só
+ * o jsonb de verdade responde:
+ *
+ * 1. o rascunho que NÃO tinha configuração volta a `null` ao desarquivar — não a
+ *    `{}`, que a tela tomaria por configuração gravada (perdendo os padrões);
+ * 2. a campanha com configuração volta exatamente igual, e a rodando fica pausada;
+ * 3. outra organização, sabendo o id, não alcança a campanha.
  */
-import { beforeAll, describe, expect, it } from "vitest";
+import pg from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { ARQUIVAR_CAMPANHA_SQL, DESARQUIVAR_CAMPANHA_SQL } from "@/lib/prospecting/arquivamento";
-import { sql } from "./gov-helpers";
+import { arquivarCampanha, desarquivarCampanha } from "@/lib/prospecting/store";
 
-const orgA = "10000000-0000-4000-8000-0000000a4359";
-const orgB = "10000000-0000-4000-8000-0000000b4359";
-const rodando = "20000000-0000-4000-8000-0000000a4359";
-const rascunho = "20000000-0000-4000-8000-0000000c4359";
+const pool = new pg.Pool({
+  connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.TEST_DB_PORT ?? 54329}/postgres`,
+  max: 4,
+});
 
-/** Troca $1..$n pelos literais — o `sql()` dos invariantes fala psql puro. */
-function comParametros(texto: string, valores: string[]): string {
-  const update = valores.reduceRight(
-    (acc, v, i) => acc.replaceAll(`$${i + 1}`, `'${v.replace(/'/g, "''")}'`),
-    texto,
-  );
-  // CTE de escrita: a saída é só o `status` das linhas que mudaram ("" = nenhuma).
-  return `with x as (${update}) select coalesce(string_agg(status, ','), '') from x`;
+const ORG_A = "0a130000-0000-4000-8000-000000000001";
+const ORG_B = "0a130000-0000-4000-8000-000000000002";
+const RASCUNHO = "0a130000-1111-4000-8000-000000000001";
+const RODANDO = "0a130000-1111-4000-8000-000000000002";
+
+const CONFIG = {
+  agent_id: "0a130000-2222-4000-8000-000000000001",
+  channel_session_id: "0a130000-2222-4000-8000-000000000002",
+  pipeline_id: "0a130000-2222-4000-8000-000000000003",
+  stage_id: "0a130000-2222-4000-8000-000000000004",
+  qualified_stage_id: "0a130000-2222-4000-8000-000000000005",
+  instruction: "Vender consultoria para clínicas.",
+  qualification: "Confirmou a necessidade e a decisão.",
+  daily_limit: 10,
+  interval_minutes: 5,
+  legal_basis_ref: "LIA-teste",
+};
+
+const db = pool as unknown as pg.Pool;
+async function linha(id: string): Promise<{ status: string; config: Record<string, unknown> | null }> {
+  const { rows } = await pool.query("select status, config from prospecting_campaigns where id = $1", [id]);
+  return rows[0];
 }
 
-beforeAll(() =>
-  sql(`insert into organizations(id,slug,legal_name,display_name) values
-    ('${orgA}','arquivar-a','A','A'),('${orgB}','arquivar-b','B','B');
-  insert into prospecting_campaigns(id,organization_id,request_id,name,search,config,status,search_status) values
-    ('${rodando}','${orgA}',gen_random_uuid(),'Rodando','{}','{"daily_limit":10}','running','succeeded'),
-    ('${rascunho}','${orgA}',gen_random_uuid(),'Rascunho','{}',null,'draft','succeeded');
-  insert into prospecting_candidates(organization_id,campaign_id,place_id,data) values
-    ('${orgA}','${rodando}','arq-1','{}'),('${orgA}','${rodando}','arq-2','{}');`),
-);
-
-describe("arquivar campanha de prospecção", () => {
-  it("de OUTRA organização: nenhuma linha muda", () => {
-    expect(
-      sql(comParametros(ARQUIVAR_CAMPANHA_SQL, [orgB, rodando, "2026-11-14T10:00:00.000Z"])),
-    ).toBe("");
-    expect(sql(`select status from prospecting_campaigns where id='${rodando}'`)).toBe("running");
-  });
-
-  it("campanha rodando é PAUSADA no mesmo gesto, e nada é apagado", () => {
-    const saida = sql(
-      comParametros(ARQUIVAR_CAMPANHA_SQL, [orgA, rodando, "2026-11-14T10:00:00.000Z"]),
+beforeAll(async () => {
+  await pool.query(
+    `insert into organizations(id,slug,legal_name,display_name) values
+       ($1,'arquivar-a','A','A'), ($2,'arquivar-b','B','B')`,
+    [ORG_A, ORG_B],
+  );
+  const insere = (id: string, status: string, config: unknown) =>
+    pool.query(
+      `insert into prospecting_campaigns(id,organization_id,request_id,name,search,status,config,channel_session_id)
+       values ($1,$2,gen_random_uuid(),'arquivar','{}',$3,$4::jsonb,($4::jsonb->>'channel_session_id')::uuid)`,
+      [id, ORG_A, status, config === null ? null : JSON.stringify(config)],
     );
-    expect(saida).toContain("paused");
-    expect(
-      sql(
-        `select status||'|'||(config->>'arquivada_em')||'|'||(config->>'daily_limit') from prospecting_campaigns where id='${rodando}'`,
-      ),
-    ).toBe("paused|2026-11-14T10:00:00.000Z|10");
-    expect(sql(`select count(*) from prospecting_candidates where campaign_id='${rodando}'`)).toBe("2");
+  await insere(RASCUNHO, "draft", null);
+  await insere(RODANDO, "running", CONFIG);
+});
+afterAll(() => pool.end());
+
+describe("arquivar e desarquivar num banco de verdade", () => {
+  it("rascunho sem configuração volta a null, não a {}", async () => {
+    await arquivarCampanha(db, ORG_A, RASCUNHO);
+    expect(Object.keys((await linha(RASCUNHO)).config ?? {})).toEqual(["arquivada_em"]);
+    await desarquivarCampanha(db, ORG_A, RASCUNHO);
+    expect((await linha(RASCUNHO)).config).toBeNull();
   });
 
-  it("clicar de novo não reescreve o marcador", () => {
-    expect(
-      sql(comParametros(ARQUIVAR_CAMPANHA_SQL, [orgA, rodando, "2030-01-01T00:00:00.000Z"])),
-    ).toBe("");
-    expect(sql(`select config->>'arquivada_em' from prospecting_campaigns where id='${rodando}'`)).toBe(
-      "2026-11-14T10:00:00.000Z",
-    );
+  it("campanha rodando fica pausada e volta com a configuração inteira", async () => {
+    await arquivarCampanha(db, ORG_A, RODANDO);
+    expect((await linha(RODANDO)).status).toBe("paused");
+    await desarquivarCampanha(db, ORG_A, RODANDO);
+    expect(await linha(RODANDO)).toEqual({ status: "paused", config: CONFIG });
   });
 
-  it("desarquivar devolve a campanha PAUSADA, com a configuração intacta", () => {
-    expect(sql(comParametros(DESARQUIVAR_CAMPANHA_SQL, [orgA, rodando]))).toContain("paused");
-    expect(
-      sql(
-        `select status||'|'||coalesce(config->>'arquivada_em','-')||'|'||(config->>'daily_limit') from prospecting_campaigns where id='${rodando}'`,
-      ),
-    ).toBe("paused|-|10");
-  });
-
-  it("rascunho sem configuração volta com `config` nula, não `{}`", () => {
-    sql(comParametros(ARQUIVAR_CAMPANHA_SQL, [orgA, rascunho, "2026-11-14T10:00:00.000Z"]));
-    expect(sql(`select status from prospecting_campaigns where id='${rascunho}'`)).toBe("draft");
-    sql(comParametros(DESARQUIVAR_CAMPANHA_SQL, [orgA, rascunho]));
-    expect(sql(`select config is null from prospecting_campaigns where id='${rascunho}'`)).toBe("t");
+  it("outra organização não arquiva a campanha, mesmo sabendo o id", async () => {
+    await expect(arquivarCampanha(db, ORG_B, RASCUNHO)).rejects.toMatchObject({ status: 404 });
+    expect((await linha(RASCUNHO)).config).toBeNull();
   });
 });

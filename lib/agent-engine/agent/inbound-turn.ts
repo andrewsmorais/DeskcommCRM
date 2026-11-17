@@ -40,6 +40,7 @@ import type pg from 'pg';
 import { z } from 'zod';
 import { auxModelArgs, type AuxModelArgs } from './aux-model-args';
 import { corpoSemVisaoDeFoto } from './visao-de-foto';
+import { enviarComSaidaConfiguravel } from "@/lib/prospecting/saida-configuravel";
 import {
   CAMPO_ENCERRA_TURNO,
   criarParadaAposEnvioFinal,
@@ -3497,23 +3498,29 @@ async function executarTurnoDoAgente(
               // do turno, medido ANTES DE CADA FOTO, depois do texto. O texto acima do
               // teto de legenda sai à parte e também gasta o teto. Com voz: UMA
               // nota de voz (`enviarVoz`).
-              return enviarComFotos(finalBody, fotosDoProduto, {
-                sleep,
-                jitter,
-                restantes: () => maxSendsPerTurn - seq,
-                enviarFoto: (foto, legenda) => enviar(legenda, foto),
-                enviarTexto: (texto) => enviarVoz(texto) ?? sendInBubbles(texto, {
-                    enabled: agentConfig?.splitMessages ?? false,
-                    maxChars: agentConfig?.splitMaxChars ?? 600,
-                    // O teto do turno vale para as bolhas: o que passa dele vai junto na última.
-                    maxBubbles: Math.max(1, maxSendsPerTurn - seq),
-                    sleep,
-                    jitter,
-                    // A pausa humana do turno NÃO mora mais aqui: ela subiu para
-                    // `esperaForaDoLock` (paga antes de o guardrail tomar o lock do número) —
-                    // issue #654. Neste ponto fica só o jitter anti-ban entre bolhas.
-                    send: (bubble) => enviar(bubble),
-                  }),
+              // Saída configurável da prospecção (fora de prévia): o "responda PARAR"
+              // vai na 1ª ou na 2ª mensagem automática da conversa que a campanha abriu.
+              // Ver lib/prospecting/saida-configuravel.ts.
+              const saida = { db: pool, organizationId: tenantId, conversationId: preview ? null : input.conversationId, via: "inbound_turn" as const, mensagem: { jobId: preview ? "" : liveJob().id, seq: seq + 1 }, avisar: (m: string, c: Record<string, unknown>) => runLog.warn(m, c) };
+              return enviarComSaidaConfiguravel(saida, finalBody, (finalBody) => {
+                return enviarComFotos(finalBody, fotosDoProduto, {
+                  sleep,
+                  jitter,
+                  restantes: () => maxSendsPerTurn - seq,
+                  enviarFoto: (foto, legenda) => enviar(legenda, foto),
+                  enviarTexto: (texto) => enviarVoz(texto) ?? sendInBubbles(texto, {
+                      enabled: agentConfig?.splitMessages ?? false,
+                      maxChars: agentConfig?.splitMaxChars ?? 600,
+                      // O teto do turno vale para as bolhas: o que passa dele vai junto na última.
+                      maxBubbles: Math.max(1, maxSendsPerTurn - seq),
+                      sleep,
+                      jitter,
+                      // A pausa humana do turno NÃO mora mais aqui: ela subiu para
+                      // `esperaForaDoLock` (paga antes de o guardrail tomar o lock do número) —
+                      // issue #654. Neste ponto fica só o jitter anti-ban entre bolhas.
+                      send: (bubble) => enviar(bubble),
+                    }),
+                });
               });
             },
           };

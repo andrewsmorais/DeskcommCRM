@@ -57,6 +57,7 @@ import {
   proximaAberturaDoFollowup,
 } from './janela-de-followup';
 import type { LeadStateRow } from './lead-state';
+import { enviarComSaidaConfiguravel } from "@/lib/prospecting/saida-configuravel";
 import { loadReentryTemplate, pickReentryVariant } from './reentry-template';
 import {
   classifyFollowupReply,
@@ -935,12 +936,27 @@ async function sendFixedOutbound(
         }
       : {}),
     send: (finalBody) =>
-      channel.send({
-        tenantId, leadId, jobId: job.id, jobClaim: claimOfJob(job), seq: 1, conversationId, body: finalBody,
-        ...(modelo !== undefined ? { template: modelo } : {}),
-        // Mídia do passo: o `body` acima é a LEGENDA dela.
-        ...(midia !== undefined ? { media: { url: midia.url, mime: midia.mime, type: midia.type } } : {}),
-      }),
+      // SAÍDA CONFIGURÁVEL da prospecção: template (modelo) não conta nem leva —
+      // o corpo aprovado pelo canal não se altera. Ver lib/prospecting/saida-configuravel.ts.
+      enviarComSaidaConfiguravel(
+        {
+          db: pool,
+          organizationId: tenantId,
+          conversationId: modelo === undefined ? conversationId : null,
+          via: "followup",
+          // A mesma intenção do `channel.send` abaixo: o `queued` re-tenta o job.
+          mensagem: { jobId: job.id, seq: 1 },
+          avisar: (m, c) => runLog.warn(m, c),
+        },
+        finalBody,
+        (finalBody) =>
+          channel.send({
+            tenantId, leadId, jobId: job.id, jobClaim: claimOfJob(job), seq: 1, conversationId, body: finalBody,
+            ...(modelo !== undefined ? { template: modelo } : {}),
+            // Mídia do passo: o `body` acima é a LEGENDA dela.
+            ...(midia !== undefined ? { media: { url: midia.url, mime: midia.mime, type: midia.type } } : {}),
+          }),
+      ),
   });
 
   if (chain.status === 'vetoed') {

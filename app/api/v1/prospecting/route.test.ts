@@ -50,6 +50,12 @@ import { requireRole } from "@/lib/auth/require-role";
 import { audit } from "@/lib/audit";
 import { ProspectingError } from "@/lib/prospecting/provider";
 import { withProspectingLock } from "@/lib/prospecting/store";
+// Fork ChatAI Online: a prospecção mora atrás do módulo "disparo em massa"
+// (desligado por padrão). Estes casos medem a rota com o módulo LIGADO.
+vi.mock("@/lib/instalacao/disparo-em-massa", () => ({
+  disparoEmMassaLigado: async () => true,
+  seDisparoEmMassaDesligado: async () => null,
+}));
 
 const ID = "11111111-1111-4111-8111-111111111111";
 

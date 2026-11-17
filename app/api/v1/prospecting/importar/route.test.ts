@@ -44,6 +44,12 @@ vi.mock("@/lib/prospecting/store", () => ({
 import { POST } from "./route";
 import { audit } from "@/lib/audit";
 import { montarPrevia, type LeituraComMotivos } from "@/lib/prospecting/importacao-previa";
+// Fork ChatAI Online: a prospecção mora atrás do módulo "disparo em massa"
+// (desligado por padrão). Estes casos medem a rota com o módulo LIGADO.
+vi.mock("@/lib/instalacao/disparo-em-massa", () => ({
+  disparoEmMassaLigado: async () => true,
+  seDisparoEmMassaDesligado: async () => null,
+}));
 
 const ORG_DA_AUTH = "99999999-9999-4999-8999-999999999999";
 const ORG_DO_FORMULARIO = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

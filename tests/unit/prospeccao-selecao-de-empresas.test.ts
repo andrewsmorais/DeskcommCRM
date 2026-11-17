@@ -21,7 +21,7 @@ import {
  * ## O conserto
  *
  * Uma coluna `selected boolean not null default true` em `prospecting_candidates`
- * (migration 0501). O padrão é TUDO marcado — quem não mexer continua com a
+ * (migration 0506). O padrão é TUDO marcado — quem não mexer continua com a
  * mesma fila de antes. A ativação só aborda os marcados; os desmarcados vão para
  * `skipped` com o motivo exato (mesmo estado dos dois motivos que já existiam:
  * "Sem telefone brasileiro válido.", "Contato já existe no CRM…").

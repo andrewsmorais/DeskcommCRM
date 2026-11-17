@@ -19453,6 +19453,10 @@ export const DICIONARIO: Traducoes = {
   },
   "Vazio = padrão da instalação": { es: "Vacío = predeterminado de la instalación" },
   "Agenda do celular": { es: "Agenda del celular" },
+  "Este número está em modo de teste: a IA só fala com os números da lista de teste. Para liberar o atendimento ao público, abra Conexões, toque em \"Configurar acesso da IA\" no cartão do número e escolha \"Liberar atendimento ao público\".":
+    {
+      es: "Este número está en modo de prueba: la IA solo habla con los números de la lista de prueba. Para habilitar la atención al público, abre Conexiones, toca \"Configurar acceso de la IA\" en la tarjeta del número y elige \"Habilitar atención al público\".",
+    },
   "Fotos do cliente": { es: "Fotos del cliente" },
   "Ver as fotos que o cliente envia": { es: "Ver las fotos que envía el cliente" },
   "Ligado, o agente entende o que está na foto. Desligado, ele só sabe que chegou uma foto e pode pedir que o cliente descreva em texto. Se nenhum agente da empresa vê fotos, a leitura paga da foto deixa de ser feita.": { es: "Activado, el agente entiende lo que hay en la foto. Desactivado, solo sabe que llegó una foto y puede pedir al cliente que la describa por texto. Si ningún agente de la empresa ve fotos, la lectura pagada de la foto deja de hacerse." },

@@ -386,6 +386,13 @@ export async function createContactHandler(
   supabase: SB,
   ctx: HandlerCtx,
   input: ContactCreate,
+  _reservado?: undefined,
+  /**
+   * Por qual porta o contato nasce (vindo do produto original). `prospeccao`
+   * NÃO abre conversa aqui: quem abre é a campanha, no número DELA — abrir pela
+   * porta manual criava uma segunda conversa no número mais antigo da empresa.
+   */
+  opcoes: { porta?: "manual" | "prospeccao" } = {},
 ): Promise<CreateContactResult> {
   const a = actorAuditPayload(ctx.actor);
   const insertRow: Record<string, unknown> = {
@@ -444,7 +451,7 @@ export async function createContactHandler(
   }
 
   const contact = created as Contact;
-  if (contact.phone_number) {
+  if (contact.phone_number && opcoes.porta !== "prospeccao") {
     try {
       const sessionId = await sessaoProntaParaEnvio(supabase, ctx.organization_id);
       if (sessionId) {

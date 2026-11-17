@@ -1084,6 +1084,8 @@ export async function criarPegadaDoCandidato(
         consent: { legitimate_interest: { ref: config.legal_basis_ref } },
         ...(linksDoNovo ? { custom_fields: linksDoNovo } : {}),
       },
+      undefined,
+      { porta: "prospeccao" },
     );
     contactId = String(contact.contact.id);
     // O contato NASCIDO da prospecção aponta para a empresa quando ela existe:
