@@ -21,7 +21,7 @@
  * teria o mesmo problema que ela existe para pegar.
  */
 import { readFileSync } from "node:fs";
-import { PEDIDOS_DO_CLIENTE, rotuloDaChamadaDoJev, SINAL_DE_URGENCIA } from "@/lib/ai/decisao/tarefas";
+import { CONFERENCIA_DE_CAMPO, PEDIDOS_DO_CLIENTE, rotuloDaChamadaDoJev, SINAL_DE_URGENCIA } from "@/lib/ai/decisao/tarefas";
 import path from "node:path";
 import ts from "typescript";
 
@@ -119,7 +119,7 @@ const FORA_DO_SEAM: Record<string, { arquivo: string; marcador: string }> = {
 
 /**
  * `purpose` que NÃO é ponto do registro, de propósito: a chamada do Jev que
- * pergunta as tarefas sem ponto (`lib/ai/decisao/pedidos.ts`, `urgencia.ts`).
+ * pergunta as tarefas sem ponto (`lib/ai/decisao/pedidos.ts`, `urgencia.ts`, `campo-do-negocio.ts`).
  * Não há modelo para escolher ali, então um ponto no registro seria botão que
  * não controla nada. Quem a nomeia é IA › Execuções e o cartão do Jev, por
  * `rotuloDaChamadaDoJev`.
@@ -127,6 +127,8 @@ const FORA_DO_SEAM: Record<string, { arquivo: string; marcador: string }> = {
 const CHAMADAS_DO_JEV_SEM_PONTO: ReadonlySet<string> = new Set([
   PEDIDOS_DO_CLIENTE.purpose,
   SINAL_DE_URGENCIA.purpose,
+  // A conferência de campo (#2234): as perguntas são por CAMPO, não por tarefa.
+  CONFERENCIA_DE_CAMPO.purpose,
 ]);
 
 describe("registro de pontos de IA × código", () => {

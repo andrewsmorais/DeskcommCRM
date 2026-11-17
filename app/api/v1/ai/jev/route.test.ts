@@ -276,6 +276,7 @@ describe("GET /api/v1/ai/jev", () => {
       "jailbreak_detect",
       "intent_router",
       "followup_classify",
+      "afirmacao_de_fato",
     ]);
     expect(d.tem_ia_de_sempre).toBe(true);
     expect(d.numeros).toEqual({
@@ -758,9 +759,11 @@ describe("o Jev por tarefa na rota", () => {
       expect.objectContaining({ id: "opt_out", ponto: null, estado: "desligada", novo: false }),
       expect.objectContaining({ id: "followup", ponto: "followup_classify", estado: "desligada", novo: false }),
       // A conferência de campo (#2234) tem alcance "conversa": nasce desligada até o aceite dela.
+      expect.objectContaining({ id: "campo_do_negocio", ponto: null, estado: "desligada", novo: false }),
       // O sinal de urgência da mensagem represada (#2232): também em cascata, também sem ponto.
       expect.objectContaining({ id: "sinal_de_urgencia", ponto: null, estado: "desligada", novo: false }),
       // A conferência de fato (#2231) cabe no aceite de cada mensagem, mas com o Jev desligado nada roda.
+      expect.objectContaining({ id: "afirmacao_de_fato", ponto: "afirmacao_de_fato", estado: "desligada", novo: false }),
     ]);
 
     estado.settings = { jev: { ligado: true, modo: "decide", aceite: ACEITE_ANTIGO } };
@@ -784,6 +787,7 @@ describe("o Jev por tarefa na rota", () => {
       expect.objectContaining({ id: "jailbreak_detect", rotulo: "Perceber tentativa de manipulação" }),
       expect.objectContaining({ id: "intent_router", rotulo: "Escolher qual agente atende" }),
       expect.objectContaining({ id: "followup_classify", rotulo: "Ler a resposta ao follow-up" }),
+      expect.objectContaining({ id: "afirmacao_de_fato", rotulo: "Conferir afirmações de fato na resposta" }),
     ]);
   });
 
@@ -859,7 +863,9 @@ describe("o Jev por tarefa na rota", () => {
       ["humano", false],
       ["opt_out", false],
       ["followup", false],
+      ["campo_do_negocio", false],
       ["sinal_de_urgencia", false],
+      ["afirmacao_de_fato", false],
     ]);
     estado.camadas = [
       { organization_id: ORG, layer: "jailbreak", enabled: false },
@@ -872,7 +878,9 @@ describe("o Jev por tarefa na rota", () => {
       ["humano", false],
       ["opt_out", false],
       ["followup", false],
+      ["campo_do_negocio", false],
       ["sinal_de_urgencia", false],
+      ["afirmacao_de_fato", false],
     ]);
   });
 
@@ -887,7 +895,9 @@ describe("o Jev por tarefa na rota", () => {
       ["humano", false],
       ["opt_out", false],
       ["followup", false],
+      ["campo_do_negocio", false],
       ["sinal_de_urgencia", false],
+      ["afirmacao_de_fato", false],
     ]);
     // O ativo de OUTRA empresa não conta — o filtro é o da sessão.
     const intencoes = (n: number) => [{ count: n }];
@@ -899,7 +909,9 @@ describe("o Jev por tarefa na rota", () => {
       ["humano", false],
       ["opt_out", false],
       ["followup", false],
+      ["campo_do_negocio", false],
       ["sinal_de_urgencia", false],
+      ["afirmacao_de_fato", false],
     ]);
     // Ativo, mas sem intenção nenhuma (o estado logo depois de criar um) ou com
     // mais do que cabe numa pergunta: o Jev nunca é perguntado, e "Só observa"
@@ -916,7 +928,9 @@ describe("o Jev por tarefa na rota", () => {
       ["humano", false],
       ["opt_out", false],
       ["followup", false],
+      ["campo_do_negocio", false],
       ["sinal_de_urgencia", false],
+      ["afirmacao_de_fato", false],
     ]);
     // E o cartão segue dizendo que a tarefa observa: é o que ela faz quando há roteador.
     const roteador = (await ler()).corpo.data.por_tarefa.find((t: { id: string }) => t.id === "roteador");
@@ -1096,7 +1110,9 @@ describe("o Jev por tarefa na rota", () => {
       humano: motivo,
       opt_out: motivo,
       followup: null,
+      campo_do_negocio: null,
       sinal_de_urgencia: motivo,
+      afirmacao_de_fato: null,
     });
     // A organização é a da sessão, e a pergunta é a do portão do worker.
     expect(vi.mocked(haQuemAtendaAOrganizacao).mock.calls.map(([, org]) => org)).toEqual([ORG]);

@@ -6,6 +6,8 @@ import { createRuntimeSendChannel, type RuntimeSendChannel } from "@/lib/channel
 import { runBeforeSend } from "../guardrails/before-send";
 import { deriveLgpdFromContact, type LgpdContactFields } from "../guardrails/lgpd/legal-basis";
 import { assertApprovedReplyPg, assertApprovedReplyReceiptPg } from "@/lib/ai/replies/delivery";
+import { registrarEnvioDaRespostaAprovada } from "@/lib/ai/decisao/afirmacao-de-fato";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { StaleServiceBoundaryError } from "@/lib/atendimento/fronteira";
 import { withServiceJob } from "@/lib/atendimento/fronteira-server";
 import type { InboundTurnDeps } from "./inbound-turn";
@@ -19,6 +21,30 @@ export function createApprovedReplyHandler(
     if (!claim || job.kind !== "approved_reply" || !job.contact_id)
       throw new StaleServiceBoundaryError();
     const context = { organizationId: job.organization_id, jobId: job.id, jobClaim: claim };
+    /**
+     * #2923 — A RESPOSTA APROVADA FECHA O PAR DA CONFERÊNCIA DE FATO.
+     *
+     * NÃO confere de novo: o texto já foi revisado por uma pessoa, e a
+     * evidência do turno da prévia não existe mais aqui. A conferência rodou na
+     * PRÉVIA (é ela que grava o rótulo do Jev); aqui se grava só o outro lado do
+     * par — o que chegou ao cliente —, para o cartão do Jev contar o modo
+     * assistido. Best-effort e idempotente: nunca segura nem derruba o envio.
+     */
+    const registrarConferenciaDeFato = async (): Promise<void> => {
+      const draftId = typeof job.payload.draft_id === "string" ? job.payload.draft_id : null;
+      if (draftId === null) return;
+      try {
+        await registrarEnvioDaRespostaAprovada(createAdminClient(), {
+          organizationId: job.organization_id,
+          runId: draftId,
+        });
+      } catch (err) {
+        deps.log.warn("registro da conferência de fato falhou (best-effort)", {
+          job_id: job.id,
+          error: (err instanceof Error ? err.message : String(err)).slice(0, 160),
+        });
+      }
+    };
     const settle = async (state: string, error?: string) => {
       await pool.query("select fn_reply_settle($1,$2,$3,$4,$5,$6)", [
         job.organization_id,
@@ -36,6 +62,7 @@ export function createApprovedReplyHandler(
         await reconcileAcceptedSend(pool, { tenantId: job.organization_id, jobId: job.id, seq: 1 })
       ) {
         accepted = true;
+        await registrarConferenciaDeFato();
         await settle("sent");
         return;
       }
@@ -95,6 +122,7 @@ export function createApprovedReplyHandler(
             })
           ) {
             accepted = true;
+            await registrarConferenciaDeFato();
             await settle("sent");
             return;
           }
@@ -103,6 +131,7 @@ export function createApprovedReplyHandler(
           case "sent":
           case "already_sent":
             accepted = true;
+            await registrarConferenciaDeFato();
             await settle("sent");
             break;
           case "queued":
@@ -122,6 +151,7 @@ export function createApprovedReplyHandler(
       if (
         await reconcileAcceptedSend(pool, { tenantId: job.organization_id, jobId: job.id, seq: 1 })
       ) {
+        await registrarConferenciaDeFato();
         await settle("sent");
         return;
       }

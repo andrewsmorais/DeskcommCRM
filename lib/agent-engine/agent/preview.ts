@@ -7,11 +7,15 @@ import type { PublishedAgentConfig } from './agent-config';
 import type { LeadCheckpointRow } from './inbound-turn';
 import { ferramentasDeAgendaDoAgente, temFerramentaDeAgenda } from './inbound-turn';
 import {
+  BEFORE_SEND_GATES,
   evaluateBeforeSend,
+  factualClaimGate,
+  type Gate,
   type GateContext,
   type GateTraceEntry,
   loadChannelProvider,
 } from '../guardrails/before-send';
+import type { ConferenciaDeFato } from '../guardrails/factual-claim';
 import { loadChannelKnobs, loadPacingState } from '../pacing/store';
 import { PACING_DEFAULTS } from '../pacing/defaults';
 import { SPINNING_DEFAULTS } from '../spinning/defaults';
@@ -43,6 +47,11 @@ export interface PreviewResult {
   candidates: Array<{ body: string; citations: Citation[]; trace: GateTraceEntry[] }>;
   proposals: Array<{ tool: string; arguments: unknown }>;
   impediments: Array<{ code: string; message: string }>;
+  /**
+   * O que em produção não sairia agora, mas o Testar mostra mesmo assim (a
+   * conferência de fato decidindo, #2923). Opcional: resultado antigo não tem.
+   */
+  warnings?: Array<{ code: string; message: string }>;
   restrictions: string[];
 }
 export function newPreviewResult(): PreviewResult {
@@ -50,6 +59,7 @@ export function newPreviewResult(): PreviewResult {
     candidates: [],
     proposals: [],
     impediments: [],
+    warnings: [],
     restrictions: [
       'preview_no_client_effects',
       'writes_require_separate_authorization',
@@ -142,6 +152,33 @@ export const SCENARIO_READS = new Set([
   'crm_search_products',
   'crm_search_knowledge',
 ]);
+/**
+ * No Testar (sandbox, sem contato), a conferência de fato que DECIDE vira aviso:
+ * a resposta continua na tela, o aviso diz que em produção ela não sairia agora,
+ * e o trace registra a camada como rebaixada — nunca um `pass` silencioso. No
+ * modo assistido (rascunho para alguém aprovar) ela segue sendo impedimento.
+ */
+function gatesDoSandbox(avisos: Array<{ code: string; message: string }>): readonly Gate[] {
+  return BEFORE_SEND_GATES.map((gate) =>
+    gate.name !== factualClaimGate.name
+      ? gate
+      : {
+          name: gate.name,
+          evaluate: (ctx: GateContext) => {
+            const verdict = gate.evaluate(ctx);
+            if (verdict.pass) return verdict;
+            avisos.push({
+              code: verdict.code,
+              message:
+                `Em produção esta resposta não sairia agora (${verdict.reason}). ` +
+                'O teste mostra a resposta mesmo assim; nenhuma mensagem foi enviada.',
+            });
+            return { pass: true, skipped: 'sandbox_send_embargo' as const };
+          },
+        },
+  );
+}
+
 /** Unknown tools fail closed. A write proposal never calls its original execute. */
 export function applyPreviewPolicy(
   tools: ToolSet,
@@ -150,6 +187,12 @@ export function applyPreviewPolicy(
   citations: () => Citation[],
   semanticClassifier?: (body: string) => Promise<NonNullable<GateContext['semanticPromise']>>,
   liveContext?: () => Partial<GateContext>,
+  /**
+   * #2923 — a MESMA conferência de fato do turno automático, com as evidências
+   * consultadas NESTE turno da prévia: o rascunho do modo assistido é
+   * justamente o que alguém revisa antes de o cliente receber.
+   */
+  conferirAfirmacoes?: (candidata: string) => Promise<ConferenciaDeFato>,
 ): ToolSet {
   return Object.fromEntries(
     Object.entries(tools).map(([name, definition]) => {
@@ -180,12 +223,21 @@ export function applyPreviewPolicy(
                 args && typeof args === 'object' && 'body' in args && typeof args.body === 'string'
                   ? args.body
                   : '';
-              const result = evaluateBeforeSend({
-                ...ctx,
-                ...liveContext?.(),
-                body,
-                semanticPromise: semanticClassifier ? await semanticClassifier(body) : null,
-              });
+              const avisos: Array<{ code: string; message: string }> = [];
+              const [semanticPromise, factualClaim] = await Promise.all([
+                semanticClassifier ? semanticClassifier(body) : Promise.resolve(null),
+                conferirAfirmacoes ? conferirAfirmacoes(body) : Promise.resolve(null),
+              ]);
+              const result = evaluateBeforeSend(
+                {
+                  ...ctx,
+                  ...liveContext?.(),
+                  body,
+                  semanticPromise,
+                  factualClaim,
+                },
+                p.kind === 'sandbox' ? gatesDoSandbox(avisos) : BEFORE_SEND_GATES,
+              );
               if (result.veto) {
                 p.result.impediments.push({ code: result.veto.code, message: result.veto.message });
                 return {
@@ -193,6 +245,10 @@ export function applyPreviewPolicy(
                   error: { code: result.veto.code, message: result.veto.message },
                 };
               }
+              // O aviso acompanha um candidato; vetado por outro gate, o impedimento já diz.
+              p.result.warnings ??= [];
+              for (const aviso of avisos)
+                if (!p.result.warnings.some((w) => w.code === aviso.code)) p.result.warnings.push(aviso);
               p.result.candidates.push({
                 body: result.body,
                 citations: citations(),

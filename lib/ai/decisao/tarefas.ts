@@ -316,6 +316,41 @@ export const TAREFA_DO_FOLLOWUP = {
 } as const satisfies TarefaDoJev;
 
 /**
+ * A conferência de campo personalizado do negócio (#2234): antes de a IA gravar
+ * um campo do funil na ficha, conferir nas mensagens do CLIENTE se foi ele quem
+ * disse aquele valor. Hoje `crm_update_lead` grava `custom_fields` direto
+ * (`lib/mcp/tools/leads.ts`), sem nenhuma conferência — os campos de CONTATO já
+ * têm proposta com confirmação humana (#1650), os do negócio não, e uma
+ * confirmação humana a cada valor seria pesada demais.
+ *
+ * É `novo`: não há mecanismo de conferência hoje com o que concordar. É
+ * `alcance: "conversa"` de propósito: o degrau 2 lê as mensagens pendentes do
+ * TURNO, em geral 1 a 3 juntas — mais que o aceite de "cada mensagem, sozinha",
+ * então sem o aceite da conversa (`config.aceite.alcance`) ela nasce DESLIGADA
+ * e a ficha segue gravando como hoje.
+ *
+ * O degrau 1 (número, data, e-mail e valor monetário conferidos em código, sem
+ * rede) não depende do Jev: ele acontece antes, em quem chama (`./campo-do-negocio`).
+ */
+export const TAREFA_DA_CONFERENCIA_DE_CAMPO = {
+  id: "campo_do_negocio",
+  primitiva: "noul",
+  alcance: "conversa",
+  familia: "novo",
+  aoDecidir:
+    "O Jev confere, nas mensagens que o cliente deixou sem resposta neste turno, se foi ele quem disse o valor do campo. O valor que ele não disse deixa de ser gravado e o assistente é mandado perguntar para ele; os outros campos da mesma chamada seguem gravando.",
+  aoConfirmarDecidir:
+    "Antes de a IA gravar um campo personalizado do negócio, o Jev vai conferir nas mensagens do cliente se foi ele quem informou aquele valor. Ele não disse: o campo não é gravado e a IA pergunta ao cliente.",
+  concordancia: {
+    antes: "dias, o Jev e o jeito de hoje deram o mesmo destino a",
+    depois: "campos do negócio.",
+  },
+  rotulo: "Conferir o campo antes de a IA gravar",
+  oQueFaz:
+    "Lê o que o cliente disse nas mensagens ainda sem resposta do turno e confere se o valor que a IA quer gravar no campo personalizado do negócio foi ele quem informou.",
+} as const satisfies TarefaDoJev;
+
+/**
  * O sinal de urgência que a regra não viu (#2232, `./urgencia.ts`). A regra de
  * hoje é o léxico de `lib/agent-engine/guardrails/sinal-de-urgencia.ts`, que
  * roda SÓ quando o `pacingCapVeto` adia o turno — e é só lá, e só onde ela
@@ -344,6 +379,40 @@ export const TAREFA_DA_URGENCIA = {
     "Lê a última mensagem do cliente quando o teto de envio adiou a resposta, só se a regra de urgência de hoje não viu nela um risco à segurança ou à saúde — e conta as mensagens com esse risco que ela não reconheceu. Ele nunca passa a conversa nem responde.",
 } as const satisfies TarefaDoJev;
 
+/**
+ * A chamada da conferência de fato (#2231): afirmação de fato da RESPOSTA do
+ * assistente, conferida contra a evidência consultada no turno. É ponto no
+ * registro (o Jev é chamado por ela, e a credencial do ponto é a que resolve),
+ * e `soObserva` nesta versão — o cartão não oferece "Deixar o Jev decidir" e a
+ * rota recusa `decidindo`, porque o que falta não é pergunta, é escolha: a
+ * saída depois de N vetos no mesmo turno (frase segura ou passar para humano)
+ * ainda não foi decidida. Um `decidindo` gravado por outra versão vale
+ * `observando` (`estadoSobOAceite`), que é o que esta faz.
+ */
+export const AFIRMACAO_DE_FATO = {
+  purpose: "afirmacao_de_fato",
+  rotulo: "Conferir afirmações de fato na resposta",
+  porQue: "O Jev foi perguntado se o que a resposta afirma sobre o negócio está escrito nas evidências consultadas neste turno.",
+  porQueNaFalha: "O Jev não respondeu: a mensagem foi como estava, sem a conferência de fato.",
+} as const;
+
+export const TAREFA_DA_AFIRMACAO_DE_FATO = {
+  id: "afirmacao_de_fato",
+  ponto: "afirmacao_de_fato",
+  primitiva: "noul",
+  alcance: "mensagem",
+  familia: "novo",
+  soObserva:
+    "Nesta versão a conferência de fato só observa: ela grava o que teria sido corrigido, mas nenhum envio é barrado. Deixar o Jev decidir sozinho só depois que você vir no cartão quantas mensagens teriam sido corrigidas.",
+  concordancia: {
+    antes: "dias, a conferência de fato e o envio de hoje concordaram em",
+    depois: "respostas — as duas deixaram passar a mesma afirmação.",
+  },
+  rotulo: "Conferir afirmações de fato na resposta",
+  oQueFaz:
+    "Lê a resposta que o assistente vai enviar e confere, nas evidências consultadas neste turno, se o que ele afirma sobre o negócio está escrito ali — ou se o material diz o contrário.",
+} as const satisfies TarefaDoJev;
+
 export const TAREFAS_DO_JEV: readonly TarefaDoJev[] = [
   TAREFA_DO_CLIMA,
   TAREFA_DA_MANIPULACAO,
@@ -351,7 +420,9 @@ export const TAREFAS_DO_JEV: readonly TarefaDoJev[] = [
   TAREFA_DO_PEDIDO_DE_HUMANO,
   TAREFA_DO_PEDIDO_PARA_PARAR,
   TAREFA_DO_FOLLOWUP,
+  TAREFA_DA_CONFERENCIA_DE_CAMPO,
   TAREFA_DA_URGENCIA,
+  TAREFA_DA_AFIRMACAO_DE_FATO,
 ];
 
 /**
@@ -361,6 +432,21 @@ export const TAREFAS_DO_JEV: readonly TarefaDoJev[] = [
 export function tarefaPodeDecidir(tarefa: Pick<TarefaDoJev, "soObserva">): boolean {
   return tarefa.soObserva === undefined;
 }
+
+/**
+ * A chamada da conferência de campo (#2234): também sem ponto no registro — o
+ * degrau 2 do `crm_update_lead` é quem pergunta, e as perguntas são por CAMPO,
+ * não por tarefa (`./campo-do-negocio`). Mesmo enquadramento de
+ * `PEDIDOS_DO_CLIENTE`, incluindo o `porQue` como PERGUNTA: a chamada sai só
+ * quando há campo para conferir, e a falha não muda nada no atendimento.
+ */
+export const CONFERENCIA_DE_CAMPO = {
+  purpose: "jev_campo_do_negocio",
+  rotulo: "Conferir o campo antes de a IA gravar",
+  porQue:
+    "O Jev foi perguntado se o cliente disse, nas mensagens ainda sem resposta deste turno, o valor do campo personalizado do negócio que a IA ia gravar.",
+  porQueNaFalha: "O Jev não respondeu: o campo foi gravado como antes, sem a conferência.",
+} as const;
 
 /**
  * A chamada que pergunta os dois pedidos (`./pedidos.ts`) precisa de um
@@ -405,6 +491,7 @@ export const SINAL_DE_URGENCIA = {
  * ponto, ou o dos pedidos. `null` quando não é chamada do Jev.
  */
 export function rotuloDaChamadaDoJev(purpose: string): string | null {
+  if (purpose === CONFERENCIA_DE_CAMPO.purpose) return CONFERENCIA_DE_CAMPO.rotulo;
   if (purpose === PEDIDOS_DO_CLIENTE.purpose) return PEDIDOS_DO_CLIENTE.rotulo;
   if (purpose === SINAL_DE_URGENCIA.purpose) return SINAL_DE_URGENCIA.rotulo;
   return TAREFAS_DO_JEV.find((t) => t.ponto === purpose)?.rotulo ?? null;

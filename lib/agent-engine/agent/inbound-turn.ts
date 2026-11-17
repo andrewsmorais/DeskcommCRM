@@ -196,6 +196,11 @@ import type { DisclosureMode } from '../guardrails/disclosure/template';
 import { decidePromise } from '../guardrails/promise/engine';
 import { loadPromiseTable } from '../guardrails/promise/table';
 import { classifyPromise } from '../guardrails/promise/semantic';
+import {
+  carregarFontesQueProvamOferta,
+  criarEvidenciasComerciaisDoTurno,
+} from '../guardrails/promise/evidencias-comerciais';
+import { criarConferidorDeAfirmacoes } from '@/lib/ai/decisao/afirmacao-de-fato';
 import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
 import {
   montarBriefingDaPassagem,
@@ -2783,6 +2788,41 @@ async function executarTurnoDoAgente(
           { ...(deps.registry !== undefined ? { registry: deps.registry } : {}), log: runLog },
         )
     : undefined;
+  // Conferência de fato (#2231, vinda do produto original): o que o catálogo e a
+  // base de conhecimento devolveram NESTE turno é a evidência contra a qual o
+  // Jev confere a afirmação de fato da resposta. Falha fechada: sem saber o tipo
+  // da fonte, nenhum trecho de conhecimento prova oferta.
+  const fontesQueProvamOferta = await carregarFontesQueProvamOferta(
+    pool,
+    tenantId,
+    agentConfig?.knowledgeSourceIds ?? [],
+  ).catch((err: unknown) => {
+    runLog.warn('tipos das fontes de conhecimento indisponíveis — nenhum trecho prova oferta', {
+      error: (err instanceof Error ? err.message : String(err)).slice(0, 160),
+    });
+    return [];
+  });
+  const evidenciasComerciais = criarEvidenciasComerciaisDoTurno(fontesQueProvamOferta);
+  // A evidência é lida NA HORA (nasce no meio do turno), e a chamada tem UMA
+  // requisição por turno fechada aqui: os re-runs dos fail-safes reaproveitam o
+  // resultado, sem pagar de novo. Sem a tarefa ligada (o padrão) não há requisição.
+  const conferirAfirmacoes = criarConferidorDeAfirmacoes(
+    createAdminClient(),
+    {
+      organizationId: tenantId,
+      conversationId: input.conversationId || null,
+      contactId: leadId || null,
+      agentId: agentConfig?.agentId ?? null,
+      lerEvidencias: () => evidenciasComerciais.ler(),
+      // O RUN que mediu: o job no turno automático, o RASCUNHO na prévia. É o
+      // ponteiro que a resposta aprovada usa para fechar a linha da prévia.
+      runId: job?.id ?? preview?.runId ?? null,
+      // Na prévia o rascunho AINDA NÃO saiu: a linha nasce "sem par", e quem a
+      // fecha é a resposta aprovada. No turno automático o par nasce fechado.
+      rotuloAtual: preview ? null : 'enviado',
+    },
+    deps.jev ?? {},
+  );
   let outOfTablePromiseAttempted = false;
   // Spec 15 (Wave 4 lê este flag): true quando open_human_case abriu um caso NESTE
   // turno — aqui só declara e seta; o consumo (ex.: guardrail de promessa) é da Wave 4.
@@ -3128,6 +3168,7 @@ async function executarTurnoDoAgente(
           { log: runLog, embed: deps.embed },
         );
         if (out.ok && out.results.length > 0) {
+          evidenciasComerciais.registrarConhecimento(out);
           // As citações são montadas AQUI, pelo código, a partir do resultado
           // cru — é por isso que os ids podem sair do que vai ao modelo sem
           // perder nada: quem precisa deles é esta linha, não o modelo.
@@ -3323,6 +3364,8 @@ async function executarTurnoDoAgente(
             ...(semanticClassifier !== undefined
               ? { classifyPromiseSemantic: semanticClassifier }
               : {}),
+            // Conferência de fato (#2231): antes do `begin`, junto do corpo do modelo.
+            conferirAfirmacoes,
             // Pausa humana do turno, paga FORA do lock do número (issue #654). Antes ela
             // era paga dentro do `send` logo abaixo (via `antesDaPrimeira`), e o `send`
             // só acontece com o `pg_advisory_xact_lock` do canal na mão — cada turno
@@ -4061,6 +4104,25 @@ async function executarTurnoDoAgente(
           mcpCleanup = mcp.cleanup;
           for (const [name, mcpTool] of Object.entries(mcp.tools)) {
             if (name in rawTools) continue;
+            // O que o catálogo e a base devolveram NESTE turno vira evidência da
+            // conferência de fato. O modelo escolhe a consulta; a ponte MCP já
+            // aplica organização, papel e escopo de leitura.
+            if (
+              (name === 'crm_search_products' || name === 'crm_search_knowledge') &&
+              typeof mcpTool.execute === 'function'
+            ) {
+              const executeOriginal = mcpTool.execute.bind(mcpTool);
+              rawTools[name] = {
+                ...mcpTool,
+                execute: (async (...args: Parameters<typeof executeOriginal>) => {
+                  const resultado = await executeOriginal(...args);
+                  if (name === 'crm_search_products') evidenciasComerciais.registrarCatalogo(resultado);
+                  else evidenciasComerciais.registrarConhecimento(resultado);
+                  return resultado;
+                }) as typeof mcpTool.execute,
+              };
+              continue;
+            }
             // Marca a EXECUÇÃO (não só a decisão de chamar) — é isso que o agendaStallGate
             // precisa saber para não vetar um turno que já checou a agenda de verdade.
             if (AGENDA_TOOL_NAMES.has(name) && typeof mcpTool.execute === 'function') {
@@ -4152,6 +4214,8 @@ async function executarTurnoDoAgente(
                 toolCalledThisTurn: agendaToolCalledThisTurn,
               },
             }),
+            // #2923 — a mesma conferência de fato do turno automático, na prévia.
+            conferirAfirmacoes,
           )
         : rawTools;
     const tools = wrapToolsWithBreaker(previewTools, {

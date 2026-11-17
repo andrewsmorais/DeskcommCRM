@@ -56,6 +56,7 @@ interface TestResponse {
     candidates?: Array<{ body: string; trace: Array<{ gate: string; verdict: string }> }>;
     proposals?: Array<{ tool: string; arguments: unknown }>;
     impediments?: Array<{ code: string; message: string }>;
+    warnings?: Array<{ code: string; message: string }>;
     restrictions?: string[];
     /** Ver lib/ai/agents/avaliar-resposta-de-teste.ts. */
     guardrails?: {
@@ -398,6 +399,16 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
                 ))}
                 {result.impediments?.map((x, i) => (
                   <p role="status" key={i}>
+                    {x.message}
+                  </p>
+                ))}
+                {result.warnings?.map((x, i) => (
+                  <p
+                    role="status"
+                    key={`aviso-${i}`}
+                    data-testid="aviso-do-teste"
+                    className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+                  >
                     {x.message}
                   </p>
                 ))}

@@ -5508,5 +5508,7 @@
   "Lê a resposta do cliente à mensagem do follow-up e diz em qual das saídas que você criou no fluxo ela se encaixa — o fluxo segue por essa saída.": "读取客户对跟进消息的回复，判断它属于你在流程中创建的哪一个输出——流程会沿着这个输出继续。",
   "entraram": "已加入",
   "menor que": "小于",
-  "Fluxo de atendimento": "接待流程"
+  "Fluxo de atendimento": "接待流程",
+  "Valor fora do formato esperado para este campo.": "此字段的值不符合预期格式。",
+  "Padrão inválido configurado neste campo: a gravação está bloqueada até a correção.": "此字段配置的格式无效：修正前无法保存。"
 }

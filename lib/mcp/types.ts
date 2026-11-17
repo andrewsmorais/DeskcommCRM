@@ -13,6 +13,13 @@ import type { Actor } from "@/lib/api/handlers/types";
 import type { Role } from "@/lib/auth/types";
 
 export interface McpContext {
+  /**
+   * O CONTATO que este turno atende — contexto de CONFIANÇA do handler. Nasce
+   * do lado de quem monta o turno (`lib/ai/runtime/tools.ts`) e NUNCA vem dos
+   * argumentos da tool: o modelo não escreve este campo. Quem lê é a
+   * conferência de campo (`lib/mcp/conferencia-de-campos.ts`).
+   */
+  contatoDoTurno?: string;
   /** Somente o runtime in-process fornece o job original, nunca o cliente MCP. */
   meetingBooking?: MeetingBookingContext;
   /** Chave `Idempotency-Key` da requisição MCP externa, quando enviada. */

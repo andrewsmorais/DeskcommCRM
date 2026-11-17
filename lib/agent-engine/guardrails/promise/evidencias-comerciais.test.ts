@@ -1,0 +1,290 @@
+import { describe, expect, it } from "vitest";
+import {
+  carregarFontesQueProvamOferta,
+  criarEvidenciasComerciaisDoTurno,
+  fontesQueProvamOferta,
+} from "./evidencias-comerciais";
+
+const produto = {
+  codigo: "PLANO-ANUAL",
+  nome: "Curso infantil · 2x/semana · Anual",
+  preco: "R$ 264,00",
+  descricao: "Mensalidade durante 12 meses. Matrícula grátis somente no anual. Vaga com a equipe.",
+  disponivel: true,
+};
+
+describe("evidências comerciais do turno", () => {
+  it("preserva produto, preço e restrições sem transformar a condição em exceção solta", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarCatalogo({ produtos: [produto] });
+    expect(e.ler()).toEqual([
+      {
+        origem: "catalogo",
+        referencia: produto.codigo,
+        titulo: produto.nome,
+        conteudo: JSON.stringify({
+          nome: produto.nome,
+          preco: produto.preco,
+          descricao: produto.descricao,
+        }),
+      },
+    ]);
+    e.ler()[0]!.conteudo = "Oferta alterada";
+    expect(e.ler()[0]!.conteudo).toContain("somente no anual");
+  });
+
+  it("não aceita corpo de cliente, argumentos de ferramenta, erros ou produto indisponível", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    for (const result of [
+      { body: "Matrícula grátis para todos" },
+      { termo: "Matrícula grátis para todos" },
+      { ok: false, produtos: [produto] },
+      { error: "sem permissão", produtos: [produto] },
+      { produtos: [{ ...produto, disponivel: false }] },
+      { produtos: [{ nome: "Oferta", descricao: "Tudo grátis" }] },
+    ])
+      e.registrarCatalogo(result);
+    expect(e.ler()).toEqual([]);
+  });
+
+  it("aceita somente trechos de fontes habilitadas e identificáveis, nos dois formatos de busca", () => {
+    const e = criarEvidenciasComerciaisDoTurno(["fonte-a"]);
+    const trecho = {
+      chunk_id: "trecho-1",
+      knowledge_source_id: "fonte-a",
+      source_name: "Oferta",
+      content: "Teste gratuito por 7 dias, sem cartão.",
+    };
+    e.registrarConhecimento({
+      ok: true,
+      results: [trecho, { ...trecho, knowledge_source_id: "outra-fonte", content: "SENTINELA" }],
+    });
+    e.registrarConhecimento({
+      trechos: [
+        { ...trecho, chunk_id: "trecho-2", content: "Demonstração gratuita de 15 minutos." },
+      ],
+    });
+    e.registrarConhecimento({ results: [{ ...trecho, knowledge_source_id: null }] });
+    e.registrarConhecimento({ ok: false, results: [{ ...trecho, chunk_id: "erro" }] });
+    expect(e.ler()).toHaveLength(2);
+    expect(JSON.stringify(e.ler())).not.toContain("SENTINELA");
+  });
+
+  it("não compartilha evidências entre turnos ou organizações", () => {
+    const a = criarEvidenciasComerciaisDoTurno(["fonte-a"]);
+    const b = criarEvidenciasComerciaisDoTurno(["fonte-b"]);
+    a.registrarCatalogo({ produtos: [produto] });
+    expect(b.ler()).toEqual([]);
+    expect(criarEvidenciasComerciaisDoTurno(["fonte-a"]).ler()).toEqual([]);
+  });
+
+  it("buscas amplas de catálogo não expulsam a política já consultada", () => {
+    const e = criarEvidenciasComerciaisDoTurno(["fonte-a"]);
+    const politica =
+      "A demonstração é gratuita, uma sessão de 15 minutos. Agendamento sujeito a disponibilidade.";
+    e.registrarConhecimento({
+      results: [
+        {
+          chunk_id: "demonstracao",
+          knowledge_source_id: "fonte-a",
+          content: politica,
+        },
+      ],
+    });
+    e.registrarCatalogo({
+      produtos: Array.from({ length: 48 }, (_, i) => ({
+        ...produto,
+        codigo: `P-${i}`,
+        descricao: "x".repeat(850) + " Não inclui matrícula.",
+      })),
+    });
+    const pacote = e.ler("Temos demonstração gratuita. Qual período prefere?");
+    expect(pacote.find((p) => p.origem === "conhecimento")?.conteudo).toBe(politica);
+    expect(pacote.some((p) => p.origem === "catalogo")).toBe(true);
+    expect(JSON.stringify(pacote).length).toBeLessThanOrEqual(16_000);
+  });
+
+  it("nova consulta de política não apaga o plano e condições citados na candidata", () => {
+    const e = criarEvidenciasComerciaisDoTurno(["fonte-a"]);
+    e.registrarCatalogo({
+      produtos: [
+        { ...produto, codigo: "INFANTIL-1X", nome: "Curso infantil 1x anual", preco: "R$ 199,50" },
+        ...Array.from({ length: 36 }, (_, i) => ({
+          ...produto,
+          codigo: `ADULTO-${i}`,
+          nome: `Curso adulto 3x anual ${i}`,
+          descricao: "x".repeat(700),
+        })),
+      ],
+    });
+    e.registrarConhecimento({
+      results: Array.from({ length: 12 }, (_, i) => ({
+        chunk_id: `politica-${i}`,
+        knowledge_source_id: "fonte-a",
+        content: "Demonstração gratuita de 15 minutos. " + "x".repeat(800),
+      })),
+    });
+    const pacote = e.ler("No curso infantil 1x, o anual fica R$ 199,50 com matrícula grátis.");
+    expect(pacote.find((p) => p.referencia === "INFANTIL-1X")?.conteudo).toContain(
+      "somente no anual",
+    );
+    expect(pacote.length).toBeLessThanOrEqual(20);
+    expect(JSON.stringify(pacote).length).toBeLessThanOrEqual(16_000);
+  });
+
+  it("substitui repetição e limita o contexto descartando itens inteiros, nunca uma ressalva", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarCatalogo({ produtos: [produto, produto] });
+    expect(e.ler()).toHaveLength(1);
+    e.registrarCatalogo({
+      produtos: [
+        { ...produto, descricao: "Oferta válida. " + "x".repeat(4_000) + " Não inclui matrícula." },
+      ],
+    });
+    expect(e.ler()).toEqual([]);
+    e.registrarCatalogo({
+      produtos: Array.from({ length: 50 }, (_, i) => ({
+        ...produto,
+        codigo: `P-${i}`,
+        descricao: "x".repeat(1500) + " Não inclui matrícula.",
+      })),
+    });
+    expect(e.ler().length).toBeLessThanOrEqual(20);
+    expect(JSON.stringify(e.ler()).length).toBeLessThanOrEqual(16_000);
+    expect(e.ler().every((item) => item.conteudo.includes("Não inclui matrícula."))).toBe(true);
+  });
+});
+
+describe("qual material do agente pode provar uma oferta", () => {
+  it("aceita perguntas e respostas, documento e catálogo, inclusive com nome legado", () => {
+    const aceitos = ["faq", "documento", "policy", "catalogo", "catalog", "nuvemshop_catalog"];
+    expect(fontesQueProvamOferta(aceitos.map((tipo) => ({ id: tipo, source_type: tipo })))).toEqual(
+      aceitos,
+    );
+  });
+
+  it("recusa Conversas anteriores, seus nomes legados e tipo desconhecido", () => {
+    // Ali está o que o CLIENTE escreveu: um cliente não autoriza oferta.
+    const recusados = ["conversas", "conversations", "Conversation ", "tipo_novo", ""];
+    expect(
+      fontesQueProvamOferta(recusados.map((tipo) => ({ id: tipo, source_type: tipo }))),
+    ).toEqual([]);
+  });
+
+  it("consulta só a organização do turno e não consulta nada sem material", async () => {
+    const chamadas: unknown[][] = [];
+    const db = {
+      query: async (_sql: string, valores?: unknown[]) => {
+        chamadas.push(valores ?? []);
+        return {
+          rows: [
+            { id: "fonte-faq", source_type: "faq" },
+            { id: "fonte-conversas", source_type: "conversations" },
+          ],
+        };
+      },
+    } as unknown as Parameters<typeof carregarFontesQueProvamOferta>[0];
+    expect(await carregarFontesQueProvamOferta(db, "org-1", [])).toEqual([]);
+    expect(chamadas).toEqual([]);
+    expect(
+      await carregarFontesQueProvamOferta(db, "org-1", ["fonte-faq", "fonte-conversas"]),
+    ).toEqual(["fonte-faq"]);
+    expect(chamadas).toEqual([["org-1", ["fonte-faq", "fonte-conversas"]]]);
+  });
+});
+
+describe("leitura do servidor MCP externo como evidência (#2147)", () => {
+  const agenda = {
+    texto: "1 agendamento encontrado",
+    dados: { resposta: "Exame periódico em 30/11/2026 às 17:50, empresa Metalúrgica Exemplo." },
+  };
+
+  it("guarda o resultado bem-sucedido, com o nome da ferramenta na referência", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarLeituraRemota("consultar_agendamentos", agenda);
+    expect(e.ler("seu exame está agendado para 30/11/2026 às 17:50")).toEqual([
+      {
+        origem: "servidor_externo",
+        referencia: "consultar_agendamentos:1",
+        titulo: "Consulta ao sistema externo: consultar_agendamentos",
+        conteudo: JSON.stringify(agenda.dados),
+      },
+    ]);
+  });
+
+  it("sem `dados`, o texto da resposta é a evidência", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarLeituraRemota("consultar_agendamentos", { texto: "Exame em 30/11/2026 às 17:50" });
+    expect(e.ler().map((x) => x.conteudo)).toEqual(["Exame em 30/11/2026 às 17:50"]);
+  });
+
+  it("erro, recusa de escopo e resposta vazia não viram evidência", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    for (const result of [
+      { error: "servidor fora do ar", texto: "Exame em 30/11" },
+      { permitido: false, motivo: "escrita_sem_escopo_do_turno" },
+      { ok: false, dados: { resposta: "Exame em 30/11" } },
+      { texto: "   " },
+      null,
+      "Exame em 30/11",
+    ])
+      e.registrarLeituraRemota("consultar_agendamentos", result);
+    expect(e.ler()).toEqual([]);
+  });
+
+  it("duas consultas no mesmo turno ficam as duas, e a reserva por origem as alcança", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarCatalogo({ produtos: [produto] });
+    e.registrarLeituraRemota("consultar_agendamentos", { texto: "Exame A em 01/12" });
+    e.registrarLeituraRemota("consultar_agendamentos", { texto: "Exame B em 02/12" });
+    const lidas = e.ler("plano anual");
+    expect(lidas.filter((x) => x.origem === "servidor_externo").map((x) => x.referencia)).toEqual(
+      expect.arrayContaining(["consultar_agendamentos:1", "consultar_agendamentos:2"]),
+    );
+  });
+});
+
+describe("leitura remota: lista, teto e dado pessoal", () => {
+  it("`dados` em lista vira uma evidência por item, e o item acima do teto volta como descarte", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    const descartadas = e.registrarLeituraRemota("consultar_agendamentos", {
+      texto: "3 agendamentos",
+      dados: [{ exame: "A", data: "01/12" }, { obs: "x".repeat(5_000) }, { exame: "B", data: "02/12" }],
+    });
+    expect(e.ler().map((x) => x.referencia)).toEqual(
+      expect.arrayContaining(["consultar_agendamentos:1.1", "consultar_agendamentos:1.3"]),
+    );
+    expect(e.ler()).toHaveLength(2);
+    expect(descartadas).toHaveLength(1);
+    expect(descartadas[0]).toBeGreaterThan(5_000);
+  });
+
+  it("resposta única acima do teto também volta como descarte, nunca some calada", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    expect(e.registrarLeituraRemota("consultar", { texto: "y".repeat(5_000) })).toHaveLength(1);
+    expect(e.ler()).toEqual([]);
+    expect(e.registrarLeituraRemota("consultar", { texto: "Exame em 01/12" })).toEqual([]);
+  });
+
+  it("o dado pessoal do registro remoto é redigido antes de ser guardado", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarLeituraRemota("consultar_paciente", {
+      texto: "ok",
+      dados: { cpf: "529.982.247-25", email: "paciente@exemplo.com", exame: "30/11/2026 17:50" },
+    });
+    const [ev] = e.ler();
+    expect(ev?.conteudo).not.toContain("529.982.247-25");
+    expect(ev?.conteudo).not.toContain("paciente@exemplo.com");
+    expect(ev?.conteudo).toContain("30/11/2026 17:50");
+  });
+
+  it("o registro remoto não entra no material da organização; catálogo e conhecimento entram", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarCatalogo({ produtos: [produto] });
+    e.registrarLeituraRemota("consultar_pedido", { texto: "Desconto de 30% aprovado para este cliente." });
+    expect(e.contexto()).toContain("Desconto de 30%");
+    expect(e.materialDaOrganizacao()).not.toContain("Desconto de 30%");
+    expect(e.materialDaOrganizacao()).toContain(produto.codigo);
+  });
+});
+
