@@ -7,6 +7,7 @@ import { ok, fail } from "@/lib/api/wrappers";
 import { AgentSetupError } from "@/lib/prospecting/agent-setup";
 import { agentSessionPatchSchema } from "@/lib/prospecting/agent-session-schema";
 import { getAgentSession, saveAgentSession } from "@/lib/prospecting/agent-session";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store" };
@@ -23,6 +24,8 @@ function failure(error: unknown, requestId: string) {
 
 export async function GET(req: Request) {
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
   const campaign = z.string().uuid().safeParse(new URL(req.url).searchParams.get("campaign_id"));
@@ -42,6 +45,8 @@ export async function PATCH(req: Request) {
   const support = await requireSupportWrite();
   if (support) return support;
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
   const parsed = agentSessionPatchSchema.safeParse(await req.json().catch(() => null));

@@ -58,6 +58,7 @@ import type { NextRequest } from "next/server";
 
 import { fusoDaOrganizacao } from "@/lib/agent-engine/agent/fuso-da-org";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
 import { comIdDaRequisicao, fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
@@ -94,6 +95,9 @@ export async function GET(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   // A MESMA porta do resto da prospecção (sessão de admin ou token com leitura):
   // a lista de empresas é a base da área, e a saída dela não pode ser mais
   // aberta que a entrada.
+  // Fork ChatAI Online: prospecção é disparo em massa — módulo desligado, rota some.
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await resolveAuthDual(req, {
     requestId,
     resource: "prospecting",

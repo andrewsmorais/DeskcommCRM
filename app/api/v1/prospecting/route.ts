@@ -40,6 +40,7 @@ import {
   withProspectingLock,
   type Campaign,
 } from "@/lib/prospecting/store";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -87,6 +88,8 @@ function failure(error: unknown, requestId: string) {
 }
 export async function GET(req: NextRequest) {
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await resolveAuthDual(req, {
     requestId,
     resource: "prospecting",
@@ -183,6 +186,8 @@ export async function POST(req: NextRequest) {
   const support = await requireSupportWrite();
   if (support) return support;
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await resolveAuthDual(req, {
     requestId,
     resource: "prospecting",

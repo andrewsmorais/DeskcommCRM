@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { requireSupportWrite } from "@/lib/impersonate/support";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
 import { ok, fail } from "@/lib/api/wrappers";
 import { lerCorpoComTeto } from "@/lib/api/corpo-com-teto";
@@ -35,6 +36,9 @@ export async function POST(req: NextRequest) {
   const support = await requireSupportWrite();
   if (support) return support;
   const requestId = randomUUID();
+  // Fork ChatAI Online: prospecção é disparo em massa — módulo desligado, rota some.
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await resolveAuthDual(req, {
     requestId,
     resource: "prospecting",

@@ -44812,6 +44812,127 @@ begin
 end;
 $fn$;
 
+-- ---- prospeccao saida configuravel (migration 0536) ----
+-- manifest: A saída configurável da prospecção ("responda PARAR" na 1ª ou 2ª mensagem): `automatic_sends`, `exit_offered_at` e `exit_offer_message_id` em `prospecting_candidates`, e o gatilho que devolve a contagem quando a mensagem que levava a saída falha. (vindo do produto original: 0705 de lá)
+alter table public.prospecting_candidates
+  add column if not exists automatic_sends smallint not null default 0,
+  add column if not exists exit_offered_at timestamptz;
+
+-- A reserva da saída aponta para a MENSAGEM que leva o rodapé, não para a
+-- tentativa de envio. Quem decide se essa mensagem sai não é quem a contou: o
+-- handler, o watchdog (`redriveQueued`) e o webhook de status gravam `failed`
+-- depois, cada um no seu processo. Quando a mensagem apontada vira `failed`, a
+-- saída NÃO foi oferecida: a contagem e a reserva voltam, e a auditoria ganha a
+-- linha de compensação (o audit log é append-only; o `exit_offered` já gravado
+-- fica, e esta linha diz que ele não se cumpriu). Sem isto, uma mensagem
+-- `queued` que o watchdog falhava deixava a tela em "Saída oferecida" e a
+-- mensagem seguinte saía sem PARAR: o contato nunca recebia a saída.
+-- O gatilho não faz HTTP; só reescreve duas linhas do próprio tenant.
+alter table public.prospecting_candidates
+  add column if not exists exit_offer_message_id uuid references public.messages(id) on delete set null;
+create index if not exists prospecting_candidates_exit_offer_message_idx
+  on public.prospecting_candidates (exit_offer_message_id) where exit_offer_message_id is not null;
+
+create or replace function public.fn_prospeccao_saida_volta_com_a_mensagem()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $fn$
+begin
+  with desfeita as (
+    update public.prospecting_candidates
+       set automatic_sends = greatest(automatic_sends - 1, 0),
+           exit_offered_at = null,
+           exit_offer_message_id = null,
+           updated_at = now()
+     where organization_id = new.organization_id
+       and exit_offer_message_id = new.id
+    returning id
+  )
+  insert into public.api_audit_log (organization_id, action, resource_type, resource_id, bypassed_rls, metadata)
+  select new.organization_id, 'prospecting.exit_offer_withdrawn', 'prospecting_candidate', d.id, true,
+         jsonb_build_object('message_id', new.id, 'conversation_id', new.conversation_id, 'error_code', new.error_code)
+    from desfeita d;
+  return null;
+end; $fn$;
+revoke execute on function public.fn_prospeccao_saida_volta_com_a_mensagem() from public, anon, authenticated;
+
+drop trigger if exists trg_prospeccao_saida_volta_com_a_mensagem on public.messages;
+create trigger trg_prospeccao_saida_volta_com_a_mensagem
+  after update of status on public.messages
+  for each row
+  when (new.status = 'failed' and old.status is distinct from 'failed')
+  execute function public.fn_prospeccao_saida_volta_com_a_mensagem();
+
+-- ---- prospeccao cria empresa (migration 0538) ----
+-- manifest: A empresa prospectada nasce como Empresa (#3198): `contacts.company_id` (FK para `companies`, mesma organização garantida por gatilho) e `companies.website`, `maps_url`, `place_id` (único por organização). (vindo do produto original: 9406 de lá)
+--
+-- O que NÃO está aqui, de propósito: nenhuma coluna para nota, avaliações ou
+-- categoria (decisão 2), nenhuma pessoa "Recepção" (decisão 1), nenhuma mudança
+-- na cascata de LGPD (`companies` já não é alcançada pela 0449, e continua não
+-- sendo) e nenhuma alteração nas telas da fatia 1.
+--
+-- Por que GATILHO e não checagem na escrita: `contacts` tem muitos escritores —
+-- WAHA (`fn_upsert_wa_contact`), importação de planilha, REST, MCP e agora a
+-- prospecção. Checagem no nosso caminho protegeria um deles; o gatilho protege
+-- todos, e é exatamente o caminho que a 0448 abriu para `contacts.person_id`.
+
+-- ---------------------------------------------------------------------------
+-- 1. contacts.company_id — a referência do número à empresa (decisão 1)
+-- ---------------------------------------------------------------------------
+alter table public.contacts
+  add column if not exists company_id uuid references public.companies(id) on delete set null;
+
+create index if not exists idx_contacts_org_company
+  on public.contacts (organization_id, company_id)
+  where company_id is not null;
+
+create or replace function public.fn_contacts_company_same_org()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_company_org uuid;
+begin
+  if new.company_id is null then
+    return new;
+  end if;
+  select organization_id into v_company_org
+    from public.companies where id = new.company_id;
+  if v_company_org is null then
+    raise exception 'contacts.company_id: empresa inexistente';
+  end if;
+  if new.organization_id is distinct from v_company_org then
+    raise exception 'contacts.company_id: organization_id deve coincidir com a empresa';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.fn_contacts_company_same_org() from public, anon;
+
+drop trigger if exists trg_contacts_company_same_org on public.contacts;
+create trigger trg_contacts_company_same_org
+  before insert or update of company_id, organization_id on public.contacts
+  for each row execute function public.fn_contacts_company_same_org();
+
+-- ---------------------------------------------------------------------------
+-- 2. companies: só o que NÃO muda (decisão 2)
+-- ---------------------------------------------------------------------------
+alter table public.companies
+  add column if not exists website text,
+  add column if not exists maps_url text,
+  add column if not exists place_id text;
+
+-- A primeira chave de deduplicação por NEGÓCIO do módulo. Não conflita com
+-- `prospecting_candidates`: é outra tabela, e o candidato continua com o seu
+-- `unique (organization_id, place_id)`. Parcial porque empresa cadastrada à mão
+-- (planilha, CNPJ) não tem `place_id` e não pode colidir consigo mesma.
+create unique index if not exists companies_org_place_id_uidx
+  on public.companies (organization_id, place_id)
+  where place_id is not null;
+
+notify pgrst, 'reload schema';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria
@@ -47806,3 +47927,104 @@ comment on column public.ai_agent_versions.inbound_debounce_ms is
 alter table public.ai_agent_versions
   add constraint ai_agent_versions_inbound_debounce_ms_check
   check (inbound_debounce_ms is null or (inbound_debounce_ms >= 0 and inbound_debounce_ms <= 60000));
+
+-- ---- teto do adiamento do canal (migration 0535) ----
+-- manifest: A campanha de prospecção marca desde quando o número está fora (`prospecting_campaigns.channel_down_since`): a reconexão de segundos não pausa mais a campanha, e há teto para o adiamento. (vindo do produto original: 0738 de lá)
+alter table public.prospecting_campaigns
+  add column if not exists channel_down_since timestamptz;
+
+-- ---- prospeccao campanha por numero (migration 0537) ----
+-- manifest: Uma campanha de prospecção em andamento por NÚMERO, não por organização (#3896): coluna `prospecting_campaigns.channel_session_id`, backfill do jsonb, campanha rodando sem conexão válida é pausada, e o índice único passa a ser por (organização, número). (vindo do produto original: 9221 de lá)
+-- ============================================================================
+-- 9221 — UMA CAMPANHA DE PROSPECÇÃO EM ANDAMENTO POR NÚMERO (issue #3896).
+--
+-- A régua anterior era por ORGANIZAÇÃO: três conexões conectadas dividiam uma
+-- campanha, e o volume diário ficava o de um número só. Cada número tem agente
+-- publicado, região e AQUECIMENTO próprios — e é o aquecimento que exige que a
+-- trava continue existindo, agora com o número como sujeito: duas campanhas no
+-- MESMO número somariam no mesmo teto de primeiras abordagens, que é o que a
+-- plataforma pune com banimento.
+--
+-- Por que COLUNA e não índice por expressão sobre `config->>'channel_session_id'`:
+--   1. dependência de caminho dentro de jsonb (anti-padrão 6 do CLAUDE.md);
+--   2. uma linha `running` com `config` nulo teria chave NULL, e NULL não
+--      colide em índice único — a linha escaparia da trava;
+--   3. o worker precisa contar tentativas POR NÚMERO (join com a campanha do
+--      candidato) a cada rodada, e coluna indexável resolve isso sem expressão.
+--
+-- Sem FK composta para `channel_sessions(organization_id, id)`: a linha do
+-- canal é ARQUIVADA, nunca apagada (por isso `channel_archived` existe), mas
+-- uma FK `no action` passaria a recusar a limpeza de uma conexão antiga por
+-- causa de campanha CONCLUÍDA que ainda aponta para ela. A integridade fica com
+-- `validateConfig` (resolve a conexão por organização, recusa arquivada e de
+-- outra organização) e com a pausa abaixo, que limpa o legado.
+-- ============================================================================
+
+do $$
+declare
+  pausadas integer;
+begin
+  -- 1. A COLUNA. Nula em rascunho nunca iniciado (`config` nulo) — quem inicia
+  --    grava a coluna e o `config` juntos (`activateCampaign`/`resume`).
+  alter table public.prospecting_campaigns
+    add column if not exists channel_session_id uuid;
+
+  -- 2. BACKFILL do jsonb, que é onde o número morava até aqui. A guarda de
+  --    formato evita que um `config` torto (texto qualquer no campo) derrube a
+  --    migration inteira: linha que não é uuid fica nula e cai no passo 3.
+  --    `~*` aceita maiúsculas, como o uuid do Postgres aceita.
+  update public.prospecting_campaigns
+     set channel_session_id = trim(config->>'channel_session_id')::uuid
+   where channel_session_id is null
+     and config is not null
+     and trim(config->>'channel_session_id') ~*
+         '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+  -- 3. CAMPANHA RODANDO SEM CONEXÃO VÁLIDA NÃO PODE CONTINUAR RODANDO.
+  --    Ela não consegue enviar (o worker recusa em `validateConfig`) e, com a
+  --    coluna nula, escaparia da trava do índice — o estado impossível que a
+  --    coluna existe para fechar. Pausar deixa o motivo no cartão e devolve o
+  --    comando a quem opera: nada é enviado, nada é apagado.
+  update public.prospecting_campaigns pc
+     set status = 'paused',
+         error = 'Pausada ao migrar: esta campanha não tinha uma conexão de WhatsApp válida nesta organização. Escolha uma conexão e inicie de novo.',
+         channel_down_since = null,
+         updated_at = now()
+   where pc.status = 'running'
+     and (pc.channel_session_id is null
+          or not exists (select 1
+                           from public.channel_sessions s
+                          where s.organization_id = pc.organization_id
+                            and s.id = pc.channel_session_id
+                            and s.archived_at is null));
+  get diagnostics pausadas = row_count;
+  if pausadas > 0 then
+    raise notice '9221: % campanha(s) running pausada(s) por falta de conexão válida', pausadas;
+  end if;
+
+  -- 4. O ESTADO IMPOSSÍVEL VIRA CONSTRAINT. Sem isto, uma escrita fora da rota
+  --    (import, correção manual) deixa `running` sem número e a linha escapa do
+  --    índice único parcial — a trava existiria no papel e não no banco.
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'prospecting_campaigns_running_tem_canal'
+       and conrelid = 'public.prospecting_campaigns'::regclass
+  ) then
+    alter table public.prospecting_campaigns
+      add constraint prospecting_campaigns_running_tem_canal
+      check (status <> 'running' or channel_session_id is not null) not valid;
+    alter table public.prospecting_campaigns
+      validate constraint prospecting_campaigns_running_tem_canal;
+  end if;
+
+  -- 5. A TROCA DA CHAVE. O índice antigo é por ORGANIZAÇÃO e é ele que produzia
+  --    o 409 "Pause a campanha atual" no banco (23505, que virava 500 genérico).
+  drop index if exists public.prospecting_one_running_org;
+  create unique index if not exists prospecting_one_running_canal
+    on public.prospecting_campaigns(organization_id, channel_session_id)
+    where status = 'running';
+
+  comment on column public.prospecting_campaigns.channel_session_id is
+    'Número de WhatsApp (channel_sessions.id) por onde esta campanha dispara. Chave da trava "uma campanha running por número" (índice prospecting_one_running_canal, #3896). Nulo só em rascunho nunca iniciado; quem inicia grava junto com config.channel_session_id.';
+end $$;
+
