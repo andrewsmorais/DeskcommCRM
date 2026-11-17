@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { SiteEnrichment } from "@/lib/prospecting/site-classify";
 
 export const campaignConfigSchema = z
   .object({
@@ -67,8 +66,6 @@ export interface Prospect {
   reviews: number | null;
   emails: string[];
   socials: string[];
-  /** Veredito do enriquecimento de site (spec 24). Ausente = pendente. */
-  site?: SiteEnrichment | null;
 }
 
 /** The existing Maps integrations normalize Brazilian numbers; never guess a foreign country. */
@@ -114,28 +111,6 @@ export function safePublicLink(value: string | null): string | undefined {
 }
 
 /** Public business context shared by prospecting and the Inbox; no raw provider payload. */
-export const siteEnrichmentSchema = z.object({
-  ver: z.literal(1),
-  classe: z.enum(["agregador", "sem-site", "site-ok", "site-ruim", "ssl-invalido", "fora-do-ar"]),
-  problemas: z.array(z.string().max(60)).max(20),
-  checklist: z.object({
-    tem: z.array(z.string().max(30)).max(12),
-    falta: z.array(z.string().max(30)).max(12),
-  }),
-  final_url: z.string().max(500).nullable(),
-  http_status: z.number().int().min(100).max(599).nullable(),
-  tempo_ms: z.number().int().min(0).max(60000),
-  conteudo_resumo: z.string().max(1500).nullable(),
-  pagespeed: z
-    .object({
-      nota: z.number().int().min(0).max(100),
-      lcp: z.string().max(30).nullable(),
-      medida_em: z.string().max(40),
-    })
-    .nullable(),
-  verificado_em: z.string().max(40),
-});
-export type SiteEnrichmentValidado = z.infer<typeof siteEnrichmentSchema>;
 export const prospectEnrichmentSchema = z.object({
   name: z.string().max(200),
   category: z.string().max(500).nullable(),
@@ -146,6 +121,5 @@ export const prospectEnrichmentSchema = z.object({
   reviews: z.number().int().nonnegative().nullable(),
   emails: z.array(z.string().max(500)).max(5),
   socials: z.array(z.string().max(500)).max(15),
-  site: siteEnrichmentSchema.optional(),
 });
 export type ProspectEnrichment = z.infer<typeof prospectEnrichmentSchema>;
