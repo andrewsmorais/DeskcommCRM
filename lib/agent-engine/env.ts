@@ -226,6 +226,10 @@ const envSchema = z.object({
   FOLLOWUP_AI_MODEL: z.string().min(1).optional(),
   // Loop do agente — teto de steps de tool-calls por run.
   AGENT_MAX_STEPS: z.coerce.number().int().positive().default(8),
+  // Parada do laço depois do envio que o modelo declara final (só inbound_turn).
+  // 'on' (padrão) = para; 'observe' = expõe o parâmetro sem parar; 'off' = o
+  // laço de sempre (uma chamada extra ao modelo só para dizer "terminei").
+  AGENT_STOP_AFTER_FINAL_SEND: z.enum(['off', 'observe', 'on']).default('on'),
   // Teto de mensagens FÍSICAS enviadas ao lead por turno (send_message + send_template
   // somados, bolhas incluídas) — nenhum gate de before-send limita CONTAGEM, só ritmo.
   MAX_SENDS_PER_TURN: z.coerce.number().int().positive().default(3),

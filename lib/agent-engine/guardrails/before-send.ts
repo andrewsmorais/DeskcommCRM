@@ -627,6 +627,16 @@ function semAcento(texto: string): string {
 }
 
 /**
+ * O corpo anuncia uma verificação de agenda que ainda não aconteceu ("vou
+ * verificar os horários e já te aviso"). Lido também pela parada do laço depois
+ * do envio final (`agent/parada-apos-envio.ts`) — a MESMA régua do gate.
+ */
+export function anunciaVerificacaoDeAgenda(body: string): boolean {
+  const b = semAcento(body);
+  return AGENDA_STALL_PATTERN.test(b) || AGENDA_STALL_VER_PATTERN.test(b);
+}
+
+/**
  * Nomes de ferramenta como o modelo os lê num texto de ensino: "`a`", "`a` ou `b`",
  * "`a`, `b` ou `c`". Usado pelo veto de agenda e pelo bloco residente de agenda
  * (`inbound-turn.ts`), que precisam nomear as MESMAS ferramentas do mesmo jeito.

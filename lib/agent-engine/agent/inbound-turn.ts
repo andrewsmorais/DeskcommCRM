@@ -39,6 +39,11 @@ import { currentExecutionBoundary, guardServiceEffect } from '@/lib/atendimento/
 import type pg from 'pg';
 import { z } from 'zod';
 import { auxModelArgs, type AuxModelArgs } from './aux-model-args';
+import {
+  CAMPO_ENCERRA_TURNO,
+  criarParadaAposEnvioFinal,
+  type ModoDaParada,
+} from './parada-apos-envio';
 import type { ChannelAdapter, ChannelSendResult } from '../channel-adapter';
 
 import { withFields, type Logger } from '../obs/logger';
@@ -1230,6 +1235,11 @@ export interface InboundTurnKnobs {
    * testes que não exercitam o teto o omitem sem custo.
    */
   maxSendsPerTurn?: number;
+  /**
+   * Parada do laço depois do envio final declarado (AGENT_STOP_AFTER_FINAL_SEND),
+   * só no `inbound_turn` de produção — ver `parada-apos-envio.ts`. Ausente = 'off'.
+   */
+  paradaAposEnvioFinal?: ModoDaParada;
   /** atraso do reagendamento em veto/queued herdado da F2-06 (SEND_QUEUED_RETRY_MS) */
   queuedRetryDelayMs: number;
   /** circuit breaker de tools por run (F2-15) — env TOOL_BREAKER_* */
@@ -2854,6 +2864,9 @@ async function executarTurnoDoAgente(
   // Spec 15 (Wave 4 lê este flag): true quando open_human_case abriu um caso NESTE
   // turno — aqui só declara e seta; o consumo (ex.: guardrail de promessa) é da Wave 4.
   let openedCaseThisTurn = false;
+  // Retorno agendado com sucesso NESTE turno — a parada do laço depois do envio
+  // final (`parada-apos-envio.ts`) libera a promessa de retorno só com ele.
+  let followupAgendadoNesteTurno = false;
   // Wave 4 — contador do fail-safe do guardrail anti-alucinação (case_promise_without_case):
   // 1º veto no turno é erro-de-ensino (o modelo re-tenta); persistir uma 2ª vez aciona o
   // auto-abre-caso (ver send_message.execute). Por turno (closure), nunca cross-turno.
@@ -3890,6 +3903,7 @@ async function executarTurnoDoAgente(
           if (!res.ok) {
             return res; // erro de ensino (payload / data no passado / fora da janela)
           }
+          followupAgendadoNesteTurno = true;
           return {
             ok: true,
             status: 'agendado',
@@ -4087,6 +4101,18 @@ async function executarTurnoDoAgente(
     if (!capabilitiesOf(provider).requiresTemplates) {
       delete rawTools.send_template;
     }
+  }
+
+  // Parada do laço depois do envio final declarado (`parada-apos-envio.ts`). Só o
+  // `inbound_turn` de produção: follow-up, resposta de caso e prévias seguem com o
+  // schema e o laço de sempre. Com o knob em 'off' nada aqui muda o prefixo.
+  const modoDaParada: ModoDaParada = deps.knobs.paradaAposEnvioFinal ?? 'off';
+  const paradaElegivel = !preview && job?.kind === 'inbound_turn';
+  if (modoDaParada !== 'off' && paradaElegivel && rawTools.send_message) {
+    rawTools.send_message = {
+      ...rawTools.send_message,
+      inputSchema: AGENT_TOOL_DEFS.send_message.inputSchema.extend(CAMPO_ENCERRA_TURNO),
+    };
   }
 
   // 2B-tools: tools do catálogo MCP habilitadas NA TELA entram no run (audit +
@@ -4506,9 +4532,19 @@ async function executarTurnoDoAgente(
         // Rascunho: a resposta é o send_message ACEITO; a etapa seguinte só
         // "encerrava". Aceito, e não chamado: o envio vetado pela cadeia
         // before_send volta ao modelo para ele reescrever (o 1º veto ensina).
+        // Turno de resposta com o knob em 'on': para depois do envio final
+        // declarado, se nenhum corpo anunciar ação que ainda falta.
         ...(preview?.kind === 'assisted'
           ? { pararQuando: () => preview.result.candidates.length > 0 }
-          : {}),
+          : modoDaParada === 'on' && paradaElegivel
+            ? {
+                pararQuando: criarParadaAposEnvioFinal({
+                  handoffKeywords: agentConfig?.handoffKeywords ?? [],
+                  casoAbertoNesteTurno: () => openedCaseThisTurn,
+                  retornoAgendadoNesteTurno: () => followupAgendadoNesteTurno,
+                }),
+              }
+            : {}),
         ...(agentConfig !== null
           ? {
               model: agentConfig.model,
@@ -4521,6 +4557,19 @@ async function executarTurnoDoAgente(
       },
       { registry: deps.registry, log: runLog },
     );
+
+    // Um laço que terminou em 'tool-calls' abaixo do teto só pode ter parado pelo
+    // predicado da parada depois do envio final: é a linha que conta as paradas.
+    if (
+      modoDaParada === 'on' &&
+      paradaElegivel &&
+      turn.result.finishReason === 'tool-calls' &&
+      (turn.result.steps?.length ?? 0) < maxSteps
+    ) {
+      runLog.info('laço encerrado após envio final declarado', {
+        passos: turn.result.steps?.length ?? 0,
+      });
+    }
 
     // F4-04: correlação dos dois sinais do MESMO turno — jailbreak ALTO + tentativa de
     // promessa fora de tabela (F4-01). Ambos estão determinados aqui (o jailbreak rodou na
