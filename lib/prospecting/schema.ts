@@ -51,9 +51,27 @@ export const prospectingInputSchema = z.discriminatedUnion("action", [
   // ARQUIVAR tira da lista a campanha que falhou ou veio zerada; NÃO exclui.
   z.object({ action: z.literal("arquivar"), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal("desarquivar"), id: z.string().uuid() }).strict(),
+  z
+    .object({
+      action: z.literal("select"),
+      id: z.string().uuid(),
+      candidate_ids: z.array(z.string().uuid()).min(1).max(5000),
+      selected: z.boolean(),
+    })
+    .strict(),
 ]);
 export type CampaignConfig = z.infer<typeof campaignConfigSchema>;
 export type SearchInput = z.infer<typeof searchSchema>;
+/** Motivo gravado quando o operador desmarca uma empresa na preparação da campanha. */
+export const RAZAO_NAO_SELECIONADA = "Não selecionada pelo operador.";
+/**
+ * Decisão da ativação: um candidato que o operador não marcou nunca entra na
+ * fila — vai direto para "Não abordado", com o motivo descritivo. O padrão é
+ * `selected=true` (a escolha nasce marcada), então quem não mexer nada muda.
+ */
+export function razaoDeAbordarSelecionado(selected: boolean): string | null {
+  return selected ? null : RAZAO_NAO_SELECIONADA;
+}
 export interface Prospect {
   key: string;
   name: string;

@@ -35089,6 +35089,7 @@ notify pgrst, 'reload schema';
 alter table public.prospecting_candidates add column if not exists suppression_salt bytea;
 alter table public.prospecting_candidates add column if not exists suppression_place bytea;
 alter table public.prospecting_candidates add column if not exists suppression_phone bytea;
+alter table public.prospecting_candidates add column if not exists selected boolean not null default true;
 create index if not exists prospecting_suppressed_org
   on public.prospecting_candidates(organization_id) where suppression_salt is not null;
 

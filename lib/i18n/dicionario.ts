@@ -19456,6 +19456,13 @@ export const DICIONARIO: Traducoes = {
   "Fotos do cliente": { es: "Fotos del cliente" },
   "Ver as fotos que o cliente envia": { es: "Ver las fotos que envía el cliente" },
   "Ligado, o agente entende o que está na foto. Desligado, ele só sabe que chegou uma foto e pode pedir que o cliente descreva em texto. Se nenhum agente da empresa vê fotos, a leitura paga da foto deixa de ser feita.": { es: "Activado, el agente entiende lo que hay en la foto. Desactivado, solo sabe que llegó una foto y puede pedir al cliente que la describa por texto. Si ningún agente de la empresa ve fotos, la lectura pagada de la foto deja de hacerse." },
+  "Seleção da fila atualizada.": { es: "Selección de la fila actualizada." },
+  "Somente as empresas marcadas entram na fila ao iniciar as abordagens.": { es: "Solo las empresas marcadas entran a la fila al iniciar los contactos." },
+  "Marcar todas": { es: "Marcar todas" },
+  "Desmarcar todas": { es: "Desmarcar todas" },
+  "Alternar seleção de todas as empresas": { es: "Alternar selección de todas las empresas" },
+  "Abordar": { es: "Contactar" },
+  "Marcar empresa para abordagem": { es: "Marcar empresa para contacto" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

@@ -37,6 +37,7 @@ type Candidate = {
   data: Prospect;
   status: string;
   attempted_at: string | null;
+  selected?: boolean;
   progress: string;
   message_status: string | null;
   error: string | null;
@@ -234,6 +235,16 @@ export function ProspectingClient() {
   }
   const motorEscolhido = motor ?? data?.provider ?? "apify";
   const semChave = motorEscolhido === "local-http";
+  const canSelect =
+    !!campaign && campaign.status === "draft" && campaign.search_status === "succeeded";
+  const allSelected = canSelect && candidates.every((c) => c.selected !== false);
+  async function setSelection(candidateIds: string[], selected: boolean) {
+    if (!campaign) return;
+    await perform(
+      { action: "select", id: campaign.id, candidate_ids: candidateIds, selected },
+      t("Seleção da fila atualizada."),
+    );
+  }
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -1004,17 +1015,62 @@ export function ProspectingClient() {
               {candidates.length > 0 && (
                 <Card className="overflow-hidden">
                   <div className="border-b p-5">
-                    <h2 className="text-lg font-semibold">{t("3. Acompanhar resultados")}</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {t(
-                        "Encontrado é diferente de qualificado. A qualificação depende do que for confirmado na conversa.",
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold">{t("3. Acompanhar resultados")}</h2>
+                        <p className="text-sm text-muted-foreground">
+                          {t(
+                            "Encontrado é diferente de qualificado. A qualificação depende do que for confirmado na conversa.",
+                          )}
+                        </p>
+                      </div>
+                      {canSelect && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {t(
+                              "Somente as empresas marcadas entram na fila ao iniciar as abordagens.",
+                            )}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={busy || allSelected}
+                            onClick={() => setSelection(candidates.map((c) => c.id), true)}
+                          >
+                            {t("Marcar todas")}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={busy || !allSelected}
+                            onClick={() => setSelection(candidates.map((c) => c.id), false)}
+                          >
+                            {t("Desmarcar todas")}
+                          </Button>
+                        </div>
                       )}
-                    </p>
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="border-b bg-muted/30 text-xs text-muted-foreground">
                         <tr>
+                          {canSelect && (
+                            <th className="p-4">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={allSelected}
+                                  disabled={busy}
+                                  onChange={() => setSelection(candidates.map((c) => c.id), !allSelected)}
+                                  aria-label={t("Alternar seleção de todas as empresas")}
+                                />
+                                <span>{t("Abordar")}</span>
+                              </label>
+                            </th>
+                          )}
                           <th className="p-4">{t("Empresa")}</th>
                           <th className="p-4">{t("Informações")}</th>
                           <th className="p-4">{t("Progresso")}</th>
@@ -1024,6 +1080,17 @@ export function ProspectingClient() {
                       <tbody>
                         {candidates.map((c) => (
                           <tr key={c.id} className="border-b last:border-0">
+                            {canSelect && (
+                              <td className="p-4 align-top">
+                                <input
+                                  type="checkbox"
+                                  checked={c.selected !== false}
+                                  disabled={busy}
+                                  onChange={() => setSelection([c.id], c.selected === false)}
+                                  aria-label={t("Marcar empresa para abordagem")}
+                                />
+                              </td>
+                            )}
                             <td className="p-4 align-top">
                               <p className="font-medium">{c.data.name}</p>
                               <p className="mt-1 text-xs text-muted-foreground">

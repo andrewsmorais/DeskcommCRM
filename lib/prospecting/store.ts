@@ -13,6 +13,7 @@ import { decryptWebhookSecret, encryptWebhookSecret } from "@/lib/webhooks/secre
 import {
   campaignConfigSchema,
   normalizeProspect,
+  razaoDeAbordarSelecionado,
   type CampaignConfig,
   type SearchInput,
   type Prospect,
@@ -51,6 +52,7 @@ export interface Candidate {
   campaign_id: string;
   data: Prospect;
   status: string;
+  selected: boolean;
   phone: string | null;
   contact_id: string | null;
   lead_id: string | null;
@@ -337,6 +339,14 @@ export async function activateCampaign(
       )
     ).rows;
     for (const p of candidates) {
+      const selectionReason = razaoDeAbordarSelecionado(p.selected);
+      if (selectionReason) {
+        await db.query(
+          "update prospecting_candidates set status='skipped',error=$3 where organization_id=$1 and id=$2",
+          [org, p.id, selectionReason],
+        );
+        continue;
+      }
       if (!p.phone) {
         await db.query(
           "update prospecting_candidates set status='skipped',error='Sem telefone brasileiro válido.' where organization_id=$1 and id=$2",
