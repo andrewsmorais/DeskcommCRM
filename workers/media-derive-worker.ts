@@ -4,6 +4,7 @@
  * messages.media_derived_text. Camada UNIVERSAL da Onda 3 — o texto alimenta
  * qualquer modelo de chat. Retry/backoff delegados ao drain (padrão do repo).
  */
+import { MENSAGEM_REDIGIDA } from "@/lib/lgpd/cascata";
 import { avaliarPedidosFalados } from "@/workers/media-derive-worker.pedidos";
 import { generateText } from "ai";
 import type pg from "pg";
@@ -275,9 +276,21 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
     const deps = buildDeriveDeps(llm, openaiKey, row.organization_id, admin, baseUrlDaVisao, chaveEhDaInstalacao);
 
     const text = await deriveMediaText(msg.type, buffer, msg.media_mime ?? "application/octet-stream", deps);
-    await admin.from("messages")
+    // A transcrição só é gravada em mensagem que NÃO foi anonimizada no meio do
+    // caminho: regravar a linha redigida devolveria o que a cascata de LGPD
+    // apagou. `isdistinct` e não `neq`: `NULL <> '...'` é NULL, e o `neq`
+    // recusaria toda nota de voz (body vazio).
+    const { data: gravados, error: erroDaGravacao } = await admin
+      .from("messages")
       .update({ media_derived_text: text, media_derived_status: "ready" })
-      .eq("id", msg.id).eq("organization_id", msg.organization_id);
+      .eq("id", msg.id)
+      .eq("organization_id", msg.organization_id)
+      .filter("body", "isdistinct", MENSAGEM_REDIGIDA)
+      .select("id");
+    if (erroDaGravacao) return { consumer_key, status: "error", detail: erroDaGravacao.message };
+    if (!gravados || gravados.length === 0) {
+      return { consumer_key, status: "skipped", detail: "message_redacted" };
+    }
     // ─── O pedido DITO no áudio, agora que ele virou texto ──────────────────
     // A cascata dos pedidos sobre a transcrição — a regra de hoje e, só onde
     // ela disse não, o Jev (quando a empresa o ligou). Só ÁUDIO, só ENTRADA e

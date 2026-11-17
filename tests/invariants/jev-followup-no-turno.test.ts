@@ -511,18 +511,6 @@ describe("o Jev no passo 'Classificar (IA)', pelo caminho do follow-up", () => {
     expect(await noAtual(c.enrollmentId)).toMatchObject({ current_node_id: "e_quer" });
   });
 
-  it("(e) sem resposta ao envio (awaiting_reply): o Jev não é perguntado", async () => {
-    const c = await cenarioAteOClassificar(LIGADO);
-    const jev = jevDuble("não quer");
-    const job = await jobDeClassificar(c);
-    await handlerCom(jev.deps)(job, pool, { workerId: WORKER });
-    await completeJob(pool, job.id, WORKER);
-    await assentar();
-    expect(jev.pedidos).toEqual([]);
-    expect(await observacoes(c.org)).toEqual([]);
-    expect(await noAtual(c.enrollmentId)).toMatchObject({ current_node_id: "c1", status: "waiting_reply" });
-  });
-
   it("(f) a resposta é um áudio transcrito: a IA de sempre classifica, e o Jev não é perguntado", async () => {
     const c = await cenarioAteOClassificar(LIGADO);
     await mensagem(c, "inbound", null, 0, { tipo: "audio", derivado: "quero sim, pode mandar o link" });

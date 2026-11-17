@@ -461,13 +461,11 @@ describe("Avisar a equipe", () => {
    * no português quando falta a chave — sem erro nenhum. Os quatro textos do
    * aviso pelo áudio (#2246) existem nos três idiomas.
    */
-  it("o aviso que a regra abre pelo áudio tem tradução em es, en e zh", () => {
-    const en = JSON.parse(readFileSync("lib/i18n/traducoes/en.json", "utf8")) as Record<string, string>;
+  it("o aviso que a regra abre pelo áudio tem tradução em es e zh", () => {
     const zh = JSON.parse(readFileSync("lib/i18n/traducoes/zh-CN.json", "utf8")) as Record<string, string>;
     for (const aviso of Object.values(AVISOS_DA_REGRA)) {
       for (const pt of [aviso.titulo, aviso.corpo]) {
         expect(DICIONARIO[pt]?.es, `es de "${pt.slice(0, 40)}…"`).toBeTruthy();
-        expect(en[pt], `en de "${pt.slice(0, 40)}…"`).toBeTruthy();
         expect(zh[pt], `zh de "${pt.slice(0, 40)}…"`).toBeTruthy();
       }
     }

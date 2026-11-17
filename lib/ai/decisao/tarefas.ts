@@ -363,21 +363,6 @@ export function tarefaPodeDecidir(tarefa: Pick<TarefaDoJev, "soObserva">): boole
 }
 
 /**
- * A chamada da conferência de campo (#2234): também sem ponto no registro — o
- * degrau 2 do `crm_update_lead` é quem pergunta, e as perguntas são por CAMPO,
- * não por tarefa (`./campo-do-negocio`). Mesmo enquadramento de
- * `PEDIDOS_DO_CLIENTE`, incluindo o `porQue` como PERGUNTA: a chamada sai só
- * quando há campo para conferir, e a falha não muda nada no atendimento.
- */
-export const CONFERENCIA_DE_CAMPO = {
-  purpose: "jev_campo_do_negocio",
-  rotulo: "Conferir o campo antes de a IA gravar",
-  porQue:
-    "O Jev foi perguntado se o cliente disse, nas mensagens ainda sem resposta deste turno, o valor do campo personalizado do negócio que a IA ia gravar.",
-  porQueNaFalha: "O Jev não respondeu: o campo foi gravado como antes, sem a conferência.",
-} as const;
-
-/**
  * A chamada que pergunta os dois pedidos (`./pedidos.ts`) precisa de um
  * `purpose` na linha dela em `llm_calls`. Não é um ponto do registro: não há IA
  * de sempre para escolher ali — a regra de hoje não usa modelo —, e um ponto
@@ -420,7 +405,6 @@ export const SINAL_DE_URGENCIA = {
  * ponto, ou o dos pedidos. `null` quando não é chamada do Jev.
  */
 export function rotuloDaChamadaDoJev(purpose: string): string | null {
-  if (purpose === CONFERENCIA_DE_CAMPO.purpose) return CONFERENCIA_DE_CAMPO.rotulo;
   if (purpose === PEDIDOS_DO_CLIENTE.purpose) return PEDIDOS_DO_CLIENTE.rotulo;
   if (purpose === SINAL_DE_URGENCIA.purpose) return SINAL_DE_URGENCIA.rotulo;
   return TAREFAS_DO_JEV.find((t) => t.ponto === purpose)?.rotulo ?? null;

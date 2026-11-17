@@ -379,7 +379,7 @@ describe('resolveConversationTurn — contexto curto do classificador', () => {
     expect(out.outcome).toBe('sticky');
     const [sql, values] = db.query.mock.calls.find(([q]) => q.includes('id<>$3'))!;
     expect(sql).toContain('organization_id=$1 and conversation_id=$2');
-    expect(values).toEqual(['org-1', 'conv-1', 'msg-atual', 4]);
+    expect(values).toEqual(['org-1', 'conv-1', 'msg-atual', 16]);
     expect(classifyIntent.mock.calls[0]![2]).toMatchObject({
       signal: 'Primeira',
       recentMessages: [

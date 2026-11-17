@@ -131,7 +131,7 @@ create trigger trg_fechar_aviso_do_jev_ao_bloquear
  for each row when (new.is_blocked and old.is_blocked is distinct from true)
  execute function public.fn_fechar_aviso_do_jev_ao_bloquear();
 
--- 3. As decisões do roteador do Jev (0547 de lá).
+-- 4. As decisões do roteador do Jev (0547 de lá).
 alter table public.jev_observacoes add column if not exists intencao_jev text;
 alter table public.jev_observacoes add column if not exists intencao_atual text;
 

@@ -295,10 +295,9 @@ describe("a tarefa do follow-up", () => {
     expect(rotuloDaChamadaDoJev("followup_classify")).toBe(TAREFA_DO_FOLLOWUP.rotulo);
   });
 
-  it("tarefaPodeDecidir: só o follow-up e a conferência de fato não podem", () => {
+  it("tarefaPodeDecidir: só o follow-up não pode", () => {
     expect(TAREFAS_DO_JEV.filter((t) => !tarefaPodeDecidir(t)).map((t) => t.id)).toEqual([
       TAREFA_DO_FOLLOWUP.id,
-      "afirmacao_de_fato",
     ]);
   });
 
