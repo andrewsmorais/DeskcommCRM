@@ -233,9 +233,7 @@ describe("gradual outreach", () => {
     expect(mocks.generate).not.toHaveBeenCalled();
     expect(mocks.send).not.toHaveBeenCalled();
   });
-  // Fork ChatAI Online: sem dias próprios da prospecção por conexão (0630 do
-  // original); a prospecção usa a janela de disparo de sempre.
-  it.skip("pede o ritmo como prospecção: o gate genérico não veta o domingo que os dias próprios liberaram", async () => {
+  it("pede o ritmo como prospecção: o gate genérico não veta o domingo que os dias próprios liberaram", async () => {
     await sendNextCandidate({} as never, database() as never, {} as never, campaign);
     // Sem a flag, o veto de domingo do gate genérico barra a abordagem que o
     // portão próprio deixou passar: a prospecção de domingo é reagendada para
@@ -252,7 +250,7 @@ describe("gradual outreach", () => {
     expect(mocks.generate).not.toHaveBeenCalled();
   });
   it("stops outside the configured window", async () => {
-    mocks.open.mockReturnValue(false);
+    mocks.prospeccaoAberta.mockReturnValue(false);
     const db = database();
     await sendNextCandidate({} as never, db as never, {} as never, campaign);
     expect(mocks.send).not.toHaveBeenCalled();

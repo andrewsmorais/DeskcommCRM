@@ -48028,3 +48028,38 @@ begin
     'Número de WhatsApp (channel_sessions.id) por onde esta campanha dispara. Chave da trava "uma campanha running por número" (índice prospecting_one_running_canal, #3896). Nulo só em rascunho nunca iniciado; quem inicia grava junto com config.channel_session_id.';
 end $$;
 
+-- ---- dias da prospecção por conexão (migration 0539) ----
+-- 0539 (0642 no original): dias da prospecção por conexão.
+
+-- Coluna + backfill só quando a coluna ainda não existe: o `update.sh` reaplica o
+-- apêndice do baseline em toda atualização, e um backfill solto reescreveria a
+-- escolha do operador a cada uma. A troca da constraint vai no mesmo bloco: o
+-- `update.sh` roda sem ON_ERROR_STOP, e drop/add soltos podiam deixar a tabela
+-- sem a guarda (ver a 0495).
+do $dias$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'channel_knobs'
+      and column_name = 'prospeccao_dias'
+  ) then
+    alter table public.channel_knobs
+      add column prospeccao_dias smallint[] not null default '{0,1,2,3,4,5,6}';
+    update public.channel_knobs
+      set prospeccao_dias = '{1,2,3,4,5,6}'
+      where allow_sunday is false;
+  end if;
+  alter table public.channel_knobs
+    drop constraint if exists channel_knobs_prospeccao_dias_validos;
+  alter table public.channel_knobs
+    add constraint channel_knobs_prospeccao_dias_validos
+    check (
+      prospeccao_dias <@ '{0,1,2,3,4,5,6}'::smallint[]
+      and cardinality(prospeccao_dias) between 1 and 7
+    );
+end $dias$;
+
+comment on column public.channel_knobs.prospeccao_dias is
+  'Dias da semana em que a PROSPECÇÃO pode abordar (0=domingo … 6=sábado). Só a prospecção lê isto; resposta, disparo em massa e retomada seguem allow_sunday. Default = todos os dias (comportamento anterior).';
+

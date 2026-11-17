@@ -41,6 +41,12 @@ export interface PacingInput {
    * Omitir = `true`: nenhum chamador existente muda de comportamento.
    */
   banRisk?: boolean;
+  /**
+   * Esta decisão é para a PROSPECÇÃO fria? `true` lê os dias próprios da
+   * prospecção (`knobs.prospeccaoDias`) em vez do `allowSunday` compartilhado.
+   * As horas continuam as da janela. Omitir = comportamento de sempre.
+   */
+  prospeccao?: boolean;
   /** [0,1) — injetável nos testes; default Math.random. */
   rng?: () => number;
 }
@@ -58,16 +64,22 @@ export function decidePacing(input: PacingInput): PacingDecision {
   const rng = input.rng ?? Math.random;
   const banRisk = input.banRisk ?? true; // default preserva o comportamento atual
   const wall = wallClock(now, knobs.timezone);
+  const diasProspeccao = input.prospeccao ? diasValidos(knobs.prospeccaoDias) : null;
 
-  if (!insideWindow(wall, knobs)) {
-    const nextAllowedAt = addMs(nextWindowOpen(now, knobs), jitterOf(rng, knobs));
+  if (!insideWindow(wall, knobs, diasProspeccao)) {
+    const nextAllowedAt = addMs(nextWindowOpen(now, knobs, diasProspeccao), jitterOf(rng, knobs));
+    const dias = diasProspeccao
+      ? `, dias ${diasParaTexto(diasProspeccao)}`
+      : knobs.allowSunday
+        ? ''
+        : ', sem domingo';
     return {
       allow: false,
       code: 'outside_window',
       nextAllowedAt,
       reason:
-        `fora da janela de envio (${knobs.windowStartHour}h-${knobs.windowEndHour}h` +
-        `${knobs.allowSunday ? '' : ', sem domingo'}, ${knobs.timezone}); ` +
+        `fora da janela de ${diasProspeccao ? 'prospecção' : 'envio'} (${knobs.windowStartHour}h-${knobs.windowEndHour}h` +
+        `${dias}, ${knobs.timezone}); ` +
         `agende para ${formatInTz(nextAllowedAt, knobs.timezone)} (abertura da janela + jitter)`,
     };
   }
@@ -86,7 +98,7 @@ export function decidePacing(input: PacingInput): PacingDecision {
   const wCap = warmupCapFor(ageDays, knobs.warmupDailyCaps);
   const effectiveCap = Math.min(wCap ?? Infinity, crmDailyLimit ?? Infinity);
   if (state.sentToday >= effectiveCap) {
-    const nextAllowedAt = addMs(nextDayOpen(now, knobs), jitterOf(rng, knobs));
+    const nextAllowedAt = addMs(nextDayOpen(now, knobs, diasProspeccao), jitterOf(rng, knobs));
     const isWarmup = wCap !== null && wCap < (crmDailyLimit ?? Infinity);
     return {
       allow: false,
@@ -211,29 +223,70 @@ export function proximaAberturaDaJanela(
   return addMs(nextWindowOpen(now, knobs), jitterOf(rng, knobs));
 }
 
-function insideWindow(wall: Wall, knobs: PacingKnobs): boolean {
-  if (!knobs.allowSunday && wall.weekday === 'Sun') return false;
+/**
+ * A janela da PROSPECÇÃO está aberta agora? Mesmas horas da janela, dias
+ * próprios (`prospeccaoDias`) no lugar do domingo compartilhado.
+ */
+export function janelaDeProspeccaoAberta(now: Date, knobs: PacingKnobs): boolean {
+  return insideWindow(wallClock(now, knobs.timezone), knobs, diasValidos(knobs.prospeccaoDias));
+}
+
+/** Próxima abertura da janela da PROSPECÇÃO + jitter. */
+export function proximaAberturaDaProspeccao(
+  now: Date,
+  knobs: PacingKnobs,
+  rng: () => number = Math.random,
+): Date {
+  return addMs(nextWindowOpen(now, knobs, diasValidos(knobs.prospeccaoDias)), jitterOf(rng, knobs));
+}
+
+/** Dia da semana na convenção JS (`getDay`): 0=domingo … 6=sábado. */
+const DIA_POR_NOME: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const NOME_CURTO_DO_DIA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'] as const;
+
+/** Lista de dias para a mensagem do veto — só exibição. */
+function diasParaTexto(dias: number[]): string {
+  return dias.map((d) => NOME_CURTO_DO_DIA[d] ?? String(d)).join(',');
+}
+
+/**
+ * Vazio ou ausente = regra antiga (`allowSunday`): um array vazio seria "nenhum
+ * dia envia", fila parada em silêncio — e a busca da próxima abertura não
+ * terminaria nunca.
+ */
+function diasValidos(dias?: number[] | null): number[] | null {
+  const ok = (dias ?? []).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  return ok.length > 0 ? ok : null;
+}
+
+function diaPermitido(weekday: string, knobs: PacingKnobs, dias: number[] | null): boolean {
+  if (dias) return dias.includes(DIA_POR_NOME[weekday] ?? -1);
+  return knobs.allowSunday || weekday !== 'Sun';
+}
+
+function insideWindow(wall: Wall, knobs: PacingKnobs, dias: number[] | null = null): boolean {
+  if (!diaPermitido(wall.weekday, knobs, dias)) return false;
   return wall.h >= knobs.windowStartHour && wall.h < knobs.windowEndHour;
 }
 
-/** Próxima abertura de janela ESTRITAMENTE depois de `now` (pula domingo se evitado). */
-function nextWindowOpen(now: Date, knobs: PacingKnobs): Date {
+/** Próxima abertura de janela ESTRITAMENTE depois de `now` (pula os dias vetados). */
+function nextWindowOpen(now: Date, knobs: PacingKnobs, dias: number[] | null = null): Date {
   const w = wallClock(now, knobs.timezone);
   for (let add = 0; ; add += 1) {
     // Date.UTC normaliza overflow de dia/mês em instantFromWall.
     const candidate = instantFromWall(w.y, w.mo, w.d + add, knobs.windowStartHour, knobs.timezone);
     if (candidate.getTime() <= now.getTime()) continue;
-    if (!knobs.allowSunday && wallClock(candidate, knobs.timezone).weekday === 'Sun') continue;
+    if (!diaPermitido(wallClock(candidate, knobs.timezone).weekday, knobs, dias)) continue;
     return candidate;
   }
 }
 
 /** Abertura do PRÓXIMO dia permitido (cap diário reseta na meia-noite local). */
-function nextDayOpen(now: Date, knobs: PacingKnobs): Date {
+function nextDayOpen(now: Date, knobs: PacingKnobs, dias: number[] | null = null): Date {
   const w = wallClock(now, knobs.timezone);
   for (let add = 1; ; add += 1) {
     const candidate = instantFromWall(w.y, w.mo, w.d + add, knobs.windowStartHour, knobs.timezone);
-    if (!knobs.allowSunday && wallClock(candidate, knobs.timezone).weekday === 'Sun') continue;
+    if (!diaPermitido(wallClock(candidate, knobs.timezone).weekday, knobs, dias)) continue;
     return candidate;
   }
 }

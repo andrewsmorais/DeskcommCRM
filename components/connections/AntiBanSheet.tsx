@@ -41,11 +41,23 @@ interface FormState {
   jitter_s: string;
   daily_message_limit: string;
   allow_sunday: boolean;
+  /** Dias em que a PROSPECÇÃO pode abordar (0=dom … 6=sáb). */
+  prospeccao_dias: number[];
   timezone: string;
   /** `yyyy-mm-dd` do input date; '' = não declarado (o motor trata como idade 0). */
   numero_em_uso_desde: string;
   pular_aquecimento: boolean;
 }
+
+const DIAS_DA_SEMANA = [
+  { n: 1, rotulo: "Seg" },
+  { n: 2, rotulo: "Ter" },
+  { n: 3, rotulo: "Qua" },
+  { n: 4, rotulo: "Qui" },
+  { n: 5, rotulo: "Sex" },
+  { n: 6, rotulo: "Sáb" },
+  { n: 0, rotulo: "Dom" },
+] as const;
 
 function fromItem(item: PacingKnobsItem): FormState {
   const o = item.overrides;
@@ -59,6 +71,9 @@ function fromItem(item: PacingKnobsItem): FormState {
         ? String(item.channel_session.daily_message_limit)
         : "",
     allow_sunday: o?.allow_sunday ?? item.defaults.allowSunday,
+    prospeccao_dias: o?.prospeccao_dias?.length
+      ? [...o.prospeccao_dias]
+      : [...(item.effective.prospeccaoDias ?? [0, 1, 2, 3, 4, 5, 6])],
     timezone: o?.timezone ?? "",
     numero_em_uso_desde: item.warmup.number_activated_at
       ? item.warmup.number_activated_at.slice(0, 10)
@@ -145,6 +160,8 @@ export function AntiBanSheet({ item, canWrite, onClose }: Props) {
         // escolha permanente — foi assim que uma instalação ficou muda todo
         // domingo. Ver `valorDeOverride`.
         allow_sunday: valorDeOverride(form.allow_sunday, item.defaults.allowSunday),
+        // Nunca vazio: sem nenhum dia marcado o botão Salvar fica desligado.
+        prospeccao_dias: [...form.prospeccao_dias].sort((a, b) => a - b),
         timezone: form.timezone.trim() === "" ? null : form.timezone.trim(),
         ...(form.daily_message_limit.trim() !== ""
           ? { daily_message_limit: Math.round(Number(form.daily_message_limit)) }
@@ -275,6 +292,45 @@ export function AntiBanSheet({ item, canWrite, onClose }: Props) {
             />
           </fieldset>
 
+          {/* DIAS DA PROSPECÇÃO (vindo do produto original): separados do domingo
+              acima, que vale para a resposta. Responder domingo e prospectar
+              domingo são decisões diferentes. */}
+          <fieldset className="flex flex-col gap-2" data-testid="dias-da-prospeccao">
+            <Label>{t("Dias da prospecção")}</Label>
+            <div className="flex flex-wrap gap-2">
+              {DIAS_DA_SEMANA.map((dia) => {
+                const marcado = form.prospeccao_dias.includes(dia.n);
+                return (
+                  <label
+                    key={dia.n}
+                    className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      disabled={!canWrite}
+                      onChange={() =>
+                        set({
+                          prospeccao_dias: marcado
+                            ? form.prospeccao_dias.filter((d) => d !== dia.n)
+                            : [...form.prospeccao_dias, dia.n],
+                        })
+                      }
+                    />
+                    {t(dia.rotulo)}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {form.prospeccao_dias.length === 0
+                ? t("Marque pelo menos um dia.")
+                : t(
+                    "A prospecção só aborda empresas nestes dias, no mesmo horário da janela acima. A resposta a quem escreveu segue o domingo de cima.",
+                  )}
+            </p>
+          </fieldset>
+
           <fieldset className="flex flex-col gap-2">
             <Label>{t("Ritmo entre envios (segundos)")}</Label>
             <div className="flex items-center gap-2">
@@ -384,7 +440,7 @@ export function AntiBanSheet({ item, canWrite, onClose }: Props) {
             {canWrite ? t("Cancelar") : t("Fechar")}
           </Button>
           {canWrite ? (
-            <Button onClick={handleSave} disabled={update.isPending} data-testid="anti-ban-save">
+            <Button onClick={handleSave} disabled={update.isPending || form.prospeccao_dias.length === 0} data-testid="anti-ban-save">
               {update.isPending ? t("Salvando…") : t("Salvar proteção")}
             </Button>
           ) : null}

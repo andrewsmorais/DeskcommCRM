@@ -7,8 +7,8 @@ import { loadChannelKnobs, loadPacingState, recordSend } from "@/lib/agent-engin
 import {
   dayStartInTz,
   decidePacing,
-  janelaDeEnvioAberta,
-  proximaAberturaDaJanela,
+  janelaDeProspeccaoAberta,
+  proximaAberturaDaProspeccao,
 } from "@/lib/agent-engine/pacing/engine";
 import { gerarAbordagemDeFormulario } from "@/lib/agent-engine/agent/abordagem-de-formulario";
 import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/credentials";
@@ -153,11 +153,13 @@ export async function sendNextCandidate(
   if (new Date(c.next_send_at).getTime() > Date.now()) return;
   const { knobs, numberActivatedAt } = await loadChannelKnobs(db, c.organization_id, canal);
   const now = new Date();
-  // O PORTÃO DA PROSPECÇÃO: a janela de disparo do número. Fora dela, o envio
-  // fica agendado para a próxima abertura, sem tentativa e sem queimar quota: a
-  // fila espera, não morre. (Fork: o original tem dias próprios da prospecção
-  // por conexão, `prospeccao_dias`; aqui vale a janela de disparo de sempre.)
-  const nextWindow = janelaDeEnvioAberta(now, knobs) ? null : proximaAberturaDaJanela(now, knobs);
+  // O PORTÃO DA PROSPECÇÃO: dias próprios (`prospeccao_dias`, 0539) + horas da
+  // janela — e NÃO o domingo compartilhado. Fora dele, o envio fica agendado
+  // para a próxima abertura, sem tentativa e sem queimar quota: a fila espera,
+  // não morre. Resposta, massa e retomada seguem o portão genérico delas.
+  const nextWindow = janelaDeProspeccaoAberta(now, knobs)
+    ? null
+    : proximaAberturaDaProspeccao(now, knobs);
   if (nextWindow) {
     await db.query(
       "update prospecting_campaigns set next_send_at=$3 where organization_id=$1 and id=$2",
@@ -182,6 +184,9 @@ export async function sendNextCandidate(
     knobs,
     state: pacingState,
     crmDailyLimit: channel.daily_message_limit,
+    // Sem isto, o veto de domingo do portão genérico calaria a prospecção no
+    // dia que os dias próprios liberaram.
+    prospeccao: true,
   });
   if (!pacing.allow || pacing.waitMs > 0) {
     const next = pacing.allow ? new Date(now.getTime() + pacing.waitMs) : pacing.nextAllowedAt;

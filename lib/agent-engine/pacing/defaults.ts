@@ -33,6 +33,15 @@ export interface PacingKnobs {
    * quem faz prospecção ativa e prefere não incomodar no fim de semana desliga.
    */
   allowSunday: boolean;
+  /**
+   * Dias da semana em que a PROSPECÇÃO pode abordar (0=domingo … 6=sábado,
+   * convenção `getDay`; vindo do produto original, migration 0539 daqui). Só a
+   * prospecção lê isto (`PacingInput.prospeccao`): resposta, disparo em massa e
+   * retomada seguem `allowSunday`. É o que desamarra "respondo domingo" de
+   * "prospecto domingo". As HORAS continuam as da janela (`window*`).
+   * Opcional: knobs montados à mão sem o campo valem todos os dias.
+   */
+  prospeccaoDias?: number[];
   /** IANA timezone do tenant — a janela é avaliada NELA. */
   timezone: string;
   /** Degraus de warm-up ordenados por minAgeDays crescente (o primeiro cobre idade 0). */
@@ -60,6 +69,9 @@ export const PACING_DEFAULTS: PacingKnobs = {
   windowStartHour: 7, // janela 7h-22h
   windowEndHour: 22,
   allowSunday: true,
+  // Todos os dias = o comportamento de antes. Quem tinha allow_sunday = false
+  // recebe seg–sáb no backfill da 0539, não aqui.
+  prospeccaoDias: [0, 1, 2, 3, 4, 5, 6],
   timezone: 'America/Sao_Paulo',
   // Número sem linha em channel_knobs é tratado como idade 0 (o degrau mais
   // conservador) até alguém registrar number_activated_at.

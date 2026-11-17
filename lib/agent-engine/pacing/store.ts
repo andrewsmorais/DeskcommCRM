@@ -18,6 +18,7 @@ interface ChannelKnobsRow {
   window_start_hour: number | null;
   window_end_hour: number | null;
   allow_sunday: boolean | null;
+  prospeccao_dias?: unknown;
   timezone: string | null;
   warmup_daily_caps: unknown; // jsonb — shape validado em parseWarmupCaps (nunca confiado)
   /** Nulo quando o número não tem linha em channel_knobs (o `left join` da leitura). */
@@ -61,6 +62,22 @@ export function fusoDaJanela(
  * warm-up desligado, um fail-open silencioso; opt-out legítimo tem forma expressa
  * `[{"minAgeDays":0,"cap":null}]` (1 degrau formado), nunca `[]`.
  */
+/**
+ * Os dias da prospecção como o banco os guarda (`smallint[]`). Inválido ou
+ * vazio = `null` (quem lê cai no padrão: todos os dias). Nunca lança.
+ */
+export function parseDiasDaProspeccao(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const dias = [
+    ...new Set(
+      value.filter(
+        (d): d is number => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6,
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  return dias.length > 0 ? dias : null;
+}
+
 export function parseWarmupCaps(value: unknown): WarmupStep[] | null {
   if (!Array.isArray(value)) return null;
   const steps: WarmupStep[] = [];
@@ -95,7 +112,7 @@ export async function loadChannelKnobs(
   // ainda precisa do fuso da empresa (`fusoDaJanela`). Uma ida ao banco só.
   const { rows } = await db.query<ChannelKnobsRow>(
     `select k.throttle_ms, k.jitter_max_ms, k.window_start_hour, k.window_end_hour,
-            k.allow_sunday, k.timezone, k.warmup_daily_caps, k.number_activated_at,
+            k.allow_sunday, k.prospeccao_dias, k.timezone, k.warmup_daily_caps, k.number_activated_at,
             o.timezone as org_timezone
      from organizations o
      left join channel_knobs k
@@ -128,6 +145,7 @@ export async function loadChannelKnobs(
       windowStartHour: row.window_start_hour ?? PACING_DEFAULTS.windowStartHour,
       windowEndHour: row.window_end_hour ?? PACING_DEFAULTS.windowEndHour,
       allowSunday: row.allow_sunday ?? PACING_DEFAULTS.allowSunday,
+      prospeccaoDias: parseDiasDaProspeccao(row.prospeccao_dias) ?? PACING_DEFAULTS.prospeccaoDias,
       timezone: fusoDaJanela(row.timezone, row.org_timezone),
       warmupDailyCaps,
     },
