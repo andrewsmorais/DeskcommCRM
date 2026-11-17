@@ -19012,6 +19012,360 @@ export const DICIONARIO: Traducoes = {
   "Permitir que a IA responda neste grupo": {
     es: "Permitir que la IA responda en este grupo",
   },
+  "sim": { es: "sí" },
+  "Conferir afirmações de fato na resposta": { es: "Verificar las afirmaciones de hecho de la respuesta" },
+  "Lê a resposta que o assistente vai enviar e confere, nas evidências consultadas neste turno, se o que ele afirma sobre o negócio está escrito ali — ou se o material diz o contrário.":
+    { es: "Lee la respuesta que el asistente va a enviar y verifica, en las evidencias consultadas en este turno, si lo que afirma sobre el negocio está escrito allí — o si el material dice lo contrario." },
+  "Nesta versão a conferência de fato só observa: ela grava o que teria sido corrigido, mas nenhum envio é barrado. Deixar o Jev decidir sozinho só depois que você vir no cartão quantas mensagens teriam sido corrigidas.":
+    { es: "En esta versión la verificación de hechos solo observa: registra lo que se habría corregido, pero no bloquea ningún envío. Dejar que Jev decida solo después de que veas en la tarjeta cuántos mensajes se habrían corregido." },
+  "dias, a conferência de fato e o envio de hoje concordaram em": { es: "días, la verificación de hechos y el envío actual coincidieron en" },
+  "respostas — as duas deixaram passar a mesma afirmação.":
+    { es: "respuestas — las dos dejaron pasar la misma afirmación." },
+  "O agente diz ao cliente um horário, um preço ou um endereço que não está em nenhum material, e a pessoa vai até a loja ou à recepção por algo que não é verdade.":
+    { es: "El agente le dice al cliente un horario, un precio o una dirección que no está en ningún material, y la persona va a la tienda o a recepción por algo que no es verdad." },
+  "O Jev foi perguntado se o que a resposta afirma sobre o negócio está escrito nas evidências consultadas neste turno.":
+    { es: "Se le preguntó a Jev si lo que la respuesta afirma sobre el negocio está escrito en las evidencias consultadas en este turno." },
+  "O Jev não respondeu: a mensagem foi como estava, sem a conferência de fato.":
+    { es: "Jev no respondió: el mensaje salió como estaba, sin la verificación de hechos." },
+  "Como o roteador consulta as IAs": { es: "Cómo consulta el enrutador a las IA" },
+  "Modo do roteador salvo.": { es: "Se guardó el modo del enrutador." },
+  "Comparar o Jev e a IA de sempre": { es: "Comparar a Jev y la IA de siempre" },
+  "Jev; IA de sempre só como reserva": { es: "Jev; IA de siempre solo como respaldo" },
+  "A IA de sempre só é chamada se o Jev falhar ou estiver inseguro.": { es: "La IA de siempre solo se consulta si Jev falla o tiene baja confianza." },
+  "As duas IAs respondem; a escolha do Jev decide.": { es: "Ambas IA responden; la elección de Jev decide." },
+  "Ver resultados do roteamento": { es: "Ver resultados del enrutamiento" },
+  "Roteamento": { es: "Enrutamiento" },
+  "IA de sempre decide; Jev observa": { es: "La IA de siempre decide; Jev observa" },
+  "Jev decide; comparação ativa": { es: "Jev decide; comparación activa" },
+  "Jev; reserva sob demanda": { es: "Jev; respaldo bajo demanda" },
+  "Jev não respondeu": { es: "Jev no respondió" },
+  "Confiança abaixo do mínimo": { es: "Confianza inferior al mínimo" },
+  "Nenhuma intenção identificada": { es: "No se identificó ninguna intención" },
+  "Intenção fora do roteador": { es: "Intención fuera del enrutador" },
+  "Não foi possível carregar o roteamento.": { es: "No se pudo cargar el enrutamiento." },
+  "Não foi possível salvar a revisão.": { es: "No se pudo guardar la revisión." },
+  "Sem pares": { es: "Sin pares" },
+  "Resultados do roteamento": { es: "Resultados del enrutamiento" },
+  "Compare os modos e revise decisões reais. Concordância entre IAs não é prova de acerto.": { es: "Compara los modos y revisa decisiones reales. El acuerdo entre IA no demuestra que la decisión sea correcta." },
+  "Roteador": { es: "Enrutador" },
+  "Modelo do Jev": { es: "Modelo de Jev" },
+  "Mensagens anteriores": { es: "Mensajes anteriores" },
+  "Decisões examinadas": { es: "Decisiones examinadas" },
+  "Até 500 casos recentes pelos filtros.": { es: "Hasta 500 casos recientes según los filtros." },
+  "Jev sem reserva": { es: "Jev sin respaldo" },
+  "Reserva acionada": { es: "Respaldo activado" },
+  "Custo conhecido": { es: "Costo conocido" },
+  "casos sem preço completo": { es: "casos sin precio completo" },
+  "Jev e reserva incluídos": { es: "Jev y respaldo incluidos" },
+  "Tempo total do roteamento": { es: "Tiempo total del enrutamiento" },
+  "Concordância de destino": { es: "Acuerdo sobre el destino" },
+  "de intenção": { es: "de intención" },
+  "Acerto revisado por pessoa": { es: "Aciertos revisados por una persona" },
+  "A concordância usa apenas os modos comparativos. Reservas sob demanda não formam amostra geral de comparação.": { es: "El acuerdo se calcula solo en los modos de comparación. Los respaldos bajo demanda no forman una muestra general de comparación." },
+  "Motivos da reserva": { es: "Motivos del respaldo" },
+  "Escolha final": { es: "Elección final" },
+  "Sem intenção": { es: "Sin intención" },
+  "Reserva da IA de sempre": { es: "Respaldo de la IA de siempre" },
+  "IA de sempre": { es: "IA de siempre" },
+  "Intenção do Jev": { es: "Intención de Jev" },
+  "Intenção da IA de sempre": { es: "Intención de la IA de siempre" },
+  "custo incompleto": { es: "costo incompleto" },
+  "Não revisado": { es: "Sin revisar" },
+  "Correto": { es: "Correcto" },
+  "Incorreto": { es: "Incorrecto" },
+  "Agente esperado": { es: "Agente esperado" },
+  "Escolher agente esperado": { es: "Elegir el agente esperado" },
+  "Ainda não há decisões de roteamento nesses filtros.": { es: "Todavía no hay decisiones de enrutamiento con estos filtros." },
+  "Lê a resposta do cliente à mensagem do follow-up e diz em qual das saídas que você criou no fluxo ela se encaixa — o fluxo segue por essa saída.": {
+    es: "Lee la respuesta del cliente al mensaje del seguimiento y dice en cuál de las salidas que creaste en el flujo encaja: el flujo sigue por esa salida.",
+  },
+  "De onde o Jev responde": { es: "Desde dónde responde Jev" },
+  "TypeSafe AI (chave própria)": { es: "TypeSafe AI (clave propia)" },
+  "OpenRouter (reaproveita a credencial OpenRouter)": {
+    es: "OpenRouter (reutiliza la credencial de OpenRouter)",
+  },
+  "Origem do Jev salva.": { es: "Origen de Jev guardado." },
+  "O Jev responde direto na TypeSafe AI, com a chave dele cadastrada em Credenciais.": {
+    es: "Jev responde directamente en TypeSafe AI, con su clave registrada en Credenciales.",
+  },
+  "O Jev responde pela OpenRouter usando a credencial OpenRouter desta empresa — a mesma chave da conversa, sem segunda conta e sem segunda chave.": {
+    es: "Jev responde por OpenRouter usando la credencial de OpenRouter de esta empresa: la misma clave de la conversación, sin una segunda cuenta ni una segunda clave.",
+  },
+  "Para o Jev responder pela OpenRouter, cadastre a chave da OpenRouter em Credenciais. É a mesma chave que a sua IA de conversa usa.": {
+    es: "Para que Jev responda por OpenRouter, registra la clave de OpenRouter en Credenciales. Es la misma clave que usa tu IA de conversación.",
+  },
+  "Para o Jev responder pela OpenRouter, a chave da OpenRouter precisa estar cadastrada e conferida em Credenciais. É a mesma chave que a sua IA de conversa usa.": {
+    es: "Para que Jev responda por OpenRouter, la clave de OpenRouter tiene que estar registrada y verificada en Credenciales. Es la misma clave que usa tu IA de conversación.",
+  },
+  "Para o Jev responder pela TypeSafe, cole a chave dele em Credenciais e espere o teste da chave passar.": {
+    es: "Para que Jev responda por TypeSafe, pega su clave en Credenciales y espera a que pase la prueba de la clave.",
+  },
+  "Esta empresa já tem uma credencial OpenRouter conferida: dá para o Jev usá-la sem cadastrar chave nova.": {
+    es: "Esta empresa ya tiene una credencial de OpenRouter verificada: Jev puede usarla sin registrar una clave nueva.",
+  },
+  "Pegar a chave na OpenRouter": { es: "Obtener la clave en OpenRouter" },
+  "Pegar uma chave nova na OpenRouter": { es: "Obtener una clave nueva en OpenRouter" },
+  "Chave conferida na OpenRouter": { es: "Clave verificada en OpenRouter" },
+  "Não precisa de uma segunda conta: o Jev via OpenRouter usa a credencial OpenRouter desta empresa, e quem cobra o uso é a própria OpenRouter. A chave começa com": {
+    es: "No hace falta una segunda cuenta: Jev por OpenRouter usa la credencial de OpenRouter de esta empresa, y quien cobra el uso es la propia OpenRouter. La clave empieza con",
+  },
+  "Ao ligar, cada mensagem que o cliente manda vai para a TypeSafe AI, pela OpenRouter, nos Estados Unidos, uma de cada vez e sem o resto da conversa, para o Jev avaliar. Antes de sair, o sistema apaga CPF, telefone e e-mail do texto. Com o Jev desligado, nada é enviado.": {
+    es: "Al activarlo, cada mensaje que envía el cliente va a TypeSafe AI, a través de OpenRouter, en Estados Unidos, uno por vez y sin el resto de la conversación, para que Jev lo evalúe. Antes de salir, el sistema borra del texto el CPF, el teléfono y el correo. Con Jev desactivado, no se envía nada.",
+  },
+  "Concordo com o envio de cada mensagem dos clientes, uma de cada vez e sem o resto da conversa, para a TypeSafe AI, pela OpenRouter, nos Estados Unidos.": {
+    es: "Estoy de acuerdo con el envío de cada mensaje de los clientes, uno por vez y sin el resto de la conversación, a TypeSafe AI, a través de OpenRouter, en Estados Unidos.",
+  },
+  "Trocar para a OpenRouter": { es: "Cambiar a OpenRouter" },
+  "Observando — o Jev conta as mensagens em que o cliente faz um pedido que a regra de hoje não reconheceu, e avisa a equipe na Central. Ele não decide nada no atendimento.": {
+    es: "Observando: Jev cuenta los mensajes en los que el cliente hace un pedido que la regla de hoy no reconoció y avisa al equipo en la Central. No decide nada en la atención.",
+  },
+  "Observando — o Jev só conta as mensagens em que o cliente faz um pedido que a regra de hoje não reconheceu. Nada muda no atendimento.": {
+    es: "Observando: Jev solo cuenta los mensajes en los que el cliente hace un pedido que la regla de hoy no reconoció. Nada cambia en la atención.",
+  },
+  "Observando — onde o Jev compara, a sua IA de sempre ainda decide: compare os dois antes de deixar o Jev decidir. Nos pedidos do cliente, ele conta as mensagens em que a regra de hoje não reconheceu o pedido, e avisa a equipe.": {
+    es: "Observando: donde Jev compara, tu IA de siempre todavía decide; compara los dos antes de dejar que Jev decida. En los pedidos del cliente, cuenta los mensajes en los que la regla de hoy no reconoció el pedido y avisa al equipo.",
+  },
+  "Observando — onde o Jev compara, a sua IA de sempre ainda decide: compare os dois antes de deixar o Jev decidir. Nos pedidos do cliente, ele só conta as mensagens em que a regra de hoje não reconheceu o pedido.": {
+    es: "Observando: donde Jev compara, tu IA de siempre todavía decide; compara los dos antes de dejar que Jev decida. En los pedidos del cliente, solo cuenta los mensajes en los que la regla de hoy no reconoció el pedido.",
+  },
+  "Decidindo em parte — cada tarefa abaixo diz se o Jev decide, só observa ou avisa a equipe nela.": {
+    es: "Decidiendo en parte: cada tarea de abajo dice si Jev decide, solo observa o avisa al equipo en ella.",
+  },
+  "Lê a resposta do cliente à mensagem do follow-up, sozinha, e diz em qual das saídas que você criou no fluxo ela se encaixa.": {
+    es: "Lee la respuesta del cliente al mensaje del seguimiento, por separado, y dice en cuál de las salidas que creaste en el flujo encaja.",
+  },
+  "Nesta versão, o Jev só observa esta tarefa: quem escolhe a saída do fluxo é sempre a sua IA de sempre, e não há como deixar o Jev decidir. A saída escolhida muda o caminho do cliente no fluxo, então primeiro se mede, com respostas de verdade, o quanto os dois concordam.": {
+    es: "En esta versión, Jev solo observa esta tarea: quien elige la salida del flujo es siempre tu IA de siempre, y no hay forma de dejar que Jev decida. La salida elegida cambia el camino del cliente en el flujo, así que primero se mide, con respuestas reales, cuánto coinciden los dos.",
+  },
+  "dias, o Jev e a sua IA de sempre puseram a resposta do cliente na mesma saída do fluxo em": {
+    es: "días, Jev y tu IA de siempre pusieron la respuesta del cliente en la misma salida del flujo en",
+  },
+  "Não roda agora: nenhum follow-up publicado tem o passo “Classificar (IA)” com duas saídas ou mais. O Jev só lê a resposta do cliente onde a sua IA de sempre escolhe entre saídas — publique, em Follow-ups, um fluxo com esse passo.": {
+    es: "No se ejecuta ahora: ningún seguimiento publicado tiene el paso “Clasificar (IA)” con dos salidas o más. Jev solo lee la respuesta del cliente donde tu IA de siempre elige entre salidas: publica, en Seguimientos, un flujo con ese paso.",
+  },
+  "Abrir os follow-ups": {
+    es: "Abrir los seguimientos",
+  },
+  "Começou sozinha, só observando: nada muda para o cliente.": {
+    es: "Empezó por su cuenta, solo observando: nada cambia para el cliente.",
+  },
+  "Observando — a sua IA de sempre decide, e o Jev só é comparado com ela.": {
+    es: "Observando: tu IA de siempre decide, y Jev solo se compara con ella.",
+  },
+  "Observando — onde o Jev compara, a sua IA de sempre decide, e ele só é comparado com ela. Nos pedidos do cliente, ele conta as mensagens em que a regra de hoje não reconheceu o pedido, e avisa a equipe.": {
+    es: "Observando: donde Jev compara, tu IA de siempre decide, y él solo se compara con ella. En los pedidos del cliente, cuenta los mensajes en los que la regla de hoy no reconoció el pedido y avisa al equipo.",
+  },
+  "Observando — onde o Jev compara, a sua IA de sempre decide, e ele só é comparado com ela. Nos pedidos do cliente, ele só conta as mensagens em que a regra de hoje não reconheceu o pedido.": {
+    es: "Observando: donde Jev compara, tu IA de siempre decide, y él solo se compara con ella. En los pedidos del cliente, solo cuenta los mensajes en los que la regla de hoy no reconoció el pedido.",
+  },
+  "Onde ele decide, vale a escolha que você fez antes de desligá-lo; onde só observa, a sua IA de sempre continua decidindo.": {
+    es: "Donde decide, vale la elección que hiciste antes de desactivarlo; donde solo observa, tu IA de siempre sigue decidiendo.",
+  },
+  "Onde ele só observa, a sua IA de sempre continua decidindo.": {
+    es: "Donde solo observa, tu IA de siempre sigue decidiendo.",
+  },
+  "Perceber pedido para falar com uma pessoa": {
+    es: "Detectar pedidos de hablar con una persona",
+  },
+  "Perceber pedido para parar de receber mensagens": {
+    es: "Detectar pedidos de dejar de recibir mensajes",
+  },
+  "Lê a mensagem do cliente, sozinha, quando a regra de hoje não viu nela um pedido para falar com uma pessoa — e conta as mensagens com esse pedido que ela não reconheceu. Ele nunca passa a conversa sozinho.": {
+    es: "Lee el mensaje del cliente, por separado, cuando la regla de hoy no vio en él un pedido de hablar con una persona, y cuenta los mensajes con ese pedido que ella no reconoció. Nunca transfiere la conversación por su cuenta.",
+  },
+  "Lê a mensagem do cliente, sozinha, quando a regra de hoje não viu nela um pedido para parar de receber mensagens — e conta as mensagens com esse pedido que ela não reconheceu. Quem bloqueia o contato é só a regra de hoje, quando o próprio cliente manda PARAR.": {
+    es: "Lee el mensaje del cliente, por separado, cuando la regla de hoy no vio en él un pedido de dejar de recibir mensajes, y cuenta los mensajes con ese pedido que ella no reconoció. Quien bloquea el contacto es solo la regla de hoy, cuando el propio cliente envía BAJA.",
+  },
+  "Quando o Jev percebe um pedido para falar com uma pessoa que a regra não pegou, ele abre um aviso na Central para alguém da equipe decidir. Ele nunca passa a conversa sozinho.": {
+    es: "Cuando Jev detecta un pedido de hablar con una persona que la regla no captó, abre un aviso en la Central para que alguien del equipo decida. Nunca transfiere la conversación por su cuenta.",
+  },
+  "Quando o Jev perceber um pedido para falar com uma pessoa que a regra não pegou, ele abre um aviso na Central para alguém da equipe decidir. Ele nunca passa a conversa sozinho.": {
+    es: "Cuando Jev detecte un pedido de hablar con una persona que la regla no captó, abrirá un aviso en la Central para que alguien del equipo decida. Nunca transfiere la conversación por su cuenta.",
+  },
+  "Quando o Jev percebe um pedido para parar de receber mensagens que a regra não pegou, ele abre um aviso na Central para alguém da equipe conferir. Quem bloqueia o contato é só a regra de hoje, quando o próprio cliente manda PARAR: o Jev nunca bloqueia ninguém.": {
+    es: "Cuando Jev detecta un pedido de dejar de recibir mensajes que la regla no captó, abre un aviso en la Central para que alguien del equipo lo revise. Quien bloquea el contacto es solo la regla de hoy, cuando el propio cliente envía BAJA: Jev nunca bloquea a nadie.",
+  },
+  "Quando o Jev perceber um pedido para parar de receber mensagens que a regra não pegou, ele abre um aviso na Central para alguém da equipe conferir. Quem bloqueia o contato é só a regra de hoje, quando o próprio cliente manda PARAR: o Jev nunca bloqueia ninguém.": {
+    es: "Cuando Jev detecte un pedido de dejar de recibir mensajes que la regla no captó, abrirá un aviso en la Central para que alguien del equipo lo revise. Quien bloquea el contacto es solo la regla de hoy, cuando el propio cliente envía BAJA: Jev nunca bloquea a nadie.",
+  },
+  "Nos últimos {dias} dias, o Jev percebeu {n} mensagem pedindo para falar com uma pessoa em que a regra de hoje não reconheceu o pedido.": {
+    es: "En los últimos {dias} días, Jev detectó {n} mensaje que pide hablar con una persona en el que la regla de hoy no reconoció el pedido.",
+  },
+  "Nos últimos {dias} dias, o Jev percebeu {n} mensagens pedindo para falar com uma pessoa em que a regra de hoje não reconheceu o pedido.": {
+    es: "En los últimos {dias} días, Jev detectó {n} mensajes que piden hablar con una persona en los que la regla de hoy no reconoció el pedido.",
+  },
+  "Nos últimos {dias} dias, o Jev percebeu {n} mensagem pedindo para parar de receber mensagens em que a regra de hoje não reconheceu o pedido.": {
+    es: "En los últimos {dias} días, Jev detectó {n} mensaje que pide dejar de recibir mensajes en el que la regla de hoy no reconoció el pedido.",
+  },
+  "Nos últimos {dias} dias, o Jev percebeu {n} mensagens pedindo para parar de receber mensagens em que a regra de hoje não reconheceu o pedido.": {
+    es: "En los últimos {dias} días, Jev detectó {n} mensajes que piden dejar de recibir mensajes en los que la regla de hoy no reconoció el pedido.",
+  },
+  "Nos últimos {dias} dias, o Jev ainda não percebeu nenhuma mensagem pedindo para falar com uma pessoa em que a regra de hoje não reconheceu o pedido.": {
+    es: "En los últimos {dias} días, Jev todavía no detectó ningún mensaje que pida hablar con una persona en el que la regla de hoy no haya reconocido el pedido.",
+  },
+  "Nos últimos {dias} dias, o Jev ainda não percebeu nenhuma mensagem pedindo para parar de receber mensagens em que a regra de hoje não reconheceu o pedido.": {
+    es: "En los últimos {dias} días, Jev todavía no detectó ningún mensaje que pida dejar de recibir mensajes en el que la regla de hoy no haya reconocido el pedido.",
+  },
+  "Nos pedidos do cliente, o Jev só conta as mensagens em que a regra de hoje não reconheceu o pedido — nada muda no atendimento.": {
+    es: "En los pedidos del cliente, Jev solo cuenta los mensajes en los que la regla de hoy no reconoció el pedido: nada cambia en la atención.",
+  },
+  "Nos pedidos do cliente, o Jev conta as mensagens em que a regra de hoje não reconheceu o pedido e avisa a equipe na Central — ele não decide nada no atendimento.": {
+    es: "En los pedidos del cliente, Jev cuenta los mensajes en los que la regla de hoy no reconoció el pedido y avisa al equipo en la Central: no decide nada en la atención.",
+  },
+  "Não roda agora: nenhum atendente automático está no ar — o Jev só é perguntado onde um atendente responderia. Publique um agente num número, ou tire um agente da pausa, em Agentes.": {
+    es: "No se ejecuta ahora: ningún agente automático está en línea; solo se le pregunta a Jev donde un agente respondería. Publica un agente en un número, o quita un agente de la pausa, en Agentes.",
+  },
+  "Não roda agora: quem conduz as conversas desta empresa é um sistema de fora. O Jev só é perguntado onde um atendente automático daqui responderia.": {
+    es: "No se ejecuta ahora: un sistema externo lleva las conversaciones de esta empresa. Solo se le pregunta a Jev donde un agente automático de aquí respondería.",
+  },
+  "Perceber pedidos do cliente": {
+    es: "Detectar pedidos del cliente",
+  },
+  "Perceber risco de segurança numa mensagem represada": {
+    es: "Detectar un riesgo de seguridad en un mensaje retenido",
+  },
+  "Lê a última mensagem do cliente quando o teto de envio adiou a resposta, só se a regra de urgência de hoje não viu nela um risco à segurança ou à saúde — e conta as mensagens com esse risco que ela não reconheceu. Ele nunca passa a conversa nem responde.":
+    {
+      es: "Lee el último mensaje del cliente cuando el límite de envío pospuso la respuesta, solo si la regla de urgencia de hoy no vio en él un riesgo de seguridad o de salud — y cuenta los mensajes con ese riesgo que ella no reconoció. Él nunca transfiere la conversación ni responde.",
+    },
+  "Quando o Jev percebe, numa mensagem represada pelo teto de envio, um risco à segurança ou à saúde que a regra de urgência não reconheceu, ele abre um aviso na Central, com o alerta crítico que a regra abriria, para alguém da equipe responder na hora. Ele nunca passa a conversa nem responde ao cliente.":
+    {
+      es: "Cuando Jev percibe, en un mensaje retenido por el límite de envío, un riesgo de seguridad o de salud que la regla de urgencia no reconoció, abre un aviso en el Centro, con la alerta crítica que abriría la regla, para que alguien del equipo responda de inmediato. Él nunca transfiere la conversación ni responde al cliente.",
+    },
+  "Quando o Jev perceber, numa mensagem represada pelo teto de envio, um risco à segurança ou à saúde que a regra de urgência não reconheceu, ele abre um aviso na Central, com o alerta crítico que a regra abriria, para alguém da equipe responder na hora. Ele nunca passa a conversa nem responde ao cliente.":
+    {
+      es: "Cuando Jev perciba, en un mensaje retenido por el límite de envío, un riesgo de seguridad o de salud que la regla de urgencia no reconoció, abrirá un aviso en el Centro, con la alerta crítica que abriría la regla, para que alguien del equipo responda de inmediato. Él nunca transfiere la conversación ni responde al cliente.",
+    },
+  "Nos últimos {dias} dias, o Jev ainda não percebeu nenhuma mensagem represada pelo teto de envio com um risco que a regra de urgência de hoje não reconheceu.":
+    {
+      es: "En los últimos {dias} días, Jev todavía no ha percibido ningún mensaje retenido por el límite de envío con un riesgo que la regla de urgencia de hoy no reconoció.",
+    },
+  "Nos últimos {dias} dias, o Jev percebeu {n} mensagem represada pelo teto de envio com um risco que a regra de urgência de hoje não reconheceu.":
+    {
+      es: "En los últimos {dias} días, Jev ha percibido {n} mensaje retenido por el límite de envío con un riesgo que la regla de urgencia de hoy no reconoció.",
+    },
+  "Nos últimos {dias} dias, o Jev percebeu {n} mensagens represadas pelo teto de envio com um risco que a regra de urgência de hoje não reconheceu.":
+    {
+      es: "En los últimos {dias} días, Jev ha percibido {n} mensajes retenidos por el límite de envío con un riesgo que la regla de urgencia de hoy no reconoció.",
+    },
+  "Perceber risco de segurança na mensagem represada": {
+    es: "Detectar un riesgo de seguridad en el mensaje retenido",
+  },
+  "O Jev foi perguntado, numa mensagem represada pelo teto de envio, se ela relata um risco à segurança ou à saúde que a regra de urgência de hoje não reconheceu. Ele não responde nem passa a conversa.":
+    {
+      es: "Se le preguntó a Jev, en un mensaje retenido por el límite de envío, si relata un riesgo de seguridad o de salud que la regla de urgencia de hoy no reconoció. Él no responde ni transfiere la conversación.",
+    },
+  "O Jev não respondeu: valeu só a regra de urgência de hoje.":
+    { es: "Jev no respondió: solo valió la regla de urgencia de hoy." },
+  "O Jev foi perguntado se esta mensagem traz um pedido que a regra de hoje não viu. Ele não bloqueia nem passa a conversa.": {
+    es: "Se le preguntó a Jev si este mensaje trae un pedido que la regla de hoy no vio. Él no bloquea ni transfiere la conversación.",
+  },
+  "O Jev não respondeu: valeu só a regra de hoje.": {
+    es: "Jev no respondió: valió solo la regla de hoy.",
+  },
+  "Conferir o campo antes de a IA gravar": {
+    es: "Verificar el campo antes de que la IA lo guarde",
+  },
+  "Lê o que o cliente disse nas mensagens ainda sem resposta do turno e confere se o valor que a IA quer gravar no campo personalizado do negócio foi ele quem informou.": {
+    es: "Lee lo que el cliente dijo en los mensajes aún sin respuesta del turno y verifica si el valor que la IA quiere guardar en el campo personalizado del negocio lo informó él.",
+  },
+  "O Jev confere, nas mensagens que o cliente deixou sem resposta neste turno, se foi ele quem disse o valor do campo. O valor que ele não disse deixa de ser gravado e o assistente é mandado perguntar para ele; os outros campos da mesma chamada seguem gravando.": {
+    es: "Jev verifica, en los mensajes que el cliente dejó sin respuesta en este turno, si fue él quien dijo el valor del campo. El valor que no dijo deja de guardarse y se le indica al asistente que se lo pregunte; los demás campos de la misma llamada se siguen guardando.",
+  },
+  "Antes de a IA gravar um campo personalizado do negócio, o Jev vai conferir nas mensagens do cliente se foi ele quem informou aquele valor. Ele não disse: o campo não é gravado e a IA pergunta ao cliente.": {
+    es: "Antes de que la IA guarde un campo personalizado del negocio, Jev verificará en los mensajes del cliente si fue él quien informó ese valor. Si no lo dijo, el campo no se guarda y la IA se lo pregunta al cliente.",
+  },
+  "dias, o Jev e o jeito de hoje deram o mesmo destino a": {
+    es: "días, Jev y la forma actual le dieron el mismo destino a",
+  },
+  "campos do negócio.": {
+    es: "campos del negocio.",
+  },
+  "O Jev foi perguntado se o cliente disse, nas mensagens ainda sem resposta deste turno, o valor do campo personalizado do negócio que a IA ia gravar.": {
+    es: "Se le preguntó a Jev si el cliente dijo, en los mensajes aún sin respuesta de este turno, el valor del campo personalizado del negocio que la IA iba a guardar.",
+  },
+  "O Jev não respondeu: o campo foi gravado como antes, sem a conferência.": {
+    es: "Jev no respondió: el campo se guardó como antes, sin la verificación.",
+  },
+  "Ver as conversas:": {
+    es: "Ver las conversaciones:",
+  },
+  "Abrir a conversa do pedido de": {
+    es: "Abrir la conversación del pedido del",
+  },
+  "Avisar a equipe": {
+    es: "Avisar al equipo",
+  },
+  "Avisa a equipe": {
+    es: "Avisa al equipo",
+  },
+  "Avisar a equipe?": {
+    es: "¿Avisar al equipo?",
+  },
+  "Agora o Jev avisa a equipe.": {
+    es: "Ahora Jev avisa al equipo.",
+  },
+  "Começou sozinha, só observando: nada muda até você pedir para o Jev avisar a equipe.": {
+    es: "Empezó sola, solo observando: nada cambia hasta que le pidas a Jev que avise al equipo.",
+  },
+  "Pedido para falar com uma pessoa, percebido pelo Jev": {
+    es: "Pedido de hablar con una persona, detectado por Jev",
+  },
+  "Pedido para parar de receber mensagens, percebido pelo Jev": {
+    es: "Pedido de dejar de recibir mensajes, detectado por Jev",
+  },
+  "Um cliente parece pedir para falar com uma pessoa": {
+    es: "Un cliente parece pedir hablar con una persona",
+  },
+  "Um cliente parece pedir para parar de receber mensagens": {
+    es: "Un cliente parece pedir dejar de recibir mensajes",
+  },
+  "O Jev percebeu, numa mensagem do cliente, um pedido para falar com uma pessoa que a regra de hoje não reconheceu. Abra a conversa e confira se alguém da equipe já assumiu — o Jev não passa a conversa sozinho.": {
+    es: "Jev detectó, en un mensaje del cliente, un pedido de hablar con una persona que la regla de hoy no reconoció. Abre la conversación y verifica si alguien del equipo ya la asumió; Jev no transfiere la conversación por su cuenta.",
+  },
+  "O Jev percebeu, numa mensagem do cliente, um pedido para parar de receber mensagens que a regra de hoje não reconheceu. Abra a conversa e confira. Se o cliente quer mesmo parar de receber mensagens, assuma o atendimento para o assistente parar de responder e peça que ele responda PARAR — é assim que o contato fica bloqueado. O Jev nunca bloqueia ninguém.": {
+    es: "Jev detectó, en un mensaje del cliente, un pedido de dejar de recibir mensajes que la regla de hoy no reconoció. Abre la conversación y revísala. Si el cliente de verdad quiere dejar de recibir mensajes, asume la atención para que el asistente deje de responder y pídele que responda BAJA: así el contacto queda bloqueado. Jev nunca bloquea a nadie.",
+  },
+  "Um cliente pediu para falar com uma pessoa num áudio": {
+    es: "Un cliente pidió hablar con una persona en un audio",
+  },
+  "Um cliente pediu para parar de receber mensagens num áudio": {
+    es: "Un cliente pidió dejar de recibir mensajes en un audio",
+  },
+  "A regra de hoje reconheceu, na transcrição de um áudio do cliente, um pedido para falar com uma pessoa. Abra a conversa e confira se alguém da equipe já assumiu — a transcrição não passa a conversa nem cala o assistente.": {
+    es: "La regla de hoy reconoció, en la transcripción de un audio del cliente, un pedido de hablar con una persona. Abre la conversación y verifica si alguien del equipo ya la asumió; la transcripción no transfiere la conversación ni silencia al asistente.",
+  },
+  "A regra de hoje reconheceu, na transcrição de um áudio do cliente, um pedido para parar de receber mensagens. Abra a conversa e confira. A transcrição de um áudio não bloqueia o contato: se o cliente quiser mesmo parar de receber, assuma o atendimento para o assistente parar de responder e peça que ele responda PARAR — é assim que o contato fica bloqueado.": {
+    es: "La regla de hoy reconoció, en la transcripción de un audio del cliente, un pedido de dejar de recibir mensajes. Abre la conversación y revísala. La transcripción de un audio no bloquea el contacto: si el cliente de verdad quiere dejar de recibir mensajes, asume la atención para que el asistente deje de responder y pídele que responda BAJA: así el contacto queda bloqueado.",
+  },
+  "Abra a conversa e decida se alguém da equipe assume o atendimento.": {
+    es: "Abre la conversación y decide si alguien del equipo asume la atención.",
+  },
+  "Abra a conversa e confira se o cliente quer mesmo parar de receber mensagens.": {
+    es: "Abre la conversación y revisa si el cliente de verdad quiere dejar de recibir mensajes.",
+  },
+  "Abrir a conversa": {
+    es: "Abrir la conversación",
+  },
+  "Pela OpenRouter, cada mensagem dos clientes vai, uma de cada vez e sem o resto da conversa, para a TypeSafe AI, pela OpenRouter, nos Estados Unidos. Para trocar, confirme que você está de acordo.": {
+    es: "A través de OpenRouter, cada mensaje de los clientes va, uno por vez y sin el resto de la conversación, a TypeSafe AI, a través de OpenRouter, en Estados Unidos. Para cambiar, confirma que estás de acuerdo.",
+  },
+  "Se a sua empresa é da área da saúde: as mensagens que o Jev lê podem conter dado de saúde, que a LGPD trata como sensível. Antes de ligar, confira com quem cuida da LGPD da empresa se o contrato da TypeSafe cobre esse tipo de dado.": {
+    es: "Si tu empresa es del área de la salud: los mensajes que lee Jev pueden contener datos de salud, que la LGPD trata como sensibles. Antes de activarlo, consulta con quien se encarga de la LGPD en la empresa si el contrato de TypeSafe cubre ese tipo de dato.",
+  },
+  "Janela de histórico": { es: "Ventana de historial" },
+  "A janela é a da sua IA de sempre. O Jev recebe só a mensagem atual.": { es: "La ventana es la de tu IA de siempre. Jev recibe solo el mensaje actual." },
+  "O Jev escolhe primeiro. A IA de sempre só entra em caso de falha, baixa confiança ou intenção inválida.": { es: "Jev elige primero. La IA de siempre solo interviene en caso de fallo, baja confianza o intención inválida." },
+  "Sem a sua IA de sempre, o Jev não escolhe o agente sozinho: é ela que cobre quando ele falha ou fica em dúvida. Cadastre uma chave de IA em Agentes IA › Credenciais para usar este modo. Até lá, vale a comparação.": { es: "Sin tu IA de siempre, Jev no elige el agente solo: es ella la que cubre cuando él falla o duda. Registra una clave de IA en Agentes IA › Credenciales para usar este modo. Hasta entonces, vale la comparación." },
+  "recusados": { es: "rechazados" },
+  "recusado": { es: "rechazado" },
+  "fallback": { es: "respaldo" },
+  "A OpenRouter recusou a chave. Confira se copiou inteira ou gere uma nova.": {
+    es: "OpenRouter rechazó la clave. Verifica si la copiaste completa o genera una nueva.",
+  },
+  "A OpenRouter recusou a chave. Confira se ela está inteira e se a conta na OpenRouter tem crédito.": {
+    es: "OpenRouter rechazó la clave. Verifica si está completa y si la cuenta en OpenRouter tiene crédito.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

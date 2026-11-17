@@ -101,6 +101,8 @@ export const KIND_LABEL = {
   recuperacao_da_queda: "A conexão voltou de uma queda — recuperação das conversas",
   // Diz o que o CLIENTE viveu: escreveu, o número estava fora, e ninguém respondeu.
   cliente_sem_resposta_na_queda: "Um cliente escreveu enquanto o número estava fora e ainda não teve resposta",
+  jev_pedido_de_humano: "Pedido para falar com uma pessoa, percebido pelo Jev",
+  jev_parar_de_receber: "Pedido para parar de receber mensagens, percebido pelo Jev",
   other: "Aviso do assistente",
 } as const satisfies Record<InboxKind, string>;
 

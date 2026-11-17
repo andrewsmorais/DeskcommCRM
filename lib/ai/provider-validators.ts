@@ -9,6 +9,7 @@
  * Timeout 5s, sem retry. Erros 401 são distintos de erros de rede.
  */
 import { baseDaApiDoJev } from "@/lib/ai/decisao/cliente";
+import { caminhoDaProva, ORIGEM_PADRAO, type OrigemDoJev } from "@/lib/ai/decisao/origem";
 import type { ProvedorComChave } from "@/lib/ai/pontos/provedores";
 import type { PROVEDORES_DE_SERVICO } from "@/lib/ai/pontos/provedores-de-servico";
 import { motivoDaRecusaDeDestino } from "@/lib/automation/destinos-internos-autorizados";
@@ -294,9 +295,12 @@ export async function validateRequestyKey(apiKey: string): Promise<ValidationRes
  * `{ data: [{ id }] }` dos outros. A base é a mesma que o cliente usa, para o
  * dublê do e2e validar pelo mesmo caminho.
  */
-export async function validateTypeSafeKey(apiKey: string): Promise<ValidationResult> {
+export async function validateTypeSafeKey(
+  apiKey: string,
+  origem: OrigemDoJev = ORIGEM_PADRAO,
+): Promise<ValidationResult> {
   try {
-    const res = await timedFetch(`${baseDaApiDoJev()}/v1/models`, {
+    const res = await timedFetch(`${baseDaApiDoJev(origem)}${caminhoDaProva(origem)}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${apiKey}` },
     });
@@ -306,6 +310,8 @@ export async function validateTypeSafeKey(apiKey: string): Promise<ValidationRes
     if (!res.ok) {
       return { ok: false, error: `provider_status_${res.status}` };
     }
+    // A prova da OpenRouter não devolve catálogo: provar a chave é o que importa.
+    if (origem === "openrouter") return { ok: true, models: [] };
     const json = (await res.json()) as { models?: { name?: string }[] };
     const models = (json.models ?? []).map((m) => m.name ?? "").filter(Boolean);
     return { ok: true, models };

@@ -11,6 +11,7 @@
  *     nunca derruba o turno.
  */
 import type pg from 'pg';
+import { CLASSIFIER_CONTEXT_MESSAGES, MAX_CLASSIFIER_CONTEXT_MESSAGES } from '@/lib/ai/classifier-context';
 
 export interface RouterMember {
   agentId: string;
@@ -49,6 +50,8 @@ export interface LoadedRouter {
   classifierProvider: string | null;
   sticky: boolean;
   minConfidence: number;
+  /** Quantas mensagens anteriores a IA de sempre lê ao classificar (0–16). */
+  contextMessageCount?: number;
   fallbackAgentId: string | null;
   members: RouterMember[];
 }
@@ -98,6 +101,7 @@ export async function loadActiveRouter(
     classifier_provider?: unknown;
     sticky?: unknown;
     min_confidence?: unknown;
+    context_message_count?: unknown;
   };
   const classifierModel =
     typeof cfg.classifier_model === 'string' && cfg.classifier_model.trim() !== ''
@@ -113,6 +117,12 @@ export async function loadActiveRouter(
       ? cfg.min_confidence
       : 0.6;
 
+  const contextMessageCount =
+    typeof cfg.context_message_count === 'number' && Number.isInteger(cfg.context_message_count) &&
+    cfg.context_message_count >= 0 && cfg.context_message_count <= MAX_CLASSIFIER_CONTEXT_MESSAGES
+      ? cfg.context_message_count
+      : CLASSIFIER_CONTEXT_MESSAGES;
+
   return {
     id: router.id,
     name: router.name,
@@ -120,6 +130,7 @@ export async function loadActiveRouter(
     classifierProvider,
     sticky,
     minConfidence,
+    contextMessageCount,
     fallbackAgentId: router.fallback_agent_id,
     members: memberRows.map((m) => ({
       agentId: m.agent_id,

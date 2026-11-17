@@ -3,9 +3,9 @@
  * agente (`lib/agent-engine/agent/resolve-turn-agent.ts`).
  *
  * Com um roteador de intenção ativo no número, cada mensagem nova do cliente
- * passa por um modelo de linguagem que escolhe a intenção (`classifyIntent`,
- * ponto `intent_router`), e a intenção escolhe o agente. O Jev responde a MESMA
- * pergunta, entre as MESMAS intenções, ao mesmo tempo.
+ * passa por um classificador que escolhe a intenção (`intent_router`), e a
+ * intenção escolhe o agente. Em comparação, Jev e IA de sempre recebem a
+ * mesma pergunta em paralelo. No modo sob demanda, o Jev responde primeiro.
  *
  * ═══ O QUE ELE PODE, EM CADA ESTADO ═══
  *
@@ -16,7 +16,7 @@
  *    e a cobertura deixa rastro: uma linha em `llm_calls` com a origem
  *    `reserva_do_jev`, a que o cartão conta em "Vezes que a IA de sempre cobriu
  *    o Jev" (`registrarCobertura`).
- *    O turno espera por ele o que ele passar da IA de sempre, que roda junto:
+ *    No modo comparação, o turno espera por ele o que ele passar da IA de sempre, que roda junto:
  *    a leitura do estado (pelo banco do turno, como as demais consultas dele) e,
  *    num prazo só de no máximo `TETO_PADRAO_MS`, a busca da chave e a resposta
  *    (`decidirNoPonto`).
@@ -33,8 +33,14 @@
  *
  * A última mensagem do cliente, sozinha (R4), passada pelo `scrubMessage`, e as
  * intenções do roteador — descrição e exemplos, que são textos da empresa, não
- * do cliente. Pergunta dinâmica, montada com os membros da organização, vai em
- * chamada PRÓPRIA (R6): uma pergunta malformada derruba a chamada inteira
+ * do cliente. Com os fatos do CRM do contato (#3917), a instrução leva também
+ * nomes de funil e de etapa onde ele tem negócio aberto e as etiquetas dele —
+ * nunca título do card, telefone, e-mail ou documento do cadastro. O nome é
+ * digitado pela empresa e pode conter dado do cliente: cada um passa pelo
+ * `scrubMessage` antes do corte de tamanho (`normalizarNome`, em
+ * `lib/leads/fatos-do-crm-no-prompt.ts`), e o bloco passa de novo aqui.
+ * Pergunta dinâmica, montada com os membros da organização, vai em chamada
+ * PRÓPRIA (R6): uma pergunta malformada derruba a chamada inteira
  * (medido), e ela não pode levar junto a de outra tarefa.
  *
  * ═══ NUNCA LANÇA ═══
@@ -46,16 +52,23 @@ import type pg from "pg";
 
 import type { IntentVerdict } from "@/lib/agent-engine/agent/intent-classifier";
 import type { RouterMember } from "@/lib/agent-engine/agent/router-config";
+// Do módulo PURO, nunca de `lib/agent-engine/agent/**`: a cerca do Jev proíbe
+// que o caminho dele alcance quem envia mensagem (ver o cabeçalho daqui).
+import {
+  CABECALHO_DOS_FATOS_NO_PROMPT,
+  formatarFatosDoCrm,
+  type FatosDoCrm,
+} from "@/lib/leads/fatos-do-crm-no-prompt";
 import { costCents } from "@/lib/agent-engine/edge/llm/pricing";
 import { logger } from "@/lib/logger";
 import { scrubMessage } from "@/lib/sentry/scrub";
 
 import { MODELO_DO_JEV, type MotivoDaAusencia, type Pergunta } from "./cliente";
-import type { EstadoDaTarefa, EstadoQuePergunta } from "./config";
+import { lerConfigDoJev, type EstadoDaTarefa, type EstadoQuePergunta } from "./config";
 import { podeTentar, registrarFalha, registrarSucesso } from "./disjuntor";
-import { estadoDaTarefaNoPool, registrarFalhaQuePedeAcao } from "./pool";
+import { configDaTarefaNoPool, registrarFalhaQuePedeAcao } from "./pool";
 import { decidirNoPonto, type DependenciasDoPonto } from "./ponto";
-import { roteadorCabeNaPergunta, TAREFA_DO_ROTEADOR } from "./tarefas";
+import { estadoEfetivoDaTarefa, roteadorCabeNaPergunta, TAREFA_DO_ROTEADOR } from "./tarefas";
 import { codigoDoErroDoJev } from "./textos";
 
 export { MEMBROS_NO_MAXIMO } from "./tarefas";
@@ -76,7 +89,20 @@ const INSTRUCAO =
  * fica de fora, como lá: o classificador de sempre também lê `none` como
  * "nenhuma".
  */
-export function perguntaDoRoteador(membros: readonly RouterMember[]): Pergunta | null {
+export function perguntaDoRoteador(
+  membros: readonly RouterMember[],
+  /**
+   * Fatos do CRM do contato (#3917), lidos no TURNO: funis/etapas onde ele tem
+   * negócio ABERTO e as etiquetas. Opcional — ausente ou vazio, a pergunta é
+   * byte a byte a de antes, e o Jev decide só pela mensagem, como fazia.
+   *
+   * É o MESMO bloco que a IA de sempre recebe (`buildClassifierPrompt`): com
+   * dois caminhos de decisão no turno, deixar um deles cego ao funil produzia o
+   * defeito da issue pela metade — a cliente com viagem fechada continuava indo
+   * para vendas sempre que o Jev decidia.
+   */
+  fatos?: FatosDoCrm | null,
+): Pergunta | null {
   if (!roteadorCabeNaPergunta(membros.length)) return null;
   const criterios: Record<string, string> = {};
   for (const m of membros) {
@@ -84,7 +110,18 @@ export function perguntaDoRoteador(membros: readonly RouterMember[]): Pergunta |
     criterios[m.intentName] = `${m.intentDescription}.${exemplos}`;
   }
   criterios[NENHUMA] = "Nenhuma das intenções acima se aplica.";
-  return { tipo: "choice", instrucao: INSTRUCAO, criterios };
+  // Cada nome já sai mascarado de `normalizarNome` (scrub ANTES do corte). O
+  // scrub do bloco aqui é a borda de quem envia: idempotente e barato, cobre um
+  // `FatosDoCrm` montado sem passar por `montarFatosDoCrm`. Fica na instrução,
+  // e não no `estado`, porque o `estado` é o que se classifica.
+  const textoDosFatos = scrubMessage(formatarFatosDoCrm(fatos));
+  // O cabeçalho é o mesmo do classificador de sempre, e diz em voz alta que o
+  // bloco NÃO é o que se classifica: sem isso o Jev responderia sobre o funil.
+  const instrucao =
+    textoDosFatos === ""
+      ? INSTRUCAO
+      : `${INSTRUCAO}\n\n${CABECALHO_DOS_FATOS_NO_PROMPT}\n${textoDosFatos}`;
+  return { tipo: "choice", instrucao, criterios };
 }
 
 export interface EscolhaDoJev {
@@ -135,6 +172,15 @@ export interface EntradaDoRoteador {
   membros: readonly RouterMember[];
   contactId: string | null;
   jobId: string | null;
+  /**
+   * Os fatos do CRM do contato (#3917) — getter, e não valor, de propósito:
+   * quem lê o banco é o TURNO (uma leitura por turno, compartilhada com a IA de
+   * sempre), e a leitura só acontece se a pergunta ao Jev for de fato montada.
+   * Com a tarefa desligada, ou com o Jev decidindo sem a IA de sempre, nenhuma
+   * consulta nova é paga — a promessa do bloco 2.2 (o turno não paga o que não
+   * usa) continua valendo.
+   */
+  fatosDoCrmDoTurno?: () => Promise<FatosDoCrm | null>;
 }
 
 /**
@@ -273,6 +319,7 @@ export interface RegistroDoRoteador {
     rotuloDoJev: string;
     /** O agente a que a da IA de sempre levou; `null` quando ela não decidiu. */
     rotuloDaIa: string | null;
+    intencaoDaIa?: string | null;
   } | null;
 }
 
@@ -315,8 +362,9 @@ export async function registrarRoteadorDoJev(pool: pg.Pool, r: RegistroDoRoteado
       `with observacao as (
          insert into public.jev_observacoes
            (organization_id, tarefa, estado, conversation_id, message_id, job_id,
-            rotulo_jev, probabilidade_jev, confianca_jev, rotulo_atual, modelo, latencia_ms)
-         values ($1, $10, $11, $12, $13, $3, $14, $15, $16, $17, $18, $8)
+            rotulo_jev, probabilidade_jev, confianca_jev, rotulo_atual, modelo, latencia_ms,
+            intencao_jev, intencao_atual)
+         values ($1, $10, $11, $12, $13, $3, $14, $15, $16, $17, $18, $8, $19, $20)
          -- O retry do job pergunta de novo sobre a MESMA mensagem: a primeira
          -- resposta fica, e o custo da segunda entra em llm_calls, porque houve.
          on conflict (organization_id, tarefa, message_id) where message_id is not null do nothing
@@ -333,6 +381,8 @@ export async function registrarRoteadorDoJev(pool: pg.Pool, r: RegistroDoRoteado
         r.jev.confianca,
         r.observacao.rotuloDaIa,
         r.jev.modelo,
+        r.jev.veredito.intentName,
+        r.observacao.intencaoDaIa ?? null,
       ],
     );
   } catch (erro) {
@@ -344,7 +394,7 @@ export async function registrarRoteadorDoJev(pool: pg.Pool, r: RegistroDoRoteado
   }
 }
 
-/** O Jev no roteador, começado JUNTO do classificador de sempre. */
+/** A consulta ao Jev no roteador; o turno escolhe quando chamar a IA de sempre. */
 export interface JevNoRoteador {
   /**
    * O estado da tarefa, lido do banco — rápido, e é ele que diz se o turno
@@ -352,6 +402,8 @@ export interface JevNoRoteador {
    * quando a mensagem vem vazia).
    */
   estado: Promise<EstadoDaTarefa>;
+  /** No modo sob demanda, o classificador da IA de sempre só roda se a escolha do Jev não bastar. */
+  modo?: Promise<"comparacao" | "sob_demanda">;
   /** A escolha dele, ou `null` quando não opinou. Nunca rejeita. */
   escolha: Promise<EscolhaDoJev | null>;
   /**
@@ -379,16 +431,25 @@ export function consultarJevNoRoteador(
   entrada: EntradaDoRoteador,
   deps: DependenciasDoPonto = {},
 ): JevNoRoteador {
-  const estado: Promise<EstadoDaTarefa> =
-    entrada.mensagem.trim() === ""
-      ? Promise.resolve("desligada")
-      : estadoDaTarefaNoPool(pool, entrada.organizationId, TAREFA_DO_ROTEADOR);
+  const config = entrada.mensagem.trim() === ""
+    ? Promise.resolve(lerConfigDoJev(null))
+    : configDaTarefaNoPool(pool, entrada.organizationId, TAREFA_DO_ROTEADOR);
+  const estado: Promise<EstadoDaTarefa> = config.then((c) => estadoEfetivoDaTarefa(c, TAREFA_DO_ROTEADOR)).catch(() => 'desligada');
+  const modo = config.then((c) => c.modo_roteador).catch(() => 'comparacao' as const);
   // A pergunta só é montada com a tarefa rodando: desligado, o Jev não custa
   // nada ao turno além da leitura do estado.
   const resposta: Promise<RespostaDoJev> = estado
-    .then((e) => {
-      const pergunta = e === "desligada" ? null : perguntaDoRoteador(entrada.membros);
-      return e === "desligada" || pergunta === null ? SEM_OPINIAO : perguntar(pool, entrada, e, pergunta, deps);
+    .then(async (e) => {
+      if (e === "desligada") return SEM_OPINIAO;
+      // Os fatos vêm do TURNO (#3917): uma leitura só, feita por quem já ia
+      // ler para o classificador. Falha da leitura é `null` — a pergunta sai
+      // como antes, e o turno não perde o roteamento por causa de um adjetivo.
+      const fatos =
+        entrada.fatosDoCrmDoTurno === undefined
+          ? null
+          : await entrada.fatosDoCrmDoTurno().catch(() => null);
+      const pergunta = perguntaDoRoteador(entrada.membros, fatos);
+      return pergunta === null ? SEM_OPINIAO : perguntar(pool, entrada, e, pergunta, deps);
     })
     // O turno espera esta promessa quando o Jev decide: rejeitada, ela levaria
     // o roteamento inteiro para o caminho de erro. Sem escolha, vale a de sempre.
@@ -402,6 +463,7 @@ export function consultarJevNoRoteador(
   const escolha = resposta.then((r) => r.escolha);
   return {
     estado,
+    modo,
     escolha,
     observar: ({ conversationId, messageId, rotuloDe, vereditoDaIa, decidiu, aIaCobriu }) => {
       void resposta
@@ -421,6 +483,7 @@ export function consultarJevNoRoteador(
                   messageId,
                   rotuloDoJev: rotuloDe(jev.veredito),
                   rotuloDaIa: vereditoDaIa === null ? null : rotuloDe(vereditoDaIa),
+                  intencaoDaIa: vereditoDaIa?.intentName ?? null,
                 },
               }),
         )

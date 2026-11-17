@@ -10062,6 +10062,10 @@ alter table public.agent_inbox_items
     -- conexão e o cliente que escreveu enquanto o número estava fora.
     'recuperacao_da_queda',
     'cliente_sem_resposta_na_queda',
+    -- (migration 0529) O Jev percebe o pedido de pessoa ou de parar de receber
+    -- que a regra de hoje não pegou, e abre o aviso para alguém conferir.
+    'jev_pedido_de_humano',
+    'jev_parar_de_receber',
     'other'
   ));
 
@@ -44502,6 +44506,71 @@ $$;
 revoke execute on function public.fn_titular_apagado_a_pedido(uuid, text, text) from public, anon, authenticated;
 grant execute on function public.fn_titular_apagado_a_pedido(uuid, text, text) to service_role;
 
+-- ---- o Jev completo: funções dos avisos e o expurgo das decisões do roteador (migration 0529) ----
+create or replace function public.fn_fechar_avisos_do_jev_da_conversa()
+returns trigger language plpgsql security definer set search_path=public as $$
+begin
+ if new.status not in('open','pending','claimed','ai_handling') then
+  update public.agent_inbox_items set status='resolved',resolved_at=now()
+   where organization_id=new.organization_id and ref_kind='conversation' and ref_id=new.id
+     and kind in('jev_pedido_de_humano','jev_parar_de_receber') and status<>'resolved';
+ elsif new.assigned_to_user_id is not null
+    or (new.last_handoff_at is not null and new.last_handoff_at is distinct from old.last_handoff_at)
+    or (new.bot_silenced_until > now() and new.bot_silenced_until is distinct from old.bot_silenced_until) then
+  update public.agent_inbox_items set status='resolved',resolved_at=now()
+   where organization_id=new.organization_id and ref_kind='conversation' and ref_id=new.id
+     and kind='jev_pedido_de_humano' and status<>'resolved';
+ end if;
+ return new;
+end;
+$$;
+revoke all on function public.fn_fechar_avisos_do_jev_da_conversa() from public,anon,authenticated;
+
+create or replace function public.fn_fechar_aviso_do_jev_ao_bloquear()
+returns trigger language plpgsql security definer set search_path=public as $$
+begin
+ update public.agent_inbox_items set status='resolved',resolved_at=now()
+  where organization_id=new.organization_id and kind='jev_parar_de_receber' and ref_kind='conversation'
+    and status<>'resolved'
+    and ref_id in(select v.id from public.conversations v where v.organization_id=new.organization_id and v.contact_id=new.id);
+ return new;
+end;
+$$;
+revoke all on function public.fn_fechar_aviso_do_jev_ao_bloquear() from public,anon,authenticated;
+
+create or replace function public.fn_expurgar_observacoes_do_jev(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql security definer set search_path = public, pg_temp
+as $$
+declare
+  v_dias int := greatest(coalesce(p_retencao_dias, 90), 30);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_observacoes int;
+  v_decisoes int;
+begin
+  with vencidas as (
+    select id from public.jev_observacoes
+     where created_at < now() - make_interval(days => v_dias)
+     order by created_at limit v_limite
+  )
+  delete from public.jev_observacoes o using vencidas v where o.id = v.id;
+  get diagnostics v_observacoes = row_count;
+  with vencidas as (
+    select id from public.jev_router_decisions
+     where created_at < now() - make_interval(days => v_dias)
+     order by created_at limit (v_limite - v_observacoes)
+  )
+  delete from public.jev_router_decisions d using vencidas v where d.id = v.id;
+  get diagnostics v_decisoes = row_count;
+  return v_observacoes + v_decisoes;
+end;
+$$;
+revoke all on function public.fn_expurgar_observacoes_do_jev(int,int) from public;
+revoke execute on function public.fn_expurgar_observacoes_do_jev(int,int) from anon, authenticated;
+grant execute on function public.fn_expurgar_observacoes_do_jev(int,int) to service_role;
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria
@@ -47391,5 +47460,78 @@ alter table public.channel_session_groups
 
 comment on column public.channel_session_groups.ia_responde is
   'A chave POR GRUPO "Permitir que a IA responda neste grupo". DESLIGADA por padrão: a mensagem de grupo entra na inbox e a IA não responde. LIGADA, o ingest do grupo pede o turno do agente (mesmo evento ai_agent.dispatch_requested da conversa individual) e o motor deixa de pular o evento; as proteções de envio seguem valendo. O chatbot nunca conduz grupo.';
+
+notify pgrst, 'reload schema';
+
+-- ---- o Jev completo: avisos dos pedidos na Central e as decisões do roteador (migration 0529) ----
+delete from public.agent_inbox_items a
+ using (
+   select id, row_number() over (
+            partition by organization_id, kind, ref_id
+            order by (status = 'open') desc, created_at desc, id desc
+          ) as n
+     from public.agent_inbox_items
+    where kind in ('jev_pedido_de_humano','jev_parar_de_receber')
+ ) d
+ where a.id = d.id and d.n > 1;
+create unique index if not exists agent_inbox_jev_pedido_unico
+  on public.agent_inbox_items (organization_id, kind, ref_id)
+  where kind in ('jev_pedido_de_humano','jev_parar_de_receber');
+
+drop trigger if exists trg_fechar_avisos_do_jev_da_conversa on public.conversations;
+create trigger trg_fechar_avisos_do_jev_da_conversa
+ after update of assigned_to_user_id,status,bot_silenced_until,last_handoff_at on public.conversations
+ for each row execute function public.fn_fechar_avisos_do_jev_da_conversa();
+
+drop trigger if exists trg_fechar_aviso_do_jev_ao_bloquear on public.contacts;
+create trigger trg_fechar_aviso_do_jev_ao_bloquear
+ after update of is_blocked on public.contacts
+ for each row when (new.is_blocked and old.is_blocked is distinct from true)
+ execute function public.fn_fechar_aviso_do_jev_ao_bloquear();
+
+alter table public.jev_observacoes add column if not exists intencao_jev text;
+alter table public.jev_observacoes add column if not exists intencao_atual text;
+
+create table if not exists public.jev_router_decisions (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  router_id uuid not null,
+  conversation_id uuid,
+  message_id uuid,
+  job_id uuid,
+  modo text not null check (modo in ('tradicional_comparacao', 'jev_comparacao', 'jev_sob_demanda')),
+  context_message_count integer not null check (context_message_count between 0 and 16),
+  origem text not null check (origem in ('tradicional', 'jev', 'reserva')),
+  motivo_reserva text check (motivo_reserva in ('falha_jev', 'baixa_confianca', 'sem_intencao', 'intencao_invalida')),
+  intent_jev text,
+  intent_tradicional text,
+  intent_final text,
+  agent_id_final uuid,
+  confianca_final numeric,
+  modelo_jev text,
+  custo_jev_cents numeric,
+  custo_tradicional_cents numeric,
+  custo_incompleto boolean not null default false,
+  tempo_total_ms integer not null,
+  revisao text check (revisao in ('correto', 'incorreto')),
+  agent_id_esperado uuid,
+  revisado_por uuid,
+  revisado_em timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists jev_router_decisions_org_message_idx
+  on public.jev_router_decisions (organization_id, router_id, message_id)
+  where message_id is not null;
+create index if not exists jev_router_decisions_org_created_idx
+  on public.jev_router_decisions (organization_id, created_at desc);
+
+alter table public.jev_router_decisions enable row level security;
+drop policy if exists tenant_isolation_jev_router_decisions_select on public.jev_router_decisions;
+create policy tenant_isolation_jev_router_decisions_select on public.jev_router_decisions
+  for select using (organization_id in (select public.fn_user_org_ids()));
+revoke all on public.jev_router_decisions from public, anon, authenticated;
+grant select on public.jev_router_decisions to authenticated;
+grant all on public.jev_router_decisions to service_role;
 
 notify pgrst, 'reload schema';

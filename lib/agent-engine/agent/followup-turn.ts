@@ -28,7 +28,13 @@ import type pg from 'pg';
 
 import { withFields } from '../obs/logger';
 import type { JobRow } from '../queue/queue';
-import { getLeadContext, type LeadContext } from '../edge/crm/get-lead-context';
+import {
+  getLeadContext,
+  textoDoClienteNaUltimaMensagem,
+  type LeadContext,
+  type LeadContextMessage,
+} from '../edge/crm/get-lead-context';
+import { consultarJevNoFollowup } from '@/lib/ai/decisao/followup';
 import { WahaChannelAdapter } from '../edge/channel/waha-adapter';
 import { applySendOutcome } from '../edge/crm/send-message';
 import { runBeforeSend } from '../guardrails/before-send';
@@ -234,7 +240,7 @@ function lastInboundOf(context: LeadContext): { body: string; sentAt: string } |
  * desde a última vez que falamos" vira `null` (onda 5: o classify SÓ tem algo
  * pra classificar quando o lead respondeu DEPOIS do nosso último envio).
  */
-function lastInboundSinceLastOutbound(context: LeadContext): string | null {
+function lastInboundSinceLastOutbound(context: LeadContext): LeadContextMessage | null {
   let lastOutboundAt: number | null = null;
   for (const m of context.messages) {
     if (m.direction === 'outbound') lastOutboundAt = Date.parse(m.sent_at);
@@ -243,10 +249,33 @@ function lastInboundSinceLastOutbound(context: LeadContext): string | null {
     const m = context.messages[i]!;
     if (m.direction === 'inbound') {
       const at = Date.parse(m.sent_at);
-      return lastOutboundAt === null || at > lastOutboundAt ? m.body : null;
+      return lastOutboundAt === null || at > lastOutboundAt ? m : null;
     }
   }
   return null;
+}
+
+/**
+ * O id, em `messages`, da resposta que o contexto escolheu — o contexto não o
+ * carrega. Pela conversa do contexto, pelo texto e pelo segundo em que chegou
+ * (o `sent_at` do contexto vem truncado no segundo). `null` quando não acha.
+ */
+async function idDaResposta(
+  pool: pg.Pool,
+  orgId: string,
+  conversationId: string | null,
+  resposta: LeadContextMessage,
+): Promise<string | null> {
+  if (conversationId === null) return null;
+  const { rows } = await pool.query<{ id: string }>(
+    `select id from messages
+      where organization_id = $1 and conversation_id = $2 and direction = 'inbound' and body = $3
+        and sent_at >= $4::timestamptz and sent_at < $4::timestamptz + interval '1 second'
+      order by sent_at desc, id desc
+      limit 1`,
+    [orgId, conversationId, resposta.body, resposta.sent_at],
+  );
+  return rows[0]?.id ?? null;
 }
 
 /**
@@ -582,19 +611,53 @@ async function runFlowDrivenTurn(
     if (!context.ok) {
       throw new Error(`turno de classificação do fluxo falhou em get_lead_context (${context.error.code})`);
     }
+    const resposta = lastInboundSinceLastOutbound(context.context);
+    // O Jev lê a MESMA resposta, ao mesmo tempo, e só observa: a saída que move
+    // o fluxo é sempre a da IA de sempre, e ninguém espera por ele. Vai só o que
+    // o cliente digitou — resposta em mídia (transcrição, texto lido) não sai.
+    // Sem resposta, não há o que comparar: o Jev não é perguntado.
+    const conversaDaResposta = context.context.conversation_id;
+    const jev =
+      resposta === null
+        ? null
+        : consultarJevNoFollowup(
+            pool,
+            {
+              organizationId: target.tenantId,
+              contactId: target.leadId,
+              jobId: job.id,
+              conversationId: conversaDaResposta,
+              mensagem: textoDoClienteNaUltimaMensagem([resposta]),
+              classes,
+              ...(input.hint !== undefined ? { dica: input.hint } : {}),
+              idDaMensagem: () => idDaResposta(pool, target.tenantId, conversaDaResposta, resposta),
+            },
+            deps.jev,
+          );
     const cls = await classifyFollowupReply(
       pool,
       deps.llmCfg,
       { tenantId: target.tenantId, leadId: target.leadId, jobId: job.id },
       {
-        candidateText: lastInboundSinceLastOutbound(context.context),
+        candidateText: resposta?.body ?? null,
         classes,
         ...(input.hint !== undefined ? { hint: input.hint } : {}),
         ...(deps.knobs.followupAi?.model !== undefined ? { model: deps.knobs.followupAi.model } : {}),
       },
       { ...(deps.registry !== undefined ? { registry: deps.registry } : {}), log: runLog },
-    );
-    await complete(pool, { jobId:job.id,jobClaim:claimOfJob(job), organizationId: target.tenantId, enrollmentId, nodeId, result: { kind: 'classified', class: cls } });
+    ).catch((erro: unknown) => {
+      // Sem a saída dela o job vai ser repetido: o Jev fica sem par agora, e a
+      // repetição completa o par.
+      jev?.observar(null);
+      throw erro;
+    });
+    // O par só leva a saída DEPOIS de ela concluir o passo: se a conclusão cair,
+    // o retry classifica de novo, e o par tem de ser com a saída que moveu o fluxo.
+    await complete(pool, { jobId:job.id,jobClaim:claimOfJob(job), organizationId: target.tenantId, enrollmentId, nodeId, result: { kind: 'classified', class: cls } }).catch((erro: unknown) => {
+      jev?.observar(null);
+      throw erro;
+    });
+    jev?.observar(cls);
     return;
   }
 

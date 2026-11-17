@@ -99,6 +99,8 @@ export type InboxKind =
   // conexão e um aviso por conversa cujo cliente escreveu e ficou sem resposta.
   | 'recuperacao_da_queda'
   | 'cliente_sem_resposta_na_queda'
+  | 'jev_pedido_de_humano'
+  | 'jev_parar_de_receber'
   | 'other';
 
 export interface InboxItemRow {

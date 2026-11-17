@@ -334,6 +334,15 @@ export async function loadPublishedAgentConfigById(
 }
 
 /**
+ * `ai_agent_versions.handoff_keywords` como `matchesHandoffKeyword` as espera:
+ * minúsculas, sem espaço de borda, sem vazias. Exportada para quem lê a versão
+ * por outro caminho (o worker de clima, pelo cliente admin) casar igual ao turno.
+ */
+export function palavrasDePassagem(brutas: readonly string[] | null | undefined): string[] {
+  return (brutas ?? []).map((k) => k.toLowerCase().trim()).filter((k) => k !== '');
+}
+
+/**
  * Detecção de handoff por keywords CONFIGURADAS na tela (soma-se à detecção
  * determinística regex do engine — nunca a substitui). Case-insensitive,
  * substring simples: a semântica do EPIC-13 (sentinel de handoff_keywords).

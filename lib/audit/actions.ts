@@ -388,6 +388,7 @@ export const AUDIT_ACTIONS = [
   "ai.router_updated",
   "ai.router_deleted",
   "ai.router_members_updated",
+  "ai.router_decision_reviewed",
   "followup_flow.created",
   "followup_flow.updated",
   "followup_flow.published",
@@ -1060,6 +1061,12 @@ export const AUDIT_ACTIONS = [
   // Uma tarefa do Jev mudou de estado (observando/decidindo/desligada) pelo
   // PATCH com `tarefa`; metadata.tarefa diz qual, e estado_anterior o de antes.
   "ai.jev.tarefa_alterada",
+  "ai.jev.modo_roteador_alterado",
+  // DE ONDE o Jev responde mudou (PATCH com `origem`): TypeSafe direto ou via
+  // OpenRouter. Muda o fornecedor que recebe a mensagem do cliente, então é a
+  // mesma pergunta de LGPD do ligado — metadata.origem diz para qual, e
+  // origem_anterior de onde saiu.
+  "ai.jev.origem_alterada",
   // O pedido de descadastro é do cliente e o padrão é irreversível — mas a
   // regra W-02 do catálogo de negócio prevê o override: admin desbloqueia à
   // mão. Sem esta linha, a ação existiria sem rastro de QUEM a desfez, que é

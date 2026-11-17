@@ -220,6 +220,7 @@ import {
   type ManipulacaoDoJev,
 } from '@/lib/ai/decisao/manipulacao';
 import type { DependenciasDoPonto } from '@/lib/ai/decisao/ponto';
+import { perguntarUrgenciaAoJev, registrarUrgenciaDoJev } from '@/lib/ai/decisao/urgencia';
 import { fusoDaOrganizacao } from './fuso-da-org';
 import { renderAgora } from '@/lib/tempo/agora';
 import { decidirElegibilidadeDaConversa } from '@/lib/ai/elegibilidade/consulta-pg';
@@ -4843,6 +4844,10 @@ async function executarTurnoDoAgente(
       // produto, não deste guardrail), abre um alerta CRÍTICO na Central agora, pra um
       // humano poder responder manualmente pelo próprio WhatsApp enquanto o número
       // aquece. Dedupe por (kind, ref) — não reabre um já aberto pra esta conversa.
+      //
+      // A REGRA continua decidindo: ela decide; onde não, o Jev só OPINA, nasce
+      // em observação e, com "Avisar a equipe", abre o MESMO alerta
+      // `kind='handoff'`, sem a frase do cliente.
       if (inboundsPendentes.some((texto) => detectUrgencySignal(texto))) {
         await insertInboxItem(
           pool,
@@ -4865,6 +4870,55 @@ async function executarTurnoDoAgente(
             error: err instanceof Error ? err.message : String(err),
           });
         });
+      } else if (!preview) {
+        const mensagemRepresada = inboundsPendentes[inboundsPendentes.length - 1] ?? '';
+        const urgencia = await perguntarUrgenciaAoJev(
+          pool,
+          {
+            organizationId: tenantId,
+            conversationId: input.conversationId || null,
+            messageId: input.inboundMessageId ?? null,
+            contactId: leadId || null,
+            jobId: liveJob().id,
+            mensagem: mensagemRepresada,
+          },
+          deps.jev,
+        );
+        if (urgencia !== null) {
+          await registrarUrgenciaDoJev(pool, {
+            organizationId: tenantId,
+            contactId: leadId || null,
+            conversationId: input.conversationId || null,
+            messageId: input.inboundMessageId ?? null,
+            jobId: liveJob().id,
+            urgencia,
+          });
+          if (urgencia.percebeu && urgencia.estado === 'decidindo') {
+            await insertInboxItem(
+              pool,
+              tenantId,
+              {
+                kind: 'handoff',
+                severity: 'critical',
+                title: 'Lead com risco percebido pelo modelo de decisão represado pelo cap de envio',
+                body:
+                  `A regra de urgência de hoje não reconheceu o risco, mas o modelo de decisão ` +
+                  `percebeu, numa mensagem represada, risco à segurança ou à saúde ` +
+                  `(origem: percebido pelo modelo de decisão, visível só para a equipe). O ` +
+                  `número está em warm-up/bateu o cap diário (${veto.code}) — a resposta ` +
+                  `automática só sai em ${veto.nextAllowedAt.toISOString()}. Considere ` +
+                  `responder manualmente pelo WhatsApp enquanto o número aquece.`,
+                refKind: 'conversation',
+                refId: input.conversationId,
+              },
+              'kind_e_ref',
+            ).catch((err) => {
+              runLog.warn('alerta de urgência percebida pelo modelo represada falhou (best-effort)', {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
+          }
+        }
       }
       throw new JobSettledError(
         'cap de envio atingido — job reagendado para a próxima abertura, sem mensagem enviada',
