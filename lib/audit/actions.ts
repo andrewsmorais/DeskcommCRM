@@ -1061,6 +1061,13 @@ export const AUDIT_ACTIONS = [
   // Uma tarefa do Jev mudou de estado (observando/decidindo/desligada) pelo
   // PATCH com `tarefa`; metadata.tarefa diz qual, e estado_anterior o de antes.
   "ai.jev.tarefa_alterada",
+  // O MOLDE DE IA da instalação trocado em `/admin/sistema`
+  // (`platform_settings.molde_de_ia_org_id`, migration 0530) — mutação de
+  // plataforma, sem `organization_id`; metadata com o molde anterior e o novo.
+  "platform.molde_de_ia_updated",
+  // O EFEITO do molde: a empresa nova nasceu com as funções e o padrão de IA
+  // do molde. Quem grava é o gatilho `fn_molde_de_ia_na_org_nova` na empresa NOVA.
+  "ai.molde_de_ia_aplicado",
   "ai.jev.modo_roteador_alterado",
   // DE ONDE o Jev responde mudou (PATCH com `origem`): TypeSafe direto ou via
   // OpenRouter. Muda o fornecedor que recebe a mensagem do cliente, então é a
