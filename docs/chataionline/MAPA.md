@@ -61,6 +61,12 @@
 - E-mails pela Resend (boas-vindas, plano contratado/melhorado/reduzido, reembolso, cancelamento,
   Escala ativado). Remetente `suporte@chataionline.io`.
 
+- **17/11 — o dono mudou de ideia e quer:** IA respondendo em grupo e grupos de clientes no
+  chat, o Jev (segundo agente que confere o primeiro), a prospecção completa (Scavio, scraping,
+  auditoria do site, conferir WhatsApp, campanha por número) e respostas rápidas/playbooks entre
+  empresas. O plano por pacote e por modelo (Opus × Sonnet) está no documento "Novidades do
+  produto original — o que vale trazer", seção "Plano de trabalho por modelo".
+
 ## 4. O que já foi feito (por ordem)
 
 | Quando | O quê | Onde ver |
