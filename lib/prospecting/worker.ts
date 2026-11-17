@@ -26,6 +26,7 @@ import { campaignConfigSchema } from "./schema";
 import { ProspectingError } from "./provider";
 import { blocoVozVendedor, personalizacaoDaOrganizacao } from "./personalizar";
 import { sinaisDaEmpresa } from "./sinais-da-empresa";
+import { idsDeOrgsParadas } from "@/lib/organizacao/operante";
 import {
   withProspectingLock,
   synchronizeSearch,
@@ -347,8 +348,14 @@ export async function sendNextCandidate(
 }
 
 export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient) {
+  // Organização parada (suspensa, redigida, arquivada) não prospecta: a busca é
+  // paga e a abordagem sai para fora. O corte é no SQL, ANTES do `limit 20`: a
+  // ordem é `min(updated_at)`, e a org pulada nunca toca `updated_at` — filtrar
+  // depois a deixaria no topo para sempre, com as operantes esperando atrás.
+  const paradas = await idsDeOrgsParadas(admin);
   const { rows: organizations } = await pool.query<{ organization_id: string }>(
-    "select organization_id from prospecting_campaigns where status='running' or search_status in ('starting','running') group by organization_id order by min(updated_at) limit 20",
+    "select organization_id from prospecting_campaigns where (status='running' or search_status in ('starting','running')) and organization_id <> all($1::uuid[]) group by organization_id order by min(updated_at) limit 20",
+    [paradas],
   );
   const deadline = Date.now() + 180000;
   let processed = 0;

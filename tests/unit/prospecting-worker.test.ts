@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   authorize: vi.fn(),
   knobs: vi.fn(),
   open: vi.fn(),
+  paradas: vi.fn(),
 }));
 vi.mock("@/app/api/v1/messages/_handler", () => ({ sendMessageHandler: mocks.send }));
 vi.mock("@/lib/audit", () => ({ audit: mocks.audit }));
@@ -46,12 +47,18 @@ vi.mock("@/lib/agent-engine/pacing/engine", () => ({
   },
 }));
 vi.mock("@/lib/env", () => ({ env: {} }));
+// Só `idsDeOrgsParadas` é dublê: `OrgNaoOperanteError` segue a classe real
+// (a Task 26b a usa no `catch` do tick, e `instanceof` exige a mesma classe).
+vi.mock("@/lib/organizacao/operante", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/organizacao/operante")>()),
+  idsDeOrgsParadas: mocks.paradas,
+}));
 vi.mock("@/lib/prospecting/store", () => ({
   withProspectingLock: vi.fn(),
   synchronizeSearch: vi.fn(),
   validateConfig: vi.fn().mockResolvedValue(undefined),
 }));
-import { sendNextCandidate } from "@/lib/prospecting/worker";
+import { sendNextCandidate, tickProspecting } from "@/lib/prospecting/worker";
 import type { Campaign } from "@/lib/prospecting/store";
 const id = "10000000-0000-4000-8000-000000000001";
 const campaign = {
@@ -223,5 +230,18 @@ describe("gradual outreach", () => {
     expect(
       db.query.mock.calls.some(([q]) => q.startsWith("update messages set status='failed'")),
     ).toBe(true);
+  });
+});
+
+describe("tick da prospecção × organização parada", () => {
+  it("exclui as paradas NO SQL, antes do limit — filtrar depois deixaria a parada no topo para sempre", async () => {
+    const parada = "20000000-0000-4000-8000-000000000002";
+    mocks.paradas.mockResolvedValue([parada]);
+    const query = vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [] }));
+    await tickProspecting({ query } as never, {} as never);
+    const [sql, params] = query.mock.calls[0]!;
+    expect(sql).toMatch(/organization_id <> all\(\$1::uuid\[\]\)/);
+    expect(sql.indexOf("<> all")).toBeLessThan(sql.indexOf("limit 20"));
+    expect(params).toEqual([[parada]]);
   });
 });
