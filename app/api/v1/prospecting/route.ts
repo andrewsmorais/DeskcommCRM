@@ -10,6 +10,7 @@ import type { ChannelProvider } from "@/lib/channels/types";
 import { arquivadaEm } from "@/lib/prospecting/arquivamento";
 import { ProspectingError } from "@/lib/prospecting/provider";
 import { prospectingInputSchema } from "@/lib/prospecting/schema";
+import { escolhaGravada, gravarEscolha, provedorExigeCredencialDaOrganizacao } from "@/lib/prospecting/provedor";
 import {
   activateCampaign,
   arquivarCampanha,
@@ -72,7 +73,11 @@ export async function GET() {
     ]);
     return ok(
       {
-        configured: !!settings.rows.length,
+        // O `local-http` não grava chave por empresa (a URL é da instalação).
+        configured:
+          !!settings.rows.length ||
+          !(await provedorExigeCredencialDaOrganizacao(db, org).catch(() => true)),
+        provider: (await escolhaGravada(db, org).catch(() => null)) ?? "apify",
         campaigns: campaigns.rows,
         candidates: candidates.rows,
         agents: agents.rows,
@@ -114,8 +119,20 @@ export async function POST(req: Request) {
     const admin = createAdminClient();
     let result: unknown;
     if (body.action === "configure") {
-      await configureCredential(pool, admin, org, body.api_key);
-      result = { configured: true };
+      // Trocar de motor é regravar a escolha ANTES de validar (a régua é a do
+      // motor escolhido) — e devolvê-la como estava se a chave não passar, para
+      // a chave antiga nunca ir ao motor novo.
+      const anterior = await escolhaGravada(pool, org);
+      if (body.provider !== undefined) await gravarEscolha(pool, org, body.provider);
+      try {
+        if (body.api_key.length < 10 && (await provedorExigeCredencialDaOrganizacao(pool, org)))
+          throw new ProspectingError("Informe a chave de busca (pelo menos 10 caracteres).", 422);
+        await configureCredential(pool, admin, org, body.api_key);
+      } catch (erro) {
+        if (body.provider !== undefined) await gravarEscolha(pool, org, anterior);
+        throw erro;
+      }
+      result = { configured: true, provider: body.provider ?? anterior ?? "apify" };
     } else if (body.action === "search")
       result = await createSearch(pool, admin, org, body.request_id, body.search);
     else if (body.action === "start")
@@ -183,7 +200,10 @@ export async function POST(req: Request) {
       actorUserId: auth.user.id,
       resourceType: "prospecting",
       resourceId,
-      metadata: { operation: body.action },
+      metadata: {
+        operation: body.action,
+        ...(body.action === "configure" && body.provider !== undefined ? { provider: body.provider } : {}),
+      },
       requestId,
     });
     return ok(result, { requestId, headers });

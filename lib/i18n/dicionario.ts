@@ -19366,6 +19366,15 @@ export const DICIONARIO: Traducoes = {
   "A OpenRouter recusou a chave. Confira se ela está inteira e se a conta na OpenRouter tem crédito.": {
     es: "OpenRouter rechazó la clave. Verifica si está completa y si la cuenta en OpenRouter tiene crédito.",
   },
+  "Motor de busca salvo.": { es: "Motor de búsqueda guardado." },
+  "Onde buscar as empresas": { es: "Dónde buscar las empresas" },
+  "Apify (Google Maps)": { es: "Apify (Google Maps)" },
+  "Scavio (Google Maps)": { es: "Scavio (Google Maps)" },
+  "Motor de busca próprio da instalação": { es: "Motor de búsqueda propio de la instalación" },
+  "Usa o motor de busca que a instalação configurou. Não precisa de chave; se ele não estiver configurado, o servidor avisa ao salvar.": { es: "Usa el motor de búsqueda que configuró la instalación. No necesita clave; si no está configurado, el servidor avisa al guardar." },
+  "Chave da Scavio": { es: "Clave de Scavio" },
+  "Salvar motor de busca": { es: "Guardar motor de búsqueda" },
+  "Informe a chave de busca (pelo menos 10 caracteres).": { es: "Informe la clave de búsqueda (al menos 10 caracteres)." },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

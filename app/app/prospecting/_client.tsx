@@ -44,6 +44,8 @@ type Candidate = {
 };
 type State = {
   configured: boolean;
+  /** O motor de busca escolhido por esta empresa (sem escolha = Apify). */
+  provider?: "apify" | "scavio" | "local-http";
   campaigns: Campaign[];
   candidates: Candidate[];
   agents: { id: string; name: string }[];
@@ -111,6 +113,7 @@ export function ProspectingClient() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [key, setKey] = useState("");
+  const [motor, setMotor] = useState<"apify" | "scavio" | "local-http" | null>(null);
   const [settings, setSettings] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [niche, setNiche] = useState("");
@@ -229,6 +232,8 @@ export function ProspectingClient() {
       setBaixando(false);
     }
   }
+  const motorEscolhido = motor ?? data?.provider ?? "apify";
+  const semChave = motorEscolhido === "local-http";
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -263,36 +268,63 @@ export function ProspectingClient() {
       {(settings || data?.configured === false) && (
         <Card className="p-5">
           <form
-            className="flex flex-col gap-3 sm:flex-row sm:items-end"
+            className="flex flex-col gap-3"
+            data-testid="motor-de-busca"
             onSubmit={async (e) => {
               e.preventDefault();
               if (
-                await perform({ action: "configure", api_key: key }, t("Chave de busca salva."))
+                await perform(
+                  { action: "configure", provider: motorEscolhido, api_key: semChave ? "" : key },
+                  semChave ? t("Motor de busca salvo.") : t("Chave de busca salva."),
+                )
               ) {
                 setKey("");
                 setSettings(false);
               }
             }}
           >
-            <div className="flex-1">
-              <Label htmlFor="prospecting-key">{t("Chave da Apify")}</Label>
-              <Input
-                id="prospecting-key"
-                type="password"
-                autoComplete="off"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                required
-                minLength={10}
-                className="mt-2"
-              />
+            <div>
+              <Label htmlFor="prospecting-motor">{t("Onde buscar as empresas")}</Label>
+              <select
+                id="prospecting-motor"
+                className="mt-2 block h-10 w-full rounded-md border bg-background px-3 text-sm sm:max-w-sm"
+                value={motorEscolhido}
+                onChange={(e) => setMotor(e.target.value as "apify" | "scavio" | "local-http")}
+              >
+                <option value="apify">{t("Apify (Google Maps)")}</option>
+                <option value="scavio">{t("Scavio (Google Maps)")}</option>
+                <option value="local-http">{t("Motor de busca próprio da instalação")}</option>
+              </select>
               <p className="mt-2 text-xs text-muted-foreground">
-                {t("A chave fica cifrada no servidor. Cada busca tem seu próprio limite de gasto.")}
+                {motorEscolhido === "local-http"
+                  ? t("Usa o motor de busca que a instalação configurou. Não precisa de chave; se ele não estiver configurado, o servidor avisa ao salvar.")
+                  : t("A chave fica cifrada no servidor. Cada busca tem seu próprio limite de gasto.")}
               </p>
             </div>
-            <Button disabled={busy || !key} type="submit">
-              {t("Salvar chave")}
-            </Button>
+            {!semChave && (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <Label htmlFor="prospecting-key">
+                    {motorEscolhido === "scavio" ? t("Chave da Scavio") : t("Chave da Apify")}
+                  </Label>
+                  <Input
+                    id="prospecting-key"
+                    type="password"
+                    autoComplete="off"
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    required
+                    minLength={10}
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+            )}
+            <div>
+              <Button disabled={busy || (!semChave && !key)} type="submit">
+                {semChave ? t("Salvar motor de busca") : t("Salvar chave")}
+              </Button>
+            </div>
           </form>
         </Card>
       )}

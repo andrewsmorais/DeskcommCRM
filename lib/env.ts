@@ -201,6 +201,13 @@ const schema = z.object({
   // Vazio = a instalação não oferece a chamada de voz. É essa string vazia que
   // `instalacaoOfereceVoz()` lê para dizer à tela que nenhum clique resolve.
   WACALLS_API_BASE_URL: z.string().optional().default(""),
+  // Motor de busca próprio da prospecção (provedor `local-http`). NUNCA
+  // `required()`: vazio = a instalação não oferece esse motor, e a organização
+  // que escolher `local-http` cai no erro FECHADO ("Informe a URL do engine de
+  // busca local."). A URL é da INSTALAÇÃO, nunca da organização — é isso que
+  // faz a liberação de destino interno valer. Quem lê é
+  // `lib/prospecting/provedor-local-http.ts`.
+  PROSPECTING_LOCAL_HTTP_URL: z.string().optional().default(""),
   // O upstream autenticado NÃO tem modo aberto: sem este Bearer, a API só é
   // alcançável pelo cookie de login do navegador, e um processo
   // server-to-server não tem cookie. URL sem token dá um cliente que constrói e

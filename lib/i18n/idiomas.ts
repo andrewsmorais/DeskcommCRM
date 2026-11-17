@@ -102,3 +102,13 @@ export function parseAcceptLanguage(header: string | null | undefined): Idioma |
   }
   return null;
 }
+
+/**
+ * O idioma do DICIONÁRIO para a etiqueta BCP-47 de um DESTINATÁRIO (ex.: o
+ * `locale` da organização). Não é `normalizarIdioma`: a etiqueta pode ser uma
+ * variante regional (`es-MX`), e o primário casa o idioma servido; uma língua
+ * que o produto não traduz cai no padrão em vez de devolver a chave crua.
+ */
+export function idiomaDoTexto(tag: string | null | undefined): Idioma {
+  return parseAcceptLanguage(tag) ?? IDIOMA_PADRAO;
+}

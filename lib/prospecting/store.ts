@@ -23,13 +23,13 @@ import {
   arquivadaEm,
   semMarcadorDeArquivamento,
 } from "./arquivamento";
+import { ProspectingError } from "./provider";
 import {
-  ProspectingError,
-  providerRequest,
-  readResults,
-  readSearch,
-  startSearch,
-} from "./provider";
+  provedorDaOrganizacao,
+  provedorExigeCredencialDaOrganizacao,
+  validarCredencialDaOrganizacao,
+} from "./provedor";
+import { idiomaDaOrganizacao } from "./idioma";
 
 export interface Campaign {
   id: string;
@@ -110,7 +110,13 @@ export async function configureCredential(
   org: string,
   key: string,
 ) {
-  await providerRequest(key, "users/me");
+  // A régua é a DO PROVEDOR ESCOLHIDO. Sem escolha nenhuma, `apify` responde
+  // com a MESMA validação de sempre — então quem não pediu nada não muda.
+  await validarCredencialDaOrganizacao(pool, org, key);
+  // O `local-http` NÃO tem segredo por organização — a URL do motor de busca
+  // vem da INSTALAÇÃO (`PROSPECTING_LOCAL_HTTP_URL`). Nessa escolha o valor
+  // recebido é só o gatilho da validação: não é gravado nem usado.
+  if (!(await provedorExigeCredencialDaOrganizacao(pool, org))) return;
   const encrypted = await encryptWebhookSecret(admin, key);
   if (!encrypted)
     throw new ProspectingError("A cifra de credenciais da instalação não está disponível.");
@@ -132,14 +138,23 @@ export async function createSearch(
       [org, requestId],
     );
     if (prior.rows[0]) return prior.rows[0];
-    const key = await credential(db, admin, org);
+    // O provedor é ESCOLHA desta organização e resolve-se ANTES de qualquer
+    // escrita: escolha desconhecida falha fechado sem deixar campanha órfã.
+    const provedor = await provedorDaOrganizacao(db, org);
+    // A credencial só é exigida de quem tem segredo POR ORGANIZAÇÃO.
+    const key = (await provedorExigeCredencialDaOrganizacao(db, org))
+      ? await credential(db, admin, org)
+      : "";
     const { rows } = await db.query<Campaign>(
       "insert into prospecting_campaigns(organization_id,request_id,name,search) values($1,$2,$3,$4) returning *",
       [org, requestId, search.name, search],
     );
     const campaign = rows[0]!;
     try {
-      const run = await startSearch(key, search);
+      // O idioma da organização: o rubro e o endereço voltam na língua de quem vai abordar.
+      const run = await provedor.startSearch(key, search, {
+        idioma: await idiomaDaOrganizacao(db, org),
+      });
       await db.query(
         "update prospecting_campaigns set run_id=$3,dataset_id=$4,search_status='running',updated_at=now() where organization_id=$1 and id=$2",
         [org, campaign.id, run.id, run.defaultDatasetId ?? null],
@@ -166,8 +181,13 @@ export async function createSearch(
 }
 export async function synchronizeSearch(db: pg.PoolClient, admin: SupabaseClient, c: Campaign) {
   if (!c.run_id) return;
-  const key = await credential(db, admin, c.organization_id);
-  const run = await readSearch(key, c.run_id);
+  // A escolha ATUAL desta organização, relida a cada tick (nada guarda quem
+  // lançou a execução: trocar de provedor com uma busca em andamento a perde).
+  const provedor = await provedorDaOrganizacao(db, c.organization_id);
+  const key = (await provedorExigeCredencialDaOrganizacao(db, c.organization_id))
+    ? await credential(db, admin, c.organization_id)
+    : "";
+  const run = await provedor.readSearch(key, c.run_id);
   if (["FAILED", "ABORTED", "TIMED-OUT"].includes(run.status)) {
     await db.query(
       "update prospecting_campaigns set search_status='failed',error=$3,updated_at=now() where organization_id=$1 and id=$2",
@@ -178,7 +198,7 @@ export async function synchronizeSearch(db: pg.PoolClient, admin: SupabaseClient
   if (run.status !== "SUCCEEDED") return;
   const dataset = run.defaultDatasetId ?? c.dataset_id;
   if (!dataset) throw new ProspectingError("Busca concluída sem resultado disponível.");
-  const items = await readResults(key, dataset, c.search.limit);
+  const items = await provedor.readResults(key, dataset, c.search.limit);
   let inserted = 0;
   await db.query("begin");
   try {
