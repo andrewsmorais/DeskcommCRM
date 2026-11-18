@@ -7,6 +7,7 @@ import { format, formatDistanceToNowStrict } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
 import { Check, Robot } from "@/lib/ui/icons";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
+import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ChipDeEtiqueta } from "@/components/tags/ChipDeEtiqueta";
@@ -201,7 +202,9 @@ export function ConversationListItem({
   // dois canais é o que decide o tom da resposta e qual número a pessoa vê
   // respondendo. Cai no nome do canal quando não há número (canal recém-criado).
   const canal = conversation.channel_sessions ?? null;
-  const rotuloCanal = canal?.phone_number ?? canal?.display_name ?? null;
+  // Mesmo texto do cabeçalho e da tela de canais: o NOME vence o número
+  // (trazido do produto original, #2383).
+  const rotuloCanal = rotuloDoCanalDaConversa(canal, t);
 
   // O setor da conversa (O7): na Fila, é o que diz de quem é a vez. O nome vem
   // embutido na própria lista (`setor:setores!conversations_setor_fk`).
