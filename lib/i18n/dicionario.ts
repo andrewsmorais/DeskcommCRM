@@ -19474,7 +19474,6 @@ export const DICIONARIO: Traducoes = {
   },
   "Vazio = padrão da instalação": { es: "Vacío = predeterminado de la instalación" },
   "Agenda do celular": { es: "Agenda del celular" },
-  "às": { es: "a las" },
   "Atende:": { es: "Atiende:" },
   "Fora do horário, a conversa deste setor não é entregue a ninguém: ela espera na Fila e é entregue quando o setor abre.": { es: "Fuera del horario, la conversación de este sector no se entrega a nadie: espera en la Cola y se entrega cuando el sector abre." },
   "fim": { es: "fin" },
