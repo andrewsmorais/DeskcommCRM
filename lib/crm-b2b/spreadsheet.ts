@@ -17,6 +17,13 @@
 import { strFromU8, unzipSync } from "fflate";
 
 import { decodificarCsv, parseCsv } from "@/lib/contacts/csv";
+import {
+  aberturas,
+  colunaDaCelula,
+  elementos,
+  ERRO_DE_COLUNA,
+  XLSX_MAX_LARGURA,
+} from "@/lib/planilha/xml-linear";
 
 export type SheetMatrix = { headers: string[]; rows: string[][] };
 
@@ -98,22 +105,14 @@ function decodificarXml(texto: string): string {
 /** O texto de um `<si>` ou `<is>`: todos os `<t>`, inclusive os de texto rico (`<r><t>`). */
 function textoDosRuns(xml: string): string {
   let out = "";
-  for (const m of xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g))
-    out += decodificarXml(m[1] ?? "");
+  for (const [, corpo] of elementos(xml, "t")) out += decodificarXml(corpo ?? "");
   return out;
-}
-
-/** "A" → 0, "Z" → 25, "AA" → 26. */
-function indiceDaColuna(ref: string): number {
-  let n = 0;
-  for (const ch of ref.replace(/\d+$/, "").toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
-  return n - 1;
 }
 
 function valorDaCelula(attrs: string, corpo: string, compartilhados: string[]): string {
   const tipo = /\bt="([^"]+)"/.exec(attrs)?.[1];
   if (tipo === "inlineStr") return textoDosRuns(corpo);
-  const v = /<v>([\s\S]*?)<\/v>/.exec(corpo)?.[1];
+  const v = elementos(corpo, "v").find(([, c]) => c !== undefined)?.[1];
   if (v === undefined) return "";
   if (tipo === "s") return compartilhados[Number(v)] ?? "";
   if (tipo === "b") return v === "1" ? "TRUE" : "FALSE";
@@ -170,11 +169,15 @@ function parseXlsx(bytes: ArrayBuffer): Leitura {
   if (workbook === null) return ERRO_DE_LEITURA;
 
   // A PRIMEIRA aba na ordem das abas, que não é necessariamente `sheet1.xml`.
-  const rid = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(workbook)?.[1];
+  // `aberturas`/`elementos` (lib/planilha/xml-linear.ts) são lineares mesmo com
+  // tag sem fechamento; as regexes de antes eram quadráticas (auditoria de 18/11).
+  const rid = aberturas(workbook, "sheet")
+    .map((a) => /(?:^|\s)r:id="([^"]+)"/.exec(a)?.[1])
+    .find((id) => id !== undefined);
   const rels = texto(meta, "xl/_rels/workbook.xml.rels") ?? "";
   let alvo: string | undefined;
-  for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) {
-    if (m[0].includes(`Id="${rid}"`)) alvo = /Target="([^"]+)"/.exec(m[0])?.[1];
+  for (const a of aberturas(rels, "Relationship")) {
+    if (a.includes(`Id="${rid}"`)) alvo = /Target="([^"]+)"/.exec(a)?.[1];
   }
   const caminho = alvo
     ? `xl/${alvo.replace(/^\/?xl\//, "").replace(/^\//, "")}`
@@ -186,21 +189,39 @@ function parseXlsx(bytes: ArrayBuffer): Leitura {
   const aba = ehAba ? texto(dados, caminho) : null;
   if (aba === null) return { ok: false, error: "Planilha vazia." };
 
-  const compartilhados = [
-    ...(texto(dados, "xl/sharedStrings.xml") ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g),
-  ].map((m) => textoDosRuns(m[1] ?? ""));
+  const compartilhados = elementos(texto(dados, "xl/sharedStrings.xml") ?? "", "si").map(
+    ([, corpo]) => textoDosRuns(corpo ?? ""),
+  );
 
   const matriz: string[][] = [];
-  for (const linha of aba.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+  // Largura máxima de uma linha: o teto fixo até o cabeçalho ser lido; depois, a
+  // largura do cabeçalho — `matrizParaPlanilha` apara o resto de qualquer jeito.
+  // Antes, uma célula `r="ZZZZZ2"` completava a linha com vazios até a coluna
+  // 12 milhões (auditoria de 18/11).
+  let largura = XLSX_MAX_LARGURA;
+  for (const [, corpo] of elementos(aba, "row")) {
     const celulas: string[] = [];
-    for (const c of (linha[1] ?? "").matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const attrs = c[1] ?? "";
-      const ref = /\br="([A-Z]+\d*)"/i.exec(attrs)?.[1];
-      const i = ref ? indiceDaColuna(ref) : celulas.length;
+    let preenchidaAlem = false;
+    for (const [attrs, corpoDaCelula] of elementos(corpo ?? "", "c")) {
+      const coluna = colunaDaCelula(attrs);
+      if (coluna === "invalida") return { ok: false, error: ERRO_DE_COLUNA };
+      const i = coluna ?? celulas.length;
+      const valor = valorDaCelula(attrs, corpoDaCelula ?? "", compartilhados);
+      if (i >= largura) {
+        preenchidaAlem ||= valor.trim() !== "";
+        continue;
+      }
       while (celulas.length < i) celulas.push("");
-      celulas[i] = valorDaCelula(attrs, c[2] ?? "", compartilhados);
+      celulas[i] = valor;
     }
-    if (celulas.some((v) => v.trim() !== "")) matriz.push(celulas);
+    if (preenchidaAlem || celulas.some((v) => v.trim() !== "")) {
+      if (matriz.length === 0) largura = celulas.length;
+      matriz.push(celulas);
+      // O limite de linhas vale DURANTE a leitura, não só depois dela.
+      if (matriz.length > IMPORT_MAX_DATA_ROWS + 1) {
+        return { ok: false, error: `Máximo de ${IMPORT_MAX_DATA_ROWS} linhas de dados.` };
+      }
+    }
   }
   return matrizParaPlanilha(matriz);
 }

@@ -20,6 +20,13 @@
 import { strFromU8, unzipSync } from "fflate";
 
 import { decodificarCsv, parseCsvComLinhas } from "@/lib/contacts/csv";
+import {
+  aberturas,
+  colunaDaCelula,
+  elementos,
+  ERRO_DE_COLUNA,
+  XLSX_MAX_LARGURA,
+} from "@/lib/planilha/xml-linear";
 
 export type SheetMatrix = {
   headers: string[];
@@ -37,6 +44,16 @@ export const IMPORT_MAX_DATA_ROWS = 2_000;
  * megabytes de memória no servidor.
  */
 const XLSX_MAX_XML_BYTES = 40 * 1024 * 1024;
+/**
+ * Teto da SOMA de tudo que o leitor descompacta, nas duas passadas. O teto por
+ * arquivo sozinho não segura: um zip de 2 MB cabe dezenas de entradas de quase
+ * 40 MB cada (XML repetido comprime ~1000x), e o `unzipSync` guardava todas na
+ * memória ao mesmo tempo — a auditoria de 18/11 (achado 7) mediu ~40 MiB a mais
+ * no processo do app para cada ~41 KB de upload. O fflate infla cada entrada num
+ * buffer do tamanho DECLARADO e não passa dele, então somar o declarado limita a
+ * memória de verdade. Mesmo valor do leitor do import B2B.
+ */
+const XLSX_MAX_TOTAL_XML_BYTES = 48 * 1024 * 1024;
 const XLSX_MAX_ROW_NUMBER = 1_048_576;
 
 export type Leitura = { ok: true; sheet: SheetMatrix } | { ok: false; error: string };
@@ -108,21 +125,14 @@ function decodificarXml(texto: string): string {
 /** O texto de um `<si>` ou `<is>`: todos os `<t>`, inclusive os de texto rico (`<r><t>`). */
 function textoDosRuns(xml: string): string {
   let out = "";
-  for (const m of xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)) out += decodificarXml(m[1] ?? "");
+  for (const [, corpo] of elementos(xml, "t")) out += decodificarXml(corpo ?? "");
   return out;
-}
-
-/** "A" → 0, "Z" → 25, "AA" → 26. */
-function indiceDaColuna(ref: string): number {
-  let n = 0;
-  for (const ch of ref.replace(/\d+$/, "").toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
-  return n - 1;
 }
 
 function valorDaCelula(attrs: string, corpo: string, compartilhados: string[]): string {
   const tipo = /\bt="([^"]+)"/.exec(attrs)?.[1];
   if (tipo === "inlineStr") return textoDosRuns(corpo);
-  const v = /<v>([\s\S]*?)<\/v>/.exec(corpo)?.[1];
+  const v = elementos(corpo, "v").find(([, c]) => c !== undefined)?.[1];
   if (v === undefined) return "";
   if (tipo === "s") return compartilhados[Number(v)] ?? "";
   if (tipo === "b") return v === "1" ? "TRUE" : "FALSE";
@@ -133,64 +143,108 @@ function valorDaCelula(attrs: string, corpo: string, compartilhados: string[]): 
   return Number.isFinite(n) ? String(n) : v;
 }
 
-function parseXlsx(bytes: ArrayBuffer, maxLinhas: number): Leitura {
-  let arquivos: Record<string, Uint8Array>;
-  let grandeDemais = false;
-  try {
-    arquivos = unzipSync(new Uint8Array(bytes), {
-      filter: (f) => {
-        const util =
-          f.name === "xl/workbook.xml" ||
-          f.name === "xl/_rels/workbook.xml.rels" ||
-          f.name === "xl/sharedStrings.xml" ||
-          /^xl\/worksheets\/[^/]+\.xml$/.test(f.name);
-        if (util && f.originalSize > XLSX_MAX_XML_BYTES) grandeDemais = true;
-        return util && !grandeDemais;
-      },
-    });
-  } catch {
-    return { ok: false, error: "Não consegui ler o arquivo XLSX." };
-  }
-  if (grandeDemais) return { ok: false, error: "Planilha grande demais para importar de uma vez." };
+const ERRO_DE_LEITURA: Leitura = { ok: false, error: "Não consegui ler o arquivo XLSX." };
+const ERRO_DE_TAMANHO: Leitura = { ok: false, error: "Planilha grande demais para importar de uma vez." };
 
-  const texto = (nome: string) => {
+/**
+ * Descompacta SÓ o que é lido, em duas passadas: primeiro o `workbook.xml` e os
+ * vínculos dele (para achar a primeira aba), depois essa aba e os textos
+ * compartilhados. As outras abas nunca são infladas. O teto por arquivo e o da
+ * soma valem nas duas passadas juntas, como no leitor do import B2B.
+ *
+ * Todo XML é lido com `elementos`/`aberturas` (`lib/planilha/xml-linear.ts`),
+ * lineares mesmo com tag sem fechamento; a largura de cada linha tem teto; e o
+ * limite de linhas vale DURANTE a leitura, não só depois dela.
+ */
+function parseXlsx(bytes: ArrayBuffer, maxLinhas: number): Leitura {
+  const zip = new Uint8Array(bytes);
+  let declarado = 0;
+  let grandeDemais = false;
+  const abrir = (quer: (nome: string) => boolean): Record<string, Uint8Array> | null => {
+    try {
+      return unzipSync(zip, {
+        filter: (f) => {
+          if (grandeDemais || !quer(f.name)) return false;
+          declarado += f.originalSize;
+          if (f.originalSize > XLSX_MAX_XML_BYTES || declarado > XLSX_MAX_TOTAL_XML_BYTES) {
+            grandeDemais = true;
+            return false;
+          }
+          return true;
+        },
+      });
+    } catch {
+      return null;
+    }
+  };
+  const texto = (arquivos: Record<string, Uint8Array>, nome: string) => {
     const a = arquivos[nome];
     return a ? strFromU8(a) : null;
   };
-  const workbook = texto("xl/workbook.xml");
-  if (workbook === null) return { ok: false, error: "Não consegui ler o arquivo XLSX." };
+
+  const meta = abrir((n) => n === "xl/workbook.xml" || n === "xl/_rels/workbook.xml.rels");
+  if (meta === null) return ERRO_DE_LEITURA;
+  if (grandeDemais) return ERRO_DE_TAMANHO;
+  const workbook = texto(meta, "xl/workbook.xml");
+  if (workbook === null) return ERRO_DE_LEITURA;
 
   // A PRIMEIRA aba na ordem das abas, que não é necessariamente `sheet1.xml`.
-  const rid = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(workbook)?.[1];
-  const rels = texto("xl/_rels/workbook.xml.rels") ?? "";
+  const rid = aberturas(workbook, "sheet")
+    .map((a) => /(?:^|\s)r:id="([^"]+)"/.exec(a)?.[1])
+    .find((id) => id !== undefined);
+  const rels = texto(meta, "xl/_rels/workbook.xml.rels") ?? "";
   let alvo: string | undefined;
-  for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) {
-    if (m[0].includes(`Id="${rid}"`)) alvo = /Target="([^"]+)"/.exec(m[0])?.[1];
+  for (const a of aberturas(rels, "Relationship")) {
+    if (a.includes(`Id="${rid}"`)) alvo = /Target="([^"]+)"/.exec(a)?.[1];
   }
   const caminho = alvo ? `xl/${alvo.replace(/^\/?xl\//, "").replace(/^\//, "")}` : "xl/worksheets/sheet1.xml";
-  const aba = texto(caminho);
+  // Só uma aba de verdade é inflada: um vínculo apontando para outra parte do zip
+  // não faz o leitor descompactar o que não é planilha.
+  const ehAba = /^xl\/worksheets\/[^/]+\.xml$/.test(caminho);
+  const dados = abrir((n) => (ehAba && n === caminho) || n === "xl/sharedStrings.xml");
+  if (dados === null) return ERRO_DE_LEITURA;
+  if (grandeDemais) return ERRO_DE_TAMANHO;
+  const aba = ehAba ? texto(dados, caminho) : null;
   if (aba === null) return { ok: false, error: "Planilha vazia." };
 
-  const compartilhados = [...(texto("xl/sharedStrings.xml") ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) =>
-    textoDosRuns(m[1] ?? ""),
+  const compartilhados = elementos(texto(dados, "xl/sharedStrings.xml") ?? "", "si").map(([, corpo]) =>
+    textoDosRuns(corpo ?? ""),
   );
 
   const matriz: LinhaLida[] = [];
+  // Largura máxima de uma linha: o teto fixo até o cabeçalho ser lido; depois, a
+  // largura do cabeçalho — `matrizParaPlanilha` apara o resto de qualquer jeito,
+  // então coluna além dela nunca chega a ser materializada.
+  let largura = XLSX_MAX_LARGURA;
   let rowNumber = 0;
-  for (const [, attrs, corpo] of aba.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+  for (const [attrs, corpo] of elementos(aba, "row")) {
     // O XLSX pode omitir os registros das linhas em branco. O atributo r é o
     // índice na aba. Se estiver ausente, segue a sequência das linhas lidas.
-    const declarado = Number(/(?:^|\s)r="(\d+)"/.exec(attrs ?? "")?.[1]);
+    const declarado = Number(/(?:^|\s)r="(\d+)"/.exec(attrs)?.[1]);
     rowNumber = declarado > rowNumber && declarado <= XLSX_MAX_ROW_NUMBER ? declarado : rowNumber + 1;
     const celulas: string[] = [];
-    for (const c of (corpo ?? "").matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const attrs = c[1] ?? "";
-      const ref = /\br="([A-Z]+\d*)"/i.exec(attrs)?.[1];
-      const i = ref ? indiceDaColuna(ref) : celulas.length;
+    // Valor além da largura não é guardado, mas a linha continua contando como
+    // preenchida — como antes, quando ela saía aparada e em branco.
+    let preenchidaAlem = false;
+    for (const [attrsDaCelula, corpoDaCelula] of elementos(corpo ?? "", "c")) {
+      const coluna = colunaDaCelula(attrsDaCelula);
+      if (coluna === "invalida") return { ok: false, error: ERRO_DE_COLUNA };
+      const i = coluna ?? celulas.length;
+      const valor = valorDaCelula(attrsDaCelula, corpoDaCelula ?? "", compartilhados);
+      if (i >= largura) {
+        preenchidaAlem ||= valor.trim() !== "";
+        continue;
+      }
       while (celulas.length < i) celulas.push("");
-      celulas[i] = valorDaCelula(attrs, c[2] ?? "", compartilhados);
+      celulas[i] = valor;
     }
-    if (celulas.some((v) => v.trim() !== "")) matriz.push({ cells: celulas, rowNumber });
+    if (preenchidaAlem || celulas.some((v) => v.trim() !== "")) {
+      if (matriz.length === 0) largura = celulas.length;
+      matriz.push({ cells: celulas, rowNumber });
+      if (matriz.length > maxLinhas + 1) {
+        return { ok: false, error: `Máximo de ${maxLinhas} linhas de dados.` };
+      }
+    }
   }
   return matrizParaPlanilha(matriz, maxLinhas);
 }
