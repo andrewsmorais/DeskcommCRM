@@ -168,6 +168,21 @@ export const actionSchema = z.discriminatedUnion("type", [
       include_owner: z.boolean().optional(),
     }),
   }),
+  // "Mensagem para a equipe": recado INTERNO (nunca ao cliente), por aviso no
+  // celular/navegador de quem a regra escolheu.
+  z.object({
+    type: z.literal("notify_team"),
+    config: z.object({
+      titulo: z.string().max(100).optional(),
+      /** Aceita `{{lead.title}}` e `{{contact.name}}`. */
+      mensagem: z.string().min(1).max(500),
+      destinatario: z.union([
+        z.literal("dono_do_lead"),
+        z.literal("gerentes"),
+        z.object({ usuario_id: z.string().uuid() }),
+      ]),
+    }),
+  }),
   z.object({
     type: z.literal("start_message_flow"),
     config: z.object({ flow_pointer_id: z.string().uuid() }),

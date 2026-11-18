@@ -16,7 +16,8 @@ export type ActionType =
   | "call_webhook"
   | "start_message_flow"
   | "start_chatbot_flow"
-  | "create_task";
+  | "create_task"
+  | "notify_team";
 
 export const TRIGGER_LABELS: Record<TriggerEvent, string> = {
   "lead.created": "Quando entrar um contato novo (webhook)",
@@ -69,6 +70,7 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   start_chatbot_flow: "Iniciar chatbot",
   // #1540 — a ação que não fala com o cliente: o lembrete é da equipe.
   create_task: "Criar tarefa interna (sem mensagem ao cliente)",
+  notify_team: "Mensagem para a equipe (aviso interno)",
 };
 
 /**

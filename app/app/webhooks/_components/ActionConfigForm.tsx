@@ -61,6 +61,15 @@ export type ActionItem =
         atribuir_a: "dono_do_lead" | { usuario_id: string };
         prioridade: string;
       };
+    }
+  // Recado interno à equipe (nunca ao cliente).
+  | {
+      type: "notify_team";
+      config: {
+        titulo?: string;
+        mensagem: string;
+        destinatario: "dono_do_lead" | "gerentes" | { usuario_id: string };
+      };
     };
 
 export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
@@ -89,6 +98,8 @@ export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
         type,
         config: { titulo: "", vence_em_dias: 1, atribuir_a: "dono_do_lead", prioridade: "medium" },
       };
+    case "notify_team":
+      return { type, config: { mensagem: "", destinatario: "dono_do_lead" } };
   }
 }
 
@@ -512,6 +523,74 @@ function CreateTaskForm({
   );
 }
 
+/**
+ * `notify_team` — "Mensagem para a equipe": aviso interno, nunca ao cliente.
+ * Quem recebe: o dono do negócio, os gerentes ou uma pessoa da lista.
+ */
+function NotifyTeamForm({
+  config,
+  onChange,
+}: FormProps<{
+  titulo?: string;
+  mensagem: string;
+  destinatario: "dono_do_lead" | "gerentes" | { usuario_id: string };
+}>) {
+  const t = useT();
+  const { data: members } = useAssignableMembers(true);
+  const escolhido =
+    typeof config.destinatario === "object" ? config.destinatario.usuario_id : config.destinatario;
+  return (
+    <div className="grid gap-2">
+      <div className="space-y-1">
+        <Label>{t("Avisar")}</Label>
+        <Select
+          value={escolhido}
+          onValueChange={(v) =>
+            onChange({
+              ...config,
+              destinatario: v === "dono_do_lead" || v === "gerentes" ? v : { usuario_id: v },
+            })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Dono do negócio")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="dono_do_lead">{t("Dono do negócio")}</SelectItem>
+            <SelectItem value="gerentes">{t("Todos os gerentes")}</SelectItem>
+            {(members ?? []).map((m) => (
+              <SelectItem key={m.user_id} value={m.user_id}>
+                {m.full_name ?? m.user_id.slice(0, 8)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Título do aviso (opcional)")}</Label>
+        <Input
+          value={config.titulo ?? ""}
+          maxLength={100}
+          onChange={(e) => onChange({ ...config, titulo: e.target.value || undefined })}
+          placeholder={t("Aviso da automação")}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Mensagem")}</Label>
+        <Textarea
+          value={config.mensagem}
+          maxLength={500}
+          onChange={(e) => onChange({ ...config, mensagem: e.target.value })}
+          placeholder={t("{{contact.name}} fechou {{lead.title}}")}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("Só a equipe vê este aviso — nada é enviado ao cliente. Se ninguém puder receber no aparelho, ele vai para a Central de avisos.")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function CallWebhookForm({
   config,
   onChange,
@@ -768,6 +847,13 @@ export function ActionConfigForm({
     case "create_task":
       return (
         <CreateTaskForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "notify_team":
+      return (
+        <NotifyTeamForm
           config={action.config}
           onChange={(config) => onChange({ type: action.type, config })}
         />
