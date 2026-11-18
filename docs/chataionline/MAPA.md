@@ -177,7 +177,7 @@
 
 ## 6. Dia de subir para a VPS (checklist)
 
-Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0557**). Depois de atualizar, a rotina `contact-names` começa a preencher o nome da agenda do celular aos poucos (5 contatos a cada 10 min); ela só funciona se o número tiver a opção de guardar o histórico ligada no WhatsApp.
+Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0558**). Depois de atualizar, a rotina `contact-names` começa a preencher o nome da agenda do celular aos poucos (5 contatos a cada 10 min); ela só funciona se o número tiver a opção de guardar o histórico ligada no WhatsApp.
 
 No `.env` da instalação (achar a pasta com `docker compose ls`):
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL=suporte@chataionline.io`, `SUPPORT_EMAIL`, `SUPPORT_WHATSAPP`
