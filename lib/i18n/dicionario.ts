@@ -20132,6 +20132,14 @@ export const DICIONARIO: Traducoes = {
   "Respostas só de áudio que ficaram de fora, porque o arquivo não leva a mídia: {n}.": { es: "Respuestas solo de audio que quedaron fuera, porque el archivo no lleva el multimedia: {n}." },
   "Arquivo de respostas rápidas (.json)": { es: "Archivo de respuestas rápidas (.json)" },
   "As respostas chegam sem grupo, numa lista só, e sem imagem nem áudio: o arquivo leva o texto, o atalho e a ordem.": { es: "Las respuestas llegan sin grupo, en una sola lista, y sin imagen ni audio: el archivo lleva el texto, el atajo y el orden." },
+  "Há uma versão nova desta skill no catálogo. Se você editou esta cópia, suas alterações ficam só no Histórico de versões: ao adotar, a versão nova do catálogo passa a ser a ativa. Confira antes de adotar.": {
+    es: "Hay una versión nueva de esta skill en el catálogo. Si editaste esta copia, tus cambios quedan solo en el Historial de versiones: al adoptarla, la versión nueva del catálogo pasa a ser la activa. Revisa antes de adoptar.",
+  },
+  "Adotar versão nova": { es: "Adoptar versión nueva" },
+  "Adotando…": { es: "Adoptando…" },
+  "Versão nova adotada — a sua cópia agora usa a versão mais recente do catálogo.": {
+    es: "Versión nueva adoptada: tu copia ahora usa la versión más reciente del catálogo.",
+  },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
