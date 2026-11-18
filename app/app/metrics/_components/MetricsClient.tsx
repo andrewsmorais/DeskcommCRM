@@ -3,8 +3,12 @@
 import { useT } from "@/hooks/i18n/useT";
 import { useState } from "react";
 
+import { useMetasDoMes } from "@/hooks/metrics/useMetasDoMes";
+import { janelaDoMes, mesLocal } from "@/lib/metas/periodo";
 import { useAttendantMetrics, type AttendantMetric } from "@/hooks/metrics/useAttendantMetrics";
 import { AtritoPanel } from "./AtritoPanel";
+import { CanaisPanel } from "./CanaisPanel";
+import { MetaDoMesPanel, type EstadoDaMeta } from "./MetaDoMesPanel";
 import { PerdasPanel } from "./PerdasPanel";
 import { PrevisaoPanel } from "./PrevisaoPanel";
 import { useTeamMembers } from "@/hooks/team/useTeamMembers";
@@ -52,6 +56,19 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
   const { data, isLoading, isError } = useAttendantMetrics(selectedOwner);
   // Opções do filtro: só manager+ (a rota /team é manager+). Agent nem vê o filtro.
   const team = useTeamMembers({ enabled: canCompare });
+  // A meta do mês, no calendário de quem olha a tela. Um pedido só traz alvo e
+  // realizado da MESMA janela.
+  const mesAtual = mesLocal();
+  const [janelaMes] = useState(() => janelaDoMes(mesAtual));
+  const metaDoMes = useMetasDoMes(janelaMes);
+
+  const estadoDaMeta: EstadoDaMeta = metaDoMes.isLoading
+    ? "carregando"
+    : metaDoMes.isError || !metaDoMes.data
+      ? "erro"
+      : metaDoMes.data.data.metas.length === 0
+        ? "vazio"
+        : "ok";
 
   if (isLoading) return <p className="text-sm text-muted-foreground">{t("Carregando…")}</p>;
   if (isError || !data)
@@ -90,6 +107,14 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
           Não filtra por atendente — atrito é propriedade do sistema, e quebrá-lo
           por pessoa convida a otimização local que degrada o todo. */}
       <AtritoPanel podeEditarRegua={canCompare} />
+
+      <MetaDoMesPanel
+        estado={estadoDaMeta}
+        periodo={metaDoMes.data?.data.periodo ?? null}
+        metas={metaDoMes.data?.data.metas ?? []}
+        podeConfigurar={canCompare}
+        mesAtual={mesAtual}
+      />
 
       {/* Relatório "Perdas" (#1537): manager+, porque é o funil inteiro — o
           mesmo critério do /metrics para quem compara. */}
@@ -174,6 +199,10 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* Por canal (#2390): a mesma janela e o mesmo filtro de atendente da
+          tabela acima; a operação se organiza por número de WhatsApp. */}
+      <CanaisPanel owner={selectedOwner} />
     </div>
   );
 }

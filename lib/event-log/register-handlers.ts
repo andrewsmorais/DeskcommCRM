@@ -29,6 +29,7 @@ import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
 import { avisoDeEtapaHandler } from "@/lib/leads/aviso-de-etapa.handler";
 import { avisoDeCasoAoSuporteHandler } from "@/lib/escalacao/aviso-ao-suporte.handler";
 import { avisoDePropostaNoWhatsAppHandler } from "@/lib/propostas/aviso-no-whatsapp.handler";
+import { avisoDeAgendamentoNoWhatsAppHandler } from "@/lib/agenda/aviso-de-agendamento.handler";
 import { emailsTransacionaisHandler } from "@/lib/emails-transacionais/handler";
 import { reatribuicaoHandler } from "@/lib/conversas/reatribuicao.handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
@@ -86,6 +87,9 @@ export function ensureHandlersRegistered(): void {
   // Mesmo critério do de cima: sai por rede de terceiro, depois de quem só
   // escreve no banco. Consome o MESMO evento que a notificação do navegador.
   registerHandler(avisoDePropostaNoWhatsAppHandler);
+  // Mesmo critério: o aviso de agendamento ao dono sai por rede de terceiro e
+  // consome os mesmos `appointment.*` das automações, que escrevem no banco.
+  registerHandler(avisoDeAgendamentoNoWhatsAppHandler);
   // Por último: reportar a venda ao anúncio é o consumidor mais externo do
   // fechamento — depende de rede de terceiro e não pode atrasar quem escreve
   // no banco. Falha dele nunca segura os handlers acima.

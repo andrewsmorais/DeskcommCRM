@@ -776,6 +776,14 @@ export const AUDIT_ACTIONS = [
   "agenda.endereco_salvo",
   "agenda.appointment_rescheduled",
   "agenda.appointment_cancelled",
+  // O aviso de agendamento no WhatsApp do dono (migration 0704 do original).
+  // Quatro códigos: "saiu", "não saiu em definitivo", "mudaram a configuração" e
+  // "mandaram o teste" são perguntas diferentes. SEM o texto e com o destino
+  // MASCARADO — o que entra no `api_audit_log` não sai pela cascata de LGPD.
+  "agenda.aviso_whatsapp_enviado",
+  "agenda.aviso_whatsapp_falhou",
+  "agenda.aviso_whatsapp_configurado",
+  "agenda.aviso_whatsapp_teste",
   // Relógio HTTP (Hobby / sem contêiner scheduler): uma batida que alguém
   // de fora chama. Só audita quando alguma tarefa mexeu em dado.
   "relogio.tick_run",
@@ -802,6 +810,10 @@ export const AUDIT_ACTIONS = [
   "crm_task.created",
   "crm_task.updated",
   "crm_task.deleted",
+
+  // A meta do mês da empresa: quem fixou ou mudou o alvo, e de quanto para quanto.
+  "crm_meta.created",
+  "crm_meta.updated",
 
   // A proposta comercial. Rascunho, edição, ajuste pelo assistente, envio e
   // decisão do cliente — cada um muda o que o negócio vale ou o que foi
