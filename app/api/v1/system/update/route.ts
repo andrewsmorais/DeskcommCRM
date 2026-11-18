@@ -27,6 +27,7 @@ import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { recusaDeEscritaDePlataforma } from "@/lib/auth/escrita-de-plataforma";
 import { loadAuthUser } from "@/lib/auth/server";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -54,9 +55,14 @@ export async function POST(req: NextRequest): Promise<Response> {
   // `unauthenticated` (não `unauthorized`): esse último é reservado ao segredo
   // interno das rotas host↔app (lib/api/errors.ts) — aqui falta é sessão.
   if (!user) return fail("unauthenticated", "Faça login para continuar.", 401);
-  if (!user.is_platform_admin) {
-    return fail("forbidden", "Só o dono do servidor pode atualizar o sistema.", 403);
-  }
+  // Escrita de INSTÂNCIA: o pedido vira `update.sh` no host. Exige escopo
+  // `full` e a verificação em duas etapas quando ela é devida — o mesmo que as
+  // outras escritas de instância já exigiam (auditoria de 18/11, achado 2).
+  const recusa = await recusaDeEscritaDePlataforma(
+    user,
+    "Só o dono do servidor pode atualizar o sistema.",
+  );
+  if (recusa) return recusa;
 
   const db = createAdminClient();
   const { data: version, error: versionError } = await db

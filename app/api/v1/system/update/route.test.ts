@@ -7,11 +7,16 @@ const mocks = vi.hoisted(() => ({
   /** Fila de respostas por tabela: cada `maybeSingle()` consome a próxima. */
   respostas: {} as Record<string, Array<{ data: unknown; error: { code: string; message: string } | null }>>,
   runInserido: { id: "run-novo", status: "dispatched" } as Record<string, unknown> | null,
+  recusa: null as Response | null,
+  inseriu: vi.fn(),
 }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: async () => null }));
 vi.mock("@/lib/auth/server", () => ({
   loadAuthUser: async () => ({ id: "owner", is_platform_admin: true }),
 }));
+// A conferência de escopo e de MFA tem o seu próprio teste
+// (tests/unit/escrita-de-plataforma.test.ts); aqui o dono já passou nela.
+vi.mock("@/lib/auth/escrita-de-plataforma", () => ({ recusaDeEscritaDePlataforma: async () => mocks.recusa }));
 vi.mock("@/lib/audit", () => ({ audit: mocks.audit }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), info: vi.fn() } }));
 vi.mock("@/lib/supabase/admin", () => ({
@@ -22,7 +27,10 @@ vi.mock("@/lib/supabase/admin", () => ({
         eq: () => query,
         order: () => query,
         limit: () => query,
-        insert: () => query,
+        insert: (...args: unknown[]) => {
+          mocks.inseriu(...args);
+          return query;
+        },
         maybeSingle: async () => {
           const fila = mocks.respostas[table] ?? [];
           if (fila.length > 0) return fila.shift()!;
@@ -49,6 +57,24 @@ beforeEach(() => {
   mocks.insertError = null;
   mocks.respostas = {};
   mocks.runInserido = { id: "run-novo", status: "dispatched" };
+  mocks.recusa = null;
+});
+
+it("dono sem escopo full ou sem a verificação: a recusa volta e nenhum run é despachado", async () => {
+  // Auditoria de 18/11, achado 2: o pedido vira update.sh no host. A recusa da
+  // régua de escrita de instância encerra a rota antes de qualquer escrita.
+  mocks.recusa = Response.json({ error: { code: "mfa_required", message: "x" } }, { status: 403 });
+  for (const corpo of [{}, { rollback: true }, { force: true }]) {
+    const response = await POST(
+      new NextRequest("http://localhost/api/v1/system/update", {
+        method: "POST",
+        body: JSON.stringify(corpo),
+      }),
+    );
+    expect(response.status).toBe(403);
+  }
+  expect(mocks.inseriu).not.toHaveBeenCalled();
+  expect(mocks.audit).not.toHaveBeenCalled();
 });
 
 it("explica a preparação de extensão que bloqueia a atualização sem despachar um run", async () => {
