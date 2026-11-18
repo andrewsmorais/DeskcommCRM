@@ -35,23 +35,23 @@ function msg(over: Partial<Message>): Message {
 
 describe("MediaRenderer", () => {
   it("image → ImageMedia", () => {
-    render(<MediaRenderer message={msg({ type: "image" })} />);
+    render(<MediaRenderer message={msg({ type: "image" })} agora={Date.now()} />);
     expect(screen.getByAltText("Imagem recebida")).toBeInTheDocument();
   });
   it("sticker → StickerMedia", () => {
-    render(<MediaRenderer message={msg({ type: "sticker" })} />);
+    render(<MediaRenderer message={msg({ type: "sticker" })} agora={Date.now()} />);
     expect(screen.getByAltText("Figurinha")).toBeInTheDocument();
   });
   it("audio → AudioPlayer", () => {
-    render(<MediaRenderer message={msg({ type: "audio" })} />);
+    render(<MediaRenderer message={msg({ type: "audio" })} agora={Date.now()} />);
     expect(screen.getByRole("button", { name: /reproduzir/i })).toBeInTheDocument();
   });
   it("video → VideoMedia", () => {
-    const { container } = render(<MediaRenderer message={msg({ type: "video" })} />);
+    const { container } = render(<MediaRenderer message={msg({ type: "video" })} agora={Date.now()} />);
     expect(container.querySelector("video")).not.toBeNull();
   });
   it("document (e tipos desconhecidos) → DocumentCard", () => {
-    render(<MediaRenderer message={msg({ type: "document", media_mime: "application/pdf" })} />);
+    render(<MediaRenderer message={msg({ type: "document", media_mime: "application/pdf" })} agora={Date.now()} />);
     expect(screen.getByRole("link", { name: /baixar pdf/i })).toBeInTheDocument();
   });
 });

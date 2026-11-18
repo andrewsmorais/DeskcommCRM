@@ -19901,6 +19901,8 @@ export const DICIONARIO: Traducoes = {
   "O convidado passa a ver esta conversa e as mensagens dela, e pode responder junto. O responsável pela conversa continua o mesmo.": { es: "El invitado pasa a ver esta conversación y sus mensajes, y puede responder en conjunto. El responsable de la conversación sigue siendo el mismo." },
   "Não foi possível convidar agora. Tente de novo.": { es: "No se pudo invitar ahora. Inténtalo de nuevo." },
   "Horário do setor": { es: "Horario del sector" },
+  Transcrição: { es: "Transcripción" },
+  "Transcrevendo…": { es: "Transcribiendo…" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
