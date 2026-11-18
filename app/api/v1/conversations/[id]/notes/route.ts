@@ -13,13 +13,17 @@ import { audit } from "@/lib/audit";
 import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { mencaoAtingeUsuario, tokensDeMencao } from "@/lib/notifications/mentions";
+import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
 import { createNoteSchema } from "@/lib/schemas/notes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
-const COLS = "id, conversation_id, body, created_by_user_id, created_by_name, created_at";
+// As três colunas do anexo (migration 0547) entram nos DOIS caminhos (lista e
+// criação): sem elas o card da nota não saberia que há arquivo a mostrar.
+const COLS =
+  "id, conversation_id, body, created_by_user_id, created_by_name, created_at, media_storage_path, media_mime, media_size_bytes";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -81,6 +85,17 @@ export async function POST(req: NextRequest, { params }: RouteParams): Promise<R
     });
   }
 
+  // `anexo` é o trio que a rota de upload acabou de devolver. Mime e tamanho
+  // já passaram pela allowlist do upload; aqui o corte é de POSSE: um caminho
+  // fora de {org}/{conversa}/ não pode virar anexo desta conversa.
+  const anexo = parsed.data.anexo;
+  if (anexo && !isMediaPathOwnedBy(anexo.storage_path, org.orgId, id)) {
+    return fail("validation_failed", t("Dados inválidos."), 422, {
+      requestId,
+      details: { anexo: ["anexo fora desta conversa."] },
+    });
+  }
+
   const { data, error } = await supabase
     .from("conversation_notes")
     .insert({
@@ -89,6 +104,13 @@ export async function POST(req: NextRequest, { params }: RouteParams): Promise<R
       body: parsed.data.body,
       created_by_user_id: user.id,
       created_by_name: user.full_name ?? null,
+      ...(anexo
+        ? {
+            media_storage_path: anexo.storage_path,
+            media_mime: anexo.media_mime,
+            media_size_bytes: anexo.media_size_bytes,
+          }
+        : {}),
     })
     .select(COLS)
     .single();

@@ -1,3 +1,4 @@
+import { ehVistoAzul } from "../support/waha-visto-azul";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { meetPgSupabase } from "../support/meet-pg-supabase";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -348,6 +349,10 @@ it("HTTP controlado: POST pending, polling GET, success/failure/unknown e convit
   let remote: Record<string, unknown> | null = null;
   const writes: Array<{ method: string; url: string; body: Record<string, unknown> }> = [];
   const receiver = createServer(async (req, res) => {
+    if (ehVistoAzul(req.url)) {
+      res.end("{}");
+      return;
+    }
     let raw = "";
     for await (const chunk of req) raw += String(chunk);
     const body = raw ? JSON.parse(raw) : {};
@@ -491,6 +496,10 @@ it("HTTP aceito com resposta perdida conserva request; recibo não reconhece rem
     patches = 0;
   const receipts: Record<string, unknown>[] = [];
   const receiver = createServer(async (req, res) => {
+    if (ehVistoAzul(req.url)) {
+      res.end("{}");
+      return;
+    }
     let raw = "";
     for await (const chunk of req) raw += String(chunk);
     const body = raw ? JSON.parse(raw) : {};
@@ -627,6 +636,10 @@ it("entrega real controlada: fila→gates→ledger→handler→HTTP; replay não
     ).rows[0];
   const bodies: Record<string, unknown>[] = [];
   const receiver = createServer(async (req, res) => {
+    if (ehVistoAzul(req.url)) {
+      res.end("{}");
+      return;
+    }
     let raw = "";
     for await (const chunk of req) raw += String(chunk);
     bodies.push(raw ? JSON.parse(raw) : {});
@@ -892,6 +905,10 @@ it.each(["reclaim", "cancel", "redact"] as const)(
         await pool.query("select fn_lgpd_cascade_redact_contact($1,$2,null)", [f.org, f.contact]);
     };
     const receiver = createServer(async (req, res) => {
+      if (ehVistoAzul(req.url)) {
+        res.end("{}");
+        return;
+      }
       try {
         if (req.method === "GET") {
           if (mode !== "redact" && !mutation) await mutate();
@@ -986,6 +1003,10 @@ it("dois executores Google: busy e reclaim cercam resposta antiga sem segundo PO
   const reached = new Promise<void>((r) => (entered = r)),
     hold = new Promise<void>((r) => (release = r));
   const receiver = createServer(async (req, res) => {
+    if (ehVistoAzul(req.url)) {
+      res.end("{}");
+      return;
+    }
     if (req.method === "GET") {
       if (!req.url!.includes("/events/")) {
         res.end("{}");
@@ -1192,6 +1213,10 @@ async function controlledDelivery(
   let mutation = false,
     receiverError: unknown;
   const receiver = createServer(async (req, res) => {
+    if (ehVistoAzul(req.url)) {
+      res.end("{}");
+      return;
+    }
     try {
       if (req.method === "GET") {
         if (onResolve && !mutation) {

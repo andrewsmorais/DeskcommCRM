@@ -1,3 +1,4 @@
+import type * as Canais from "@/lib/channels";
 import { readFileSync } from "node:fs";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,7 +64,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("@/lib/channels", async (orig) => {
-  const real = await orig<typeof import("@/lib/channels")>();
+  const real = await orig<typeof Canais>();
   return {
     ...real,
     getAdapter: () => ({

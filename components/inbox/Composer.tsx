@@ -154,10 +154,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
    * colada e o arquivo arrastado. Todos caem na mesma fila: a prévia mostra um
    * por vez ("1 de 3"), com a legenda no primeiro, e nada sai sem o atendente ver.
    */
+  // Para onde vai a fila: a MENSAGEM ao cliente ou a NOTA INTERNA (migration
+  // 0547). É o modo em que os arquivos foram ESCOLHIDOS que decide — trocar de
+  // aba com a prévia aberta não muda o destino do que já está na fila.
+  const [filaEmNota, setFilaEmNota] = useState(false);
   const escolherArquivos = (files: File[]) => {
     setFila(files);
     setTotalDaFila(files.length);
     setLegendaInicial(null);
+    setFilaEmNota(mode === "note");
   };
   const setPendingFile = (f: File | null) => escolherArquivos(f ? [f] : []);
   /**
@@ -202,7 +207,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
    * o que o atendente já escolheu). Um drop com regra própria furaria o
    * "bloquear até assumir": botão desabilitado não impede soltar arquivo.
    */
-  const aceitaArquivoArrastado = mode === "reply" && !respostaBarrada && fila.length === 0;
+  const aceitaArquivoArrastado =
+    (mode === "note" ? !isDisabled : !respostaBarrada) && fila.length === 0;
 
   function autoresize() {
     const ta = taRef.current;
@@ -368,7 +374,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
    * Ctrl+V precisa continuar sendo o Ctrl+V de sempre.
    */
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
-    if (mode !== "reply" || respostaBarrada || pendingFile) return;
+    // Na nota interna a imagem colada vira anexo da nota (migration 0547).
+    if ((mode === "note" ? isDisabled : respostaBarrada) || pendingFile) return;
     const imagem = imagemDoClipboard(e.clipboardData, new Date());
     if (!imagem) return; // colagem de texto segue o caminho normal do browser
     e.preventDefault();
@@ -570,13 +577,13 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           />
         )}
         <div className="flex items-end gap-2">
-          {mode === "reply" && (
-            <AttachMenu
-              disabled={respostaBarrada}
-              onPick={escolherArquivos}
-              onPickContact={() => setContactPickerOpen(true)}
-            />
-          )}
+          {/* Na nota interna o "+" anexa à NOTA (migration 0547) — sem "Contato",
+              que é cartão para o cliente. */}
+          <AttachMenu
+            disabled={mode === "note" ? isDisabled : respostaBarrada}
+            onPick={escolherArquivos}
+            onPickContact={mode === "reply" ? () => setContactPickerOpen(true) : undefined}
+          />
           {/* Agendar mensagem, nota ou chatbot (migration 0511). Bloqueio do
               contato barra; janela de 24h fechada não barra (a nota e o
               chatbot podem ser agendados, e a janela pode reabrir). */}
@@ -671,7 +678,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         progresso={
           totalDaFila > 1 ? `${totalDaFila - fila.length + 1} ${t("de")} ${totalDaFila}` : null
         }
-        sending={upload.isPending || send.isPending}
+        sending={upload.isPending || send.isPending || createNote.isPending}
+        notaInterna={filaEmNota}
         onCancel={() => setPendingFile(null)}
         onSend={async (caption) => {
           if (!pendingFile) return;
@@ -683,8 +691,35 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             // duas vezes ao cliente.
             const arquivo = pendingFile;
             const uploaded =
-              subidos.current.get(arquivo) ?? (await upload.mutateAsync({ conversationId, file: arquivo }));
+              subidos.current.get(arquivo) ??
+              (await upload.mutateAsync({
+                conversationId,
+                file: arquivo,
+                destino: filaEmNota ? "nota" : "mensagem",
+              }));
             subidos.current.set(arquivo, uploaded);
+            if (filaEmNota) {
+              // A NOTA INTERNA com anexo: o texto da prévia é o corpo da nota,
+              // e nada passa pelo envio ao cliente.
+              createNote.mutate(
+                {
+                  conversation_id: conversationId,
+                  body: caption ?? "",
+                  anexo: {
+                    storage_path: uploaded.storage_path,
+                    media_mime: uploaded.media_mime,
+                    media_size_bytes: uploaded.media_size_bytes,
+                  },
+                },
+                {
+                  onSuccess: () => {
+                    subidos.current.delete(arquivo);
+                    setFila((atual) => atual.slice(1));
+                  },
+                },
+              );
+              return;
+            }
             send.mutate(
               {
                 conversation_id: conversationId,

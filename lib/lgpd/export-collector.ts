@@ -707,13 +707,21 @@ export interface ExportPayload {
       created_at: string;
     }>;
   };
-  /** Notas internas da equipe nas conversas do titular (redigidas pela 0509). */
+  /**
+   * Notas internas da equipe nas conversas do titular (redigidas pela 0509) e o
+   * ANEXO de cada uma (migration 0547), que a anonimização também apaga — o que
+   * se apaga a pedido dele é o que se entrega a pedido dele (Art. 18 II). A
+   * mídia vem como METADADO (caminho, MIME, bytes): nenhum binário trafega aqui.
+   */
   conversation_notes?: Array<{
     id: string;
     conversation_id: string;
     body: string;
     created_by_name: string | null;
     created_at: string;
+    media_storage_path: string | null;
+    media_mime: string | null;
+    media_size_bytes: number | null;
   }>;
   /**
    * Mensagens, notas e chatbots agendados nas conversas do titular (migration
@@ -1934,7 +1942,7 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
       for (let offset = 0; ; offset += pageSize) {
         const { data, error } = await admin
           .from("conversation_notes")
-          .select("id, conversation_id, body, created_by_name, created_at")
+          .select("id, conversation_id, body, created_by_name, created_at, media_storage_path, media_mime, media_size_bytes")
           .eq("organization_id", organizationId)
           .in("conversation_id", conversationIds.slice(batch, batch + refBatchSize))
           .order("id")

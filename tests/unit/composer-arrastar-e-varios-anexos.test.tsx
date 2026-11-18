@@ -112,7 +112,7 @@ describe("Composer — arrastar arquivo", () => {
   });
 
   it("com a janela de 24h fechada o drop não abre prévia nem sobe nada", () => {
-    renderComposer({ janelaFechada: true } as Partial<React.ComponentProps<typeof Composer>>);
+    renderComposer({ janelaFechada: "A janela de 24h fechou" } as unknown as Partial<React.ComponentProps<typeof Composer>>);
     const seguiu = fireEvent.dragOver(area(), { dataTransfer: arrasto([pdf("x.pdf")]) });
     expect(seguiu, "recusar o anexo não é deixar o navegador abrir o arquivo").toBe(false);
     fireEvent.drop(area(), { dataTransfer: arrasto([pdf("x.pdf")]) });

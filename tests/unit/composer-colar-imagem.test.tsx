@@ -135,13 +135,13 @@ describe("Composer — colar imagem", () => {
     expect(seguiu, "preventDefault aqui quebraria o Ctrl+V de texto").toBe(true);
   });
 
-  it("em 'Nota interna' colar imagem não vira anexo — nota é só texto", () => {
+  it("em 'Nota interna' colar imagem vira ANEXO DA NOTA (migration 0547), não mensagem", async () => {
     renderComposer();
     fireEvent.click(screen.getByRole("button", { name: /nota interna/i }));
-    const seguiu = fireEvent.paste(campo(), { clipboardData: clipboard({ files: [png()] }) });
+    fireEvent.paste(campo(), { clipboardData: clipboard({ files: [png()] }) });
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(seguiu).toBe(true);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Anexar à nota interna")).toBeInTheDocument();
   });
 
   it("com anexo já em preview, colar não substitui em silêncio o que o operador escolheu", async () => {

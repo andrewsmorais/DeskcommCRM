@@ -9263,6 +9263,12 @@ export const DICIONARIO: Traducoes = {
   Documento: { es: "Documento" },
   "Enviar anexo": { es: "Enviar adjunto" },
   "Legenda (opcional)": { es: "Descripción (opcional)" },
+  "Anexar à nota interna": { es: "Adjuntar a la nota interna" },
+  "Só a equipe vê. O arquivo não vai para o cliente.": { es: "Solo el equipo lo ve. El archivo no va al cliente." },
+  "Texto da nota (opcional)": { es: "Texto de la nota (opcional)" },
+  "Nota sem anexo.": { es: "Nota sin adjunto." },
+  "Erro ao buscar nota.": { es: "Error al buscar la nota." },
+  "Erro ao abrir o arquivo.": { es: "Error al abrir el archivo." },
   Legenda: { es: "Descripción" },
   "Gravar áudio": { es: "Grabar audio" },
   "Cancelar gravação": { es: "Cancelar grabación" },
@@ -19912,6 +19918,7 @@ export const DICIONARIO: Traducoes = {
   "Só a equipe vê. Para usar em mensagens, copie para o nome.": {
     es: "Solo lo ve el equipo. Para usarlo en mensajes, cópialo al nombre.",
   },
+  "Imagem da nota interna": { es: "Imagen de la nota interna" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

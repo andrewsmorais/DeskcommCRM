@@ -61,5 +61,6 @@ export function lerCampoDeMoeda(texto: string, moeda: string): number | null {
   // ⚠️ A moeda vai ADIANTE (#3331): sem ela o parser lia `1,300` de uma
   // organização em dólar como 1,30 — a moeda chegava até aqui só para tirar o
   // símbolo e escrever o exemplo, e parava antes da leitura.
-  return parseReaisToCents(semAMoeda(texto, moeda), moeda);
+  // Neste fork o parser lê na régua brasileira (a moeda da instalação).
+  return parseReaisToCents(semAMoeda(texto, moeda));
 }

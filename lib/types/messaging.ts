@@ -148,6 +148,10 @@ export interface Note {
   created_by_user_id: string | null;
   created_by_name: string | null;
   created_at: string;
+  /** Anexo da nota (migration 0547), no bucket `internal-media`. Null = só texto. */
+  media_storage_path?: string | null;
+  media_mime?: string | null;
+  media_size_bytes?: number | null;
 }
 
 /**

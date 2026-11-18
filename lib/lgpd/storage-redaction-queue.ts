@@ -30,10 +30,11 @@ const DEFAULT_BATCH = 50;
 
 /**
  * Os ÚNICOS buckets que a fila alcança — os de quem a alimenta: a cascata de
- * LGPD, a retenção de mídia e o cron das fotos de contato (`whatsapp-media`) e
- * a redação de propostas (`propostas`). Nenhum produtor grava fora disto.
+ * LGPD, a retenção de mídia e o cron das fotos de contato (`whatsapp-media`),
+ * a redação de propostas (`propostas`) e o passo 6d da cascata, o anexo da nota
+ * interna (`internal-media`, migration 0547). Nenhum produtor grava fora disto.
  */
-const BUCKETS_DA_FILA = new Set(["whatsapp-media", "propostas"]);
+const BUCKETS_DA_FILA = new Set(["whatsapp-media", "propostas", "internal-media"]);
 
 /**
  * O objeto tem de ser DA organização da linha: todo produtor grava sob

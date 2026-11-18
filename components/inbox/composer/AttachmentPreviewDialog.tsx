@@ -17,6 +17,11 @@ interface Props {
   legendaInicial?: string | null;
   /** "1 de 3" quando a resposta rápida leva vários arquivos. */
   progresso?: string | null;
+  /**
+   * O anexo vai para a NOTA INTERNA (migration 0547), não para o cliente. A
+   * prévia diz isso — quem anexa precisa saber para onde o arquivo vai.
+   */
+  notaInterna?: boolean;
 }
 
 /** Preview antes do envio (padrão WhatsApp): thumb ou card + legenda. */
@@ -27,6 +32,7 @@ export function AttachmentPreviewDialog({
   onSend,
   legendaInicial = null,
   progresso = null,
+  notaInterna = false,
 }: Props) {
   const t = useT();
   const [caption, setCaption] = useState(legendaInicial ?? "");
@@ -46,7 +52,7 @@ export function AttachmentPreviewDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {t("Enviar anexo")}
+            {notaInterna ? t("Anexar à nota interna") : t("Enviar anexo")}
             {progresso ? <span className="ml-2 text-sm font-normal text-muted-foreground">{progresso}</span> : null}
           </DialogTitle>
         </DialogHeader>
@@ -65,10 +71,15 @@ export function AttachmentPreviewDialog({
             </div>
           )}
         </div>
+        {notaInterna && (
+          <p className="text-xs text-muted-foreground" data-testid="previa-nota-interna">
+            {t("Só a equipe vê. O arquivo não vai para o cliente.")}
+          </p>
+        )}
         <Input
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          placeholder={t("Legenda (opcional)")}
+          placeholder={notaInterna ? t("Texto da nota (opcional)") : t("Legenda (opcional)")}
           aria-label={t("Legenda")}
           onKeyDown={(e) => e.key === "Enter" && !sending && onSend(caption.trim())}
         />
