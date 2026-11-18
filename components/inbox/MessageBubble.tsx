@@ -21,6 +21,7 @@ import { motivoDaFalhaDaMensagem } from "@/lib/inbox/motivo-da-falha";
 import { reenvioDaMensagem } from "@/lib/messaging/reenvio";
 import { lerRemetenteDeGrupo, rotuloDoRemetente } from "@/lib/messaging/remetente-de-grupo";
 import { CitationButton } from "@/components/ai/CitationButton";
+import { textoDaApagadaApareceNaInbox } from "@/lib/messaging/apagada";
 import { MediaRenderer } from "@/components/inbox/media/MediaRenderer";
 import { ContactCard } from "@/components/inbox/media/ContactCard";
 import { LocationCard } from "@/components/inbox/media/LocationCard";
@@ -325,7 +326,10 @@ export function MessageBubble({
           // A marca da busca é ANEL, não cor de fundo: o fundo já diz de quem é
           // a mensagem, e trocá-lo apagaria essa leitura justo na bolha achada.
           searchMatch && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
-          apagada && "opacity-70",
+          // Apagada sai das cores da DIREÇÃO e vai para o CINZA (trazido do
+          // produto original): o que foi apagado tem de se distinguir do que
+          // está vivo de relance, e o fundo é o que diz de quem é a mensagem.
+          apagada && "bg-muted/60 text-muted-foreground ring-1 ring-border",
           // Espaço para a marca de reação, que fica metade para fora do balão.
           Boolean(reacoes?.length) && "mb-3",
         )}
@@ -341,7 +345,7 @@ export function MessageBubble({
                   // 12px para cada lado (44px) sem empurrar o texto do balão.
                   "pointer-coarse:before:absolute pointer-coarse:before:-inset-3",
                   "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100",
-                  isOutbound ? "text-primary-foreground hover:bg-primary-foreground/15" : "text-muted-foreground hover:bg-background/70",
+                  isOutbound && !apagada ? "text-primary-foreground hover:bg-primary-foreground/15" : "text-muted-foreground hover:bg-background/70",
                 )}>
                 <CaretDown size={16} weight="bold" aria-hidden />
               </button>
@@ -494,10 +498,13 @@ export function MessageBubble({
           </div>
         ) : apagada ? (
           <div className="space-y-1">
-            <p className="italic leading-snug opacity-70">{t("Esta mensagem foi apagada")}</p>
+            <p className="italic leading-snug opacity-80">{message.direction === "inbound"
+                ? t("Esta mensagem foi apagada pelo contato")
+                : t("Esta mensagem foi apagada pelo atendente")}</p>
             {/* O WhatsApp revoga o envio; o CRM conserva o corpo para auditoria
-                interna. Não revelamos texto de uma mensagem apagada pelo cliente. */}
-            {isOutbound && message.body && (
+                interna. Não revelamos texto de uma mensagem apagada pelo cliente
+                (`textoDaApagadaApareceNaInbox`). */}
+            {textoDaApagadaApareceNaInbox(message.direction) && message.body && (
               <div className="border-t border-current/20 pt-1">
                 <p className="text-[10px] opacity-70">{t("Visível só aqui no CRM")}</p>
                 <p className="whitespace-pre-wrap wrap-anywhere leading-snug">{message.body}</p>
@@ -533,7 +540,9 @@ export function MessageBubble({
         <div
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[10px]",
-            isOutbound ? "text-primary-foreground" : "text-muted-foreground",
+            // O carimbo acompanha o FUNDO: na bolha apagada (cinza) o
+            // `primary-foreground` sumiria — hora e check invisíveis.
+            isOutbound && !apagada ? "text-primary-foreground" : "text-muted-foreground",
           )}
         >
           {editada && (

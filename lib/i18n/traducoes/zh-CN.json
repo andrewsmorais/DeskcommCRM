@@ -5551,5 +5551,8 @@
   "Já participa": "已参与",
   "Não foi possível convidar agora. Tente de novo.": "现在无法邀请。请重试。",
   "O convidado passa a ver esta conversa e as mensagens dela, e pode responder junto. O responsável pela conversa continua o mesmo.": "受邀者将能看到此对话及其消息，并可一同回复。对话的负责人保持不变。",
-  "Quem participa desta conversa": "谁在参与此对话"
+  "Quem participa desta conversa": "谁在参与此对话",
+  "Cliente reagiu com {emoji}": "客户回应了 {emoji}",
+  "Atendente reagiu com {emoji}": "客服回应了 {emoji}",
+  "Enviar de novo": "再次发送"
 }

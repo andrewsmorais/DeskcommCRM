@@ -19904,6 +19904,8 @@ export const DICIONARIO: Traducoes = {
   Transcrição: { es: "Transcripción" },
   "Transcrevendo…": { es: "Transcribiendo…" },
   "Solte o arquivo para anexar": { es: "Suelta el archivo para adjuntarlo" },
+  "Esta mensagem foi apagada pelo contato": { es: "Este mensaje fue eliminado por el contacto" },
+  "Esta mensagem foi apagada pelo atendente": { es: "Este mensaje fue eliminado por el agente" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
