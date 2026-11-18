@@ -27,6 +27,8 @@ export interface AtendimentoConfig {
   visibility_mode: VisibilityMode;
   /** `null` = nunca devolve sozinho (o padrão do produto). */
   handoff_return_after_minutes: number | null;
+  /** `null` = a conversa sem resposta nunca volta sozinha para a fila (o padrão). */
+  unanswered_return_after_minutes: number | null;
   /** "A conversa fica com quem atendeu" — desligado é o padrão do produto. */
   conversation_stays_with_attendant: boolean;
 }
@@ -315,6 +317,56 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
             <p className="text-xs text-muted-foreground">
               {t("Entre 5 minutos e 24 horas. Sessenta minutos é a ordem de grandeza de um atendimento humano.")}
             </p>
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="space-y-4 p-4" data-testid="volta-para-a-fila">
+        <div>
+          <h2 className="text-sm font-semibold">{t("Cliente esperando e ninguém responde?")}</h2>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Se a conversa está com um atendente e o cliente fica sem resposta, ela pode voltar para a fila e ser distribuída de novo.",
+            )}
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            data-testid="voltar-para-a-fila"
+            checked={form.unanswered_return_after_minutes !== null}
+            disabled={isPending}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, unanswered_return_after_minutes: e.target.checked ? 30 : null }))
+            }
+            className="mt-1 h-4 w-4 shrink-0 accent-primary"
+          />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium">
+              {t("Devolver para a fila a conversa que o atendente não respondeu")}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {t(
+                "O tempo conta da última mensagem do cliente ou de quando o atendente assumiu, o que for mais recente. Desligado, a conversa fica com o atendente até alguém mexer.",
+              )}
+            </span>
+          </span>
+        </label>
+        {form.unanswered_return_after_minutes !== null ? (
+          <div className="max-w-xs space-y-1 border-t pt-4">
+            <Label htmlFor="unanswered_return_after_minutes">{t("Minutos sem resposta")}</Label>
+            <Input
+              id="unanswered_return_after_minutes"
+              type="number"
+              min={PRAZO_MIN_MINUTOS}
+              max={PRAZO_MAX_MINUTOS}
+              value={form.unanswered_return_after_minutes}
+              disabled={isPending}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, unanswered_return_after_minutes: Number(e.target.value) }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">{t("Entre 5 minutos e 24 horas.")}</p>
           </div>
         ) : null}
       </Card>

@@ -3044,6 +3044,18 @@ export const DICIONARIO: Traducoes = {
   "não tem a etiqueta": { es: "no tiene la etiqueta" },
   "é exatamente": { es: "es exactamente" },
   "não é": { es: "no es" },
+  "Cliente esperando e ninguém responde?": { es: "¿Cliente esperando y nadie responde?" },
+  "Se a conversa está com um atendente e o cliente fica sem resposta, ela pode voltar para a fila e ser distribuída de novo.": {
+    es: "Si la conversación está con un agente y el cliente se queda sin respuesta, puede volver a la cola y distribuirse de nuevo.",
+  },
+  "Devolver para a fila a conversa que o atendente não respondeu": {
+    es: "Devolver a la cola la conversación que el agente no respondió",
+  },
+  "O tempo conta da última mensagem do cliente ou de quando o atendente assumiu, o que for mais recente. Desligado, a conversa fica com o atendente até alguém mexer.": {
+    es: "El tiempo cuenta desde el último mensaje del cliente o desde que el agente la asumió, lo que sea más reciente. Desactivado, la conversación se queda con el agente hasta que alguien intervenga.",
+  },
+  "Minutos sem resposta": { es: "Minutos sin respuesta" },
+  "Entre 5 minutos e 24 horas.": { es: "Entre 5 minutos y 24 horas." },
   "Menor carga (quem tem menos conversas)": { es: "Menor carga (quien tiene menos conversaciones)" },
   "Menor carga: quem tem menos conversas abertas": { es: "Menor carga: quien tiene menos conversaciones abiertas" },
   "Cada cliente novo vai para o atendente que está com menos conversas abertas naquele momento — entre os que estão disponíveis e dentro do horário. Se dois estiverem empatados, vai para quem está há mais tempo sem receber. Bom quando as conversas duram tempos muito diferentes.": {

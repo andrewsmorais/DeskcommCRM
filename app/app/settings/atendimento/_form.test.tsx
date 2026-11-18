@@ -28,6 +28,7 @@ const inicial: AtendimentoConfig = {
   backoff_seconds: 60,
   visibility_mode: "all",
   handoff_return_after_minutes: null,
+  unanswered_return_after_minutes: null,
   conversation_stays_with_attendant: false,
 };
 

@@ -47,6 +47,19 @@ export const routingConfigSchema = z.object({
     .nullable()
     .default(null),
   /**
+   * Prazo, em minutos, para a conversa que está com um atendente e tem cliente
+   * esperando, sem nenhuma resposta, VOLTAR PARA A FILA (e para o roteamento).
+   * `null` = nunca, o comportamento de sempre. Quem faz é o cron
+   * `conversa-sem-resposta`; a regra pura está em `lib/routing/sem-resposta.ts`.
+   */
+  unanswered_return_after_minutes: z
+    .number()
+    .int()
+    .min(PRAZO_MIN_MINUTOS)
+    .max(PRAZO_MAX_MINUTOS)
+    .nullable()
+    .default(null),
+  /**
    * "A conversa fica com quem atendeu" (ideia de @gustavorodcruz96, #1527).
    * Desligado = o comportamento de sempre: a resposta humana cala a IA por
    * alguns minutos e a conversa encerrada que recebe mensagem nova volta para a
@@ -114,6 +127,14 @@ export const atendimentoConfigPatchSchema = routingConfigSchema.extend({
     .max(PRAZO_MAX_MINUTOS)
     .nullable()
     .optional(),
+  /** Opcional pela mesma razão: cliente antigo não desliga o prazo por omissão. */
+  unanswered_return_after_minutes: z
+    .number()
+    .int()
+    .min(PRAZO_MIN_MINUTOS)
+    .max(PRAZO_MAX_MINUTOS)
+    .nullable()
+    .optional(),
   /** Opcional pela mesma razão: cliente antigo não desliga o ajuste por omissão. */
   conversation_stays_with_attendant: z.boolean().optional(),
 });
@@ -137,6 +158,7 @@ export function mesclarSettingsDeAtendimento(
   const {
     visibility_mode,
     handoff_return_after_minutes,
+    unanswered_return_after_minutes,
     conversation_stays_with_attendant,
     ...routingInput
   } = input;
@@ -149,6 +171,10 @@ export function mesclarSettingsDeAtendimento(
       handoff_return_after_minutes !== undefined
         ? handoff_return_after_minutes
         : routingAtual.handoff_return_after_minutes,
+    unanswered_return_after_minutes:
+      unanswered_return_after_minutes !== undefined
+        ? unanswered_return_after_minutes
+        : routingAtual.unanswered_return_after_minutes,
     conversation_stays_with_attendant:
       conversation_stays_with_attendant ?? routingAtual.conversation_stays_with_attendant,
   };
