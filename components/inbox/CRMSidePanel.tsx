@@ -30,6 +30,9 @@ import { useDefaultPipeline } from "@/hooks/pipelines/useDefaultPipeline";
 import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
 import { CustomFieldsEditor, type CustomFieldDef } from "@/components/contacts/CustomFieldsEditor";
 import { useEditLead } from "@/hooks/kanban/useUpdateLead";
+import { Input } from "@/components/ui/input";
+import { lerCampoDeMoeda, valorDoCampoDeMoeda } from "@/lib/leads/campo-de-moeda";
+import { formatValorDoNegocio, simboloDaMoeda } from "@/lib/money";
 import { useBulkAction } from "@/hooks/kanban/useBulkAction";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -55,6 +58,8 @@ interface LeadRow {
   stage_id?: string;
   /** As etapas ativas do funil, na ordem do quadro (rota crm-summary). */
   etapas_do_funil?: Array<{ id: string; name: string; is_won: boolean; is_lost: boolean }>;
+  /** As etiquetas do NEGÓCIO (`crm_leads.tags`) — só leitura no painel. */
+  tags?: string[] | null;
 }
 
 interface OrderRow {
@@ -345,16 +350,42 @@ function ondeEstaOLead(l: LeadRow): string {
  */
 const CLASSES_DE_ONDE_ESTA = "line-clamp-2 text-muted-foreground";
 
+/**
+ * As tags do NEGÓCIO, só leitura, junto de funil e etapa.
+ *
+ * O painel mostrava as tags do contato e as da conversa, e as do negócio não
+ * apareciam em lugar nenhum da conversa: quem atendia procurava a etiqueta que
+ * uma automação ou um fluxo de acompanhamento lê (a condição de etiqueta lê
+ * `crm_leads.tags`) e concluía que ela não existia. Sem editor aqui de
+ * propósito: três editores de tag no mesmo painel confundem mais do que
+ * ajudam, e o do negócio já existe no dossiê.
+ */
+function EtiquetasDoNegocio({ tags }: { tags: string[] | null | undefined }) {
+  const t = useT();
+  if (!tags || tags.length === 0) return null;
+  return (
+    <div data-testid="inbox-lead-tags" className="flex flex-wrap items-center gap-1 pt-0.5">
+      <span className="text-[10px] text-muted-foreground">{t("Tags do negócio")}:</span>
+      {tags.map((tag) => (
+        <ChipDeEtiqueta key={tag} tag={tag} className="h-4 px-1.5 text-[10px]" />
+      ))}
+    </div>
+  );
+}
+
 function InboxLeadEditor({
   leads,
   selecionadoId,
   onSelecionar,
   onSalvo,
+  podeEditarValor,
 }: {
   leads: LeadRow[];
   selecionadoId: string | null;
   onSelecionar: (id: string) => void;
   onSalvo: () => void;
+  /** O MESMO piso de editar o card (`agent`+) — ver `ValorDoNegocio`. */
+  podeEditarValor: boolean;
 }) {
   const t = useT();
   const ativo = leads.find((l) => l.id === selecionadoId) ?? leads[0]!;
@@ -385,6 +416,7 @@ function InboxLeadEditor({
                   <div className="text-muted-foreground">
                     {status(l)} · {formatMoney(l.value_cents, l.currency)}
                   </div>
+                  <EtiquetasDoNegocio tags={l.tags} />
                 </button>
               </li>
             );
@@ -397,9 +429,17 @@ function InboxLeadEditor({
           <p className={CLASSES_DE_ONDE_ESTA} title={ondeEstaOLead(ativo)}>
             {ondeEstaOLead(ativo)}
           </p>
+          <EtiquetasDoNegocio tags={ativo.tags} />
         </div>
       )}
       <EtapaDoNegocio key={`etapa-${ativo.id}`} lead={ativo} onMovido={onSalvo} />
+      <ValorDoNegocio
+        key={`valor-${ativo.id}`}
+        lead={ativo}
+        moeda={ativo.currency ?? "BRL"}
+        podeEditar={podeEditarValor}
+        onSalvo={onSalvo}
+      />
       <CamposDoFunil
         key={ativo.id}
         leadId={ativo.id}
@@ -408,6 +448,130 @@ function InboxLeadEditor({
         valores={ativo.custom_fields ?? {}}
         onSalvo={onSalvo}
       />
+    </div>
+  );
+}
+
+/**
+ * O VALOR DO NEGÓCIO — editável, no bloco do card (issue #4546).
+ *
+ * O painel já mostrava o valor em "Negócios recentes", mas SEMPRE para leitura:
+ * preencher ou corrigir exigia sair da conversa, abrir o card no funil e voltar.
+ * Na prática a venda fechava na conversa e o valor ficava em branco — o que
+ * mente na previsão do funil, nas metas por vendedor e no Faturamento, que leem
+ * o `value_cents` OFICIAL do negócio. É este campo que o alimenta.
+ *
+ * Nada de gravação nova: o caminho é o do quadro — `useEditLead`
+ * (`PATCH /api/v1/leads/[id]`), cuja rota já aceita `value_cents` e cujo handler
+ * já registra a edição na timeline do negócio (`lead_edited`, «o valor»). E nada
+ * de máscara nova: a leitura é `lerCampoDeMoeda` e o eco é `formatValorDoNegocio`
+ * (`lib/leads/campo-de-moeda.ts` / `lib/money.ts`), os mesmos do dossiê.
+ *
+ * PERMISSÃO: o piso é o de EDITAR O CARD — `agent`+, a mesma régua que
+ * `resolveAuthDual({ role: "agent" })` cobra no `PATCH` e que o quadro usa. Quem
+ * está abaixo vê o valor e só. O portão chega como prop (e não por
+ * `usePermission`) pelo mesmo motivo do `LevarParaOutroFunil`: os dublês de
+ * `useAuth` dos testes do painel não expõem aquele hook.
+ *
+ * CAMPO VAZIO NÃO APAGA: apagar o valor existente em silêncio é o efeito que
+ * ninguém pediu. Vazio (ou sem número) recusa o salvamento e avisa.
+ */
+function ValorDoNegocio({
+  lead,
+  moeda,
+  podeEditar,
+  onSalvo,
+}: {
+  lead: LeadRow;
+  /** A moeda do NEGÓCIO; a da organização é a reserva (ver `InboxLeadEditor`). */
+  moeda: string;
+  /** `agent`+ — o MESMO piso de editar o card. */
+  podeEditar: boolean;
+  onSalvo: () => void;
+}) {
+  const t = useT();
+  const edit = useEditLead(lead.pipeline_id);
+  const [texto, setTexto] = useState(() =>
+    lead.value_cents == null ? "" : valorDoCampoDeMoeda(lead.value_cents / 100, moeda),
+  );
+  const [erro, setErro] = useState<string | null>(null);
+  // O eco do quadro: dinheiro nunca é interpretado em silêncio.
+  const entendido = texto.trim() === "" ? null : lerCampoDeMoeda(texto, moeda);
+
+  async function salvar() {
+    if (texto.trim() === "") {
+      setErro(t("Informe o valor."));
+      return;
+    }
+    const cents = lerCampoDeMoeda(texto, moeda);
+    if (cents === null) {
+      setErro(t("Valor inválido"));
+      return;
+    }
+    setErro(null);
+    try {
+      await edit.mutateAsync({ leadId: lead.id, patch: { value_cents: cents } });
+      // O que acabou de gravar fica escrito na régua da moeda — «R$ 1.234,56».
+      setTexto(valorDoCampoDeMoeda(cents / 100, moeda));
+      toast.success(t("Valor atualizado."));
+      onSalvo();
+    } catch {
+      // o hook já mostrou o erro
+    }
+  }
+
+  if (!podeEditar) {
+    return (
+      <div className="space-y-0.5" data-testid="inbox-valor-do-negocio">
+        <span className="block text-xs font-medium text-text">{t("Valor do negócio")}</span>
+        <p className="text-xs text-muted-foreground" data-testid="inbox-valor-somente-leitura">
+          {formatMoney(lead.value_cents, lead.currency)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1" data-testid="inbox-valor-do-negocio">
+      <label className="block text-xs font-medium text-text" htmlFor={`valor-${lead.id}`}>
+        {t("Valor do negócio")} ({simboloDaMoeda(moeda)})
+      </label>
+      <div className="flex items-center gap-1">
+        <Input
+          id={`valor-${lead.id}`}
+          data-testid="inbox-valor-input"
+          className="h-8 text-xs"
+          inputMode="decimal"
+          placeholder="0,00"
+          value={texto}
+          aria-invalid={erro ? true : undefined}
+          onChange={(e) => {
+            setTexto(e.target.value);
+            setErro(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void salvar();
+            }
+          }}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 shrink-0 text-xs"
+          data-testid="inbox-valor-salvar"
+          disabled={edit.isPending}
+          onClick={() => void salvar()}
+        >
+          {t("Salvar")}
+        </Button>
+      </div>
+      {entendido !== null && (
+        <p className="text-[10px] text-muted-foreground">= {formatValorDoNegocio(entendido, moeda)}</p>
+      )}
+      {erro && <p className="text-[10px] text-error-fg">{erro}</p>}
     </div>
   );
 }
@@ -846,6 +1010,7 @@ export function CRMSidePanel({ conversation }: Props) {
             selecionadoId={leadAtivoId}
             onSelecionar={setLeadAtivoId}
             onSalvo={recarregar}
+            podeEditarValor={!readonly && roleAtLeast(activeOrg?.role, "agent")}
           /></fieldset>
         ) : (
           <SemLista vazio="Sem leads." erro={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
