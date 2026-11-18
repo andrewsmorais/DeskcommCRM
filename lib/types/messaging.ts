@@ -46,6 +46,8 @@ export interface Conversation {
   visibilidade?: "visivel" | "oculta" | "oculta_ate_mensagem";
   /** Setor de atendimento (migration 0496), ou null. */
   setor_id?: string | null;
+  /** O nome do setor, embutido pela lista (`setores!conversations_setor_fk`). */
+  setor?: { nome: string } | null;
   group_chat_id: string | null;
   tags: string[];
   metadata: Record<string, unknown>;

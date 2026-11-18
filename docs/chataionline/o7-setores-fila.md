@@ -29,7 +29,7 @@ salvo o que a regra de privada já permite.
 | 2 | Convidar colega para a conversa (`conversation_participants`) | 0661, #2542, 8312d9017 | **feito** (0544; rotas de controle — fechar, setor, chatbot, status — exigem quem já controlava: `lib/inbox/controle-da-conversa.ts`) |
 | 3 | Horário por setor (fora do horário, a distribuição não entrega ao setor) | 9062, 9a99e26fe, 8d10a8cd0, fdec81d14 | **feito** (0545, `setores.horario`; regra em `lib/routing/eligibles.ts`; tela em Configurações › Setores) |
 | 4 | IA escolhe o setor (ferramenta do agente e ação de automação) | #3881: 9113afa55, 3aa406724, 0be0425e6, 7a69eb665 | **feito** (ferramenta `crm_set_conversation_sector` em `lib/mcp/tools/governance.ts`, pelo nome do setor, com a régua de `transferirParaSetor`; a ação de automação "Definir setor" do original ficou de fora) |
-| 5 | Fila na Inbox por setor (filtro/cor do setor na aba Fila) | 9084, e243e6e1a, 3cc181fe1 (índice 9357) | conferir o que já existe |
+| 5 | Fila na Inbox por setor (filtro/cor do setor na aba Fila) | 9084, e243e6e1a, 3cc181fe1 (índice 9357) | **feito**: a aba Fila e o filtro por setor já existiam; entrou o selo do setor em cada conversa da lista (`anexarNomeDoSetor` no handler). A cor por setor (9084) ficou de fora |
 
 A aba "Fila" da Inbox já existe aqui (`components/inbox/InboxFilters.tsx`,
 `comando=aguardando`) e o filtro por setor também (`setor_id`). A fatia 5 é

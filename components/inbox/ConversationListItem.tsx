@@ -203,7 +203,12 @@ export function ConversationListItem({
   const canal = conversation.channel_sessions ?? null;
   const rotuloCanal = canal?.phone_number ?? canal?.display_name ?? null;
 
+  // O setor da conversa (O7): na Fila, é o que diz de quem é a vez. O nome vem
+  // embutido na própria lista (`setor:setores!conversations_setor_fk`).
+  const nomeDoSetor = conversation.setor_id ? (conversation.setor?.nome ?? null) : null;
+
   const temSelos =
+    nomeDoSetor != null ||
     visibleTags.length > 0 ||
     (mostrarAtendente && comando.quem === "humano") ||
     (mostrarCanal && rotuloCanal != null) ||
@@ -364,6 +369,16 @@ export function ConversationListItem({
 
         {temSelos && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            {nomeDoSetor && (
+              <Badge
+                variant="outline"
+                className="h-4 px-1.5 text-[10px] font-normal"
+                title={`${t("Setor")}: ${nomeDoSetor}`}
+                data-testid="selo-setor-na-lista"
+              >
+                {nomeDoSetor}
+              </Badge>
+            )}
             {visibleTags.map((t) => (
               <ChipDeEtiqueta key={t} tag={t} className="h-4 px-1.5 text-[10px]" />
             ))}

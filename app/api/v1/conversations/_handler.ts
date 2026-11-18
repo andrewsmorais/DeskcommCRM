@@ -459,7 +459,32 @@ export async function listConversationsHandler(
       ? encodeCursor({ sort: (last[sortCol] as string | null) ?? null, id: last.id })
       : null;
 
+  await anexarNomeDoSetor(supabase, ctx.organization_id, page);
   return { conversations: page, cursor, has_more: hasMore };
+}
+
+/**
+ * O nome do setor de cada conversa da página (O7): a Fila mostra de quem é a
+ * vez. Uma consulta só, e só quando alguma conversa tem setor; erro não derruba
+ * a lista — sem o nome, o selo apenas não aparece.
+ */
+async function anexarNomeDoSetor(supabase: SB, organizationId: string, page: Conversation[]): Promise<void> {
+  const ids = [...new Set(page.map((c) => c.setor_id).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return;
+  try {
+    const { data } = await supabase
+      .from("setores")
+      .select("id, nome")
+      .eq("organization_id", organizationId)
+      .in("id", ids);
+    const nomes = new Map(((data ?? []) as { id: string; nome: string }[]).map((x) => [x.id, x.nome]));
+    for (const c of page) {
+      const nome = c.setor_id ? nomes.get(c.setor_id) : undefined;
+      if (nome) c.setor = { nome };
+    }
+  } catch {
+    // Sem o nome, o selo não aparece; a lista segue.
+  }
 }
 
 // ---------------------------------------------------------------------------
