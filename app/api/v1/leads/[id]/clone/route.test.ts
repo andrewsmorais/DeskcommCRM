@@ -52,7 +52,12 @@ function fakeDb(seed: Record<string, Row[]>) {
     let pending: Row | null = null;
 
     const rows = (): Row[] => (tables[table] ??= []);
-    const matches = () => rows().filter((row) => filters.every(([c, v]) => row[c] === v));
+    const filtrosIn: Array<[string, unknown[]]> = [];
+    const matches = () =>
+      rows().filter(
+        (row) =>
+          filters.every(([c, v]) => row[c] === v) && filtrosIn.every(([c, valores]) => valores.includes(row[c])),
+      );
 
     function selectRows(): Row[] {
       return matches()
@@ -99,6 +104,10 @@ function fakeDb(seed: Record<string, Row[]>) {
       select: () => builder,
       eq: (column: string, value: unknown) => {
         filters.push([column, value]);
+        return builder;
+      },
+      in: (column: string, valores: unknown[]) => {
+        filtrosIn.push([column, valores]);
         return builder;
       },
       order: (column: string, options?: { ascending?: boolean }) => {
@@ -223,10 +232,14 @@ describe("GET /api/v1/leads/[id]/clone", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.pipelines).toEqual([{ id: P2, name: "Suporte" }]);
+    expect(body.data.pipelines).toHaveLength(1);
+    expect(body.data.pipelines[0]).toMatchObject({ id: P2, name: "Suporte" });
+    // A lista agora carrega as etapas do funil de destino (a tela deixa escolher a etapa de entrada).
+    const idsDasEtapas = body.data.pipelines[0].stages.map((e: { id: string }) => e.id);
+    expect(idsDasEtapas).toEqual(expect.arrayContaining([S2_A, S2_B]));
   });
 
-  it("payload mínimo: nunca settings/description, só id e name", async () => {
+  it("payload mínimo: nunca settings/description, só id, name e as etapas", async () => {
     const base = seed();
     db = fakeDb({
       ...base,
@@ -242,7 +255,8 @@ describe("GET /api/v1/leads/[id]/clone", () => {
     const response = await GET(getRequest(), params);
     const body = await response.json();
 
-    expect(Object.keys(body.data.pipelines[0])).toEqual(["id", "name"]);
+    expect(Object.keys(body.data.pipelines[0])).toEqual(["id", "name", "stages"]);
+    expect(Object.keys(body.data.pipelines[0].stages[0]).sort()).toEqual(["id", "is_lost", "is_won", "name", "position"]);
   });
 
   it("recusa lead inexistente na organização", async () => {

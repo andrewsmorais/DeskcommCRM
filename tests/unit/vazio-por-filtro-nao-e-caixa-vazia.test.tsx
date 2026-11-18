@@ -5,6 +5,12 @@ import { cleanup } from "@testing-library/react";
 import { filtrosAuxiliaresAtivos } from "@/lib/inbox/filtros-ativos";
 import type { ConversationsFilters } from "@/hooks/inbox/useConversationsRealtime";
 
+// A lista passou a ler o cliente de queries (a mutação de "exemplo para a IA"
+// mora nela). Sem um provider, `useQueryClient()` estoura "No QueryClient set".
+vi.mock("@/hooks/inbox/useMarcarComoExemplo", () => ({
+  useMarcarComoExemplo: () => ({ alternar: () => undefined, salvando: false }),
+}));
+
 /**
  * LISTA VAZIA POR FILTRO NÃO É CAIXA VAZIA.
  *
