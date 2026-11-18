@@ -54,6 +54,12 @@ interface MessageRow {
   media_mime: string | null;
   media_storage_path: string | null;
   media_derived_status: string | null;
+  /**
+   * Onde o motivo do `failed` mora: sem ele o operador vê o estado sem a causa.
+   * É também o marcador da retenção (migration 0552): `media_status='expired'`
+   * separa "arquivo que ainda vai chegar" de "arquivo que a política já retirou".
+   */
+  metadata: Record<string, unknown> | null;
   conversation_id: string | null;
   /** Só a mensagem ENTRADA do cliente vira pedido de parar. */
   direction: string | null;
@@ -73,7 +79,7 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("messages")
-    .select("id, organization_id, type, media_mime, media_storage_path, media_derived_status, conversation_id, direction, sent_via, created_at")
+    .select("id, organization_id, type, media_mime, media_storage_path, media_derived_status, metadata, conversation_id, direction, sent_via, created_at")
     .eq("id", messageId)
     .eq("organization_id", row.organization_id)
     .maybeSingle();
@@ -92,6 +98,12 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
       .eq("id", msg.id).eq("organization_id", msg.organization_id);
     return { consumer_key, status: "skipped", detail };
   };
+
+  // A retenção já retirou esta mídia (migration 0552, #1534): não há o que
+  // derivar e, principalmente, nada a baixar do provedor — o `media_storage_path`
+  // foi anulado junto, mas o DETALHE tem de dizer o motivo real, senão o turno
+  // seguinte esperaria 120s por uma leitura que a política proibiu.
+  if (msg.metadata?.media_status === "expired") return markSkipped("expired by retention");
 
   if (!msg.media_storage_path) return markSkipped("no media");
   if (msg.media_derived_status === "ready") return { consumer_key, status: "skipped", detail: "already derived" };
