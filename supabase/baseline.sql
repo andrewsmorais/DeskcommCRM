@@ -30647,9 +30647,8 @@ create policy leitura_config_aviso_de_caso
     and public.fn_role_at_least(organization_id, 'admin')
   );
 
--- Leitura do HISTÓRICO: `manager`. "O aviso está saindo?" é pergunta de quem
--- opera o atendimento, e a linha não expõe o número inteiro para a tela (que o
--- mascara) nem guarda texto nenhum.
+-- Leitura do HISTÓRICO: `manager` — "o aviso está saindo?" é pergunta de quem
+-- opera a agenda, e a linha não guarda texto nenhum.
 drop policy if exists leitura_entregas_de_aviso_de_caso on public.entregas_de_aviso_de_caso;
 create policy leitura_entregas_de_aviso_de_caso
   on public.entregas_de_aviso_de_caso
@@ -47387,16 +47386,7 @@ create policy leitura_config_aviso_de_agendamento
     and public.fn_role_at_least(organization_id, 'admin')
   );
 
--- Leitura do HISTÓRICO: `manager` — "o aviso está saindo?" é pergunta de quem
--- opera a agenda, e a linha não guarda texto nenhum.
-drop policy if exists leitura_entregas_de_aviso_de_agendamento on public.entregas_de_aviso_de_agendamento;
-create policy leitura_entregas_de_aviso_de_agendamento
-  on public.entregas_de_aviso_de_agendamento
-  for select to authenticated
-  using (
-    organization_id in (select public.fn_user_org_ids())
-    and public.fn_role_at_least(organization_id, 'manager')
-  );
+-- Leitura do HISTÓRICO de avisos de agendamento: política final (`admin`) no bloco da migration 0556.
 
 -- ── A escrita da configuração: uma RPC, as guardas na mesma transação ─────
 create or replace function public.fn_definir_aviso_de_agendamento(
@@ -48161,6 +48151,86 @@ end $function$;
 
 revoke execute on function public.emit_event(text, text, uuid, jsonb, jsonb, uuid) from public, anon;
 grant execute on function public.emit_event(text, text, uuid, jsonb, jsonb, uuid) to authenticated, service_role;
+
+
+-- ---- marcas do contato só pela rota; telefone do aviso só ao admin (migration 0556) ----
+-- As duas colunas nascem na 0540 (mais abaixo, depois da varredura de anon, que tem de
+-- ser o último bloco com função). O gatilho da 0557 as nomeia no WHEN, então elas já
+-- precisam existir aqui: `add column if not exists` é no-op quando a 0540 rodar.
+alter table public.contacts add column if not exists is_personal boolean default false not null;
+alter table public.contacts add column if not exists ai_opt_out boolean default false not null;
+
+create or replace function public.fn_contato_colunas_de_controle()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    if coalesce(new.is_anonymized, false) or new.is_merged_into is not null
+       or coalesce(new.is_personal, false) or coalesce(new.ai_opt_out, false) then
+      raise exception 'colunas_de_controle_do_contato' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+  if old.is_blocked is distinct from new.is_blocked
+     or old.blocked_reason is distinct from new.blocked_reason
+     or old.blocked_at is distinct from new.blocked_at
+     or old.is_anonymized is distinct from new.is_anonymized
+     or old.anonymized_at is distinct from new.anonymized_at
+     or old.is_merged_into is distinct from new.is_merged_into
+     or old.merged_at is distinct from new.merged_at
+     or old.is_personal is distinct from new.is_personal
+     or old.ai_opt_out is distinct from new.ai_opt_out then
+    raise exception 'colunas_de_controle_do_contato' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.fn_contato_colunas_de_controle() from public, anon, authenticated;
+
+drop policy if exists leitura_entregas_de_aviso_de_agendamento on public.entregas_de_aviso_de_agendamento;
+create policy leitura_entregas_de_aviso_de_agendamento
+  on public.entregas_de_aviso_de_agendamento
+  for select to authenticated
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and public.fn_role_at_least(organization_id, 'admin')
+  );
+
+-- ---- juntar fichas soma as marcas pessoal/sempre humano (migration 0557) ----
+create or replace function public.fn_fusao_soma_marcas_do_contato()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  -- O que sai da ficha entrega as marcas à que fica: "pessoal" e "sempre
+  -- humano" nunca se perdem numa fusão. `ai_opt_out` já implica `force_human`.
+  update public.contacts
+     set is_personal = is_personal or coalesce(new.is_personal, false),
+         ai_opt_out  = ai_opt_out  or coalesce(new.ai_opt_out, false),
+         force_human = force_human or coalesce(new.ai_opt_out, false)
+   where organization_id = new.organization_id
+     and id = new.is_merged_into
+     and (
+       (coalesce(new.is_personal, false) and not is_personal)
+       or (coalesce(new.ai_opt_out, false) and (not ai_opt_out or not force_human))
+     );
+  return null;
+end $$;
+revoke execute on function public.fn_fusao_soma_marcas_do_contato() from public, anon, authenticated;
+
+drop trigger if exists trg_fusao_soma_marcas_do_contato on public.contacts;
+create trigger trg_fusao_soma_marcas_do_contato
+  after update of is_merged_into on public.contacts
+  for each row
+  when (old.is_merged_into is null and new.is_merged_into is not null
+        and (new.is_personal or new.ai_opt_out))
+  execute function public.fn_fusao_soma_marcas_do_contato();
 
 
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
@@ -51496,76 +51566,3 @@ begin
       where c.id = messages.conversation_id and c.organization_id = messages.organization_id
         and public.fn_can_view_conversation(c.organization_id, c.assigned_to_user_id, c.is_private)));
 end $$;
-
--- ---- marcas do contato só pela rota; telefone do aviso só ao admin (migration 0556) ----
-create or replace function public.fn_contato_colunas_de_controle()
-returns trigger
-language plpgsql
-set search_path = public, pg_temp
-as $$
-begin
-  if current_user not in ('authenticated', 'anon') then
-    return new;
-  end if;
-  if tg_op = 'INSERT' then
-    if coalesce(new.is_anonymized, false) or new.is_merged_into is not null
-       or coalesce(new.is_personal, false) or coalesce(new.ai_opt_out, false) then
-      raise exception 'colunas_de_controle_do_contato' using errcode = '42501';
-    end if;
-    return new;
-  end if;
-  if old.is_blocked is distinct from new.is_blocked
-     or old.blocked_reason is distinct from new.blocked_reason
-     or old.blocked_at is distinct from new.blocked_at
-     or old.is_anonymized is distinct from new.is_anonymized
-     or old.anonymized_at is distinct from new.anonymized_at
-     or old.is_merged_into is distinct from new.is_merged_into
-     or old.merged_at is distinct from new.merged_at
-     or old.is_personal is distinct from new.is_personal
-     or old.ai_opt_out is distinct from new.ai_opt_out then
-    raise exception 'colunas_de_controle_do_contato' using errcode = '42501';
-  end if;
-  return new;
-end $$;
-revoke execute on function public.fn_contato_colunas_de_controle() from public, anon, authenticated;
-
-drop policy if exists leitura_entregas_de_aviso_de_agendamento on public.entregas_de_aviso_de_agendamento;
-create policy leitura_entregas_de_aviso_de_agendamento
-  on public.entregas_de_aviso_de_agendamento
-  for select to authenticated
-  using (
-    organization_id in (select public.fn_user_org_ids())
-    and public.fn_role_at_least(organization_id, 'admin')
-  );
-
--- ---- juntar fichas soma as marcas pessoal/sempre humano (migration 0557) ----
-create or replace function public.fn_fusao_soma_marcas_do_contato()
-returns trigger
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-begin
-  -- O que sai da ficha entrega as marcas à que fica: "pessoal" e "sempre
-  -- humano" nunca se perdem numa fusão. `ai_opt_out` já implica `force_human`.
-  update public.contacts
-     set is_personal = is_personal or coalesce(new.is_personal, false),
-         ai_opt_out  = ai_opt_out  or coalesce(new.ai_opt_out, false),
-         force_human = force_human or coalesce(new.ai_opt_out, false)
-   where organization_id = new.organization_id
-     and id = new.is_merged_into
-     and (
-       (coalesce(new.is_personal, false) and not is_personal)
-       or (coalesce(new.ai_opt_out, false) and (not ai_opt_out or not force_human))
-     );
-  return null;
-end $$;
-revoke execute on function public.fn_fusao_soma_marcas_do_contato() from public, anon, authenticated;
-
-drop trigger if exists trg_fusao_soma_marcas_do_contato on public.contacts;
-create trigger trg_fusao_soma_marcas_do_contato
-  after update of is_merged_into on public.contacts
-  for each row
-  when (old.is_merged_into is null and new.is_merged_into is not null
-        and (new.is_personal or new.ai_opt_out))
-  execute function public.fn_fusao_soma_marcas_do_contato();
