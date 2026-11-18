@@ -224,6 +224,8 @@ export async function atenderPeloChatbot(
     sessaoEsperando = null;
   }
 
+  // Auditoria 18/11, achado 10: `is_blocked` aqui já vale também para contato
+  // "pessoal" e "sempre humano" — nada automático sai para eles.
   // Quem está com a conversa? Atendente humano assumiu, ou contato bloqueado:
   // o chatbot sai do caminho (e solta a sessão que esperava).
   const { rows: estado } = await pool.query<{
@@ -238,7 +240,8 @@ export async function atenderPeloChatbot(
     tags_da_conversa: string[] | null;
     variaveis_da_empresa: unknown;
   }>(
-    `select c.assignee_kind, ct.is_blocked, o.timezone, o.settings->'variaveis' as variaveis_da_empresa,
+    `select c.assignee_kind,
+            (coalesce(ct.is_blocked, false) or ct.is_personal or ct.ai_opt_out) as is_blocked, o.timezone, o.settings->'variaveis' as variaveis_da_empresa,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
             ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c
@@ -1646,7 +1649,8 @@ export async function iniciarChatbotPorAutomacao(
     tags_da_conversa: string[] | null;
     variaveis_da_empresa: unknown;
   }>(
-    `select c.assignee_kind, ct.is_blocked, o.timezone, o.settings->'variaveis' as variaveis_da_empresa,
+    `select c.assignee_kind,
+            (coalesce(ct.is_blocked, false) or ct.is_personal or ct.ai_opt_out) as is_blocked, o.timezone, o.settings->'variaveis' as variaveis_da_empresa,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
             ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c
@@ -1808,7 +1812,8 @@ export async function retomarChatbotPeloRelogio(
     custom_fields: Record<string, unknown> | null;
     tags_da_conversa: string[] | null;
   }>(
-    `select c.assignee_kind, ct.is_blocked,
+    `select c.assignee_kind,
+            (coalesce(ct.is_blocked, false) or ct.is_personal or ct.ai_opt_out) as is_blocked,
             ct.tags, coalesce(ct.name, ct.display_name) as nome, ct.email,
             ct.birthdate::text as aniversario, ct.custom_fields, c.tags as tags_da_conversa
        from conversations c

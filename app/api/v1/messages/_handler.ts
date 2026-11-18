@@ -430,7 +430,7 @@ export async function sendMessageHandler(
   // envio com 42703. Sem a coluna, nada está arquivado — e a consulta sem ela é a
   // consulta certa (ver lib/channels/archived).
   const convSelect = (comArchived: boolean) =>
-    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(phone_number, wa_identity, wa_lid, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
+    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(phone_number, wa_identity, wa_lid, is_blocked, is_personal, ai_opt_out), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
   //
   // O filtro por `organization_id` NÃO é redundância com a RLS — é a única
   // proteção que existe na metade dos chamadores. Este handler é a porta de
@@ -498,6 +498,8 @@ export async function sendMessageHandler(
       wa_identity: string | null;
       wa_lid: string | null;
       is_blocked: boolean;
+      is_personal?: boolean | null;
+      ai_opt_out?: boolean | null;
     } | null;
     channel_sessions: (ChannelSessionRef & { status: string; archived_at?: string | null }) | null;
   };
@@ -510,6 +512,29 @@ export async function sendMessageHandler(
       undefined,
       ctx.requestId,
       traduzir("Contato bloqueou o atendimento.", ctx.idioma ?? "pt-BR"),
+    );
+  }
+
+  // ─── "Pessoal" e "sempre humano": nada que não seja uma pessoa sai ─────────
+  //
+  // Auditoria 18/11, achado 10. As duas marcas valem no agente, na prospecção e
+  // na campanha, mas cada um confere por conta própria — e este handler é a
+  // porta de saída de TODOS (automação, chatbot, MCP, token de servidor). Quem
+  // esquecesse de conferir mandava para quem a empresa marcou como "nada
+  // automático". Pessoa (`sent_via='user'`) continua podendo escrever: a marca
+  // proíbe o robô, não o atendente.
+  if (origemDaMensagem(ctx.actor) !== "user" && (c.contacts?.is_personal || c.contacts?.ai_opt_out)) {
+    throw new ApiError(
+      403,
+      "forbidden",
+      undefined,
+      ctx.requestId,
+      traduzir(
+        c.contacts?.is_personal
+          ? "Contato marcado como pessoal: só uma pessoa pode escrever para ele."
+          : "Contato marcado como sempre atendimento humano: só uma pessoa pode escrever para ele.",
+        ctx.idioma ?? "pt-BR",
+      ),
     );
   }
 

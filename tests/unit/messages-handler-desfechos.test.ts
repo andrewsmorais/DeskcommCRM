@@ -50,6 +50,8 @@ interface ConversationShape {
   phoneNumber?: string | null;
   waIdentity?: string | null;
   isBlocked?: boolean;
+  isPersonal?: boolean;
+  aiOptOut?: boolean;
   sessionStatus?: string | null;
   provider?: string;
   /** Canal excluído pelo usuário (migration 0106) — a linha sobrevive, o canal não. */
@@ -68,6 +70,8 @@ function conversationRow(shape: ConversationShape = {}): Row {
       phone_number: shape.phoneNumber === undefined ? '+5531999998888' : shape.phoneNumber,
       wa_identity: shape.waIdentity ?? null,
       is_blocked: shape.isBlocked ?? false,
+      is_personal: shape.isPersonal ?? false,
+      ai_opt_out: shape.aiOptOut ?? false,
     },
     channel_sessions:
       shape.sessionStatus === null
@@ -132,6 +136,23 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
       expect(message).toMatchObject({ status: "failed", error_code: "pre_go_live" });
     }
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("achado 10: contato pessoal ou 'sempre humano' recusa quem não é pessoa; a pessoa escreve", async () => {
+    wahaConfigured(false);
+    for (const marca of [{ isPersonal: true }, { aiOptOut: true }]) {
+      for (const actor of [
+        { type: "ai_agent", id: USER, role: "agent" },
+        { type: "webhook_source", id: USER },
+        { type: "api_token", id: USER },
+      ] as const) {
+        await expect(
+          sendMessageHandler(dubleDo(conversationRow(marca)), { ...ctx, actor }, textInput()),
+        ).rejects.toMatchObject({ status: 403 });
+      }
+      // CONTROLE: a pessoa (atendente) segue podendo escrever.
+      const humano = await sendMessageHandler(dubleDo(conversationRow(marca)), ctx, textInput());
+      expect(humano.status).toBe("queued");
+    }
   });
   it("número autorizado passa pelo gate; resposta humana não depende da lista", async () => {
     wahaConfigured(false);

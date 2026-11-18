@@ -83,6 +83,15 @@ describe("checarGuardasDeContato", () => {
     expect(r).toEqual({ ok: false, reason: "consent_declined" });
   });
 
+  it("achado 10: contato pessoal ou sempre humano → contact_blocked", () => {
+    for (const marca of [{ is_personal: true }, { ai_opt_out: true }]) {
+      const r = checarGuardasDeContato(
+        ctxComContato({ id: "c1", phone_number: "+5511999999999", ...marca }),
+      );
+      expect(r).toEqual({ ok: false, reason: "contact_blocked" });
+    }
+  });
+
   it("achado 12: recusa gravada pela ficha (`granted: false`) também bloqueia", () => {
     const r = checarGuardasDeContato(
       ctxComContato({

@@ -14281,6 +14281,15 @@ export const DICIONARIO: Traducoes = {
   },
   // ─── Conversations + Messages: handlers compartidos REST/MCP ───
   "Contato bloqueou o atendimento.": { es: "El contacto bloqueó la atención." },
+  "Contato marcado como pessoal: só uma pessoa pode escrever para ele.": {
+    es: "Contacto marcado como personal: solo una persona puede escribirle.",
+  },
+  "Contato marcado como sempre atendimento humano: só uma pessoa pode escrever para ele.": {
+    es: "Contacto marcado como siempre atención humana: solo una persona puede escribirle.",
+  },
+  "Você não vê todas as conversas deste contato; peça a um gerente para mexer nos telefones.": {
+    es: "No ves todas las conversaciones de este contacto; pide a un gerente que modifique los teléfonos.",
+  },
   "Contato anonimizado não pode ser compartilhado.": {
     es: "No se puede compartir un contacto anonimizado.",
   },
