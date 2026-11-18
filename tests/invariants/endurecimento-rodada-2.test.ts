@@ -536,6 +536,9 @@ describe("0509 — contato: colunas de controle e piso de atendente", () => {
     tenta("is_blocked = false, blocked_reason = null, blocked_at = null");
     tenta("is_anonymized = true, anonymized_at = now()");
     tenta(`is_merged_into = '${GOV_CONTACT_1}', merged_at = now()`);
+    // 0556 (auditoria 18/11, achado 9): "pessoal" e "sempre humano" só pela rota.
+    tenta("is_personal = true");
+    tenta("ai_opt_out = true");
     // CONTROLE: o servidor (rota de desbloqueio, pela service role) reabre.
     expect(
       lastLine(

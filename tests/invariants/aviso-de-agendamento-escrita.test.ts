@@ -154,9 +154,13 @@ describe("0704 — a configuração é lida por quem administra", () => {
   });
 });
 
-describe("0704 — o histórico é lido por quem opera", () => {
-  it("CONTROLE POSITIVO: o gestor lê o histórico da própria organização", () => {
-    expect(contaComoMembro(GESTOR_A, ENTREGAS)).toBe(1);
+describe("0704/0556 — o histórico (com o telefone do dono) é lido só pelo admin", () => {
+  it("CONTROLE POSITIVO: o admin lê o histórico da própria organização", () => {
+    expect(contaComoMembro(ADMIN_A, ENTREGAS)).toBe(1);
+  });
+
+  it("auditoria 18/11, achado 19: o gestor não lê mais (a linha guarda o telefone)", () => {
+    expect(contaComoMembro(GESTOR_A, ENTREGAS)).toBe(0);
   });
 
   it("o vizinho não lê o histórico de A; `viewer` não lê nada", () => {
