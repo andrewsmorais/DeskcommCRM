@@ -101,6 +101,11 @@ export function useCapacidadesLigadas(): readonly string[] {
   return useContext(Ctx)?.activeOrg?.capacidades_ligadas ?? [];
 }
 
+/** Id da organização ativa. Fora do provider devolve `null`: quem só enriquece a tela (sugestões, campos) some em vez de quebrar. */
+export function useOrgAtivaId(): string | null {
+  return useContext(Ctx)?.activeOrg?.orgId ?? null;
+}
+
 export function useUser(): AuthUser {
   return useAuth().user;
 }

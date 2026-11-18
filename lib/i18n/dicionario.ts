@@ -7732,6 +7732,8 @@ export const DICIONARIO: Traducoes = {
   "Só a equipe vê este aviso — nada é enviado ao cliente. Se ninguém puder receber no aparelho, ele vai para a Central de avisos.": { es: "Solo el equipo ve este aviso: no se envía nada al cliente. Si nadie puede recibirlo en el dispositivo, va a la Central de avisos." },
   "Quando um negócio for perdido": { es: "Cuando un negocio se pierda" },
   "Enviar e-mail": { es: "Enviar correo electrónico" },
+  "Etiquetas sugeridas": { es: "Etiquetas sugeridas" },
+  "Preencha o campo": { es: "Complete el campo" },
   "Enviar para": { es: "Enviar a" },
   "O contato": { es: "El contacto" },
   "O contato (pelo e-mail dele)": { es: "El contacto (a su correo)" },
