@@ -19511,6 +19511,7 @@ export const DICIONARIO: Traducoes = {
   "Só gerente ou dono altera estas marcas.": { es: "Solo el gerente o el dueño cambia estas marcas." },
   "Não foi possível alterar a marca de contato pessoal.": { es: "No se pudo cambiar la marca de contacto personal." },
   "Contato marcado como pessoal": { es: "Contacto marcado como personal" },
+  "Contato marcado como sempre atendimento humano": { es: "Contacto marcado como siempre atención humana" },
   "Este contato está marcado como \"sempre atendimento humano\": a IA não volta para ele. Desmarque na ficha do contato se quiser devolver.": { es: "Este contacto está marcado como \"siempre atención humana\": la IA no vuelve a él. Desmárcalo en la ficha del contacto si quieres devolverlo." },
   "A lista mostra as imagens que você já enviou nas respostas rápidas. Para usar uma imagem nova, anexe-a a uma resposta rápida e volte aqui. Vídeo e PDF, por enquanto, só pela API da campanha.": { es: "La lista muestra las imágenes que ya enviaste en las respuestas rápidas. Para usar una imagen nueva, adjúntala a una respuesta rápida y vuelve aquí. Video y PDF, por ahora, solo por la API de la campaña." },
   "Abrir respostas rápidas": { es: "Abrir respuestas rápidas" },

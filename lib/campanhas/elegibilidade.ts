@@ -37,6 +37,8 @@ export interface ContatoParaDecidir {
   recusouMarketing: boolean;
   /** `contacts.is_personal` (migration 0540): ficha de vida pessoal, fora de envio automático. */
   pessoal?: boolean;
+  /** `contacts.ai_opt_out` (migration 0540): "sempre humano" — nenhum envio automático. */
+  sempreHumano?: boolean;
 }
 
 /** O telefone que o canal aceita: E.164 com `+`, o mesmo CHECK de `contacts.phone_number`. */
@@ -54,6 +56,7 @@ export function motivoParaExcluir(c: ContatoParaDecidir): MotivoDeExclusao | nul
   if (c.bloqueado) return "opt_out";
   if (c.anonimizado) return "anonimizado";
   if (c.pessoal) return "contato_pessoal";
+  if (c.sempreHumano) return "contato_sempre_humano";
   if (c.recusouMarketing) return "recusou_marketing";
   const telefone = c.telefone?.trim() ?? "";
   if (telefone === "") return "sem_telefone";
