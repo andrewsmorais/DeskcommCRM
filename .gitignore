@@ -162,6 +162,11 @@ backups/
 # de instalação existente numa VPS ARM (#1778). É estado da máquina de quem
 # instalou, nunca entra no repositório — igual ao `.env` que mora ao lado dele.
 .deskcomm-instalado
+# A vigência do app DEPOIS de uma atualização (#2757 do produto original): a
+# marca (epoch + a versão de onde se saiu) e o contador de healthchecks seguidos
+# que faltam para o agente voltar sozinho. Estado da VPS.
+.update-vigia
+.update-vigia-falhas
 
 # Dump de banco de QA. A doutrina já estava escrita duas linhas acima e só o
 # PADRÃO faltava: `backups/` não casa com `.qa-backups/`, e um dump de 1,1 MB de

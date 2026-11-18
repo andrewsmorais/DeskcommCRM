@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api/types";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useSystemVersion } from "@/hooks/system/useSystemVersion";
 import { markdownParaTextoSimples } from "@/lib/system/changelog";
-import { textoDaRodadaDoBanco } from "@/lib/system/update-run";
+import { ehVersaoPublicada, textoDaRodadaDoBanco } from "@/lib/system/update-run";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useT } from "@/hooks/i18n/useT";
@@ -23,21 +23,67 @@ function semV(versao: string | undefined): string {
 }
 
 /**
- * O comando que RESOLVE depois de uma tentativa fracassada — e resolver aqui é
- * voltar para a versão que funcionava, não reinstalar a que acabou de quebrar.
+ * O um-clique que fecha o ciclo sem terminal (#2757).
  *
- * O código do servidor já está na versão nova (a troca acontece antes de o app
- * subir): sem `--force` o script responde "você já está na versão mais recente"
- * e não faz nada, e sem `--to` ele reinstalaria exatamente a release ruim —
- * caminho sem volta se o problema for a release, e não um azar de rede.
+ * Ele não inventa um caminho novo: manda para a rota de atualização o MESMO
+ * pedido que a tela já vinha fazendo em forma de comando (`comandoDeVolta`),
+ * com o alvo vindo do run — a versão de onde a tentativa SAIU — e o agente do
+ * host executa `update.sh --to <isso> --force` no servidor. O texto diz o
+ * preço da ação (sai do ar ~2 min) antes do clique, porque depois do clique
+ * não há mais tela para avisar — e, se a volta não for registrada, o erro
+ * aparece aqui, sem depender de SSH.
+ */
+function BotaoVoltar({
+  destino,
+  mutate,
+  isPending,
+  erro,
+}: {
+  destino: string;
+  mutate: () => void;
+  isPending: boolean;
+  erro: string | null;
+}) {
+  const t = useT();
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={mutate} disabled={isPending}>
+          {isPending ? t("Voltando…") : t("Voltar para a versão anterior")}
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          {t("O sistema sai do ar por cerca de 2 minutos e volta para a versão")}{" "}
+          <strong>{destino}</strong>.
+        </span>
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">
+        {t(
+          "Os seus dados seguem intactos: a cópia de segurança feita antes da tentativa continua guardada no servidor.",
+        )}
+      </p>
+      {erro && <p className="mt-3 text-sm text-error-fg">{erro}</p>}
+    </>
+  );
+}
+
+/**
+ * Só o comando, como plano B, depois do botão "Voltar para a versão anterior"
+ * (#2757).
  *
- * Só aponta para trás quando sabe para onde: `from_version` pode ser uma marca
+ * O MESMO cálculo de antes, porque o alvo do botão é a mesma linha: voltar
+ * para a versão que funcionava, não reinstalar a que acabou de quebrar. Só
+ * aponta para trás quando sabe para onde — `from_version` pode ser uma marca
  * de desenvolvimento (instalação fora de release), e aí não existe imagem
- * publicada com esse nome para puxar — nesse caso, só `--force`.
+ * publicada com esse nome para puxar, nesse caso só `--force`.
+ *
+ * O botão entrega este MESMO alvo ao agente do host, que roda o comando no
+ * servidor — e este texto continua visível de propósito: é o caminho de quem
+ * prefere terminal, e é o que resta quando o pedido nem chega a ser registrado
+ * (sem versão publicada para voltar, banco fora de alcance, agente parado).
  */
 function comandoDeVolta(fromVersion: string | undefined): string {
   const anterior = semV(fromVersion);
-  return /^\d+\.\d+\.\d+/.test(anterior)
+  return ehVersaoPublicada(anterior)
     ? `bash hostgator-setup-kit/update.sh --to v${anterior} --force`
     : "bash hostgator-setup-kit/update.sh --force";
 }
@@ -65,6 +111,55 @@ export function UpdatePanel() {
       // 409 é estado de negócio ("já tem um run rodando" / "já está em dia"),
       // não falha técnica — mostra a mensagem que a API já escreveu em
       // português em vez de um genérico "tente de novo".
+      const mensagem =
+        err instanceof ApiError && err.status === 409
+          ? t(err.message)
+          : t("Não consegui iniciar a atualização. Tente de novo em instantes.");
+      setErro(mensagem);
+    },
+  });
+
+  // O botão "Voltar para a versão anterior" (#2757) — o MESMO pedido que a
+  // tela pedia em forma de comando, agora registrado como run.
+  //
+  // Por que é uma ação e não o comando: quem está com a tela em falha no
+  // navegador raramente tem terminal aberto no servidor, e a saída de "clique
+  // e esqueça" daqui é o agente do host executando `update.sh --to <a versão
+  // de onde se saiu> --force` — o `--force` que o agente aplica sozinho quando
+  // o git mostrar que o alvo pedido é mais antigo que o que já roda aqui (a
+  // MESMA guarda do update.sh contra "versão anterior à instalada"). O alvo
+  // NÃO é a última release: reinstalar a publicada seria reinstalar a release
+  // que acabou de quebrar.
+  const voltar = useMutation({
+    mutationFn: async () => apiClient.post("/api/v1/system/update", { rollback: true }),
+    onSuccess: () => {
+      setErro(null);
+      queryClient.invalidateQueries({ queryKey: ["system-version"] });
+    },
+    onError: (err) => {
+      const mensagem =
+        err instanceof ApiError && err.status === 409
+          ? t(err.message)
+          : t("Não consegui pedir a volta para a versão anterior. Tente de novo em instantes.");
+      setErro(mensagem);
+    },
+  });
+
+  // O atalho do estado de falha (#2756) — o MESMO endpoint de sempre, com um
+  // corpo de UMA chave. O cliente manda a intenção e nunca um comando: quem
+  // transforma `{ force: true }` no `--force` (e no `--to` da versão de onde a
+  // tentativa saiu) é o servidor, a partir do mesmo run que a tela leu para
+  // montar o comando visível logo abaixo do botão. O botão de ATUALIZAR segue
+  // fora deste estado de propósito: sem força ele é o falso sucesso que o doc
+  // de `Saida` descreve — este aqui não, porque o `--force` refaz backup, banco
+  // e conferência de verdade.
+  const forcar = useMutation({
+    mutationFn: async () => apiClient.post("/api/v1/system/update", { force: true }),
+    onSuccess: () => {
+      setErro(null);
+      queryClient.invalidateQueries({ queryKey: ["system-version"] });
+    },
+    onError: (err) => {
       const mensagem =
         err instanceof ApiError && err.status === 409
           ? t(err.message)
@@ -104,12 +199,24 @@ export function UpdatePanel() {
      * Então o estado de espera é SEU PRÓPRIO estado, com nome, com a razão da
      * demora e com um relógio que anda.
      */
+    /**
+     * O alvo do pedido EM CURSO vem do run (#2757): um "voltar" tem como alvo
+     * a versão de onde se saiu, e não a última publicada — dizer "Atualizando
+     * para a versão <última>" durante uma volta seria mentir justamente na
+     * hora em que a pessoa mais está prestando atenção. `nova` fica como
+     * plano B para run sem `to_version` (rota anterior a #2757).
+     *
+     * Fora do `if` de propósito: os DOIS estados de quem está esperando (sem
+     * passo ainda e com passo rolando) dizem o mesmo destino.
+     */
+    const destinoDoPedido = semV(data.run?.to_version) || nova;
+
     if (!data.run?.last_step) {
-      return <AguardandoOServidor dispatchedAt={data.run?.dispatched_at} destino={nova} />;
+      return <AguardandoOServidor dispatchedAt={data.run?.dispatched_at} destino={destinoDoPedido} />;
     }
 
     return (
-      <Layout titulo={`${t("Atualizando para a versão")} ${nova}`}>
+      <Layout titulo={`${t("Atualizando para a versão")} ${destinoDoPedido}`}>
         <ol className="space-y-2 text-sm">
           {PASSOS.map((passo) => {
             const indice = PASSOS.findIndex((p) => p.chave === data.run?.last_step);
@@ -200,7 +307,14 @@ export function UpdatePanel() {
   if (falhaVigente && data.run?.status === "failed_rolled_back") {
     return (
       <Layout titulo={`${t("A atualização para a versão")} ${alvo} ${t("não deu certo")}`}>
-        <p className="text-sm">
+        {/* A VOLTA QUE NINGUÉM PEDIU (#2757 do produto original): o agente do
+            servidor voltou sozinho porque o site não respondeu duas vezes
+            seguidas logo depois da atualização. Sem isto, quem abre o painel
+            vê a versão mudar sem explicação. */}
+        {data.run.volta_automatica ? (
+          <AvisoVoltaAutomatica anterior={anterior} alvo={alvo} finishedAt={data.run.finished_at} />
+        ) : null}
+        <p className={data.run.volta_automatica ? "mt-3 text-sm" : "text-sm"}>
           {t("Voltei o sistema para a versão")} {anterior},{" "}
           {t(
             "que é a que está no ar agora, e os seus dados estão intactos. O banco de dados já tinha sido atualizado e permanece assim — isso é seguro, a versão",
@@ -220,6 +334,32 @@ export function UpdatePanel() {
           erro={erro}
           texto={`${t("Para deixar o servidor inteiro de volta na versão")} ${anterior} ${t("— inclusive o código, que já foi trocado —, quem tem acesso pode rodar:")}`}
           comando={comandoDeVolta(data.run.from_version)}
+          // O MESMO alvo do comando logo abaixo, entregue como run (#2757) —
+          // e só quando ele existe de verdade: uma versão publicada para onde
+          // voltar. `ehVersaoPublicada` é a régua das duas coisas.
+          //
+          // Na volta automática que TERMINOU o botão não entra (#3271): o alvo
+          // dele é a versão que já está no ar, e clicar ali só derrubaria o
+          // sistema por ~2 min para reinstalar o que já roda. Ele continua no
+          // desfecho em que a volta NÃO terminou — que é outro ramo desta tela
+          // (`failed`), porque a rota grava `failed` quando o `update.sh --to`
+          // da volta sai com código diferente de zero. É por isso que os dois
+          // desfechos não podem continuar chegando aqui como um só.
+          voltar={
+            !data.run.volta_automatica && ehVersaoPublicada(data.run.from_version)
+              ? {
+                  destino: anterior,
+                  mutate: () => voltar.mutate(),
+                  isPending: voltar.isPending,
+                  erro,
+                }
+              : undefined
+          }
+          // O clique que executa o comando logo abaixo (#2756). Sem guarda de
+          // versão publicada de propósito: é o único caminho de saída numa
+          // instalação fora de release, onde o `voltar` acima recusa com 409 e
+          // o `comandoDeVolta` devolve `--force` sem `--to`.
+          forcar={{ mutate: () => forcar.mutate(), isPending: forcar.isPending }}
         />
       </Layout>
     );
@@ -255,6 +395,22 @@ export function UpdatePanel() {
           erro={erro}
           texto={`${t("Para colocar o sistema de volta no ar na versão")} ${anterior}${t(", quem tem acesso ao servidor precisa rodar:")}`}
           comando={comandoDeVolta(data.run.from_version)}
+          // Mesmo botão do estado anterior (#2757): o agente já devolveu os
+          // SERVIÇOS em qualquer saída, mas esta versão não subiu — o clique
+          // completa a volta no CÓDIGO, com o alvo de onde a tentativa saiu.
+          voltar={
+            ehVersaoPublicada(data.run.from_version)
+              ? {
+                  destino: anterior,
+                  mutate: () => voltar.mutate(),
+                  isPending: voltar.isPending,
+                  erro,
+                }
+              : undefined
+          }
+          // Mesmo atalho do estado anterior (#2756): o comando logo abaixo é o
+          // alvo, e é o SERVIDOR que o deriva — a tela só manda `{ force: true }`.
+          forcar={{ mutate: () => forcar.mutate(), isPending: forcar.isPending }}
         />
       </Layout>
     );
@@ -565,11 +721,16 @@ function BotaoAtualizar({
  *
  * Depois de uma tentativa que falhou, o código do servidor já está na versão
  * nova (o `git checkout` deu certo; quem não subiu foi o container). Um novo
- * pedido pelo botão faria o agente rodar `update.sh --to <mesma tag>`, que
- * responde "você já está na versão mais recente", sai com sucesso e reportaria
- * um desfecho BOM sem ter trocado imagem nenhuma. Por isso o botão fica
- * desligado nos estados de falha: o que resolve ali é `--force`, e é o comando
- * — sempre presente — que leva a pessoa a ele.
+ * pedido pelo botão de ATUALIZAR faria o agente rodar `update.sh --to <mesma
+ * tag>`, que responde "você já está na versão mais recente", sai com sucesso e
+ * reportaria um desfecho BOM sem ter trocado imagem nenhuma. Por isso o botão
+ * de atualizar fica desligado nos estados de falha: o que resolve ali é
+ * `--force` com alvo na versão de onde se saiu — hoje, o botão "Voltar para a
+ * versão anterior" (#2757), entregue como run quando há uma versão publicada
+ * para onde voltar, e o "Forçar atualização" (#2756), que é o COMANDO logo
+ * abaixo executado sem terminal, e passa também onde a volta recusa. O comando
+ * continua sempre presente: é a transparência do que o botão faz, o plano B
+ * dele e o caminho de quem prefere terminal.
  */
 function Saida({
   botao,
@@ -578,6 +739,8 @@ function Saida({
   erro,
   texto,
   comando,
+  voltar,
+  forcar,
 }: {
   botao: boolean;
   mutate: () => void;
@@ -585,7 +748,21 @@ function Saida({
   erro: string | null;
   texto: string;
   comando: string;
+  /** O um-clique de voltar (#2757): só nos estados de falha, e só com alvo. */
+  voltar?: {
+    destino: string;
+    mutate: () => void;
+    isPending: boolean;
+    erro: string | null;
+  };
+  /** O clique de força deste estado (#2756), ao lado do comando que ele executa. */
+  forcar?: { mutate: () => void; isPending: boolean } | null;
 }) {
+  // O erro aparece UMA vez, e por quem estiver na tela: `BotaoAtualizar` e
+  // `BotaoVoltar` já o renderizam dentro de si. Sem nenhum dos dois ele morreria
+  // invisível — que é exatamente o caso do força sem volta (instalação fora de
+  // release) — e com os DOIS ele viraria frase repetida.
+  const erroDoForca = botao || voltar ? null : erro;
   return (
     <div className="mt-6 border-t pt-4">
       {botao && (
@@ -593,9 +770,57 @@ function Saida({
           <BotaoAtualizar mutate={mutate} isPending={isPending} erro={erro} />
         </div>
       )}
+      {voltar && (
+        <div className="mb-4">
+          <BotaoVoltar {...voltar} />
+        </div>
+      )}
       <p className="text-sm text-muted-foreground">{texto}</p>
+      {forcar && (
+        <div className="mt-3">
+          <BotaoForcar mutate={forcar.mutate} isPending={forcar.isPending} erro={erroDoForca} />
+        </div>
+      )}
       <Comando comando={comando} />
     </div>
+  );
+}
+
+/**
+ * O atalho do comando que está logo abaixo (#2756).
+ *
+ * Dispara o MESMO `POST /system/update` do botão normal, com um corpo de uma
+ * chave: `{ force: true }`. O alvo (`--force` e, quando existe, `--to` da
+ * versão de onde a tentativa saiu) é resolvido no SERVIDOR, a partir do mesmo
+ * run que a tela leu — a tela não passa caminho nenhum, nem por aqui. Diferente
+ * do "Voltar para a versão anterior" (#2757), não pede versão publicada para
+ * trás: ele executa o `comandoDeVolta` que está embaixo, cuja outra metade é
+ * justamente o `--force` sem `--to` de uma instalação fora de release.
+ */
+function BotaoForcar({
+  mutate,
+  isPending,
+  erro,
+}: {
+  mutate: () => void;
+  isPending: boolean;
+  erro: string | null;
+}) {
+  const t = useT();
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={mutate} disabled={isPending}>
+          {isPending ? t("Forçando…") : t("Forçar atualização")}
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          {t(
+            "Rodo o comando de baixo por você, sem precisar abrir o terminal. Faço uma cópia de segurança dos seus dados antes.",
+          )}
+        </span>
+      </div>
+      {erro && <p className="mt-3 text-sm text-error-fg">{erro}</p>}
+    </>
   );
 }
 
@@ -641,6 +866,39 @@ function Reiniciando() {
         {t("O sistema está voltando. Esta página se atualiza sozinha em alguns instantes.")}
       </p>
     </Layout>
+  );
+}
+
+/** "13h05": a hora local de quem lê; vazio com data inválida. */
+function horaCurta(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}h${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function AvisoVoltaAutomatica({
+  anterior,
+  alvo,
+  finishedAt,
+}: {
+  anterior: string;
+  alvo: string;
+  finishedAt?: string | null;
+}) {
+  const t = useT();
+  return (
+    <p className="text-sm" data-testid="volta-automatica">
+      {t("O sistema voltou sozinho para a versão")} <strong>{anterior}</strong>
+      {finishedAt ? (
+        <>
+          {" "}
+          {t("às")} <strong>{horaCurta(finishedAt)}</strong>
+        </>
+      ) : null}
+      {t(", porque o site não respondeu logo depois da atualização para a versão")}{" "}
+      <strong>{alvo}</strong>.
+    </p>
   );
 }
 
