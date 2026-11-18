@@ -51419,40 +51419,12 @@ create policy "conversations_select" on public.conversations
   );
 
 -- Ler não é mandar: o convite (e o setor) não ampliam UPDATE/DELETE da
--- conversa. Quem já escrevia continua escrevendo; o USING mede a linha ANTES.
-drop policy if exists conversation_participant_read_is_not_control_update on public.conversations;
-create policy conversation_participant_read_is_not_control_update
-  on public.conversations as restrictive for update to authenticated
-  using (public.fn_can_view_conversation(organization_id, assigned_to_user_id))
-  with check (true);
-drop policy if exists conversation_participant_read_is_not_control_delete on public.conversations;
-create policy conversation_participant_read_is_not_control_delete
-  on public.conversations as restrictive for delete to authenticated
-  using (public.fn_can_view_conversation(organization_id, assigned_to_user_id));
-
--- Responder não dá edição nem exclusão do histórico de outra pessoa: quem é
--- convidado edita/apaga só a própria mensagem enviada.
-drop policy if exists message_participant_reply_is_not_history_update on public.messages;
-create policy message_participant_reply_is_not_history_update
-  on public.messages as restrictive for update to authenticated
-  using (
-    (sent_by_user_id = auth.uid() and direction = 'outbound' and sent_via in ('user','crm'))
-    or exists (select 1 from public.conversations c
-      where c.id = messages.conversation_id and c.organization_id = messages.organization_id
-        and public.fn_can_view_conversation(c.organization_id, c.assigned_to_user_id))
-  ) with check (
-    exists (select 1 from public.conversations c
-      where c.id = messages.conversation_id and c.organization_id = messages.organization_id
-        and (public.fn_can_view_conversation(c.organization_id, c.assigned_to_user_id)
-          or (messages.sent_by_user_id = auth.uid() and messages.direction = 'outbound'
-            and messages.sent_via in ('user','crm'))))
-  );
-drop policy if exists message_participant_reply_is_not_history_delete on public.messages;
-create policy message_participant_reply_is_not_history_delete
-  on public.messages as restrictive for delete to authenticated
-  using (exists (select 1 from public.conversations c
-    where c.id = messages.conversation_id and c.organization_id = messages.organization_id
-      and public.fn_can_view_conversation(c.organization_id, c.assigned_to_user_id)));
+-- conversa, e responder não dá edição nem exclusão do histórico de outra
+-- pessoa. As quatro travas restritivas que a 0544 criava aqui moram SÓ no
+-- bloco da 0555, mais abaixo, já com a régua de três argumentos
+-- (`is_private`): a versão de dois argumentos, reinstalada aqui a cada
+-- update.sh, deixava o convidado mandar na conversa privada até o bloco da
+-- 0555 rodar (tests/unit/baseline-nao-constroi-o-que-derruba.test.ts).
 
 -- O vínculo só é escrito pelo servidor. O toque em `updated_at` acorda quem
 -- já observa a conversa pela tela, sem trocar o dono.
