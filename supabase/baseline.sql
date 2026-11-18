@@ -51537,3 +51537,35 @@ create policy leitura_entregas_de_aviso_de_agendamento
     organization_id in (select public.fn_user_org_ids())
     and public.fn_role_at_least(organization_id, 'admin')
   );
+
+-- ---- juntar fichas soma as marcas pessoal/sempre humano (migration 0557) ----
+create or replace function public.fn_fusao_soma_marcas_do_contato()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  -- O que sai da ficha entrega as marcas à que fica: "pessoal" e "sempre
+  -- humano" nunca se perdem numa fusão. `ai_opt_out` já implica `force_human`.
+  update public.contacts
+     set is_personal = is_personal or coalesce(new.is_personal, false),
+         ai_opt_out  = ai_opt_out  or coalesce(new.ai_opt_out, false),
+         force_human = force_human or coalesce(new.ai_opt_out, false)
+   where organization_id = new.organization_id
+     and id = new.is_merged_into
+     and (
+       (coalesce(new.is_personal, false) and not is_personal)
+       or (coalesce(new.ai_opt_out, false) and (not ai_opt_out or not force_human))
+     );
+  return null;
+end $$;
+revoke execute on function public.fn_fusao_soma_marcas_do_contato() from public, anon, authenticated;
+
+drop trigger if exists trg_fusao_soma_marcas_do_contato on public.contacts;
+create trigger trg_fusao_soma_marcas_do_contato
+  after update of is_merged_into on public.contacts
+  for each row
+  when (old.is_merged_into is null and new.is_merged_into is not null
+        and (new.is_personal or new.ai_opt_out))
+  execute function public.fn_fusao_soma_marcas_do_contato();

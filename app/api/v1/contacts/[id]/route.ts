@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ApiError } from "@/lib/api/types";
 import { ok, fail, noContent } from "@/lib/api/wrappers";
+import { recusaSeFichaMarcada } from "@/lib/contacts/marca-exige-gerente";
 import { requireRole } from "@/lib/auth/require-role";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -170,6 +171,18 @@ export async function PATCH(
     throw err;
   }
 
+  // Tirar ou trocar o telefone de ficha "pessoal"/"sempre humano" é de gerente.
+  if (input.phone_number !== undefined) {
+    const recusa = await recusaSeFichaMarcada({
+      supabase,
+      organizationId: activeOrg.orgId,
+      contactId: id,
+      papel: activeOrg.role,
+      requestId,
+    });
+    if (recusa) return recusa;
+  }
+
   try {
     const contact = await patchContactHandler(
       supabase,
@@ -208,6 +221,16 @@ export async function DELETE(
   const activeOrg = authz.org;
 
   const supabase = await createClient();
+
+  // Ficha "pessoal"/"sempre humano": só gerente apaga, e ANTES de levar o histórico.
+  const recusa = await recusaSeFichaMarcada({
+    supabase,
+    organizationId: activeOrg.orgId,
+    contactId: id,
+    papel: activeOrg.role,
+    requestId,
+  });
+  if (recusa) return recusa;
 
   try {
     await deleteContactHandler(

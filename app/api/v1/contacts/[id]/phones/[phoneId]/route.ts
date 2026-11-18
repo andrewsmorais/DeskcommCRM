@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 
 import { ApiError } from "@/lib/api/types";
 import { fail, noContent, ok } from "@/lib/api/wrappers";
+import { recusaSeFichaMarcada } from "@/lib/contacts/marca-exige-gerente";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { telefoneExtraPatchSchema, validateRequest } from "@/lib/schemas";
@@ -90,6 +91,14 @@ export async function DELETE(_req: NextRequest, ctx: Context): Promise<Response>
   }
 
   const supabase = await createClient();
+  const recusa = await recusaSeFichaMarcada({
+    supabase,
+    organizationId: activeOrg.orgId,
+    contactId: id,
+    papel: activeOrg.role,
+    requestId,
+  });
+  if (recusa) return recusa;
   try {
     await removerTelefoneExtra(
       {
