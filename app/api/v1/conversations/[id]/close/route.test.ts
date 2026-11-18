@@ -57,6 +57,8 @@ function clienteDoUsuario() {
     return q;
   };
   return {
+    // Quem fecha já controlava a conversa (`exigirControleDaConversa`, 0544).
+    rpc: async () => ({ data: true, error: null }),
     from: (tabela: string) => consulta(tabela),
     auth: { getUser: async () => ({ data: { user: { user_metadata: { full_name: "Ana Lima" } } } }) },
   };

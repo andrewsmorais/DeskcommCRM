@@ -52,7 +52,9 @@ import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { ROLE_RANK } from "@/lib/auth/types";
 import { useEnderecoDaResposta } from "@/hooks/inbox/useEnderecoDaResposta";
+import { ParticipantesDaConversa } from "@/components/inbox/ParticipantesDaConversa";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -102,7 +104,7 @@ export function ConversationHeader({
   botaoBuscaRef,
 }: Props) {
   const t = useT();
-  const { user } = useAuth();
+  const { user, activeOrg } = useAuth();
   const privacidadeDeQualquer = usePermission("inbox.privacy.any");
   const podeOcultar = usePermission("inbox.visibility");
   const claim = useClaimConversation();
@@ -140,6 +142,12 @@ export function ConversationHeader({
   const endereco = enderecoDaResposta.data?.data ?? null;
   const status = conversation.status;
   const isMineAssigned = conversation.assigned_to_user_id === user.id;
+  // Atendimento conjunto (migration 0544): convida quem é o responsável ou um
+  // gestor — o mesmo gate da rota, que revalida tudo no servidor.
+  const podeConvidar =
+    isMineAssigned ||
+    (user.is_platform_admin && !user.support) ||
+    (activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager);
   const isOpen = status === "open" || conversation.assigned_to_user_id == null;
 
   /**
@@ -414,6 +422,13 @@ export function ConversationHeader({
           <Button size="sm" variant="outline" onClick={() => setReassignOpen(true)}>
             {t("Transferir")}
           </Button>
+        )}
+        {!encerrada && !conversation.is_group && (
+          <ParticipantesDaConversa
+            conversationId={conversation.id}
+            podeConvidar={podeConvidar}
+            atendenteId={user.id}
+          />
         )}
         {!encerrada && (
           <SnoozeButton

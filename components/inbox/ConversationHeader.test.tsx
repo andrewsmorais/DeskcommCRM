@@ -17,6 +17,9 @@ const closeMutate = vi.hoisted(() => vi.fn());
 const arquivarMutate = vi.hoisted(() => vi.fn());
 const startCall = vi.hoisted(() => vi.fn());
 
+vi.mock("@/components/inbox/ParticipantesDaConversa", () => ({
+  ParticipantesDaConversa: () => null,
+}));
 vi.mock("@/hooks/inbox/useEnderecoDaResposta", () => ({
   useEnderecoDaResposta: () => ({ data: undefined }),
 }));

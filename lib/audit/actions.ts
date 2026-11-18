@@ -305,6 +305,9 @@ export const AUDIT_ACTIONS = [
   "contacts.always_human_unmarked",
   // Telefones extras da ficha (migration 0541). O metadata leva ids, tipo e
   // WhatsApp, nunca o número: a trilha é append-only e a LGPD não a alcança.
+  // Atendimento conjunto (migration 0544): convidar e tirar colega da conversa.
+  "conversation.invited",
+  "conversation.participant_removed",
   "contact.extra_phone_added",
   "contact.extra_phone_updated",
   "contact.extra_phone_removed",

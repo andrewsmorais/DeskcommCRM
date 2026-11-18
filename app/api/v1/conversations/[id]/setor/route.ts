@@ -24,6 +24,7 @@ import { validateRequest } from "@/lib/schemas/_validate";
 import { transferirParaSetor } from "@/lib/setores/servico";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { exigirControleDaConversa } from "@/lib/inbox/controle-da-conversa";
 
 export const dynamic = "force-dynamic";
 
@@ -53,15 +54,25 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     throw err;
   }
 
-  const { data: visivel } = await (
-    await createClient()
-  )
+  const sessao = await createClient();
+  const { data: visivel } = await sessao
     .from("conversations")
-    .select("id")
+    .select("id, assigned_to_user_id")
     .eq("organization_id", orgId)
     .eq("id", id)
     .maybeSingle();
   if (!visivel) return fail("not_found", t("Conversa não encontrada."), 404, { requestId });
+  // Ler (convite, setor) não é mudar o setor: é de quem já controlava a conversa.
+  try {
+    await exigirControleDaConversa(
+      sessao,
+      { organization_id: orgId, actor: { type: "user", id: authz.user.id }, requestId, idioma: authz.user.idioma },
+      visivel as { assigned_to_user_id: string | null },
+    );
+  } catch (err) {
+    if (err instanceof ApiError) return fail(err.code, err.message, err.status, { requestId });
+    throw err;
+  }
 
   const supportDenied = await requireSupportWrite();
   if (supportDenied) return supportDenied;

@@ -123,6 +123,8 @@ const ACTION_MIN_ROLE: Record<string, Role> = {
   // Ocultar/mostrar a conversa na caixa de entrada (migration 0510); a rota
   // app/api/v1/conversations/[id]/visibilidade exige o mesmo papel.
   "inbox.visibility": "agent",
+  // Ler quem participa da conversa (atendimento conjunto, migration 0544).
+  "inbox.participantes.view": "agent",
   "contact.view": "viewer",
   "contact.create": "agent",
   "contact.update": "agent",

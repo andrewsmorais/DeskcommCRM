@@ -27,6 +27,8 @@ import { pedirChatbotManual } from "@/lib/chatbot/iniciar-manual";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { exigirControleDaConversa } from "@/lib/inbox/controle-da-conversa";
+import { ApiError } from "@/lib/api/types";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +59,26 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
 
   // Client do REQUEST: a policy de conversas aplica o `visibility_mode` — quem
   // não enxerga a conversa não aciona chatbot nela.
-  const r = await pedirChatbotManual(await createClient(), createAdminClient(), {
+  const sessao = await createClient();
+  const { data: alvo } = await sessao
+    .from("conversations")
+    .select("id, assigned_to_user_id")
+    .eq("organization_id", org.orgId)
+    .eq("id", id)
+    .maybeSingle();
+  if (!alvo) return fail("not_found", t("Conversa não encontrada."), 404, { requestId });
+  // Ler (convite, setor) não é acionar chatbot: é de quem já controlava a conversa.
+  try {
+    await exigirControleDaConversa(
+      sessao,
+      { organization_id: org.orgId, actor: { type: "user", id: user.id }, requestId, idioma: user.idioma },
+      alvo as { assigned_to_user_id: string | null },
+    );
+  } catch (err) {
+    if (err instanceof ApiError) return fail(err.code, err.message, err.status, { requestId });
+    throw err;
+  }
+  const r = await pedirChatbotManual(sessao, createAdminClient(), {
     orgId: org.orgId,
     conversationId: id,
     flowId: corpo.data.flow_id,

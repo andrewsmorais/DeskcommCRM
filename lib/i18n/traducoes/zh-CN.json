@@ -5537,5 +5537,19 @@
   "Abrir essa campanha": "打开该活动",
   "Conexão removida.": "连接已移除。",
   "O cliente disse que não tem interesse": "客户表示没有兴趣",
-  "tarefa aberta": "项未完成任务"
+  "tarefa aberta": "项未完成任务",
+  "Remover participante": "移除参与者",
+  "Sair do atendimento": "退出会话",
+  "Não foi possível remover agora. Tente de novo.": "暂时无法移除，请重试。",
+  "Carregando colegas…": "正在加载同事…",
+  "Convida um colega para atender junto — o responsável pela conversa não muda.": "邀请同事共同接待 —— 对话的负责人不变。",
+  "Convidando…": "正在邀请…",
+  "Convidar": "邀请",
+  "Convidar colega": "邀请同事",
+  "Convidar para atender junto": "邀请共同接待",
+  "Escolha o colega": "选择同事",
+  "Já participa": "已参与",
+  "Não foi possível convidar agora. Tente de novo.": "现在无法邀请。请重试。",
+  "O convidado passa a ver esta conversa e as mensagens dela, e pode responder junto. O responsável pela conversa continua o mesmo.": "受邀者将能看到此对话及其消息，并可一同回复。对话的负责人保持不变。",
+  "Quem participa desta conversa": "谁在参与此对话"
 }

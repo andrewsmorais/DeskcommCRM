@@ -75,6 +75,7 @@ interface Excecao {
  * linhas da OUTRA organização, não uma leitura como superusuário.
  */
 const PROVA_PROPRIA: readonly Excecao[] = [
+  { tabela: "conversation_participants", razao: "tests/invariants/atendimento-conjunto-participantes.test.ts — convidar colega (0544): dois tenants por JWT (agent): o convidado lê a própria participação e passa a ver a conversa e as mensagens dela, o dono não lê a linha alheia, e authenticated não grava (só o servidor)." },
   { tabela: "importacoes_de_historico", razao: "tests/invariants/importacoes-de-historico-rls.test.ts — a importação do histórico (0526): cada organização só lê as suas, e authenticated não grava." },
   { tabela: "lgpd_marcas_de_apagamento", razao: "tests/invariants/lgpd-marca-de-apagamento.test.ts — marca de quem foi apagado a pedido (0526): nem authenticated nem anon leem, só o servidor pergunta pela função." },
   { tabela: "automation_rule_contact_claims", razao: "tests/invariants/automacao-reserva-por-contato.test.ts — tabela só do servidor (0524): admin de cada uma de duas organizações reais não lê nenhuma reserva, nem da própria nem da vizinha, e a gravação direta por authenticated é negada." },

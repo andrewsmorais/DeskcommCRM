@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useParticipantesDaConversa } from "@/hooks/inbox/useParticipantesDaConversa";
 import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
 import { useBulkConversations, type AcaoEmLote } from "@/hooks/inbox/useBulkConversations";
 import { useSelecaoEmLote } from "@/hooks/inbox/useSelecaoEmLote";
@@ -327,6 +328,15 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const selectedConversation: ConversationWithContact | null = inList ?? single.data ?? null;
   const selectionNotFound =
     needsFetch && !single.isPending && !single.data && isNotFound(single.error);
+  // Convidado para a conversa (atendimento conjunto) responde sem assumir,
+  // mesmo com "bloquear até assumir" ligado. Só se a organização ligou a trava.
+  const participantes = useParticipantesDaConversa(
+    selectedConversation?.id ?? "",
+    activeOrg?.interface_settings?.bloquearAteAssumir === true &&
+      !!selectedConversation &&
+      selectedConversation.assigned_to_user_id !== user.id,
+  );
+  const souParticipante = (participantes.data ?? []).some((p) => p.user_id === user.id);
 
   const colunas = colunasDoCelular(Boolean(selectedId));
 
@@ -674,6 +684,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
                 ligada: activeOrg?.interface_settings?.bloquearAteAssumir === true,
                 donoDaConversa: selectedConversation.assigned_to_user_id,
                 atendenteId: user.id,
+                participanteAtivo: souParticipante,
               })}
               contactName={selectedConversation.contacts?.name ?? null}
               respondendo={respondendo}
