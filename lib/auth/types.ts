@@ -62,7 +62,7 @@ export const ROTULO_DO_PAPEL: Record<Role, string> = {
  * Escopo de visualização de conversas por atendente (G4-01, spec 13 §3.5).
  * Só restringe o role `agent`; viewer/manager/admin seguem org-wide.
  */
-export type VisibilityMode = "all" | "own_and_unassigned" | "own";
+export type VisibilityMode = "all" | "own_and_unassigned" | "own" | "own_and_sector";
 export const DEFAULT_VISIBILITY_MODE: VisibilityMode = "own_and_unassigned"; // G1-06a
 
 export interface UserOrgMembership {

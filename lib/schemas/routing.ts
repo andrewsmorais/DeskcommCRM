@@ -84,7 +84,7 @@ export function conversaFicaComQuemAtendeu(settings: unknown): boolean {
  * aqui só se declara a validação do input externo. A `satisfies` abaixo é o que
  * impede as duas listas de divergirem sem ninguém notar.
  */
-export const VISIBILITY_MODES = ["all", "own_and_unassigned", "own"] as const;
+export const VISIBILITY_MODES = ["all", "own_and_unassigned", "own", "own_and_sector"] as const;
 export type VisibilityModeInput = (typeof VISIBILITY_MODES)[number];
 
 /**

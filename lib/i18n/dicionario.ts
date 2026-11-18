@@ -19453,6 +19453,12 @@ export const DICIONARIO: Traducoes = {
   },
   "Vazio = padrão da instalação": { es: "Vacío = predeterminado de la instalación" },
   "Agenda do celular": { es: "Agenda del celular" },
+  "O atendente vê a própria carteira e as conversas que estão no setor dele, inclusive as que estão com um colega do mesmo setor — bom para cobrir férias e ausências. As conversas dos outros setores continuam fora do alcance dele.": {
+    es: "El agente ve su propia cartera y las conversaciones que están en su sector, incluso las que están con un compañero del mismo sector — útil para cubrir vacaciones y ausencias. Las conversaciones de los otros sectores siguen fuera de su alcance.",
+  },
+  "Este modo usa os setores (Configurações › Setores): quem não está em nenhum setor vê só as conversas que são dele. Conversa privada continua só de quem já podia ver. No funil, os negócios continuam restritos aos seus.": {
+    es: "Este modo usa los sectores (Configuración › Sectores): quien no está en ningún sector ve solo las conversaciones que son suyas. La conversación privada sigue siendo solo de quien ya podía verla. En el embudo, los negocios siguen restringidos a los suyos.",
+  },
   "Retomar a prospecção: {{contact.name}} pediu para falar depois": {
     es: "Retomar la prospección: {{contact.name}} pidió hablar después",
   },
@@ -19848,6 +19854,7 @@ export const DICIONARIO: Traducoes = {
     es: "No fue posible verificar el acceso de la IA. No se envió ningún mensaje.",
   },
   "Não foi possível ler a conversa.": { es: "No fue posible leer la conversación." },
+  "Os seus e os do seu setor": { es: "Los tuyos y los de tu sector" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
