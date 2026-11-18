@@ -22,6 +22,7 @@ function formatError(err: unknown, t: (texto: string) => string): string {
 }
 import { KanbanBoard } from "@/components/kanban/KanbanBoard";
 import { FilterBar } from "@/components/kanban/FilterBar";
+import { ListaDoFunil } from "@/components/kanban/ListaDoFunil";
 import { BulkActionBar } from "@/components/kanban/BulkActionBar";
 import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,18 @@ export function PipelinePageClient({
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [newOpen, setNewOpen] = useState(false);
+  // Quadro ou Lista: escolha na URL (?visao=lista), para o link abrir como se viu.
+  const visao = searchParams.get("visao") === "lista" ? "lista" : "quadro";
+  const trocarVisao = useCallback(
+    (v: "quadro" | "lista") => {
+      const p = new URLSearchParams(searchParams.toString());
+      if (v === "lista") p.set("visao", "lista");
+      else p.delete("visao");
+      const qs = p.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   /**
    * Motivo e categoria da perda (#1537): a categoria NÃO vem no lead — ela é
@@ -134,6 +147,20 @@ export function PipelinePageClient({
           stages={data.stages}
         />
       )}
+      <div role="tablist" className="flex gap-1" data-testid="abas-do-funil">
+        {(["quadro", "lista"] as const).map((v) => (
+          <Button
+            key={v}
+            role="tab"
+            aria-selected={visao === v}
+            variant={visao === v ? "default" : "outline"}
+            size="sm"
+            onClick={() => trocarVisao(v)}
+          >
+            {v === "quadro" ? t("Quadro") : t("Lista")}
+          </Button>
+        ))}
+      </div>
       <FilterBar
         filters={filters}
         onChange={setFilters}
@@ -148,6 +175,13 @@ export function PipelinePageClient({
         <div className="flex flex-1 animate-pulse items-center justify-center text-muted-foreground">
           {t("Carregando…")}
         </div>
+      ) : visao === "lista" ? (
+        <ListaDoFunil
+          pipelineId={pipelineId}
+          pipeline={data.pipeline}
+          stages={data.stages}
+          filtros={filters}
+        />
       ) : (
         <KanbanBoard
           pipelineId={pipelineId}

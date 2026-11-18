@@ -9,8 +9,10 @@
  *  - contactListQuerySchema coerces `limit` and clamps boundaries
  */
 import { describe, expect, it } from "vitest";
+import { perfilDoPais } from "@/lib/legal/perfil-do-pais";
 import {
   contactCreateSchema,
+  contactCreateSchemaDoPais,
   contactListQuerySchema,
   contactPatchSchema,
   isValidCpf,
@@ -166,5 +168,24 @@ describe("lgpdAnonymizeSchema", () => {
       justification: "Solicitação formal LGPD do titular do dado.",
     });
     expect(r.success).toBe(true);
+  });
+});
+
+describe("telefone nacional da organização brasileira", () => {
+  const br = contactCreateSchemaDoPais(perfilDoPais("BR"));
+  it.each([
+    ["(42) 99873-7374", "+5542998737374"],
+    ["42 99873-7374", "+5542998737374"],
+    ["42998737374", "+5542998737374"],
+    ["(42) 3333-4444", "+554233334444"],
+    ["5542998737374", "+5542998737374"],
+    ["+5542998737374", "+5542998737374"],
+  ])("%s vira %s", (entrada, saida) => {
+    const r = br.safeParse({ display_name: "A", phone_number: entrada });
+    expect(r.success && r.data.phone_number).toBe(saida);
+  });
+  it("DDD inválido e número curto continuam recusados", () => {
+    expect(br.safeParse({ display_name: "A", phone_number: "05 99873-7374" }).success).toBe(false);
+    expect(br.safeParse({ display_name: "A", phone_number: "12345" }).success).toBe(false);
   });
 });

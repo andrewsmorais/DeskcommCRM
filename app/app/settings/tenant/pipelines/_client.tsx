@@ -226,6 +226,13 @@ function PipelineEditor({
   const [retomaComoNovo, setRetomaComoNovo] = useState(
     modoDeReabertura(pipeline.settings) === "novo_negocio",
   );
+  const entradaSalva = (
+    pipeline.settings as { entrada_do_inbox?: { ativa?: unknown; stage_id?: unknown } } | null
+  )?.entrada_do_inbox;
+  const [entradaAtiva, setEntradaAtiva] = useState(entradaSalva?.ativa === true);
+  const [entradaEtapa, setEntradaEtapa] = useState(
+    typeof entradaSalva?.stage_id === "string" ? entradaSalva.stage_id : "",
+  );
   const [fields, setFields] = useState<CustomFieldDef[]>(camposDoFunil(pipeline.settings));
   const [isPending, startTransition] = useTransition();
 
@@ -285,6 +292,7 @@ function PipelineEditor({
       won_reasons: wonReasons,
       won_reason_required: wonRequired,
       reabertura: retomaComoNovo ? "novo_negocio" : "mesmo_registro",
+      entrada_do_inbox: { ativa: entradaAtiva && entradaEtapa !== "", stage_id: entradaEtapa || null },
     };
     startTransition(async () => {
       const r = await updatePipelineConfig(pipeline.id, patch);
@@ -401,6 +409,39 @@ function PipelineEditor({
         <p className="text-xs text-muted-foreground">
           {t(
             "Desligado, arrastar um negócio perdido ou ganho para uma etapa aberta reabre o mesmo negócio. Ligado, o encerrado fica como está e o quadro oferece criar uma nova tentativa com o mesmo contato.",
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={entradaAtiva}
+            onChange={(e) => setEntradaAtiva(e.target.checked)}
+          />
+          {t("Conversa nova vira card numa etapa que eu escolho")}
+        </label>
+        {entradaAtiva && (
+          <select
+            aria-label={t("Etapa de entrada")}
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+            value={entradaEtapa}
+            onChange={(e) => setEntradaEtapa(e.target.value)}
+          >
+            <option value="">{t("Escolha a etapa")}</option>
+            {etapas
+              .filter((e) => !e.is_archived)
+              .map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+          </select>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Vale para o funil de entrada. Desligado, a conversa nova vira card na primeira etapa aberta.",
           )}
         </p>
       </div>

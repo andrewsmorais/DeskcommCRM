@@ -47,6 +47,7 @@ export type ActionItem =
       config: { agent_id: string; channel_session_id: string; instruction: string };
     }
   | { type: "add_tag"; config: { tags: string[] } }
+  | { type: "remove_tag"; config: { tags: string[]; destino?: "card" | "contato" } }
   | { type: "assign_owner"; config: { user_id: string } }
   | { type: "call_webhook"; config: { url: string; secret?: string; secret_enc?: string; include_owner?: boolean } }
   | { type: "start_message_flow"; config: { flow_pointer_id: string } }
@@ -72,6 +73,8 @@ export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
       return { type, config: { agent_id: "", channel_session_id: "", instruction: "" } };
     case "add_tag":
       return { type, config: { tags: [] } };
+    case "remove_tag":
+      return { type, config: { tags: [], destino: "card" } };
     case "assign_owner":
       return { type, config: { user_id: "" } };
     case "call_webhook":
@@ -361,6 +364,49 @@ function AddTagForm({ config, onChange }: FormProps<{ tags: string[] }>) {
         }}
         placeholder="boas-vindas, novo-lead"
       />
+    </div>
+  );
+}
+
+function RemoveTagForm({
+  config,
+  onChange,
+}: FormProps<{ tags: string[]; destino?: "card" | "contato" }>) {
+  const t = useT();
+  const [text, setText] = React.useState(config.tags.join(", "));
+  const destino = config.destino ?? "card";
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label>{t("Tags a tirar (separadas por vírgula)")}</Label>
+        <Input
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            const tags = e.target.value
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            onChange({ tags, destino });
+          }}
+          placeholder="novo-lead, aguardando"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Tirar de onde")}</Label>
+        <Select
+          value={destino}
+          onValueChange={(v) => onChange({ tags: config.tags, destino: v === "contato" ? "contato" : "card" })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="card">{t("Do negócio (card)")}</SelectItem>
+            <SelectItem value="contato">{t("Do contato")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }
@@ -680,6 +726,13 @@ export function ActionConfigForm({
     case "add_tag":
       return (
         <AddTagForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "remove_tag":
+      return (
+        <RemoveTagForm
           config={action.config}
           onChange={(config) => onChange({ type: action.type, config })}
         />

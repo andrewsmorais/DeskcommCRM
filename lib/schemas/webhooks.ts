@@ -116,6 +116,14 @@ export const actionSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({ type: z.literal("add_tag"), config: z.object({ tags: z.array(z.string().min(1).max(60)).min(1).max(10) }) }),
+  // A irmã da `add_tag`: TIRA as etiquetas, do card (padrão) ou do contato.
+  z.object({
+    type: z.literal("remove_tag"),
+    config: z.object({
+      tags: z.array(z.string().min(1).max(60)).min(1).max(10),
+      destino: z.enum(["card", "contato"]).optional(),
+    }),
+  }),
   z.object({ type: z.literal("assign_owner"), config: z.object({ user_id: z.string().uuid() }) }),
   z.object({
     type: z.literal("send_ai_message"),

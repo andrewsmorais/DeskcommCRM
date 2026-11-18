@@ -84,6 +84,42 @@ export const contactPatchSchema = contactCreateSchema.partial().extend({
 export type ContactPatch = z.infer<typeof contactPatchSchema>;
 
 /**
+ * O TELEFONE NACIONAL DA ORGANIZAÇÃO BRASILEIRA: aceita `(42) 99873-7374`,
+ * `42 99873-7374`, `42998737374` (e o número colado com 55 sem o `+`) e grava
+ * a forma canônica `+55…`. A normalização mora no schema porque a tela não é a
+ * única porta (importação e MCP chamam as mesmas fábricas). O DDD é conferido
+ * (dois dígitos, o primeiro de 1 a 9). Outros países: só E.164.
+ */
+const DDD_BR = /^[1-9][0-9]$/;
+
+function telefoneNacionalE164(valor: string): string | null {
+  const digitos = valor.replace(/\D/g, "");
+  const nacional =
+    (digitos.length === 12 || digitos.length === 13) && digitos.startsWith("55")
+      ? digitos.slice(2)
+      : digitos;
+  if (nacional.length !== 10 && nacional.length !== 11) return null;
+  if (!DDD_BR.test(nacional.slice(0, 2))) return null;
+  return `+55${nacional}`;
+}
+
+function telefoneDoPais(perfil: PerfilDoPais) {
+  if (perfil.codigo !== PAIS_PADRAO) {
+    return z
+      .string()
+      .regex(PHONE_REGEX, "Telefone deve estar em formato E.164 (+5511999998888)")
+      .optional();
+  }
+  return z
+    .string()
+    .transform((valor) => (PHONE_REGEX.test(valor) ? valor : (telefoneNacionalE164(valor) ?? valor)))
+    .refine((valor) => PHONE_REGEX.test(valor), {
+      message: "Telefone deve ter DDD + número (ex.: 11999998888) ou o formato E.164 (+5511999998888)",
+    })
+    .optional();
+}
+
+/**
  * O documento do titular vem do PERFIL DO PAÍS da organização (issue #1033).
  *
  * `contactCreateSchema` continua sendo a régua brasileira — é o schema que as
@@ -100,6 +136,7 @@ export type ContactPatch = z.infer<typeof contactPatchSchema>;
  */
 export function contactCreateSchemaDoPais(perfil: PerfilDoPais) {
   return contactCreateSchema.extend({
+    phone_number: telefoneDoPais(perfil),
     cpf: z
       .string()
       .refine(perfil.documento.valida, perfil.documento.mensagemInvalido)
@@ -110,6 +147,7 @@ export function contactCreateSchemaDoPais(perfil: PerfilDoPais) {
 /** O mesmo, para o PATCH (`app/api/v1/contacts/[id]/route.ts`). */
 export function contactPatchSchemaDoPais(perfil: PerfilDoPais) {
   return contactPatchSchema.extend({
+    phone_number: telefoneDoPais(perfil),
     cpf: z
       .string()
       .refine(perfil.documento.valida, perfil.documento.mensagemInvalido)

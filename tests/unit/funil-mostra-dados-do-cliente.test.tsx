@@ -262,7 +262,7 @@ describe("a fiação — quem usa a regra a chama", () => {
     );
     // sem etapa nova na cadeia: `funil-filtro-de-tag-le-as-duas-caixas` e
     // `kanban-atalho-conversa` vigiam withConversas → withMarcadoresDoContato → resposta
-    expect(rota).toMatch(/leads:\s*leadsComMarcadores\.leads/);
+    expect(rota).toMatch(/withTarefas\([\s\S]*?leadsComMarcadores\.leads[\s\S]*?leads:\s*leadsComTarefas\.leads/);
   });
 
   it("o card e o dossiê renderizam os componentes novos", () => {

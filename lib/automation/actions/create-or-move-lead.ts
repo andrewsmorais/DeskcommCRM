@@ -15,6 +15,13 @@ import type { ActionCtx, ActionResultDetail } from "@/lib/automation/types";
 import type { HandlerCtx } from "@/lib/api/handlers/types";
 import { moveLeadHandler } from "@/app/api/v1/leads/_handler";
 import { levarContatoAoFunil } from "@/lib/leads/levar-ao-funil";
+import { createLeadHandler } from "@/app/api/v1/leads/_handler";
+import {
+  type EtapaDoFunil,
+  type OrigemParaClonar,
+  escolheEtapaDeDestino,
+  montaPayloadDoClone,
+} from "@/lib/leads/clonar-para-funil";
 
 async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise<ActionResultDetail> {
   const pipelineId = typeof config.pipeline_id === "string" ? config.pipeline_id : null;
@@ -28,12 +35,14 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
     actor: { type: "webhook_source", id: ctx.ruleId },
     requestId: `rule:${ctx.ruleId}`,
   };
-  const lead = ctx.context.lead as { id: string; pipeline_id: string; contact_id?: string } | undefined;
+  const lead = ctx.context.lead as
+    | (Partial<OrigemParaClonar> & { id: string; pipeline_id: string; contact_id?: string | null })
+    | undefined;
   const contact = ctx.context.contact as
     | { id: string; name?: string | null; display_name?: string | null; phone_number?: string | null }
     | undefined;
 
-  const contactId = contact?.id ?? lead?.contact_id;
+  const contactId = contact?.id ?? lead?.contact_id ?? undefined;
   handlerCtx.serviceOrigin = contactId
     ? (await originFromAutomationEvent(ctx, contactId)) ?? { kind: "unavailable", reason: "origin_capture_failed" }
     : { kind: "unavailable", reason: "origin_capture_failed" };
@@ -41,7 +50,69 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
   try {
     if (lead) {
       if (lead.pipeline_id !== pipelineId) {
+        // ── lead.won COM OUTRO FUNIL: A CONTINUAÇÃO (pós-venda) ──────────────
+        // O negócio que ganhou NÃO é tocado (segue `won`, na etapa de ganho).
+        // Nasce um card NOVO no funil de destino com o conteúdo dele (o mesmo
+        // `montaPayloadDoClone` do /clone). Uma continuação por NEGÓCIO: se já
+        // existe card com `clonado_de.lead_id` = este negócio, nada se escreve.
+        if (ctx.event?.event_type === "lead.won") {
+          if (typeof ctx.event.entity_id === "string" && ctx.event.entity_id !== lead.id) {
+            return { type: "create_or_move_lead", status: "failed", error: "lead_already_transferred_in_event" };
+          }
+          const { data: etapas, error: etapasErr } = await ctx.admin
+            .from("crm_stages")
+            .select("id, pipeline_id, position, is_won, is_lost, is_archived")
+            .eq("organization_id", ctx.organizationId)
+            .eq("pipeline_id", pipelineId)
+            .eq("is_archived", false)
+            .order("position", { ascending: true });
+          if (etapasErr) {
+            return { type: "create_or_move_lead", status: "failed", error: etapasErr.message };
+          }
+          const destino = escolheEtapaDeDestino((etapas ?? []) as EtapaDoFunil[], stageId);
+          if (!destino.ok) {
+            // `texto` é frase de gente (a aba Atividade a imprime), não código.
+            return { type: "create_or_move_lead", status: "failed", error: destino.texto };
+          }
+          const { data: continuacao, error: continuacaoErr } = await ctx.admin
+            .from("crm_leads")
+            .select("*")
+            .eq("organization_id", ctx.organizationId)
+            .eq("pipeline_id", pipelineId)
+            .eq("source_metadata->clonado_de->>lead_id", lead.id)
+            .limit(1)
+            .maybeSingle();
+          // Falha de leitura é recusa, nunca "não achei": criaria a duplicata.
+          if (continuacaoErr) {
+            return { type: "create_or_move_lead", status: "failed", error: continuacaoErr.message };
+          }
+          if (continuacao) {
+            publicaNoContexto(ctx, continuacao as Record<string, unknown>, contactId);
+            return {
+              type: "create_or_move_lead",
+              status: "success",
+              detail: { ja_existia: String((continuacao as { id?: unknown }).id ?? ""), origem: lead.id },
+            };
+          }
+          const payload = montaPayloadDoClone(lead as OrigemParaClonar, destino.etapa);
+          // Continuação de um negócio que já ganhou não é nova tentativa.
+          const criado = await createLeadHandler(ctx.admin, handlerCtx, {
+            ...payload,
+            retomado_de_lead_id: null,
+          } as Parameters<typeof createLeadHandler>[2]);
+          publicaNoContexto(ctx, criado as Record<string, unknown>, contactId);
+          return {
+            type: "create_or_move_lead",
+            status: "success",
+            detail: { criado: String((criado as { id?: unknown }).id ?? ""), origem: lead.id },
+          };
+        }
         return { type: "create_or_move_lead", status: "failed", error: "cross_pipeline_move_not_allowed" };
+      }
+      // lead.won no MESMO funil: mover reabriria o negócio ganho e viraria laço
+      // (#1528). Só vale criar a continuação em OUTRO funil.
+      if (ctx.event?.event_type === "lead.won") {
+        return { type: "create_or_move_lead", status: "failed", error: "continuacao_exige_outro_funil" };
       }
       const movido = await moveLeadHandler(ctx.admin, handlerCtx, lead.id, { to_stage_id: stageId });
       publicaNoContexto(ctx, movido, contactId);

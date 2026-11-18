@@ -18,6 +18,7 @@ import { LeadFieldsForm } from "./LeadFieldsForm";
 import { ScoreSlot } from "./ScoreSlot";
 import { LeadTimeline } from "./LeadTimeline";
 import { PropostasDoNegocio } from "./PropostasDoNegocio";
+import { TarefasDoNegocio } from "./TarefasDoNegocio";
 import { OwnerBadge } from "./OwnerBadge";
 import { resolveLeadOwner } from "@/lib/kanban/owner";
 import { formatValorDoNegocio, MOEDA_PADRAO } from "@/lib/money";
@@ -79,6 +80,11 @@ export function LeadDossier({
   const activeOrg = useActiveOrg();
   const podeCriarProposta =
     user.is_platform_admin || (activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager) || false;
+  // Tarefas são `agent`+, a mesma régua da tela de Tarefas e da rota — e o
+  // suporte temporário só lê, como lá (`requireSupportWrite`).
+  const podeEditarTarefas =
+    (user.is_platform_admin && !user.support) ||
+    (activeOrg ? ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent : false);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -143,7 +149,7 @@ export function LeadDossier({
           </p>
         )}
 
-        <ConversaNoDossie conversa={lead.conversa} />
+        <ConversaNoDossie conversa={lead.conversa} contactId={lead.contact_id} phone={lead.contact_phone} />
 
         {/* Os dados do CLIENTE: telefone e e-mail numa aba, links (Instagram,
             site, Google Meu Negócio…) na outra. Vêm do contato, não do lead. */}
@@ -165,6 +171,15 @@ export function LeadDossier({
             <ConversasDosNumeros leadId={open ? lead.id : null} />
           </section>
         )}
+
+        {/* As tarefas ANTES da linha do tempo: a timeline conta o que já
+            aconteceu, a tarefa é o que ainda falta fazer. */}
+        <TarefasDoNegocio
+          leadId={lead.id}
+          contactId={lead.contact_id}
+          podeEditar={podeEditarTarefas}
+          aberto={open}
+        />
 
         {/* ② timeline */}
         <section className="flex-1 py-3">

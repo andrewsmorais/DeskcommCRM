@@ -73,6 +73,11 @@ export async function updatePipelineConfig(
   if (parsed.data.reabertura_campos !== undefined) {
     nextSettings.reabertura_campos = parsed.data.reabertura_campos;
   }
+  // A entrada do Inbox: a ETAPA em que a conversa nova vira card neste funil.
+  // Grava o bloco inteiro (`ativa` e `stage_id` são uma decisão só).
+  if (parsed.data.entrada_do_inbox !== undefined) {
+    nextSettings.entrada_do_inbox = parsed.data.entrada_do_inbox;
+  }
 
   const { error } = await supabase
     .from("crm_pipelines")
@@ -94,6 +99,7 @@ export async function updatePipelineConfig(
       won_reasons_count: parsed.data.won_reasons?.length ?? null,
       won_reason_required: parsed.data.won_reason_required ?? null,
       reabertura: parsed.data.reabertura ?? null,
+      entrada_do_inbox_ativa: parsed.data.entrada_do_inbox?.ativa ?? null,
     },
   });
 
