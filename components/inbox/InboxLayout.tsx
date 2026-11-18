@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useParticipantesDaConversa } from "@/hooks/inbox/useParticipantesDaConversa";
+import { gravarFiltrosLembrados, lerFiltrosLembrados } from "@/lib/inbox/filtros-lembrados";
+import { armazenamentoDoNavegador } from "@/lib/inbox/barra-de-respostas";
 import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
 import { useBulkConversations, type AcaoEmLote } from "@/hooks/inbox/useBulkConversations";
 import { useSelecaoEmLote } from "@/hooks/inbox/useSelecaoEmLote";
@@ -146,13 +148,41 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const tab = parseFilterParam(searchParams.get("filter"));
   const idNaUrl = searchParams.get("id");
 
-  // tab vive na URL (?filter=); os demais filtros são estado local de sessão.
+  // tab vive na URL (?filter=); os demais filtros são estado local de sessão —
+  // exceto o número e o "Não lidos", lembrados por organização (trazido do
+  // produto original, lib/inbox/filtros-lembrados).
   const [aux, setAux] = useState<Omit<InboxFiltersValue, "tab">>({
     search: "",
     onlyUnread: false,
     onlyGroups: false,
   });
-  const filterValue: InboxFiltersValue = { tab, ...aux };
+  // Lidos depois da hidratação: o servidor não enxerga o localStorage.
+  const [orgDosFiltros, setOrgDosFiltros] = useState<string | null>(null);
+  useEffect(() => {
+    if (!orgId) return;
+    const lembrados = lerFiltrosLembrados(armazenamentoDoNavegador(), orgId);
+    setAux((atual) => ({
+      ...atual,
+      channel_session_id: lembrados.channel_session_id,
+      onlyUnread: lembrados.onlyUnread ?? false,
+    }));
+    // O contexto acompanha o estado restaurado no PRÓXIMO render. Uma ref
+    // marcada aqui liberaria o efeito de gravação com os filtros anteriores.
+    setOrgDosFiltros(orgId);
+  }, [orgId]);
+  useEffect(() => {
+    if (!orgId || orgDosFiltros !== orgId) return;
+    gravarFiltrosLembrados(armazenamentoDoNavegador(), orgId, {
+      channel_session_id: aux.channel_session_id,
+      onlyUnread: aux.onlyUnread,
+    });
+  }, [orgId, orgDosFiltros, aux.channel_session_id, aux.onlyUnread]);
+  const filterValue: InboxFiltersValue = {
+    tab,
+    ...aux,
+    // Uma troca de organização não leva o número anterior nem à consulta.
+    ...(orgDosFiltros !== orgId ? { channel_session_id: undefined, onlyUnread: false } : {}),
+  };
   const setFilterValue = useCallback(
     (next: InboxFiltersValue) => {
       if (next.tab !== tab) {
