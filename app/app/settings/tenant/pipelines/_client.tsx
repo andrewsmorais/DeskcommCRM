@@ -489,6 +489,34 @@ function PipelineEditor({
                 }}
               />
             )}
+            {/* ── NO RESUMO DA PASSAGEM (issue #4303) ────────────────────────
+                O interruptor que leva o valor deste campo ao cartão de
+                passagem para humano. Desmarcar APAGA a chave, então o funil
+                que ninguém tocou continua idêntico ao de antes (ausente =
+                desligado, ver o schema). Aqui todo campo é do NEGÓCIO. */}
+            <div className="space-y-1 lg:col-span-4">
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  aria-label={`${t("Mostrar no resumo da passagem")} — ${f.label || i + 1}`}
+                  checked={f.mostrar_no_resumo_da_passagem === true}
+                  onChange={(ev) => {
+                    const next = [...fields];
+                    const { mostrar_no_resumo_da_passagem: _apagada, ...semOpcao } = f;
+                    next[i] = ev.target.checked
+                      ? { ...f, mostrar_no_resumo_da_passagem: true }
+                      : (semOpcao as CustomFieldDef);
+                    setFields(next);
+                  }}
+                />
+                {t("Mostrar no resumo da passagem")}
+              </label>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Quando a conversa passa para uma pessoa, o valor que este campo tem no card aparece no resumo do cartão de passagem. Desligado por padrão.",
+                )}
+              </p>
+            </div>
             {/* ── QUANDO ESTE CAMPO OBRIGA (issue #1536) ────────────────────
                 O `obrigatorio_em` nasceu no schema sem nenhuma tela: quem
                 operava não conseguia ligar a régua principal do PR. As três

@@ -27,6 +27,7 @@
  * fechado de resolvedores.
  */
 
+import { RESERVA_DA_VARIAVEL } from "@/lib/texto/reserva-da-variavel";
 import { aplicarBlocosCondicionais } from "@/lib/texto/bloco-condicional";
 import { horaNoFuso } from "./relogio";
 
@@ -47,7 +48,11 @@ export interface ValoresDoDestinatario {
   nome: string | null;
 }
 
-const TOKEN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+/**
+ * O token aceita um TEXTO DE RESERVA entre aspas — `{{primeiro_nome|"aluno"}}`
+ * (sintaxe em `lib/texto/reserva-da-variavel.ts`): sem o dado, sai a reserva.
+ */
+const TOKEN = new RegExp(String.raw`\{\{\s*([a-zA-Z0-9_]+)\s*${RESERVA_DA_VARIAVEL}\}\}`, "g");
 
 export interface TextoRenderizado {
   texto: string;
@@ -69,16 +74,16 @@ export function renderizar(
   // Campanha: sem valor a mensagem é PULADA (não sai com buraco), então o bloco
   // `{{#campo}}...{{/campo}}` fica — só as marcas saem — e a falta é contada.
   const semMarcasDeBloco = aplicarBlocosCondicionais(template, { temValor: () => true, manterSemValor: true });
-  const texto = semMarcasDeBloco.replace(TOKEN, (literal, bruto: string) => {
+  const texto = semMarcasDeBloco.replace(TOKEN, (literal, bruto: string, reserva: string | undefined) => {
     const chave = bruto.toLowerCase();
     switch (chave) {
       case "nome": {
-        if (nome === "") return marcarFalta(faltando, "nome", literal);
+        if (nome === "") return reserva ?? marcarFalta(faltando, "nome", literal);
         return nome;
       }
       case "primeiro_nome": {
         const primeiro = nome.split(/\s+/)[0] ?? "";
-        if (primeiro === "") return marcarFalta(faltando, "primeiro_nome", literal);
+        if (primeiro === "") return reserva ?? marcarFalta(faltando, "primeiro_nome", literal);
         return primeiro;
       }
       case "saudacao": {

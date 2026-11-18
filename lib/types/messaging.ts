@@ -65,6 +65,12 @@ export interface Conversation {
    * resposta de uma versão anterior, ainda em cache do react-query, não o tem.
    */
   comando_da_conversa?: string | null;
+  /**
+   * A conversa está marcada como EXEMPLO para o agente aprender (opt-in de LGPD
+   * que a rota `POST .../usable-for-rag` liga). Opcional: resposta em cache de
+   * antes do campo não o tem — ausente é "não afirmo", nunca "não está".
+   */
+  usable_for_rag?: boolean;
   last_handoff_at: string | null;
   /**
    * Por que o automático está parado. Diferencia o handoff formal de uma pausa

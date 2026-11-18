@@ -28,6 +28,7 @@ import { z } from 'zod';
 import type pg from 'pg';
 
 import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
+import { camposDoCardDoContatoNoBanco } from '@/lib/leads/campos-do-resumo-da-passagem';
 import {
   montarBriefingDaPassagem,
   type BriefingDaPassagem,
@@ -684,6 +685,11 @@ export async function applyRequestHumanHandoff(
   // os dois está declarando o mesmo campo duas vezes.
   const declarado = parsed.data;
   const porQue = declarado.por_que ?? declarado.reason ?? null;
+  // #4303 — OS CAMPOS DO CARD NO RESUMO. Aqui há TURNO, então o card é o do
+  // atendimento: o negócio ABERTO mais recente do contato (`ids.leadId` é
+  // `contacts.id`), UM card só, nunca a soma de dois. Leitura que falha devolve
+  // `{}` — o resumo sai como o de hoje, nunca uma passagem a menos.
+  const camposDoCard = await camposDoCardDoContatoNoBanco(db, ids.tenantId, ids.leadId);
   const briefing = montarBriefingDaPassagem({
     checkpoint: opts.contextoDoTurno?.checkpoint ?? null,
     declaradoPeloModelo: {
@@ -696,6 +702,7 @@ export async function applyRequestHumanHandoff(
     ...(opts.contextoDoTurno?.declaracaoDoTurno !== undefined
       ? { declaracaoDoTurno: opts.contextoDoTurno.declaracaoDoTurno }
       : {}),
+    ...(Object.keys(camposDoCard).length > 0 ? { camposColetados: camposDoCard } : {}),
     motivo: { codigo: 'requested_human', texto: porQue },
   });
 

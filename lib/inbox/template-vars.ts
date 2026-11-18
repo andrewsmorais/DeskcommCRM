@@ -1,4 +1,5 @@
 import { aplicarBlocosCondicionais } from "@/lib/texto/bloco-condicional";
+import { RESERVA_DA_VARIAVEL } from "@/lib/texto/reserva-da-variavel";
 import type { MidiaDeTemplate } from "@/lib/templates/midias";
 /**
  * Interpola variáveis de template com dados do contato da conversa (Onda 5).
@@ -23,14 +24,18 @@ export function interpolateTemplate(
   // variável segue visível para o atendente ver o que falta preencher. Só as
   // marcas do bloco saem.
   const semMarcasDeBloco = aplicarBlocosCondicionais(body, { temValor: () => true, manterSemValor: true });
-  return semMarcasDeBloco.replace(/\{\{\s*((?:empresa\.)?[a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (literal, rawKey: string) => {
+  const marcacao = new RegExp(
+    String.raw`\{\{\s*((?:empresa\.)?[a-zA-Z_][a-zA-Z0-9_]*)\s*${RESERVA_DA_VARIAVEL}\}\}`,
+    "g",
+  );
+  return semMarcasDeBloco.replace(marcacao, (literal, rawKey: string, reserva: string | undefined) => {
     const key = rawKey.toLowerCase();
     if (key.startsWith("empresa.")) {
       const v = empresa[key];
-      return v !== undefined && v !== "" ? v : literal;
+      return v !== undefined && v !== "" ? v : (reserva ?? literal);
     }
-    if (key === "nome") return full !== "" ? full : literal;
-    if (key === "primeiro_nome") return first !== "" ? first : literal;
+    if (key === "nome") return full !== "" ? full : (reserva ?? literal);
+    if (key === "primeiro_nome") return first !== "" ? first : (reserva ?? literal);
     return literal; // desconhecida: mantém
   });
 }

@@ -6,6 +6,7 @@ import { useParticipantesDaConversa } from "@/hooks/inbox/useParticipantesDaConv
 import { gravarFiltrosLembrados, lerFiltrosLembrados } from "@/lib/inbox/filtros-lembrados";
 import { armazenamentoDoNavegador } from "@/lib/inbox/barra-de-respostas";
 import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
+import { roleAtLeast } from "@/lib/auth/types";
 import { useBulkConversations, type AcaoEmLote } from "@/hooks/inbox/useBulkConversations";
 import { useSelecaoEmLote } from "@/hooks/inbox/useSelecaoEmLote";
 import { BarraDeAcoesEmLote } from "./BarraDeAcoesEmLote";
@@ -303,6 +304,8 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   // LOTE (vindo do produto original): seleção múltipla e barra de ações. Quem
   // pode responder pode agir em lote; a rota valida de novo, item por item.
   const podeAgirEmLote = usePermission("inbox.reply");
+  // O mesmo critério da rota `usable-for-rag`: atendente para cima.
+  const podeMarcarExemplo = roleAtLeast(activeOrg?.role, "agent");
   const selecao = useSelecaoEmLote();
   const lote = useBulkConversations();
   const rodarLote = useCallback(
@@ -558,6 +561,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
             onLimparFiltros={limparFiltrosAuxiliares}
             selecionados={selecao.selecionados}
             onAlternarSelecao={podeAgirEmLote ? selecao.alternar : undefined}
+            podeMarcarExemplo={podeMarcarExemplo}
             onSelecionarTodosVisiveis={
               podeAgirEmLote
                 ? () => selecao.selecionarTodos((listQ.data?.pages.flatMap((p) => p.data) ?? []).map((c) => c.id))

@@ -1,5 +1,12 @@
 import { resolveField } from "@/lib/automation/conditions";
 import { aplicarBlocosCondicionais } from "@/lib/texto/bloco-condicional";
+import { RESERVA_DA_VARIAVEL } from "@/lib/texto/reserva-da-variavel";
+
+/**
+ * A marcação `{{caminho}}` ou `{{caminho|"reserva"}}`. Grupo 1 = caminho,
+ * grupo 2 = reserva (ausente quando não há).
+ */
+export const MARCACAO = new RegExp(String.raw`\{\{\s*([\w.]+)\s*${RESERVA_DA_VARIAVEL}\}\}`, "g");
 
 const ALIASES: Record<string, string> = {
   nome: "contact.name",
@@ -32,7 +39,13 @@ export function renderTemplate(template: string, context: Record<string, unknown
   const comBlocos = aplicarBlocosCondicionais(template, {
     temValor: (campo) => valorDaMarcacao(campo, context).trim() !== "",
   });
-  return comBlocos.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, path: string) => valorDaMarcacao(path, context));
+  return comBlocos.replace(MARCACAO, (_m, path: string, reserva: string | undefined) => {
+    const valor = valorDaMarcacao(path, context);
+    // O que é só da equipe nunca sai, nem como reserva.
+    if (SO_DA_EQUIPE.has(path)) return "";
+    // Sem o dado, a reserva que quem escreveu a mensagem deixou (texto do operador).
+    return reserva !== undefined && valor.trim() === "" ? reserva : valor;
+  });
 }
 
 /**

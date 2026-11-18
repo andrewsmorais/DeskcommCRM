@@ -5,7 +5,7 @@ import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import type { Locale } from "date-fns";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { Check, Robot } from "@/lib/ui/icons";
+import { Check, Robot, Sparkle } from "@/lib/ui/icons";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
 import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -61,6 +61,13 @@ interface Props {
   selecionado?: boolean;
   /** Sem ele não há caixa de marcação (quem não pode agir em lote). */
   onAlternarSelecao?: (id: string) => void;
+  /**
+   * Marca (ou desmarca) ESTA conversa como exemplo para o agente aprender.
+   * Ausente = a linha é a de sempre, sem controle e sem selo. A chamada à rota
+   * mora na lista (uma mutação por lista, não por linha): a linha é renderizada
+   * sem `QueryClientProvider` em vários testes.
+   */
+  onAlternarExemplo?: (id: string, enabled: boolean) => void;
   /** Há uma menção a você numa nota desta conversa, ainda não aberta. */
   mencionado?: boolean;
 }
@@ -138,6 +145,7 @@ export function ConversationListItem({
   automaticoDaOrg,
   selecionado = false,
   onAlternarSelecao,
+  onAlternarExemplo,
   mencionado = false,
 }: Props) {
   const localeDaData = useLocaleDeData();
@@ -210,8 +218,14 @@ export function ConversationListItem({
   // embutido na própria lista (`setor:setores!conversations_setor_fk`).
   const nomeDoSetor = conversation.setor_id ? (conversation.setor?.nome ?? null) : null;
 
+  // A conversa marcada como exemplo para o agente (coluna `usable_for_rag`).
+  // Dois rótulos literais em `t()` separados: a cerca de espanhol cobra chave a chave.
+  const exemploMarcado = Boolean(conversation.usable_for_rag);
+  const rotuloExemplo = exemploMarcado ? t("Deixar de usar como exemplo") : t("Usar como exemplo para a IA");
+
   const temSelos =
     nomeDoSetor != null ||
+    exemploMarcado ||
     visibleTags.length > 0 ||
     (mostrarAtendente && comando.quem === "humano") ||
     (mostrarCanal && rotuloCanal != null) ||
@@ -382,6 +396,17 @@ export function ConversationListItem({
                 {nomeDoSetor}
               </Badge>
             )}
+            {/* O selo do exemplo vem ANTES das etiquetas: a faixa corta as que sobram em "+N". */}
+            {exemploMarcado && (
+              <Badge
+                variant="outline"
+                data-testid="selo-exemplo-ia"
+                className="h-4 gap-1 px-1.5 text-[10px] font-normal text-accent"
+              >
+                <Sparkle size={10} weight="fill" aria-hidden />
+                {t("Exemplo para a IA")}
+              </Badge>
+            )}
             {visibleTags.map((t) => (
               <ChipDeEtiqueta key={t} tag={t} className="h-4 px-1.5 text-[10px]" />
             ))}
@@ -414,6 +439,27 @@ export function ConversationListItem({
         )}
       </div>
     </button>
+      {/* O controle do exemplo fica FORA do botão da linha (botão dentro de botão é HTML
+          inválido) e sempre visível: no celular não há hover. */}
+      {onAlternarExemplo && (
+        <button
+          type="button"
+          data-testid={`exemplo-ia-${conversation.id}`}
+          aria-pressed={exemploMarcado}
+          aria-label={rotuloExemplo}
+          title={rotuloExemplo}
+          onClick={() => onAlternarExemplo(conversation.id, !exemploMarcado)}
+          className={cn(
+            "mr-1 mt-2.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm transition-colors",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent",
+            exemploMarcado
+              ? "text-accent hover:bg-accent-soft"
+              : "text-text-subtle hover:bg-surface-elevated hover:text-text",
+          )}
+        >
+          <Sparkle size={14} weight={exemploMarcado ? "fill" : "regular"} aria-hidden />
+        </button>
+      )}
     </div>
   );
 }

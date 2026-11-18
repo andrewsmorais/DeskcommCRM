@@ -75,6 +75,9 @@ export function CampoComVariaveis({
         minLength={minLength}
       />
       {ajuda ? <p className="text-xs text-muted-foreground">{ajuda}</p> : null}
+      <p className="text-xs text-muted-foreground">
+        {t('Para não depender do dado, ponha um texto de reserva: {{primeiro_nome|"aluno"}}.')}
+      </p>
       {previa !== null ? (
         <div className="rounded-md bg-muted/40 p-2 text-xs" data-testid="previa-com-valores">
           <p className="font-medium text-muted-foreground">{t("Prévia com um contato de exemplo")}</p>

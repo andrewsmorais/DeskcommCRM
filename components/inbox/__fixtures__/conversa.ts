@@ -40,6 +40,7 @@ const conversation: ConversationWithContact = {
   bot_silenced_until: null,
   last_handoff_at: null,
   comando_da_conversa: "aguardando",
+  usable_for_rag: false,
   contacts: {
     id: "contact-1",
     display_name: "Maria",
