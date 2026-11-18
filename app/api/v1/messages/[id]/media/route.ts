@@ -141,6 +141,10 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
         status: 200,
         headers: {
           "Content-Type": media.mime,
+          // Bytes de fora servidos na origem do app: o navegador não adivinha
+          // o tipo e, se for HTML/SVG, não roda script nem lê os cookies.
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "sandbox",
           "Cache-Control": "private, max-age=60",
           "X-Request-Id": requestId,
         },

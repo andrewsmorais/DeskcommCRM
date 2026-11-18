@@ -271,8 +271,8 @@ export const wahaAdapter: ChannelAdapter = {
    *
    * Delega em `fetchWahaMedia`, que o worker de persistência chamava FIXO — era
    * essa linha que fazia a mídia de qualquer outro canal virar linha sem bytes.
-   * O comportamento aqui é idêntico ao de antes: mesma função, mesmos
-   * argumentos. O que mudou é quem a escolhe.
+   * A sessão da mensagem vai junto desde a auditoria de 18/11: o path anunciado
+   * só é aceito no armazém de arquivos dela (`pathDeArquivoDoWaha`).
    */
   async fetchInboundMedia(input: {
     sessionRef: string;
@@ -282,7 +282,8 @@ export const wahaAdapter: ChannelAdapter = {
     // Devolve o objeto INTEIRO, sem remontar campo a campo: `FetchedMedia` é o
     // mesmo tipo dos dois lados, e reconstruí-lo faria a próxima adição de
     // campo sumir em silêncio aqui no meio.
-    return fetchWahaMedia(input.url, input.hintMime ?? null);
+    // A sessão vai junto: o path anunciado só vale dentro da pasta dela.
+    return fetchWahaMedia(input.url, input.hintMime ?? null, input.sessionRef);
   },
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {

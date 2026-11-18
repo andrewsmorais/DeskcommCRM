@@ -320,5 +320,9 @@ describe("a rota messages/[id]/media não re-busca do provedor o que expirou", (
     const resposta = await chamada();
     expect(resposta.status).toBe(200);
     expect(adapter.fetchInboundMedia).toHaveBeenCalledTimes(1);
+    // Bytes de fora servidos na origem do app (auditoria de 18/11): sem
+    // adivinhar o tipo e sem script, mesmo que o provedor mande HTML ou SVG.
+    expect(resposta.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(resposta.headers.get("Content-Security-Policy")).toBe("sandbox");
   });
 });

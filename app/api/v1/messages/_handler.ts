@@ -752,7 +752,11 @@ export async function sendMessageHandler(
     direction: "outbound" as const,
     status: "queued",
     body: input.body ?? null,
-    media_url: input.media_url ?? null,
+    // Com `media_storage_path` o arquivo sai do NOSSO Storage (assinado na hora
+    // do envio) e a `media_url` não é usada para nada — só ficava gravada sem
+    // ter passado pela guarda anti-SSRF, e era o que o proxy de mídia lia
+    // depois (auditoria de 18/11, achado 1). Não se grava o que não se usa.
+    media_url: input.media_storage_path ? null : (input.media_url ?? null),
     media_mime: input.media_mime ?? null,
     media_storage_path: input.media_storage_path ?? null,
     media_size_bytes: input.media_size_bytes ?? null,

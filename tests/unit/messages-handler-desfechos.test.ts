@@ -264,6 +264,33 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // Auditoria de 18/11, achado 1: com `media_storage_path` o arquivo sai do
+  // nosso Storage e a `media_url` não é usada — mas ficava gravada sem passar
+  // pela guarda anti-SSRF, e o proxy GET /messages/[id]/media a lia depois.
+  it('4d. media_url junto com media_storage_path: a url não é gravada', async () => {
+    wahaConfigured(true);
+    vi.stubGlobal('fetch', vi.fn(async (..._args: unknown[]) => Response.json({ id: { _serialized: 'M2' } })));
+    const duble = criarDubleDoHandler({ conversation: conversationRow() });
+
+    await sendMessageHandler(
+      duble.supabase,
+      ctx,
+      textInput({
+        type: 'image',
+        body: undefined,
+        media_storage_path: `${ORG}/${CONV}/nao-existe.jpg`,
+        media_url: 'https://93.184.215.14/api/sessions?all=true',
+        media_mime: 'image/jpeg',
+      }),
+    );
+
+    expect(duble.capturas.inserts.messages).toHaveLength(1);
+    expect(duble.capturas.inserts.messages![0]).toMatchObject({
+      media_url: null,
+      media_storage_path: `${ORG}/${CONV}/nao-existe.jpg`,
+    });
+  });
+
   it('5. texto puro: sent + external_id + ack 0, pelo endpoint de texto', async () => {
     wahaConfigured(true);
     const fetchMock = vi.fn(async (..._args: unknown[]) => Response.json({ key: { id: 'TEXT1' } }));
