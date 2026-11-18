@@ -64,6 +64,8 @@ CRONS="
 * * * * *|25|api/v1/cron/routing-worker
 * * * * *|25|api/v1/cron/recover-stuck-messages
 */5 * * * *|25|api/v1/cron/recover-stuck-calls
+# O nome salvo na agenda do celular (migration 0546): 5 contatos por rodada.
+*/10 * * * *|60|api/v1/cron/contact-names
 # Importação do histórico do WhatsApp e recuperação das conversas da queda: uma
 # rodada por minuto, com o curl acima do prazo da chamada (45 s,
 # lib/channels/historico/prazo.ts) com folga para o banco.

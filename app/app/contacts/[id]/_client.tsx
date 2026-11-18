@@ -38,7 +38,7 @@ import { MarcasDoContato } from "@/components/contacts/MarcasDoContato";
 import { TelefonesDaFicha } from "@/components/contacts/TelefonesDaFicha";
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
 import { ConversaNoDossie } from "@/components/kanban/ConversaNoDossie";
-import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { rotuloParaAEquipe } from "@/lib/contacts/rotulo-do-contato";
 import { origemDoContato } from "@/lib/leads/origem-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
 import { DialButton } from "@/components/voice/DialButton";
@@ -122,7 +122,7 @@ export function ContactDetailClient({ contactId }: Props) {
   // Uma decisão, um lugar (lib/contacts/rotulo-do-contato.ts). Esta tela era
   // uma das DUAS que ignoravam o telefone: contato com número e sem nome
   // aparecia como "Sem nome" aqui e com o número no inbox.
-  const displayName = rotuloDoContato(contact, t);
+  const displayName = rotuloParaAEquipe(contact, t);
 
   // Os quatro níveis que quem opera tráfego lê. O jsonb já os recebia dos dois
   // caminhos de entrada — site e clique-para-WhatsApp — e nenhuma tela o abria.
@@ -267,6 +267,16 @@ export function ContactDetailClient({ contactId }: Props) {
                 <dt className="text-xs uppercase text-muted-foreground">{t("Nome")} · WhatsApp</dt>
                 <dd className="mt-1">{contact.display_name ?? "—"}</dd>
               </div>
+              {contact.address_book_name && (
+                <div>
+                  {/* Só a equipe vê: nenhuma mensagem usa este nome (migration 0546). */}
+                  <dt className="text-xs uppercase text-muted-foreground">{t("Nome na agenda do celular")}</dt>
+                  <dd className="mt-1">{contact.address_book_name}</dd>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t("Só a equipe vê. Para usar em mensagens, copie para o nome.")}
+                  </p>
+                </div>
+              )}
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Email</dt>
                 <dd className="mt-1">{contact.email ?? "—"}</dd>

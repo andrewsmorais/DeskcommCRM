@@ -138,10 +138,15 @@ export function rotuloDoContato(
  * tela da equipe (caixa de entrada, ficha, lista) — nunca vai em mensagem.
  */
 export function rotuloParaAEquipe(
-  c: ContatoNomeavel | null | undefined,
+  c: (ContatoNomeavel & { address_book_name?: string | null }) | null | undefined,
   t: (texto: string) => string = (texto) => texto,
 ): string {
   const escolhido = (c?.name ?? "").trim();
   if (escolhido !== "" && !ehIdentificadorTecnico(escolhido)) return escolhido;
+  // O nome salvo na agenda do celular (migration 0546) — SÓ A EQUIPE vê: entre
+  // o nome escolhido no CRM e o apelido do perfil. `rotuloDoContato` e
+  // `nomeDoContato` NÃO o leem, porque também alimentam o que sai ao cliente.
+  const agenda = (c?.address_book_name ?? "").trim();
+  if (agenda !== "" && !ehIdentificadorTecnico(agenda)) return agenda;
   return rotuloDoContato(c, t);
 }

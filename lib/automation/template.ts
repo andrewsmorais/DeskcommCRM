@@ -35,7 +35,18 @@ export function renderTemplate(template: string, context: Record<string, unknown
   return comBlocos.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, path: string) => valorDaMarcacao(path, context));
 }
 
+/**
+ * Campos do contato que SÓ A EQUIPE vê e que nenhuma mensagem renderiza, nem
+ * pedidos pelo caminho (`{{contact.address_book_name}}`). O contexto da
+ * automação carrega a linha inteira do contato, então a guarda mora aqui, onde
+ * todo texto de automação passa. O nome da agenda é o rótulo que alguém da
+ * empresa escreveu no celular e pode ser apelido interno (trazido do produto
+ * original, PR #2439; migration 0546).
+ */
+const SO_DA_EQUIPE = new Set(["contact.address_book_name"]);
+
 function valorDaMarcacao(path: string, context: Record<string, unknown>): string {
+  if (SO_DA_EQUIPE.has(path)) return "";
   const resolved = resolveField(context, ALIASES[path] ?? path);
   // `{{primeiro_nome}}` = primeira palavra do nome, como no Inbox e na campanha.
   const texto = String(resolved ?? "");

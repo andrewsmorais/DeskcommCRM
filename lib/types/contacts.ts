@@ -26,6 +26,8 @@ export interface Contact {
   organization_id: string;
   name: string | null;
   display_name: string | null;
+  /** Nome salvo na agenda do celular (migration 0546). SÓ A EQUIPE vê (`rotuloParaAEquipe`); nunca vai em mensagem. */
+  address_book_name?: string | null;
   email: string | null;
   email_normalized: string | null;
   phone_number: string | null;

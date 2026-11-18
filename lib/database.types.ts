@@ -4439,6 +4439,7 @@ export type Database = {
       }
       contacts: {
         Row: {
+          address_book_name: string | null
           ai_authorized_at: string | null
           ai_authorized_reason: string | null
           anonymized_at: string | null
@@ -4470,6 +4471,7 @@ export type Database = {
           locale: string | null
           merged_at: string | null
           name: string | null
+          name_lookup_at: string | null
           organization_id: string
           person_id: string | null
           phone_lookup_at: string | null
@@ -4483,6 +4485,7 @@ export type Database = {
           wa_lid: string | null
         }
         Insert: {
+          address_book_name?: string | null
           ai_authorized_at?: string | null
           ai_authorized_reason?: string | null
           anonymized_at?: string | null
@@ -4513,6 +4516,7 @@ export type Database = {
           locale?: string | null
           merged_at?: string | null
           name?: string | null
+          name_lookup_at?: string | null
           organization_id: string
           person_id?: string | null
           phone_lookup_at?: string | null
@@ -4526,6 +4530,7 @@ export type Database = {
           wa_lid?: string | null
         }
         Update: {
+          address_book_name?: string | null
           ai_authorized_at?: string | null
           ai_authorized_reason?: string | null
           anonymized_at?: string | null
@@ -4556,6 +4561,7 @@ export type Database = {
           locale?: string | null
           merged_at?: string | null
           name?: string | null
+          name_lookup_at?: string | null
           organization_id?: string
           person_id?: string | null
           phone_lookup_at?: string | null

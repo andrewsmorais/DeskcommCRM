@@ -64,6 +64,7 @@ export const AUDIT_ACTIONS = [
   "contact.updated",
   "contacts.imported",
   "contact.anonymized",
+  "contact.address_book_name_filled",
   "contact.merge_pending",
   "contact.merged",
   "contact.aniversario_emitido",

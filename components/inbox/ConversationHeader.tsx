@@ -50,7 +50,7 @@ import { toast } from "sonner";
 import { useSetores } from "@/hooks/inbox/useSetores";
 import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
-import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { rotuloParaAEquipe } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
 import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 import { ROLE_RANK } from "@/lib/auth/types";
@@ -138,7 +138,7 @@ export function ConversationHeader({
   const [confirmArquivarOpen, setConfirmArquivarOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
-  const displayName = rotuloDoContato(c, t);
+  const displayName = rotuloParaAEquipe(c, t);
   const phone = c?.phone_number ? phoneForDisplay(c.phone_number) : null;
   const enderecoDaResposta = useEnderecoDaResposta(conversation.id, conversation.last_inbound_at ?? null);
   const endereco = enderecoDaResposta.data?.data ?? null;

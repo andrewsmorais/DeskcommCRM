@@ -46,9 +46,12 @@ const pintar = (conv: ConversationWithContact, mostrarCanal: boolean) =>
   );
 
 describe("mostra o número da empresa quando há mais de um canal", () => {
-  it("pinta o número por onde a conversa entrou", () => {
+  // O NOME vence o número (trazido do produto original, #2383): um canal que a
+  // dona chamou de "MP wp" saía aqui como o número cru, que ela não reconhece.
+  it("pinta o NOME do canal — o número cru só entra quando não há nome", () => {
     pintar(comCanal({ phone_number: "+19392301037", display_name: "MP wp" }), true);
-    expect(screen.getByText("+19392301037")).toBeInTheDocument();
+    expect(screen.getByText("MP wp")).toBeInTheDocument();
+    expect(screen.queryByText("+19392301037")).not.toBeInTheDocument();
   });
 
   it("cai no NOME do canal quando ainda não há número", () => {
