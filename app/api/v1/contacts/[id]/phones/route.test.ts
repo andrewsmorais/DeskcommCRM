@@ -18,7 +18,9 @@ import { requireRole } from "@/lib/auth/require-role";
 import { audit } from "@/lib/audit";
 import { createClient } from "@/lib/supabase/server";
 
-const { chamadas } = vi.hoisted(() => ({
+const { chamadas, conversasDaFicha } = vi.hoisted(() => ({
+  // Quantas conversas a ficha tem de verdade (o cliente de sessão enxerga 0).
+  conversasDaFicha: { total: 0 },
   chamadas: [] as Array<{
     tabela: string;
     op: string;
@@ -37,7 +39,14 @@ vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ rpc: () => Promise.resolve({ error: null }) }),
+  createAdminClient: () => {
+    // Contagem de conversas da ficha (achado 13): zero, então ninguém é barrado.
+    const q: Record<string, unknown> = {};
+    q.select = () => q;
+    q.eq = () => q;
+    q.then = (ok: (v: unknown) => unknown) => Promise.resolve({ count: conversasDaFicha.total, error: null }).then(ok);
+    return { rpc: () => Promise.resolve({ error: null }), from: () => q };
+  },
 }));
 
 const ORG = "22222222-2222-4222-8222-222222222222";
@@ -123,6 +132,7 @@ const EXTRA_CRIADO = {
 beforeEach(() => {
   vi.clearAllMocks();
   chamadas.length = 0;
+  conversasDaFicha.total = 0;
   vi.mocked(requireRole).mockResolvedValue({
     ok: true,
     user: { id: USER, idioma: "pt-BR" },
@@ -131,6 +141,20 @@ beforeEach(() => {
 });
 
 describe("POST /api/v1/contacts/[id]/phones", () => {
+  it("achado 13: quem não vê todas as conversas da ficha → 403, e nada é gravado", async () => {
+    conversasDaFicha.total = 2; // a sessão (RLS) enxerga 0 delas
+    vi.mocked(createClient).mockResolvedValue(
+      fakeSupabase({ "contacts.select": { data: FICHA_COM_PRINCIPAL } }) as never,
+    );
+    const { POST } = await import("./route");
+
+    const res = await POST(reqPost({ phone_number: "11988887777" }), CONTEXTO);
+
+    expect(res.status).toBe(403);
+    expect(chamadas.some((c) => c.op === "insert" || c.op === "update")).toBe(false);
+    expect(vi.mocked(audit)).not.toHaveBeenCalled();
+  });
+
   it("número inválido → 422 invalid_phone, e nada é gravado", async () => {
     vi.mocked(createClient).mockResolvedValue(
       fakeSupabase({ "contacts.select": { data: FICHA_COM_PRINCIPAL } }) as never,

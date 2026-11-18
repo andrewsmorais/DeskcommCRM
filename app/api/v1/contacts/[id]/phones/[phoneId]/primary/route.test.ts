@@ -18,6 +18,15 @@ vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async (
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
+// Contagem de conversas da ficha (achado 13): sessão e administrativo veem as mesmas.
+function contagem() {
+  const q: Record<string, unknown> = {};
+  q.select = () => q;
+  q.eq = () => q;
+  q.then = (ok: (v: unknown) => unknown) => Promise.resolve({ count: 0, error: null }).then(ok);
+  return q;
+}
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: () => contagem() }) }));
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -27,6 +36,7 @@ const EXTRA = "55555555-5555-4555-8555-555555555555";
 function fakeSupabase(resposta: { error?: { code?: string; message: string } | null }) {
   const chamadas: Array<{ nome: string; args: unknown }> = [];
   const cliente = {
+    from: () => contagem(),
     rpc: (nome: string, args: unknown) => {
       chamadas.push({ nome, args });
       return Promise.resolve({ data: null, error: resposta.error ?? null });

@@ -13,6 +13,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { audit } from "@/lib/audit";
+import { veTodasAsConversasDaFicha } from "@/lib/contacts/visao-das-conversas-da-ficha";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { AuditAction } from "@/lib/audit/actions";
 import { ApiError } from "@/lib/api/types";
 import { canonicalPhoneBR, normalizePhoneBR } from "@/lib/channels/phone-variants";
@@ -97,6 +99,33 @@ function erroDeNumeroEmUso(ctx: TelefoneCtx, mensagem?: string): ApiError {
 }
 
 /**
+ * Auditoria 18/11, achado 13: quem não vê todas as conversas da ficha não decide
+ * para onde elas respondem (403). Ver `lib/contacts/visao-das-conversas-da-ficha.ts`.
+ */
+async function exigirVisaoDasConversas(ctx: TelefoneCtx): Promise<void> {
+  let ve: boolean;
+  try {
+    ve = await veTodasAsConversasDaFicha({
+      sessao: ctx.supabase,
+      admin: createAdminClient(),
+      organizationId: ctx.organizationId,
+      contactId: ctx.contactId,
+    });
+  } catch (e) {
+    throw erroDeBanco(ctx, e instanceof Error ? e.message : "erro_desconhecido");
+  }
+  if (!ve) {
+    throw new ApiError(
+      403,
+      "forbidden",
+      undefined,
+      ctx.requestId,
+      traduzir("Você não vê todas as conversas deste contato; peça a um gerente para mexer nos telefones.", idioma(ctx)),
+    );
+  }
+}
+
+/**
  * A ficha viva da organização, ou 404. Mesma régua do PATCH de contato: mesclada
  * e anonimizada não recebem telefone novo.
  */
@@ -177,6 +206,7 @@ export async function adicionarTelefone(
   input: TelefoneExtraCreate,
 ): Promise<{ became_primary: true } | TelefoneExtraApi> {
   const ficha = await fichaViva(ctx);
+  await exigirVisaoDasConversas(ctx);
   const numero = await numeroCanonico(ctx, input.phone_number);
 
   if (!ficha.phone_number) {
@@ -314,6 +344,7 @@ export async function removerTelefoneExtra(ctx: TelefoneCtx, phoneId: string): P
  * desta ficha, ou a ficha não está viva.
  */
 export async function tornarTelefonePrincipal(ctx: TelefoneCtx, phoneId: string): Promise<void> {
+  await exigirVisaoDasConversas(ctx);
   const { error } = await ctx.supabase.rpc("fn_tornar_telefone_principal", {
     p_org: ctx.organizationId,
     p_contato: ctx.contactId,
