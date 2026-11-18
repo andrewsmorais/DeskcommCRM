@@ -35051,7 +35051,9 @@ create table if not exists public.prospecting_campaigns (
   unique (organization_id, id),
   unique (organization_id, request_id)
 );
-create unique index if not exists prospecting_one_running_org on public.prospecting_campaigns(organization_id) where status='running';
+-- A trava da prospecção é POR NÚMERO (migration 0537): o índice antigo
+-- `prospecting_one_running_org` não nasce aqui; num banco que já existe, o bloco
+-- da 0537 no apêndice o derruba.
 create table if not exists public.prospecting_candidates (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -46536,6 +46538,72 @@ create trigger trg_contacts_rotulo_sai_com_o_numero
 -- As travas de suporte alcançam a tabela nova (escrita bloqueada no modo
 -- suporte só leitura), como em toda tabela tenant-aware.
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
+
+notify pgrst, 'reload schema';
+
+-- ---- etiquetas do contato atômicas (migration 0542; 0682 do produto) ----
+-- A prospecção põe as etiquetas da campanha no contato pela MESMA junção atômica
+-- do produto original (migration 0682 de lá): o acréscimo acontece dentro do
+-- UPDATE, então dois eventos ao mesmo tempo não apagam a etiqueta um do outro.
+-- Só para o servidor (service_role). Idempotente: `create or replace`.
+create or replace function public.fn_contato_adicionar_etiquetas(
+  p_org uuid,
+  p_contato uuid,
+  p_etiquetas text[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_antes       text[];
+  v_adicionadas text[];
+  v_depois      text[];
+begin
+  if p_etiquetas is null or cardinality(p_etiquetas) = 0 then
+    raise exception 'etiquetas_vazio' using errcode = '22023';
+  end if;
+
+  -- Irmã da de cima, na tabela do CONTATO: o destino `contato` da #2498 escreve
+  -- aqui, e ali a corrida é a MESMA — dois eventos distintos do mesmo contato em
+  -- drenos diferentes. Corpo idêntico trocando a tabela e o nome do parâmetro.
+  select coalesce(tags, '{}'::text[])
+    into v_antes
+    from public.contacts
+   where organization_id = p_org and id = p_contato
+     for update;
+  if not found then
+    return null;
+  end if;
+
+  v_adicionadas := array(select unnest(p_etiquetas) except select unnest(v_antes));
+
+  if cardinality(v_adicionadas) = 0 then
+    return jsonb_build_object('tags', to_jsonb(v_antes), 'adicionadas', '[]'::jsonb);
+  end if;
+
+  update public.contacts
+     set tags = coalesce(tags, '{}'::text[])
+                || array(select unnest(p_etiquetas) except select unnest(coalesce(tags, '{}'::text[]))),
+         updated_at = now()
+   where organization_id = p_org and id = p_contato
+   returning tags into v_depois;
+
+  return jsonb_build_object(
+    'tags', to_jsonb(coalesce(v_depois, '{}'::text[])),
+    'adicionadas', to_jsonb(v_adicionadas)
+  );
+end
+$fn$;
+
+-- Função nova em `public` nasce exposta pelas duas origens (default ACL e PUBLIC):
+-- revoga as duas e devolve só ao servidor.
+revoke all on function public.fn_contato_adicionar_etiquetas(uuid, uuid, text[]) from public, anon, authenticated;
+grant execute on function public.fn_contato_adicionar_etiquetas(uuid, uuid, text[]) to service_role;
+
+comment on function public.fn_contato_adicionar_etiquetas(uuid, uuid, text[]) is
+  'Acrescenta etiquetas ao contato DENTRO do UPDATE, numa única instrução atômica, e devolve as etiquetas gravadas e as novas. Não decide papel nem organização — isso é de quem chama.';
 
 notify pgrst, 'reload schema';
 

@@ -25,7 +25,6 @@ import {
 } from "@/lib/schemas/contacts";
 import { traduzir } from "@/lib/i18n/dicionario";
 import type { Idioma } from "@/lib/i18n/idiomas";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -151,21 +150,6 @@ async function numeroCanonico(ctx: TelefoneCtx, bruto: string): Promise<string> 
   return e164;
 }
 
-/** Registra o evento de "a ficha ganhou o principal", como o PATCH de contato já faz. */
-async function emitirTelefoneAdicionado(ctx: TelefoneCtx, numero: string): Promise<void> {
-  await createAdminClient()
-    .rpc("emit_event", {
-      p_event_type: "contact.phone_added",
-      p_entity_kind: "contact",
-      p_entity_id: ctx.contactId,
-      p_payload: { phone_number: numero },
-      p_metadata: { request_id: ctx.requestId, actor_user_id: ctx.actorUserId },
-      p_organization_id: ctx.organizationId,
-    })
-    .then(({ error }) => {
-      if (error) console.error("[contacts.phones] emit_event failed", error.message);
-    });
-}
 
 async function auditar(
   ctx: TelefoneCtx,
@@ -228,7 +212,6 @@ export async function adicionarTelefone(
         type: input.type ?? null,
         whatsapp: input.whatsapp ?? null,
       });
-      await emitirTelefoneAdicionado(ctx, numero);
       return { became_primary: true };
     }
     // O outro pedido gravou primeiro. Este número não se perde: entra como
