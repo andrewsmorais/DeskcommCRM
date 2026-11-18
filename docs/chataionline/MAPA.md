@@ -149,8 +149,11 @@
 - **O9 — Atualização segura** — trazido do produto original (#2757 e #2756: d82bd2454, 47e64a959, f66649bf6, ef7962407, e9806a601; o 514183f69 e o 6d6175b0c NÃO, por dependerem de peças que este kit não tem). Painel: botões "Voltar para a versão anterior" e "Forçar atualização" no estado de falha, e o aviso "o sistema voltou sozinho" (`UpdatePanel.tsx`; rota `system/update` aceita `{ rollback: true }` e `{ force: true }`). Kit: o `update.sh` arma a vigília (`vigia_armar`, passo 1.6) e o `agent.sh` volta sozinho depois de 2 healthchecks seguidos sem resposta numa janela de 2 h, e avisa o app (`kind: rollback`). Provas: `tests/shell/vigia-da-volta-pos-atualizacao.test.sh`, `tests/shell/app-no-ar-pelo-corpo.test.sh` (em `pnpm test:shell`), `evidence/atualizacao-segura/1-falhou-botao-voltar.png`, `evidence/atualizacao-segura/2-voltou-sozinho.png`.
 - **S1 — Inbox** — trazido do produto original, um commit por peça: (1) canal no topo da conversa e o NOME do canal antes do número (`rotuloDoCanalDaConversa`, #2383); (2) vários anexos no "+" e arrastar arquivo para o campo, na mesma fila da prévia (#4364, #3708); (3) mensagem apagada em cinza dizendo quem apagou (`lib/messaging/apagada.ts`); (4) visto azul ao responder (`WahaClient.sendSeen`/`marcarConversaComoLida`, #2981 — nos testes, `tests/support/waha-visto-azul.ts` faz o receptor falso ignorar o `/api/sendSeen`); (5) texto do áudio no balão (`MediaRenderer`, a lista de mensagens passa a trazer `media_derived_text/status`); (6) anexo na nota interna — migration **0547**, bucket `internal-media`, rotas `notes/media` e `notes/[noteId]/media`, o gatilho LGPD da 0509 enfileira o anexo e a fila aceita o bucket novo (a varredura de órfãos e a retenção por idade do `internal-media` NÃO vieram); (7) nome salvo na agenda do celular — migration **0546**, `contacts.address_book_name`, rotina `contact-names` a cada 10 min no `docker/scheduler/entrypoint.sh`, `rotuloParaAEquipe`, busca, LGPD; nunca em mensagem (`tests/unit/nome-da-agenda-nunca-vai-ao-cliente.test.ts`); (8) a Inbox lembra o número e o "Não lidos" por empresa (`lib/inbox/filtros-lembrados.ts`); (9) painel da conversa com as etiquetas do negócio e o valor editável (`lib/leads/campo-de-moeda.ts`). Provas: `evidence/inbox-s1/1-inbox-canal-agenda-audio-apagada-nota-painel.png`, `evidence/inbox-s1/2-anexo-na-nota-interna-1-de-2.png`.
 
+- **Auditoria de segurança de tudo o que entrou pela planilha (O1–O9 e S1–S8), 18/11** — guia `security-audit` do repositório `andrewsmorais/Auditoria-Claude`, perfil `standard`, Opus 5.5. Escopo: diff `d823c3914..2e656d9bf`. Resultado: 19 achados confirmados (1 alto, 7 médios, 11 baixos) e 2 pistas que precisam de conferência prática; **nada foi consertado ainda**. 1 ponto da planilha ficou adiado (conferência "tem WhatsApp?" da prospecção). Relatório em português: [`docs/audits/2026-11-18-auditoria-da-planilha.md`](../audits/2026-11-18-auditoria-da-planilha.md); registros completos (com o passo a passo de cada conserto) em `docs/audits/2026-11-18-auditoria-da-planilha-registros/`.
+
 ## 5. O que falta / pendências conhecidas
 
+- **Consertar os 19 achados da auditoria de 18/11**, começando pelo alto (mídia de mensagem vira chamada à API do WAHA) e pelos médios (atualização do sistema, agente da VPS, aviso de agendamento forjado, convidado em conversa privada, IA mudando setor, leitura de planilha e importação de contatos). Lista e conserto mínimo de cada um em `docs/audits/2026-11-18-auditoria-da-planilha.md`. E auditar o ponto adiado (conferência "tem WhatsApp?" da prospecção).
 - **Nunca foi testado pela tela, numa instalação limpa, depois das duas auditorias:** criar conta →
   escolher plano → conectar WhatsApp → primeiro lead → IA e chatbot respondendo. Prioridade 1.
 - Conferir os 3 planos pela tela (limite aparece e barra).
@@ -167,7 +170,7 @@
 
 ## 6. Dia de subir para a VPS (checklist)
 
-Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0547**). Depois de atualizar, a rotina `contact-names` começa a preencher o nome da agenda do celular aos poucos (5 contatos a cada 10 min); ela só funciona se o número tiver a opção de guardar o histórico ligada no WhatsApp.
+Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0553**). Depois de atualizar, a rotina `contact-names` começa a preencher o nome da agenda do celular aos poucos (5 contatos a cada 10 min); ela só funciona se o número tiver a opção de guardar o histórico ligada no WhatsApp.
 
 No `.env` da instalação (achar a pasta com `docker compose ls`):
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL=suporte@chataionline.io`, `SUPPORT_EMAIL`, `SUPPORT_WHATSAPP`
@@ -187,6 +190,7 @@ No `.env` da instalação (achar a pasta com `docker compose ls`):
 - Nunca colar chave ou segredo no chat; nunca pedir para imprimir o `.env`.
 - Não adivinhar fatos (endereço, configuração): conferir no código ou perguntar.
 - Mudança de banco = migration + apêndice no `baseline.sql` + linha no `MANIFEST.md` (ver `CLAUDE.md`).
-- Testes: `pnpm test:unit` (inteiro, sem caminho) e `pnpm test:db`. Falhas já existentes no
-  `test:db`, que não são nossas: event-log-drain (2), relogio-do-silencio (11), webhooks-inbound (1), tipo-de-coluna-x-typescript (1, o extrator não entende `ProvedorComChave | ServiceProvider`).
+- Testes: `pnpm test:unit` (inteiro, sem caminho) e `pnpm test:db`. Desde 18/11 (commit 2e656d9bf) os dois
+  ficam verdes por inteiro: as 4 falhas antigas do `test:db` foram consertadas. As de `event-log-drain` e
+  `relogio-do-silencio` só apareciam porque o Postgres local rodava fora do fuso UTC.
 - Ao terminar uma tarefa: acrescentar uma linha na seção 4 (e tirar da seção 5 o que foi resolvido).
