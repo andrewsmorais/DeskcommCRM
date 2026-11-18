@@ -100,7 +100,7 @@ export const TRIGGER_EVENTS = Object.keys(ENTIDADE_ESPERADA_POR_GATILHO) as [
 
 export const conditionSchema = z.object({
   field: z.string().min(1).max(200),
-  op: z.enum(["eq", "neq", "contains"]),
+  op: z.enum(["eq", "neq", "contains", "not_contains", "gt", "lt", "is_set", "is_empty"]),
   value: z.string().max(500),
 });
 

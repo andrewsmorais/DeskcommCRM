@@ -51,6 +51,7 @@ import { useCapacidadesLigadas } from "@/hooks/auth/AuthProvider";
 import { TRIGGER_LABELS, ACTION_LABELS, gatilhoOferecido, type TriggerEvent, type ActionType } from "./labels";
 import { ActionConfigForm, defaultActionConfig, type ActionItem } from "./ActionConfigForm";
 import { useT } from "@/hooks/i18n/useT";
+import { OPS_SEM_VALOR, type ConditionOp } from "@/lib/automation/conditions";
 
 interface Props {
   open: boolean;
@@ -58,7 +59,7 @@ interface Props {
   rule: AutomationRuleRow | null;
 }
 
-type Op = "eq" | "neq" | "contains";
+type Op = ConditionOp;
 
 interface ConditionRow {
   field: string;
@@ -178,7 +179,16 @@ const CURATED_FIELDS: Record<TriggerEvent, CuratedField[]> = {
   "voice_call.missed": CONTACT_FIELDS,
 };
 
-const OP_LABELS: Record<Op, string> = { eq: "é", neq: "não é", contains: "contém" };
+const OP_LABELS: Record<Op, string> = {
+  eq: "é",
+  neq: "não é",
+  contains: "contém",
+  not_contains: "não contém",
+  gt: "maior que",
+  lt: "menor que",
+  is_set: "está preenchido",
+  is_empty: "está vazio",
+};
 
 function emptyCondition(): ConditionRow {
   return { field: "", op: "eq", value: "" };
@@ -341,8 +351,12 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
       name,
       trigger_event: triggerEvent,
       conditions: conditions
-        .filter((c) => c.field.trim() && c.value.trim())
-        .map((c) => ({ field: c.field.trim(), op: c.op, value: c.value.trim() })),
+        .filter((c) => c.field.trim() && (OPS_SEM_VALOR.includes(c.op) || c.value.trim()))
+        .map((c) => ({
+          field: c.field.trim(),
+          op: c.op,
+          value: OPS_SEM_VALOR.includes(c.op) ? "" : c.value.trim(),
+        })),
       actions,
       // `Number("")` é 0 — o que gravaria "avisar no dia" para quem não
       // digitou nada. O campo vazio vira `NaN`, que o schema recusa com a
@@ -666,7 +680,7 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
                       value={cond.op}
                       onValueChange={(v) => updateCondition(idx, { op: v as Op })}
                     >
-                      <SelectTrigger className="w-28">
+                      <SelectTrigger className="w-36">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -681,7 +695,7 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
                         ))}
                       </SelectContent>
                     </Select>
-                    {curated?.kind === "stage" ? (
+                    {OPS_SEM_VALOR.includes(cond.op) ? null : curated?.kind === "stage" ? (
                       <Select
                         value={cond.value}
                         onValueChange={(v) => updateCondition(idx, { value: v })}

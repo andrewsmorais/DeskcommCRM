@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateConditions, resolveField } from "@/lib/automation/conditions";
+import { evaluateConditions, resolveField, type ConditionOp } from "@/lib/automation/conditions";
 
 const ctx = {
   event: { to_stage_id: "s2", added_tags: ["vip", "novo"] },
@@ -78,4 +78,43 @@ describe("evaluateConditions", () => {
     expect(evaluateConditions([{ field: "lead.ghost", op: "eq", value: "x" }], ctx)).toBe(false));
   it("campo ausente com neq → true (ausente ≠ valor)", () =>
     expect(evaluateConditions([{ field: "lead.ghost", op: "neq", value: "x" }], ctx)).toBe(true));
+});
+
+describe("operadores novos (S5)", () => {
+  const c = {
+    lead: { title: "Ana", value_cents: 5000, tags: ["vip", "novo"], notes: "  ", phone: "5511" },
+  };
+  const ev = (op: ConditionOp, field: string, value = "") =>
+    evaluateConditions([{ field, op, value }], c);
+
+  it("not_contains em texto e em lista", () => {
+    expect(ev("not_contains", "lead.title", "zz")).toBe(true);
+    expect(ev("not_contains", "lead.title", "AN")).toBe(false);
+    expect(ev("not_contains", "lead.tags", "vip")).toBe(false);
+    expect(ev("not_contains", "lead.tags", "frio")).toBe(true);
+  });
+  it("not_contains com campo ausente é verdadeiro", () =>
+    expect(ev("not_contains", "lead.nada", "x")).toBe(true));
+  it("gt e lt comparam número", () => {
+    expect(ev("gt", "lead.value_cents", "4999")).toBe(true);
+    expect(ev("gt", "lead.value_cents", "5000")).toBe(false);
+    expect(ev("lt", "lead.value_cents", "6000")).toBe(true);
+    expect(ev("lt", "lead.value_cents", "5000")).toBe(false);
+  });
+  it("gt/lt: texto, valor vazio, campo ausente e lista nunca passam", () => {
+    expect(ev("gt", "lead.title", "1")).toBe(false);
+    expect(ev("gt", "lead.value_cents", "")).toBe(false);
+    expect(ev("lt", "lead.nada", "10")).toBe(false);
+    expect(ev("gt", "lead.tags", "0")).toBe(false);
+    expect(ev("lt", "lead.notes", "10")).toBe(false);
+  });
+  it("is_set e is_empty", () => {
+    expect(ev("is_set", "lead.phone")).toBe(true);
+    expect(ev("is_set", "lead.notes")).toBe(false); // só espaços
+    expect(ev("is_set", "lead.nada")).toBe(false);
+    expect(ev("is_set", "lead.tags")).toBe(true);
+    expect(ev("is_empty", "lead.nada")).toBe(true);
+    expect(ev("is_empty", "lead.notes")).toBe(true);
+    expect(ev("is_empty", "lead.phone")).toBe(false);
+  });
 });
