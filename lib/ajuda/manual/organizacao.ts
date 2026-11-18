@@ -29,6 +29,39 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
     ],
   },
 
+  "/app/agenda/avisos": {
+    oQueE:
+      "Faz o sistema mandar, no WhatsApp do dono ou de quem você escolher, um aviso a cada horário marcado, remarcado ou cancelado, e um resumo do dia às 7h.",
+    comoUsar: [
+      'Ligue “Receber avisos de agendamento no WhatsApp”.',
+      "Em “Número que recebe os avisos”, digite o celular que vai receber, começando pelo código do país (no Brasil: +55, DDD e o número).",
+      "Escolha o WhatsApp conectado que vai mandar os avisos. Se já existe o número do aviso de caso, dá para marcar “Usar o mesmo número do aviso de caso”.",
+      "Escolha se quer também o “Resumo do dia”.",
+      "Clique em “Salvar” e depois em “Enviar teste” para conferir se a mensagem chega.",
+    ],
+    cuidados: [
+      "Só o administrador mexe nesta tela. Ela vem desligada.",
+      "O teste manda uma mensagem de verdade e conta no limite diário do número. Salve antes de testar.",
+      "O número que recebe os avisos passa a ser só da equipe: o que ele mandar deixa de virar atendimento.",
+      "Se aparecer “Nenhum número conectado consegue mandar estes avisos”, conecte um WhatsApp em Conexões.",
+    ],
+  },
+
+  "/app/settings/aplicativo": {
+    oQueE:
+      "Ensina a colocar o sistema na tela de início do celular, como um aplicativo, para abrir pelo ícone e receber os avisos mesmo com o navegador fechado.",
+    comoUsar: [
+      'No Android, clique em “Instalar app”. Se o botão não aparecer, abra o menu do navegador (⋮) e escolha “Instalar app” ou “Adicionar à tela inicial”.',
+      "No iPhone, abra esta página no Safari, toque em “Compartilhar” e escolha “Adicionar à Tela de Início”.",
+      "Depois de instalar, abra pelo ícone novo, entre com seu e-mail e senha e ligue os avisos em Notificações.",
+    ],
+    cuidados: [
+      "No iPhone os avisos só funcionam no app aberto pela tela de início, com iOS 16.4 ou mais novo.",
+      "Dentro de outro aplicativo (como o WhatsApp) o navegador não instala: a tela pede para abrir no Chrome ou no Safari.",
+      "A instalação exige o endereço do sistema em HTTPS (o cadeado).",
+    ],
+  },
+
   "/app/settings/tenant/proposals": {
     oQueE:
       "Liga as propostas comerciais para a sua empresa e define a validade e as condições que entram por padrão em toda proposta nova.",

@@ -55,7 +55,13 @@ function purposesDoTexto(texto: string, arquivo = "source.ts"): string[] {
       const enqueueResult = ts.isObjectLiteralExpression(object) && ts.isReturnStatement(object.parent) &&
         object.properties.some(p => ts.isPropertyAssignment(p) && p.name.getText(ast) === "kind" &&
           ts.isStringLiteralLike(p.initializer) && p.initializer.text === "enqueue_turn");
-      if (!enqueueResult) result.push(...literals(node.initializer));
+      // Ícone do manifest (`{ src, sizes, purpose: "maskable" }`, ImageResource
+      // da especificação do Web App Manifest) também não é chamada: mesma régua
+      // de forma, pelas propriedades irmãs.
+      const temIrma = (nome: string) => ts.isObjectLiteralExpression(object) &&
+        object.properties.some(p => ts.isPropertyAssignment(p) && p.name.getText(ast).replace(/["']/g, "") === nome);
+      const iconeDoManifest = temIrma("src") && temIrma("sizes");
+      if (!enqueueResult && !iconeDoManifest) result.push(...literals(node.initializer));
     }
     ts.forEachChild(node, visit);
   };
