@@ -53,6 +53,7 @@
  * preencheu o seu formulário te procurou. Quem disse "não me mande mensagem",
  * não.
  */
+import { recusaRegistrada } from "@/lib/lgpd/recusa-registrada";
 import type { ActionCtx } from "@/lib/automation/types";
 
 export type MotivoDeBloqueio = "no_contact" | "contact_blocked" | "no_phone" | "consent_declined";
@@ -66,7 +67,8 @@ interface ContatoDoContexto {
   id: string;
   is_blocked?: boolean;
   phone_number?: string | null;
-  consent?: { marketing?: { granted_at?: string | null; declined_at?: string | null } | null } | null;
+  /** jsonb livre: lido só por `recusaRegistrada`, que conhece os dois formatos. */
+  consent?: unknown;
 }
 
 export type ResultadoDaGuarda =
@@ -84,6 +86,8 @@ export function checarGuardasDeContato(ctx: ActionCtx): ResultadoDaGuarda {
   if (contact.is_blocked) return { ok: false, reason: "contact_blocked" };
   if (!contact.phone_number) return { ok: false, reason: "no_phone" };
   // Recusa registrada — não "grant ausente". Ver o cabeçalho.
-  if (contact.consent?.marketing?.declined_at) return { ok: false, reason: "consent_declined" };
+  // Os DOIS formatos (`declined_at` da captação e `granted: false` da ficha) —
+  // auditoria 18/11, achado 12: ler só `declined_at` ignorava a recusa da ficha.
+  if (recusaRegistrada(contact.consent)) return { ok: false, reason: "consent_declined" };
   return { ok: true, contact: { id: contact.id, phone_number: contact.phone_number } };
 }

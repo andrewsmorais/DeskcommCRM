@@ -83,6 +83,17 @@ describe("checarGuardasDeContato", () => {
     expect(r).toEqual({ ok: false, reason: "consent_declined" });
   });
 
+  it("achado 12: recusa gravada pela ficha (`granted: false`) também bloqueia", () => {
+    const r = checarGuardasDeContato(
+      ctxComContato({
+        id: "c1",
+        phone_number: "+5511999999999",
+        consent: { marketing: { granted: false } },
+      }),
+    );
+    expect(r).toEqual({ ok: false, reason: "consent_declined" });
+  });
+
   it("recusa vence sobre concessão antiga: declined_at bloqueia mesmo com granted_at preenchido", () => {
     // A pessoa concedeu num envio e recusou no seguinte. A ingestão reescreve o
     // objeto inteiro, mas se um clone tiver as duas chaves, quem manda é o NÃO.

@@ -160,3 +160,13 @@ describe("classificação da lista", () => {
     expect(contarExclusoes(linhas)).toEqual({ opt_out: 2, sem_telefone: 1 });
   });
 });
+
+describe("recusouMarketing — os dois formatos (auditoria 18/11, achado 12)", () => {
+  it("declined_at da captação e granted:false da ficha recusam; ausência e null não", () => {
+    expect(recusouMarketing({ marketing: { declined_at: "2026-01-01T00:00:00Z" } })).toBe(true);
+    expect(recusouMarketing({ marketing: { granted: false } })).toBe(true);
+    expect(recusouMarketing({ marketing: { granted: null } })).toBe(false);
+    expect(recusouMarketing({})).toBe(false);
+    expect(recusouMarketing(null)).toBe(false);
+  });
+});
