@@ -36,7 +36,7 @@ import type { AuthUser } from "@/lib/auth/types";
 const dono = { id: "u1", is_platform_admin: true, support: null, idioma: "pt-BR" } as unknown as AuthUser;
 
 async function codigo(user: AuthUser = dono): Promise<string | null> {
-  const r = await recusaDeEscritaDePlataforma(user);
+  const r = await recusaDeEscritaDePlataforma(user, "atualizar");
   if (!r) return null;
   return ((await r.json()) as { error: { code: string } }).error.code;
 }
@@ -65,7 +65,7 @@ describe("recusaDeEscritaDePlataforma", () => {
 
   it("escopo support_readonly: 403 forbidden (só leitura)", async () => {
     estado.linha = { scope: "support_readonly", mfa_required: false };
-    const r = await recusaDeEscritaDePlataforma(dono);
+    const r = await recusaDeEscritaDePlataforma(dono, "atualizar");
     expect(r?.status).toBe(403);
     const corpo = (await r!.json()) as { error: { message: string } };
     expect(corpo.error.message).toContain("somente leitura");
@@ -95,7 +95,7 @@ describe("recusaDeEscritaDePlataforma", () => {
 
   it("falha ao ler a permissão: 503, nunca libera", async () => {
     estado.erro = { message: "boom" };
-    const r = await recusaDeEscritaDePlataforma(dono);
+    const r = await recusaDeEscritaDePlataforma(dono, "atualizar");
     expect(r?.status).toBe(503);
   });
 });

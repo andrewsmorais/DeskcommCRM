@@ -27,16 +27,26 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { createClient } from "@/lib/supabase/server";
 
 /**
+ * A frase de recusa para quem não é dono do servidor, por ação. Conjunto
+ * fechado de propósito: cada frase é chave do dicionário (`lib/i18n`), e um
+ * texto livre vindo de quem chama não teria tradução.
+ */
+const RECUSA_A_QUEM_NAO_E_DONO = {
+  atualizar: "Só o dono do servidor pode atualizar o sistema.",
+} as const;
+export type EscritaDePlataforma = keyof typeof RECUSA_A_QUEM_NAO_E_DONO;
+
+/**
  * `null` quando a escrita de instância está liberada para esta sessão; senão,
  * a resposta pronta (403, ou 503 quando a permissão não pôde ser lida).
  */
 export async function recusaDeEscritaDePlataforma(
   user: AuthUser,
-  recusaPadrao = "Só o dono do servidor pode fazer isto.",
+  acao: EscritaDePlataforma,
 ): Promise<Response | null> {
   const t = (texto: string) => traduzir(texto, user.idioma);
   if (!user.is_platform_admin || user.support) {
-    return fail("forbidden", t(recusaPadrao), 403);
+    return fail("forbidden", t(RECUSA_A_QUEM_NAO_E_DONO[acao]), 403);
   }
   const db = await createClient();
   const { data: plataforma, error } = await db

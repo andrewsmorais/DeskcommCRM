@@ -58,10 +58,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // Escrita de INSTÂNCIA: o pedido vira `update.sh` no host. Exige escopo
   // `full` e a verificação em duas etapas quando ela é devida — o mesmo que as
   // outras escritas de instância já exigiam (auditoria de 18/11, achado 2).
-  const recusa = await recusaDeEscritaDePlataforma(
-    user,
-    "Só o dono do servidor pode atualizar o sistema.",
-  );
+  const recusa = await recusaDeEscritaDePlataforma(user, "atualizar");
   if (recusa) return recusa;
 
   const db = createAdminClient();

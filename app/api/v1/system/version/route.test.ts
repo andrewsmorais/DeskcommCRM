@@ -11,6 +11,17 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
+// A régua de escrita de instância (escopo `full` + verificação em duas etapas)
+// tem teste próprio, `tests/unit/escrita-de-plataforma.test.ts`; aqui ela
+// responde só por `is_platform_admin`, que é o que este arquivo varia.
+vi.mock("@/lib/auth/escrita-de-plataforma", async () => {
+  const { fail } = await import("@/lib/api/wrappers");
+  return {
+    recusaDeEscritaDePlataforma: vi.fn(async (user: { is_platform_admin?: boolean }) =>
+      user.is_platform_admin ? null : fail("forbidden", "Só o dono do servidor pode atualizar o sistema.", 403),
+    ),
+  };
+});
 
 const OWNER = { id: "11111111-1111-4111-8111-111111111111", email: "dono@x.com", is_platform_admin: true };
 const MEMBRO = { ...OWNER, id: "22222222-2222-4222-8222-222222222222", is_platform_admin: false };
