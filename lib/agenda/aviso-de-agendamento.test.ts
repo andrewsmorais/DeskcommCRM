@@ -305,6 +305,28 @@ describe("aplicaAvisoDeAgendamento", () => {
     expect(mundo.enviadas[1]).toContain("agendamento cancelado");
   });
 
+  it("cancelamento que o banco não registrou (forjado) não cancela o represado nem avisa", async () => {
+    // Auditoria de 18/11, achado 4: uma linha `appointment.cancelled` para um
+    // horário AINDA confirmado sumia com o aviso verdadeiro e mandava ao dono
+    // um "cancelado" falso. Só cancelamento gravado vale.
+    mundo.pacing = { liberado: false, motivo: "espacamento", liberaEm: new Date(TARDE.getTime() + 2000) };
+    const primeiro = await aplicaAvisoDeAgendamento(deps(TARDE), evento("appointment.created", "ev1", TARDE));
+    expect(primeiro.status).toBe("retry");
+
+    mundo.pacing = { liberado: true };
+    // mundo.agendamento continua "confirmed": o cancelamento não aconteceu.
+    const forjado = await aplicaAvisoDeAgendamento(deps(TARDE), evento("appointment.cancelled", "ev2", TARDE));
+    expect(forjado).toEqual({ status: "skipped", detail: "cancelamento_nao_confere" });
+
+    // O aviso verdadeiro continua de pé e sai na retomada, minutos depois.
+    const depois = new Date(TARDE.getTime() + 5 * 60_000);
+    mundo.relogio = depois;
+    const retomada = await aplicaAvisoDeAgendamento(deps(depois), evento("appointment.created", "ev1", TARDE));
+    expect(retomada.status).toBe("ok");
+    expect(mundo.enviadas).toHaveLength(1);
+    expect(mundo.enviadas[0]).not.toContain("cancelado");
+  });
+
   it("marcado e já cancelado quando o dreno chega: não avisa a marcação", async () => {
     mundo.agendamento = { ...mundo.agendamento!, status: "cancelled" };
     const r = await aplicaAvisoDeAgendamento(deps(TARDE), evento("appointment.created", "ev1", TARDE));

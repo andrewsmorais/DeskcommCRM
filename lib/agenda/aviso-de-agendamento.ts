@@ -239,6 +239,13 @@ export async function aplicaAvisoDeAgendamento(
   // sido cancelado, mesmo que alguém tenha desligado o aviso no meio.
   let canceladas = 0;
   if (evento === "appointment.cancelled") {
+    // Só um cancelamento GRAVADO cancela o que está represado (auditoria de
+    // 18/11, achado 4): uma linha `appointment.cancelled` forjada para um
+    // horário ainda de pé sumia com o aviso verdadeiro e mandava ao dono um
+    // "cancelado" falso. `cancelled` é terminal no banco, então conferir a
+    // situação gravada é conferir que o cancelamento aconteceu.
+    const gravado = await deps.db.carregaAgendamento(orgId, appointmentId);
+    if (!gravado || gravado.status !== "cancelled") return skipped("cancelamento_nao_confere");
     canceladas = await deps.db.cancelaPendentesDoAgendamento(orgId, appointmentId, row.id);
   }
 
