@@ -28,6 +28,8 @@ export const TRIGGER_LABELS: Record<TriggerEvent, string> = {
   // causa é sempre a mesma.
   "message.failed": "Quando uma mensagem não for entregue",
   "lead.tag_added": "Quando um lead ganhar uma tag",
+  "lead.won": "Quando um negócio for ganho",
+  "lead.lost": "Quando um negócio for perdido",
   "contact.tag_added": "Quando um contato ganhar uma tag",
   // A frase evita "agendamento criado", que não diz ao operador o que ele vê na
   // agenda: um horário marcado pode nascer pendente (o tipo pede confirmação) ou

@@ -48,6 +48,13 @@ export const ENTIDADE_ESPERADA_POR_GATILHO = {
   // registrava "mensagem enviada" para uma mensagem que nunca chegou.
   "message.failed": "message",
   "lead.tag_added": "crm_lead",
+  // Desfecho do negócio: GANHO e PERDA. Quem emite é o trigger de banco
+  // `fn_emit_event_on_lead_change`, que grava a entidade como `lead` (derivada
+  // do prefixo do tipo) — e é o ÚNICO emissor (`encerramento.ts` não re-emite),
+  // então aqui a entidade esperada é `lead`, e não `crm_lead` como nos irmãos.
+  // Sem os dois, quem integra por webhook não sabia quando a venda fechou.
+  "lead.won": "lead",
+  "lead.lost": "lead",
   "contact.tag_added": "contact",
   // O aniversário nasce do cron `contact-birthdays`, e não de uma ação de
   // alguém: a entidade que ele traz é o próprio contato que faz aniversário.

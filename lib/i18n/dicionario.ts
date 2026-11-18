@@ -7722,6 +7722,8 @@ export const DICIONARIO: Traducoes = {
   "Tag adicionada": { es: "Etiqueta agregada" },
   "Quando entrar um contato novo (webhook)": { es: "Cuando entre un contacto nuevo (webhook)" },
   "Quando um lead mudar de etapa": { es: "Cuando un lead cambie de etapa" },
+  "Quando um negócio for ganho": { es: "Cuando un negocio se gane" },
+  "Quando um negócio for perdido": { es: "Cuando un negocio se pierda" },
   "Quando chegar mensagem no WhatsApp": { es: "Cuando llegue un mensaje por WhatsApp" },
   "Quando uma mensagem não for entregue": { es: "Cuando un mensaje no se entregue" },
   "Código do erro": { es: "Código del error" },
