@@ -2,7 +2,7 @@
 
 > Escrito em português simples para o dono do projeto. Os detalhes técnicos completos (passo a passo de reprodução, linhas de código, conserto proposto) estão em `FINDINGS-DETAIL.md` e `NEEDS-VALIDATION.md`, que ficam em inglês porque são para quem vai consertar.
 
-> **Situação dos consertos (18/11, depois do relatório):** consertados os achados **1 a 8, 17 e 18** — o alto, os 7 médios e os 2 baixos da leitura de XLSX —, um commit por achado na branch `chataionline/seguranca-auditoria` (de `67bbe3ade` a `4fb9953a2`, mais quatro ajustes que a suíte inteira pediu: `af10fb3df`, `c5eb9668f`, `3dbf21fd1`, `318d2e740`). Migrations novas: **0554** (achado 4) e **0555** (achado 5). Faltam os baixos **9 a 16 e 19**, as 2 pistas da seção 5 e o ponto adiado da seção 7. O andamento fica na aba "Auditoria 18/11" da planilha do plano.
+> **Situação dos consertos (18/11, depois do relatório):** consertados **todos os 19 achados**. Os achados **1 a 8, 17 e 18** (o alto, os 7 médios e os 2 baixos da leitura de XLSX) com Opus 5.5 alto, de `67bbe3ade` a `318d2e740`; os baixos **9 a 16 e 19** com Sonnet 5.5 médio, um commit por achado logo depois. Migrations novas: **0554** (achado 4), **0555** (achado 5), **0556** (achados 9 e 19) e **0557** (achado 11). Faltam só as 2 pistas da seção 5 (conferir na VPS de teste) e o ponto adiado da seção 7. O andamento fica na aba "Auditoria 18/11" da planilha do plano.
 
 ## 1. Como esta rodada foi feita
 
