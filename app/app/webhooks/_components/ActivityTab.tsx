@@ -74,6 +74,10 @@ function statusBadgeLabel(
  * que nascem no próprio executor.
  */
 const MOTIVO_DA_PARADA: Record<string, string> = {
+  continuacao_exige_outro_funil:
+    "A continuação de um negócio ganho só nasce em OUTRO funil. Aponte esta ação para o funil de pós-venda — nada foi movido.",
+  lead_already_transferred_in_event:
+    "Outra regra deste mesmo evento já levou o lead para outro funil. Vale a primeira regra; esta não transfere de novo.",
   /* "Quando o contato tiver horário marcado" = Não enviar (lib/agenda/escolha-no-envio.ts). */
   compromisso_na_agenda: "Contato com horário marcado: a automação não enviou, como a regra pede.",
   /* Limite por contato — a decisão do MOTOR (lib/automation/engine.ts), no run

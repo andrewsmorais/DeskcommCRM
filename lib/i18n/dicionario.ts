@@ -20079,6 +20079,8 @@ export const DICIONARIO: Traducoes = {
   "Não achou a opção? Se o link foi aberto por outro aplicativo (como o WhatsApp), toque no menu (⋮), escolha Abrir no Chrome e repita.": { es: "¿No encontraste la opción? Si el enlace se abrió desde otra aplicación (como WhatsApp), toca el menú (⋮), elige Abrir en Chrome y repite." },
   "Abra este endereço no celular. No computador, Chrome e Edge instalam pelo ícone na barra de endereço.": { es: "Abre esta dirección en el celular. En la computadora, Chrome y Edge instalan desde el ícono en la barra de direcciones." },
   "Avisos": { es: "Avisos" },
+  "A continuação de um negócio ganho só nasce em OUTRO funil. Aponte esta ação para o funil de pós-venda — nada foi movido.": { es: "La continuación de un negocio ganado solo nace en OTRO embudo. Apunta esta acción al embudo de posventa: no se movió nada." },
+  "Outra regra deste mesmo evento já levou o lead para outro funil. Vale a primeira regra; esta não transfere de novo.": { es: "Otra regla de este mismo evento ya llevó el lead a otro embudo. Vale la primera regla; esta no transfiere de nuevo." },
   "Limpeza automática de mídia antiga": { es: "Limpieza automática de multimedia antigua" },
   "Ligado: apaga a mídia com mais de {n} dias.": { es: "Activado: elimina la multimedia con más de {n} días." },
   "Desligado: a mídia das conversas não é apagada por idade.": { es: "Desactivado: la multimedia de las conversaciones no se elimina por antigüedad." },
