@@ -52,6 +52,7 @@ const DOW_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MODE_LABELS: Record<(typeof ROUTING_MODES)[number], string> = {
   manual: "Manual (atendente puxa da fila)",
   round_robin: "Rodízio (distribui automático)",
+  least_load: "Menor carga (quem tem menos conversas)",
 };
 
 interface Attendant {

@@ -122,3 +122,39 @@ describe("decideRouting — os 5 cenários do acceptance", () => {
     expect(action).toEqual({ kind: "skip", reason: "unsupported_mode:load" });
   });
 });
+
+describe("modo menor carga (least_load)", () => {
+  const carga = (userId: string, currentLoad: number, lastAssignedAt: number | null) => ({
+    userId,
+    currentLoad,
+    lastAssignedAt,
+  });
+  const base = {
+    alreadyAssigned: false,
+    config: routingConfigSchema.parse({ mode: "least_load" }),
+    attempts: 0,
+    now: new Date("2026-11-18T12:00:00Z"),
+  };
+
+  it("escolhe quem tem menos conversas abertas", () => {
+    expect(
+      decideRouting({ ...base, mode: "least_load", eligibles: [carga("a", 5, null), carga("b", 1, 999), carga("c", 3, null)] }),
+    ).toEqual({ kind: "assign", userId: "b" });
+  });
+  it("empate de carga: quem recebeu há mais tempo; depois o id", () => {
+    expect(
+      decideRouting({ ...base, mode: "least_load", eligibles: [carga("a", 2, 500), carga("b", 2, 100)] }),
+    ).toEqual({ kind: "assign", userId: "b" });
+    expect(
+      decideRouting({ ...base, mode: "least_load", eligibles: [carga("b", 2, null), carga("a", 2, null)] }),
+    ).toEqual({ kind: "assign", userId: "a" });
+  });
+  it("sem elegível, reenfileira como o rodízio", () => {
+    expect(decideRouting({ ...base, mode: "least_load", eligibles: [] }).kind).toBe("requeue");
+  });
+  it("o rodízio continua ignorando a carga", () => {
+    expect(
+      decideRouting({ ...base, mode: "round_robin", eligibles: [carga("a", 9, 100), carga("b", 0, 500)] }),
+    ).toEqual({ kind: "assign", userId: "a" });
+  });
+});

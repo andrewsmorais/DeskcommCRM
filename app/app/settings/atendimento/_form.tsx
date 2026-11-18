@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api/client";
 import type { VisibilityMode } from "@/lib/auth/types";
 import { PRAZO_MAX_MINUTOS, PRAZO_MIN_MINUTOS } from "@/lib/escalacao/devolucao-automatica";
-import { ROUTING_MODES, VISIBILITY_MODES, type RoutingMode } from "@/lib/schemas/routing";
+import { ROUTING_MODES, VISIBILITY_MODES, modoDistribuiSozinho, type RoutingMode } from "@/lib/schemas/routing";
 import { useT } from "@/hooks/i18n/useT";
 
 export interface AtendimentoConfig {
@@ -44,6 +44,14 @@ const MODO_COPY: Record<RoutingMode, { titulo: string; corpo: string }> = {
       "Cliente 1 vai para o atendente A, cliente 2 para o B, e ao acabar a lista volta ao " +
       "primeiro. Quem recebe é sempre quem está há mais tempo sem receber — entre os que " +
       "estão disponíveis e dentro do horário. Ninguém escolhe, então não há fila furada.",
+  },
+  least_load: {
+    titulo: "Menor carga: quem tem menos conversas abertas",
+    corpo:
+      "Cada cliente novo vai para o atendente que está com menos conversas abertas naquele " +
+      "momento — entre os que estão disponíveis e dentro do horário. Se dois estiverem " +
+      "empatados, vai para quem está há mais tempo sem receber. Bom quando as conversas " +
+      "duram tempos muito diferentes.",
   },
 };
 
@@ -171,7 +179,7 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
           ))}
         </div>
 
-        {form.mode === "round_robin" ? (
+        {modoDistribuiSozinho(form.mode) ? (
           <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="max_retries">{t("Tentativas antes de desistir")}</Label>

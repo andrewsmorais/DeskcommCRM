@@ -3044,6 +3044,11 @@ export const DICIONARIO: Traducoes = {
   "não tem a etiqueta": { es: "no tiene la etiqueta" },
   "é exatamente": { es: "es exactamente" },
   "não é": { es: "no es" },
+  "Menor carga (quem tem menos conversas)": { es: "Menor carga (quien tiene menos conversaciones)" },
+  "Menor carga: quem tem menos conversas abertas": { es: "Menor carga: quien tiene menos conversaciones abiertas" },
+  "Cada cliente novo vai para o atendente que está com menos conversas abertas naquele momento — entre os que estão disponíveis e dentro do horário. Se dois estiverem empatados, vai para quem está há mais tempo sem receber. Bom quando as conversas duram tempos muito diferentes.": {
+    es: "Cada cliente nuevo va al agente que tiene menos conversaciones abiertas en ese momento, entre los que están disponibles y dentro del horario. Si hay empate, va a quien lleva más tiempo sin recibir. Útil cuando las conversaciones duran tiempos muy distintos.",
+  },
   "Atualizar o card": { es: "Actualizar la tarjeta" },
   "Atualizar o card (só interno)": { es: "Actualizar la tarjeta (solo interno)" },
   "move de etapa": { es: "mueve de etapa" },

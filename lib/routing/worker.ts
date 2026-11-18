@@ -18,7 +18,7 @@ import { logger } from "@/lib/logger";
 import { decideRouting } from "@/lib/routing/decide";
 import { lerQualificacaoDaIA } from "@/lib/routing/qualificacao-da-ia";
 import { loadEligibleAttendants, InvalidRoutingChannel } from "@/lib/routing/eligibles";
-import { routingConfigSchema } from "@/lib/schemas/routing";
+import { modoDistribuiSozinho, routingConfigSchema } from "@/lib/schemas/routing";
 import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const ROUTING_WORKER_KEY = "worker.routing.v1";
@@ -202,7 +202,7 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
       : false;
 
   let eligibles: Awaited<ReturnType<typeof loadEligibleAttendants>> = [];
-  if (!alreadyAssigned && !iaQualificando && config.mode === "round_robin") {
+  if (!alreadyAssigned && !iaQualificando && modoDistribuiSozinho(config.mode)) {
     try {
       eligibles = await loadEligibleAttendants(admin, orgId, now, {
         kind: "conversation_channel", channelSessionId: conv.channel_session_id,

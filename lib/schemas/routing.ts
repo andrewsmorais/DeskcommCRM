@@ -15,8 +15,13 @@ import { fusoValido } from "@/lib/tempo/fusos";
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Modos de roteamento no MVP (decisão G1-06b); "load" fica pós-MVP. */
-export const ROUTING_MODES = ["manual", "round_robin"] as const;
+export const ROUTING_MODES = ["manual", "round_robin", "least_load"] as const;
 export type RoutingMode = (typeof ROUTING_MODES)[number];
+
+/** Os modos em que o sistema escolhe o atendente (tudo menos o manual). */
+export function modoDistribuiSozinho(mode: string): boolean {
+  return mode === "round_robin" || mode === "least_load";
+}
 
 /**
  * organizations.settings.routing. Default mode = "manual" (round_robin é opt-in,
