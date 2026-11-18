@@ -36,6 +36,18 @@ export const TOOLS_GOVERNANCA = declararTools([
     pacotes: ["escalar", "atender"],
   },
   {
+    name: "crm_set_conversation_sector",
+    category: "write",
+    rotulo: "Passar a conversa para um setor",
+    explicacao:
+      "Passa a conversa para um setor de atendimento (Financeiro, Suporte…): a IA para de responder nela e a conversa vai para a fila das pessoas daquele setor, no horário dele.",
+    oQueToca: "Setores de atendimento",
+    risco: "atencao",
+    // Só "escalar": passar para um setor é passar para gente. Em "atender" o
+    // pacote passaria do teto de vagas (tests/unit/teto-do-atender-...).
+    pacotes: ["escalar"],
+  },
+  {
     name: "crm_manage_tags",
     category: "write",
     rotulo: "Aplicar marcadores",

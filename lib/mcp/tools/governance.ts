@@ -16,6 +16,7 @@ import { audit } from "@/lib/audit";
 import { normalizarTags } from "@/lib/contacts/tag-normalizada";
 import { conversationTagSchema, conversationTagsSchema } from "@/lib/schemas/messaging";
 import { getQueueStatus } from "@/lib/routing/queue";
+import { transferirParaSetor } from "@/lib/setores/servico";
 import type { McpContext } from "../types";
 import type { McpToolDefinition } from "../types";
 
@@ -228,6 +229,87 @@ export const crmManageTags: McpToolDefinition<typeof tagsInputShape> = {
     });
 
     return { target_kind: input.target_kind, target_id: input.target_id, tags: nextTags };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// crm_set_conversation_sector — a IA passa a conversa para um SETOR (O7, fatia 4)
+// ---------------------------------------------------------------------------
+
+const setSectorInputShape = {
+  conversation_id: z.string().uuid(),
+  /**
+   * O setor de destino, pelo NOME que aparece em Configurações › Setores
+   * ("Financeiro") ou pelo id. Nome porque é o que o prompt do agente fala;
+   * a comparação ignora maiúsculas e espaços nas pontas.
+   */
+  setor: z.string().trim().min(1).max(80).describe("nome do setor (ex.: Financeiro) ou o id dele"),
+};
+
+const UUID_DO_SETOR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const crmSetConversationSector: McpToolDefinition<typeof setSectorInputShape> = {
+  name: "crm_set_conversation_sector",
+  description:
+    "Passa a conversa para um SETOR de atendimento (ex.: Financeiro, Suporte): você para de " +
+    "responder nesta conversa e ela vai para a fila das pessoas daquele setor, respeitando o " +
+    "horário dele. Use quando o assunto é de um setor específico (boleto → Financeiro). Informe o " +
+    "nome do setor como está cadastrado. Se o nome não existir, a resposta lista os setores " +
+    "disponíveis. Avise o cliente antes que alguém do setor vai continuar o atendimento.",
+  inputSchema: setSectorInputShape,
+  category: "write",
+  requiresRole: "agent",
+  requiresScope: "mcp:write",
+  handler: async (input, ctx) => {
+    const { data: setores, error } = await ctx.supabase
+      .from("setores")
+      .select("id, nome")
+      .eq("organization_id", ctx.organizationId);
+    if (error) throw new Error(error.message);
+    const lista = (setores ?? []) as { id: string; nome: string }[];
+    if (lista.length === 0) throw new Error("sem_setores: esta empresa não tem setores cadastrados");
+    const alvo = input.setor.trim().toLowerCase();
+    const setor = UUID_DO_SETOR.test(alvo)
+      ? lista.find((s) => s.id.toLowerCase() === alvo)
+      : lista.find((s) => s.nome.trim().toLowerCase() === alvo);
+    if (!setor) {
+      throw new Error(`setor_nao_encontrado: use um destes — ${lista.map((s) => s.nome).join(", ")}`);
+    }
+
+    // Service role (a IA não tem sessão): a organização vem do contexto
+    // confiável, e a conversa e o setor são conferidos dentro dela.
+    const r = await transferirParaSetor(ctx.supabase, {
+      organizationId: ctx.organizationId,
+      conversationId: input.conversation_id,
+      setorId: setor.id,
+    });
+    if (!r.ok) throw new Error(r.erro);
+
+    const a = actorAudit(ctx);
+    await audit({
+      action: "conversation.setor_changed",
+      actorUserId: a.actorUserId,
+      actorApiTokenId: ctx.apiTokenId,
+      organizationId: ctx.organizationId,
+      resourceType: "conversation",
+      resourceId: input.conversation_id,
+      requestId: ctx.requestId,
+      metadata: {
+        ...a.metadataActor,
+        conversation_id: input.conversation_id,
+        setor_id: setor.id,
+        prev: r.setorAnterior,
+        soltou_dono: r.soltouDono,
+        via: "mcp",
+      },
+    });
+
+    return {
+      conversation_id: input.conversation_id,
+      setor_id: setor.id,
+      setor: setor.nome,
+      setor_anterior_id: r.setorAnterior,
+    };
   },
 };
 
