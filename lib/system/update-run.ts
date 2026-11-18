@@ -280,7 +280,11 @@ function semPrefixoV(versao: string): string {
  * nunca discordarem sobre o que é uma versão.
  */
 export function ehVersaoPublicada(versao: string | null | undefined): boolean {
-  return /^\d+\.\d+\.\d+/.test(semPrefixoV(versao ?? ""));
+  // Ancorada nas DUAS pontas (auditoria de 18/11, achado 3): sem o `$`,
+  // `1.0.0~1`, `1.0.0^` e `1.0.0..HEAD` passavam por versão publicada e viravam
+  // `--to` de um `update.sh` no host. Pré-release (`1.2.0-rc1`) também não é
+  // release publicada: não existe imagem com esse nome para voltar.
+  return /^\d+\.\d+\.\d+$/.test(semPrefixoV((versao ?? "").trim()));
 }
 
 /**

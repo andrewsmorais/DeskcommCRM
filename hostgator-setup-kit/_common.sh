@@ -816,6 +816,76 @@ vigia_encerrar() {
   return 0
 }
 
+# ── De onde esta instalação veio (auditoria de 18/11, achado 3) ───────────────
+#
+# A única versão para a qual o agente aceita VOLTAR quando o pedido vem do app
+# ("Voltar para a versão anterior" e "Forçar atualização"). Sem esta régua o
+# `to_version` do app escolhia qualquer versão antiga, e o agente acrescentava o
+# --force sozinho. Diferente da marca da vigília: esta não vence em duas horas —
+# o botão de voltar vale até a próxima troca de versão.
+#
+# Quem grava é o update.sh, numa ida para a FRENTE, com a versão que estava no ar.
+# Sem o arquivo (a ida foi feita por um update.sh anterior a este conserto), a
+# resposta sai do reflog do próprio git — que é do host, não do app: o último
+# "checkout: moving from X to Y" em que Y é o que roda agora.
+ORIGEM_ARQUIVO=".update-de-onde-vim"
+
+origem_registrar() {  # origem_registrar <versão que estava no ar antes da ida>
+  local de="${1:-}" arq tmp
+  [[ "$de" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+  arq="${PROJECT_DIR:?}/${ORIGEM_ARQUIVO}"
+  tmp="${arq}.tmp.$$"
+  printf '%s\n' "$de" > "$tmp" 2>/dev/null || return 0
+  mv "$tmp" "$arq" 2>/dev/null || true
+  return 0
+}
+
+# A régua do pedido de atualização que vem do app. Ecoa o MOTIVO da recusa
+# (em português, vai para a tela pelo log) ou nada quando o pedido pode seguir.
+# Sempre devolve 0: quem chama decide pelo texto.
+recusa_do_alvo_pedido() {  # <alvo> <tag atual> <release publicada> <volta: 1|vazio>
+  local alvo="${1:-}" atual="${2:-}" publicada="${3:-}" volta="${4:-}" origem
+  [ -n "$alvo" ] || return 0
+  if ! [[ "$alvo" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'O pedido trouxe um alvo que não é uma versão publicada (%s). Nada foi instalado.' "$(printf '%s' "$alvo" | head -c 60)"
+    return 0
+  fi
+  if [ -n "$volta" ]; then
+    origem="$(origem_ler)" || origem=""
+    if [ -z "$origem" ] || [ "${alvo#v}" != "${origem#v}" ]; then
+      printf 'Só dá para voltar para a versão de onde esta instalação veio%s; o pedido era para %s. Nada foi instalado. Quem tem acesso ao servidor pode voltar à mão: bash hostgator-setup-kit/update.sh --to %s --force' \
+        "${origem:+ ($origem)}" "$alvo" "$alvo"
+    fi
+    return 0
+  fi
+  [ "$alvo" != "$atual" ] || return 0
+  if [ -z "$publicada" ]; then
+    printf 'Não consegui confirmar agora qual é a versão publicada (o servidor não falou com o GitHub). Nada foi instalado; tente de novo em alguns minutos.'
+  elif [ "${alvo#v}" != "${publicada#v}" ]; then
+    printf 'O pedido era para %s, mas a versão publicada agora é %s. Nada foi instalado.' "$alvo" "$publicada"
+  fi
+  return 0
+}
+
+origem_ler() {  # ecoa a versão de origem (vX.Y.Z) | vazio
+  local arq="${PROJECT_DIR:?}/${ORIGEM_ARQUIVO}" de linha antes depois
+  de="$(head -n1 "$arq" 2>/dev/null || true)"
+  if [[ "$de" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf '%s' "$de"
+    return 0
+  fi
+  linha="$(git reflog --format='%gs' 2>/dev/null | grep -m1 '^checkout: moving from ' || true)"
+  [ -n "$linha" ] || return 0
+  antes="${linha#checkout: moving from }"
+  antes="${antes%% to *}"
+  depois="${linha##* to }"
+  # Só vale se a última troca é a que trouxe até aqui.
+  [ "$(git rev-parse --verify --quiet "${depois}^{commit}" 2>/dev/null)" = "$(git rev-parse HEAD 2>/dev/null)" ] || return 0
+  de="$(git describe --tags --exact-match "$antes" 2>/dev/null || true)"
+  [[ "$de" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] && printf '%s' "$de"
+  return 0
+}
+
 # O app está no ar no caminho que o DONO usa?
 #
 # É a mesma rota que o `healthcheck.sh` mostra ( `/api/v1/health`), batida

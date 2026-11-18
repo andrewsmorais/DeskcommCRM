@@ -167,6 +167,10 @@ CURRENT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 # instalá-la). O `git fetch --tags` acima continua necessário: a API decide
 # QUAL tag, o git fornece o CONTEÚDO dela (changelog, ancestralidade).
 LATEST_TAG="$(ultima_release_estavel)" || true
+# Guardada ANTES das zeragens abaixo (ancestralidade, imagem ausente): é a
+# régua do pedido de ATUALIZAR que vem do app (seção 4). O app diz QUANDO; qual
+# versão é publicada quem diz é este host.
+RELEASE_PUBLICADA="$LATEST_TAG"
 # "A API não respondeu" é diferente de "não há release". Sem esta distinção o
 # app leria o silêncio como boa notícia e diria "você está em dia" a uma
 # instalação atrasada — o mesmo defeito que COMPARE_FAILED já evita do outro
@@ -448,7 +452,26 @@ if [ -n "$ALVO" ] && [ "$ALVO" != "$CURRENT_TAG" ]; then
   is_already_in_head "$ALVO" && CONTIDA=0 || CONTIDA=$?
   [ "$CONTIDA" = 0 ] && VOLTA_NO_TEMPO=1
 fi
-[ -n "$VOLTA_NO_TEMPO" ] && UPDATE_ARGS+=(--force)
+
+# ── O app diz QUANDO; QUAL versão o host confere (auditoria de 18/11, achado 3)
+#
+# O `to_version` do pedido é escrito pelo app, e quem domina o app (a chave de
+# serviço, ou o segredo interno mais um clique do dono) escolhia qualquer coisa
+# que o git resolvesse: release velha, tag sem release, um SHA, `v1.1.0~1`,
+# `origin/main` — e o `--force` acima saía sozinho para qualquer alvo antigo,
+# reaplicando o baseline daquela versão por cima do banco de produção. O desenho
+# sempre foi "o app escolhe QUANDO, nunca O QUÊ"; estas três regras devolvem isso:
+#   1. só nome de versão (`vX.Y.Z`), nunca ref solta do git;
+#   2. para a FRENTE, só a release publicada que ESTE host consultou agora;
+#   3. para TRÁS (o único caso com --force), só a versão de onde esta
+#      instalação veio na última troca — gravada no disco pelo update.sh.
+# A régua mora em `recusa_do_alvo_pedido` (_common.sh), com teste próprio
+# (tests/shell/agente-so-instala-versao-publicada.test.sh).
+ALVO_RECUSADO="$(recusa_do_alvo_pedido "$ALVO" "$CURRENT_TAG" "$RELEASE_PUBLICADA" "$VOLTA_NO_TEMPO")" || ALVO_RECUSADO=""
+# Só a volta conferida leva --force (a régua acima já recusou qualquer outra).
+if [ -z "$ALVO_RECUSADO" ] && [ -n "$VOLTA_NO_TEMPO" ]; then
+  UPDATE_ARGS+=(--force)
+fi
 
 # Cada execução do agente começa sem medição nenhuma do banco: o arquivo da
 # rodada é desta rodada, e resíduo da execução anterior não pode virar história
@@ -456,6 +479,14 @@ fi
 # no _common.sh.
 export RODADA_DO_BANCO_ARQUIVO="${TMPDIR:-/tmp}/deskcomm-rodada-do-banco.$$"
 rm -f "$RODADA_DO_BANCO_ARQUIVO" 2>/dev/null || true
+if [ -n "$ALVO_RECUSADO" ]; then
+  # Recusa ANTES de tocar em qualquer coisa: o mesmo código de saída do
+  # `refuse` do update.sh, para o bloco de baixo não "voltar a imagem" de uma
+  # atualização que nunca começou. O motivo vai para a tela pelo log_tail.
+  log_err "pedido de atualização recusado: $ALVO_RECUSADO"
+  printf '%s\n' "$ALVO_RECUSADO" >"$LOG"
+  RC="$REFUSED_RC"
+else
 set +e
 DESKCOMM_AGENT_REPORT=1 \
 DESKCOMM_AGENT_PREV_IMAGE="$PREV_IMAGE" \
@@ -463,6 +494,7 @@ DESKCOMM_AGENT_REPORT_CMD="$(declare -f post report log_err); report" \
   bash "$(dirname "$0")/update.sh" "${UPDATE_ARGS[@]+"${UPDATE_ARGS[@]}"}" >"$LOG" 2>&1
 RC=$?
 set -e
+fi
 
 # ── 5. O app voltou? Se não, volta a imagem anterior. ───────────────────────
 STATUS="success"

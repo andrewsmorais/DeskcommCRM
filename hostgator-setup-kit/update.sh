@@ -242,6 +242,12 @@ if [ -n "$VOLTA_NO_TEMPO" ]; then
   c_ylw "Volta para a $TARGET_TAG — a vigência pós-atualização não re-arma: quem está voltando não vigia."
 else
   vigia_armar "$CURRENT_TAG"
+  # A versão de onde se saiu é a única para a qual o botão "Voltar" da tela
+  # pode trazer o servidor de volta (auditoria de 18/11, achado 3). Refazer a
+  # MESMA versão não é uma ida: a origem de verdade continua a anterior.
+  if [ -z "$MESMA_TAG" ]; then
+    origem_registrar "$CURRENT_TAG"
+  fi
 fi
 
 # ── 2. Backup de segurança ANTES de tocar no banco ───────────────────────────

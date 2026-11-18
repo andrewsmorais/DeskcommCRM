@@ -241,6 +241,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   // derivado (instalação fora de release) cai no `latest`, que é o que o
   // `update.sh --force` sem `--to` resolveria sozinho.
   const alvo = alvoDaForca || alvoDaVolta || latest;
+  // `latest_version` chega pelo heartbeat, que qualquer dono do segredo interno
+  // escreve. Só nome de versão publicada vira pedido (auditoria de 18/11,
+  // achado 3) — e o agente do host confere de novo, contra a release que ELE vê.
+  if (alvo && !ehVersaoPublicada(alvo)) {
+    return fail(
+      "state_conflict",
+      "A versão anunciada não é uma versão publicada. Nada foi pedido ao servidor.",
+      409,
+    );
+  }
 
   const { data: run, error } = await db
     .from("system_update_runs")

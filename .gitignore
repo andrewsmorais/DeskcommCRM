@@ -167,6 +167,7 @@ backups/
 # que faltam para o agente voltar sozinho. Estado da VPS.
 .update-vigia
 .update-vigia-falhas
+.update-de-onde-vim
 
 # Dump de banco de QA. A doutrina já estava escrita duas linhas acima e só o
 # PADRÃO faltava: `backups/` não casa com `.qa-backups/`, e um dump de 1,1 MB de

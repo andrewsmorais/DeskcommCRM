@@ -323,3 +323,16 @@ it("a força também obedece a cerca de atualização em andamento", async () =>
   expect(logger.info).not.toHaveBeenCalled();
   expect(mocks.audit).not.toHaveBeenCalled();
 });
+
+it("latest_version que não é nome de versão publicada não vira pedido ao host", async () => {
+  // Auditoria de 18/11, achado 3: o heartbeat (segredo interno) escreve
+  // latest_version; sem esta conferência, `1.0.0~1` virava to_version.
+  for (const envenenada of ["1.0.0~1", "origin/main", "1.0.0..HEAD"]) {
+    mocks.respostas.system_version = [
+      { data: { current_version: "1.1.0", latest_version: envenenada }, error: null },
+    ];
+    const response = await POST(new NextRequest("http://localhost/api/v1/system/update", { method: "POST" }));
+    expect(response.status).toBe(409);
+  }
+  expect(mocks.inseriu).not.toHaveBeenCalled();
+});
