@@ -50,6 +50,7 @@ export {
   Star,
   List,
   Bell,
+  DeviceMobile,
   BellSlash,
   EnvelopeSimple,
   PaperPlaneTilt,

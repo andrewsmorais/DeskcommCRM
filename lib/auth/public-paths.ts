@@ -140,7 +140,7 @@ export const PUBLIC_PATHS: RegExp[] = [
   // `/icon.png` (inexistente) devolvia 404 — a diferença é só a extensão.
   /^\/icon$/,
   // PNGs públicos do app instalado, apenas dois tamanhos e somente marca da instalação.
-  /^\/app-icon\/(192|512)$/,
+  /^\/app-icon\/(180|192|512|maskable)$/,
   /^\/manifest\.webmanifest$/,
   /^\/team\/accept-invite\/.+$/,
   /^\/account-suspended$/,
