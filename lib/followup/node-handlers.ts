@@ -865,6 +865,14 @@ export function processNode(input: {
       return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
     }
 
+    case "crm_update": {
+      // Como o `internal_task`: o nó só avança; quem escreve no card é o engine
+      // ao aplicar o `advance` (`atualizarCard`), guardado pelo idempotency_key.
+      const edge = selectEdge(edges, node.id, { type: "always" });
+      if (!edge) return { kind: "fail", error: `crm_update node "${node.id}" has no outbound edge` };
+      return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+    }
+
     case "end": {
       if (node.config.outcome === "custom") {
         return { kind: "complete", outcome: null, cancel_reason: node.config.note };

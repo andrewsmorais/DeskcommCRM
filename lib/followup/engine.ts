@@ -54,6 +54,7 @@ import {
 } from "./no-show-recuperacao-esgotada";
 import { interpolarDestino, persistirRespostaFollowupSupabase } from "./persistir-resposta";
 import { criarTarefaInterna as criarTarefaNoCrm } from "@/lib/tarefas/criar-tarefa";
+import { moveLeadHandler } from "@/app/api/v1/leads/_handler";
 import { quandoDoRetornoVivo, reavaliarDepoisDoRetorno } from "./retorno-segura-o-fluxo";
 import { triggerConfigSchema } from "./api-schemas";
 
@@ -180,6 +181,16 @@ export interface AdminClient {
    * criar tarefa (nunca trava o tick), e é isso que um teste de engine puro
    * deve poder observar.
    */
+  /**
+   * Nó `crm_update`: move o negócio do contato e/ou mexe nas etiquetas. Opcional
+   * pelo mesmo motivo de `criarTarefaInterna`.
+   */
+  atualizarCard?(item: {
+    organization_id: string;
+    contact_id: string;
+    enrollment_id: string;
+    config: Extract<FlowNode, { type: "crm_update" }>["config"];
+  }): Promise<void>;
   criarTarefaInterna?(item: {
     organization_id: string;
     contact_id: string;
@@ -461,6 +472,25 @@ async function applyResult(
       // de novo no tick seguinte e tentaria a MESMA tarefa — a trava é o
       // evento, que já está gravado). O warn é o que o suporte lê.
       logger.warn("followup_internal_task_failed", {
+        organization_id: enrollment.organization_id,
+        enrollment_id: enrollment.id,
+        node_id: node.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Nó `crm_update`: mesma trava do lembrete interno (evento já gravado).
+  if (result.kind === "advance" && !isReplay && node.type === "crm_update") {
+    try {
+      await db.atualizarCard?.({
+        organization_id: enrollment.organization_id,
+        contact_id: enrollment.contact_id,
+        enrollment_id: enrollment.id,
+        config: node.config,
+      });
+    } catch (err) {
+      logger.warn("followup_crm_update_failed", {
         organization_id: enrollment.organization_id,
         enrollment_id: enrollment.id,
         node_id: node.id,
@@ -1104,6 +1134,89 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
         ref_id: item.ref_id,
       });
       if (error) throw new Error(error.message);
+    },
+    async atualizarCard(item) {
+      // Mesmo negócio que o lembrete interno resolve: o mais recente do contato.
+      const { data: lead, error: leadErr } = await admin
+        .from("crm_leads")
+        .select("id, pipeline_id, stage_id, tags")
+        .eq("organization_id", item.organization_id)
+        .eq("contact_id", item.contact_id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (leadErr) throw new Error(leadErr.message);
+      const card = lead as { id: string; pipeline_id: string; stage_id: string; tags: string[] | null } | null;
+      if (!card) {
+        logger.warn("followup_crm_update_skipped", {
+          organization_id: item.organization_id,
+          enrollment_id: item.enrollment_id,
+          motivo: "sem_negocio",
+        });
+        return;
+      }
+
+      // 1) Etiquetas. Tirar usa a função do banco (a lista é refeita dentro do
+      //    UPDATE); pôr junta com o que está gravado agora.
+      if (item.config.remover_etiquetas.length) {
+        const { error } = await admin.rpc("fn_lead_remover_etiquetas", {
+          p_org: item.organization_id,
+          p_lead: card.id,
+          p_etiquetas: item.config.remover_etiquetas,
+        });
+        if (error) throw new Error(error.message);
+      }
+      if (item.config.adicionar_etiquetas.length) {
+        const { data: atual, error: tagsErr } = await admin
+          .from("crm_leads")
+          .select("tags")
+          .eq("id", card.id)
+          .eq("organization_id", item.organization_id)
+          .maybeSingle();
+        if (tagsErr) throw new Error(tagsErr.message);
+        const tags = ((atual as { tags: string[] | null } | null)?.tags ?? []).map(String);
+        const chaves = new Set(tags.map((t) => t.trim().toLowerCase()));
+        const novas = item.config.adicionar_etiquetas.filter((t) => !chaves.has(t.trim().toLowerCase()));
+        if (novas.length) {
+          const { error } = await admin
+            .from("crm_leads")
+            .update({ tags: [...tags, ...novas], updated_at: new Date().toISOString() })
+            .eq("id", card.id)
+            .eq("organization_id", item.organization_id);
+          if (error) throw new Error(error.message);
+        }
+      }
+
+      // 2) Etapa. Só dentro do mesmo funil: levar o card a outro funil é
+      //    decisão de outra ação (clonar), não de um passo de follow-up.
+      if (item.config.etapa_id && item.config.etapa_id !== card.stage_id) {
+        const { data: etapa, error: etapaErr } = await admin
+          .from("crm_stages")
+          .select("id, pipeline_id")
+          .eq("id", item.config.etapa_id)
+          .eq("organization_id", item.organization_id)
+          .maybeSingle();
+        if (etapaErr) throw new Error(etapaErr.message);
+        const destino = etapa as { id: string; pipeline_id: string } | null;
+        if (!destino || destino.pipeline_id !== card.pipeline_id) {
+          logger.warn("followup_crm_update_skipped", {
+            organization_id: item.organization_id,
+            enrollment_id: item.enrollment_id,
+            motivo: destino ? "outro_funil" : "etapa_inexistente",
+          });
+          return;
+        }
+        await moveLeadHandler(
+          admin,
+          {
+            organization_id: item.organization_id,
+            actor: { type: "webhook_source", id: item.enrollment_id },
+            requestId: `followup:${item.enrollment_id}`,
+          },
+          card.id,
+          { to_stage_id: destino.id },
+        );
+      }
     },
     async criarTarefaInterna(item) {
       // O negócio NÃO vem na inscrição (migration 0054 guarda o contato), então

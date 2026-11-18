@@ -134,6 +134,7 @@ const TIPO_DO_NO: Record<FlowNode["type"], string> = {
   action: "Mensagem",
   // #1540 — não é "Mensagem": é o passo que NÃO fala com o cliente.
   internal_task: "Lembrete interno",
+  crm_update: "Atualizar o card",
   end: "Fim",
 };
 
@@ -201,6 +202,13 @@ export function resumoDoNo(node: FlowNode): NoDoDossie {
     case "internal_task": {
       const prazo = node.config.vence_em_dias === 0 ? "hoje" : `em ${node.config.vence_em_dias} dia(s)`;
       return { ...base, resumo: `cria a tarefa "${node.config.titulo}" para ${prazo} — sem mensagem ao cliente` };
+    }
+    case "crm_update": {
+      const partes: string[] = [];
+      if (node.config.etapa_id) partes.push("move o card de etapa");
+      if (node.config.adicionar_etiquetas.length) partes.push(`põe ${node.config.adicionar_etiquetas.join(", ")}`);
+      if (node.config.remover_etiquetas.length) partes.push(`tira ${node.config.remover_etiquetas.join(", ")}`);
+      return { ...base, resumo: `${partes.join(" e ")} — sem mensagem ao cliente` };
     }
     case "end":
       return { ...base, resumo: `encerra — ${DESFECHO[node.config.outcome] ?? node.config.outcome}` };

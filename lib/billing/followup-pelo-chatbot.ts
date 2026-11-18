@@ -36,6 +36,7 @@ export function problemasDoFollowupPeloChatbot(graph: FlowGraph, gatilho: string
     switch (no.type) {
       case "trigger":
       case "internal_task":
+      case "crm_update":
         break;
       case "wait":
         if (no.config.mode !== "fixed")

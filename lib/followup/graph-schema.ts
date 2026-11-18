@@ -21,6 +21,9 @@ export const NODE_TYPES = [
   // que advocacia, saúde e serviços regulados precisam — o sistema lembra a
   // equipe, a mensagem sai de uma pessoa.
   'internal_task',
+  // Atualizar o card: move o negócio de etapa e/ou põe e tira etiquetas. Como o
+  // lembrete interno, NÃO fala com o cliente.
+  'crm_update',
   'end',
 ] as const;
 export type NodeType = (typeof NODE_TYPES)[number];
@@ -308,6 +311,19 @@ export const internalTaskConfigSchema = z.strictObject({
 });
 
 /**
+ * Nó `crm_update` ("Atualizar o card"): move o negócio do contato para uma
+ * etapa e/ou grava e tira etiquetas nele. Pelo menos uma das três coisas — a conferência de publicar cobra isso (rascunho vazio é permitido).
+ * `pipeline_id` só serve à tela (escolher funil antes da etapa); quem manda é
+ * `etapa_id`.
+ */
+export const crmUpdateConfigSchema = z.strictObject({
+  pipeline_id: z.string().uuid().optional(),
+  etapa_id: z.string().uuid().optional(),
+  adicionar_etiquetas: z.array(z.string().trim().min(1).max(60)).max(10).default([]),
+  remover_etiquetas: z.array(z.string().trim().min(1).max(60)).max(10).default([]),
+});
+
+/**
  * One rule of a `condition` node. In `branching: 'per_check'` it IS a branch,
  * so it carries the stable id an edge references and the label the handle shows
  * — identity lives on the rule itself, never in a parallel array that would
@@ -551,6 +567,17 @@ export const flowNodeSchema = z.discriminatedUnion('type', [
       y: z.number(),
     }),
     config: internalTaskConfigSchema,
+  }),
+  // CRM update node: moves the card and/or edits its tags, never messages
+  z.strictObject({
+    id: z.string().min(1),
+    type: z.literal('crm_update'),
+    label: z.string().min(1).max(60),
+    position: z.strictObject({
+      x: z.number(),
+      y: z.number(),
+    }),
+    config: crmUpdateConfigSchema,
   }),
   // End node: terminal state
   z.strictObject({

@@ -18,6 +18,7 @@ import { CollectForm } from "./forms/CollectForm";
 import { ConditionForm } from "./forms/ConditionForm";
 import { EndForm } from "./forms/EndForm";
 import { InternalTaskForm } from "./forms/InternalTaskForm";
+import { CrmUpdateForm } from "./forms/CrmUpdateForm";
 import { MatchReplyForm } from "./forms/MatchReplyForm";
 import { RepeatForm } from "./forms/RepeatForm";
 import { SkillForm } from "./forms/SkillForm";
@@ -155,6 +156,12 @@ export function NodeConfigPanel({
         {type === "internal_task" && (
           <InternalTaskForm
             config={node.data.config as ConfigOf<"internal_task">}
+            onChange={(config) => onChange({ config })}
+          />
+        )}
+        {type === "crm_update" && (
+          <CrmUpdateForm
+            config={node.data.config as ConfigOf<"crm_update">}
             onChange={(config) => onChange({ config })}
           />
         )}

@@ -39,6 +39,7 @@ describe('graph-schema', () => {
         'skill',
         'action',
         'internal_task',
+        'crm_update',
         'end',
       ]);
     });

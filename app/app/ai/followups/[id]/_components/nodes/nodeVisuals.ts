@@ -165,6 +165,15 @@ export const NODE_VISUALS: Record<NodeType, NodeVisual> = {
       prioridade: "medium",
     }),
   },
+  crm_update: {
+    type: "crm_update",
+    paletteLabel: "Atualizar o card",
+    icon: Flag,
+    chipClassName: "bg-warning-bg text-warning-fg",
+    borderClassName: "border-l-warning",
+    defaultLabel: "Atualizar o card (só interno)",
+    defaultConfig: () => ({ adicionar_etiquetas: [], remover_etiquetas: [] }),
+  },
   end: {
     type: "end",
     paletteLabel: "Fim",
@@ -262,6 +271,14 @@ export function describeNodeConfig(
       const c = config as ConfigOf<"internal_task">;
       const prazo = c.vence_em_dias === 0 ? t("hoje") : `+${c.vence_em_dias}d`;
       return `${c.titulo} · ${prazo} · ${t("sem mensagem ao cliente")}`;
+    }
+    case "crm_update": {
+      const c = config as ConfigOf<"crm_update">;
+      const partes: string[] = [];
+      if (c.etapa_id) partes.push(t("move de etapa"));
+      if (c.adicionar_etiquetas?.length) partes.push(`+ ${c.adicionar_etiquetas.join(", ")}`);
+      if (c.remover_etiquetas?.length) partes.push(`− ${c.remover_etiquetas.join(", ")}`);
+      return `${partes.join(" · ") || t("escolha o que mudar")} · ${t("sem mensagem ao cliente")}`;
     }
     case "end": {
       const c = config as ConfigOf<"end">;
