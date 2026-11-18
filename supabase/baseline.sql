@@ -48189,11 +48189,9 @@ comment on column public.conversations.is_private is
 
 -- (a função fn_can_view_conversation de 3 argumentos mora ANTES da varredura de anon; ver lá)
 
-drop policy if exists "conversations_select" on public.conversations;
-create policy "conversations_select" on public.conversations
-  for select using (
-    public.fn_can_view_conversation(organization_id, assigned_to_user_id, is_private)
-  );
+-- (conversations_select com a privacidade: a definição que vale é a da
+-- migration 0544, no fim do arquivo — ela inclui esta regra e os ramos do setor
+-- e do convite. Uma intermediária aqui rodaria a cada update.)
 
 do $conversa_privada$
 declare
