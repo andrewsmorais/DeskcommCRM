@@ -537,7 +537,13 @@ export async function patchConversationHandler(
   const observed = input.status !== undefined
     ? await getConversationHandler(supabase, ctx, conversationId)
     : null;
-  if (observed) await exigirControleDaConversa(supabase, ctx, observed);
+  // `SELECT_COLS` lê `is_private`; o tipo `Conversation` a declara opcional.
+  if (observed) {
+    await exigirControleDaConversa(supabase, ctx, {
+      assigned_to_user_id: observed.assigned_to_user_id,
+      is_private: observed.is_private ?? null,
+    });
+  }
 
   /**
    * O ATALHO `status='claimed'` PASSA PELA RPC, e não escreve o dono aqui.
