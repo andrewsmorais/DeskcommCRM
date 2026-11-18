@@ -1134,6 +1134,7 @@ export const AUDIT_ACTIONS = [
   // CRM B2B fase 1 — companies / people / import (migration 0239)
   "companies.created",
   "companies.updated",
+  "companies.deleted",
   "companies.enriched",
   "people.created",
   "people.updated",
