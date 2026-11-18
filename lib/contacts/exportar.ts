@@ -28,6 +28,7 @@
  */
 import type { ModoDeEtiqueta } from "@/lib/inbox/marcador-da-conversa";
 import { marcadoresEscolhidos } from "@/lib/inbox/marcador-da-conversa";
+import { pareceFormula } from "@/lib/exportacao/csv";
 
 /**
  * As colunas que o importer reconhece (`HEADER_ALIASES` em
@@ -64,7 +65,10 @@ export interface ContatoParaExportar {
 /** RFC 4180 — a MESMA regra de escape do export de auditoria. */
 function csvEscape(valor: unknown): string {
   if (valor === null || valor === undefined) return "";
-  const texto = typeof valor === "string" ? valor : String(valor);
+  let texto = typeof valor === "string" ? valor : String(valor);
+  // Auditoria 18/11 (achado 15): nome/e-mail vêm do cliente final; célula que
+  // começa como fórmula vira fórmula na planilha do dono. Telefone `+55…` passa.
+  if (pareceFormula(texto)) texto = `'${texto}`;
   if (/[",\n\r]/.test(texto)) return `"${texto.replace(/"/g, '""')}"`;
   return texto;
 }

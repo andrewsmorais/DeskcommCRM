@@ -251,3 +251,19 @@ describe("a query do export é a da tela", () => {
     expect(comUma.has("pessoais")).toBe(false);
   });
 });
+
+describe("csvDosContatos — célula que começa como fórmula (auditoria 18/11, achado 15)", () => {
+  it("nome e e-mail com =, @, + e - viram texto; telefone e número negativo ficam", () => {
+    const csv = csvDosContatos([
+      { name: '=HYPERLINK("http://x","a")', email: "@soma", phone_number: "+5511999990000", cpf: "-12" },
+      { name: "+cmd|' /C calc'!A0", email: "-cmd" },
+    ]);
+    const linhas = csv.split("\n");
+    expect(linhas[1]).toContain(`"'=HYPERLINK(""http://x"",""a"")"`);
+    expect(linhas[1]).toContain("'@soma");
+    expect(linhas[1]).toContain("+5511999990000");
+    expect(linhas[1]).not.toContain("'+5511");
+    expect(linhas[2]).toContain("'+cmd");
+    expect(linhas[2]).toContain("'-cmd");
+  });
+});

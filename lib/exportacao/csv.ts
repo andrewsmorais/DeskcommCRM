@@ -18,7 +18,7 @@ export const SEPARADOR = ";";
 export const BOM = "﻿";
 const QUEBRA = "\r\n";
 
-function pareceFormula(texto: string): boolean {
+export function pareceFormula(texto: string): boolean {
   const c = texto[0];
   if (c === "=" || c === "@" || c === "\t" || c === "\r") return true;
   if (c === "+" || c === "-") return !/^[+-][\d\s.()]/.test(texto);
