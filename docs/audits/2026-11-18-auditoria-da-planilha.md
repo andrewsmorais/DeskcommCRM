@@ -2,6 +2,8 @@
 
 > Escrito em português simples para o dono do projeto. Os detalhes técnicos completos (passo a passo de reprodução, linhas de código, conserto proposto) estão em `FINDINGS-DETAIL.md` e `NEEDS-VALIDATION.md`, que ficam em inglês porque são para quem vai consertar.
 
+> **Situação dos consertos (18/11, depois do relatório):** consertados os achados **1 a 8, 17 e 18** — o alto, os 7 médios e os 2 baixos da leitura de XLSX —, um commit por achado na branch `chataionline/seguranca-auditoria` (de `67bbe3ade` a `4fb9953a2`, mais quatro ajustes que a suíte inteira pediu: `af10fb3df`, `c5eb9668f`, `3dbf21fd1`, `318d2e740`). Migrations novas: **0554** (achado 4) e **0555** (achado 5). Faltam os baixos **9 a 16 e 19**, as 2 pistas da seção 5 e o ponto adiado da seção 7. O andamento fica na aba "Auditoria 18/11" da planilha do plano.
+
 ## 1. Como esta rodada foi feita
 
 - **O que foi auditado:** só o que entrou pela planilha do plano (itens O1 a O9 e S1 a S8). Tecnicamente: a diferença entre o commit `d823c3914` e o `2e656d9bf` da branch `chataionline/seguranca-auditoria`, cerca de 485 arquivos de produção. **É uma auditoria parcial:** o resto do sistema, que já existia antes, não foi olhado de novo aqui. Além disso, **um ponto da própria planilha ficou adiado** por orçamento (a conferência "tem WhatsApp?" da prospecção; ver seção 7).
