@@ -70,6 +70,15 @@ export type ActionItem =
         mensagem: string;
         destinatario: "dono_do_lead" | "gerentes" | { usuario_id: string };
       };
+    }
+  // E-mail: ao contato (com as guardas de recusa) ou à equipe.
+  | {
+      type: "send_email";
+      config: {
+        assunto: string;
+        mensagem: string;
+        destinatario: "contato" | "dono_do_lead" | "gerentes" | { usuario_id: string };
+      };
     };
 
 export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
@@ -100,6 +109,8 @@ export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
       };
     case "notify_team":
       return { type, config: { mensagem: "", destinatario: "dono_do_lead" } };
+    case "send_email":
+      return { type, config: { assunto: "", mensagem: "", destinatario: "contato" } };
   }
 }
 
@@ -591,6 +602,73 @@ function NotifyTeamForm({
   );
 }
 
+/** `send_email` — e-mail ao contato (com as guardas de recusa) ou à equipe. */
+function SendEmailForm({
+  config,
+  onChange,
+}: FormProps<{
+  assunto: string;
+  mensagem: string;
+  destinatario: "contato" | "dono_do_lead" | "gerentes" | { usuario_id: string };
+}>) {
+  const t = useT();
+  const { data: members } = useAssignableMembers(true);
+  const escolhido =
+    typeof config.destinatario === "object" ? config.destinatario.usuario_id : config.destinatario;
+  return (
+    <div className="grid gap-2">
+      <div className="space-y-1">
+        <Label>{t("Enviar para")}</Label>
+        <Select
+          value={escolhido}
+          onValueChange={(v) =>
+            onChange({
+              ...config,
+              destinatario:
+                v === "contato" || v === "dono_do_lead" || v === "gerentes" ? v : { usuario_id: v },
+            })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("O contato")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="contato">{t("O contato (pelo e-mail dele)")}</SelectItem>
+            <SelectItem value="dono_do_lead">{t("Dono do negócio")}</SelectItem>
+            <SelectItem value="gerentes">{t("Todos os gerentes")}</SelectItem>
+            {(members ?? []).map((m) => (
+              <SelectItem key={m.user_id} value={m.user_id}>
+                {m.full_name ?? m.user_id.slice(0, 8)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Assunto")}</Label>
+        <Input
+          value={config.assunto}
+          maxLength={150}
+          onChange={(e) => onChange({ ...config, assunto: e.target.value })}
+          placeholder={t("Seu pedido, {{contact.name}}")}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Mensagem")}</Label>
+        <Textarea
+          value={config.mensagem}
+          maxLength={3000}
+          onChange={(e) => onChange({ ...config, mensagem: e.target.value })}
+          placeholder={t("Olá {{contact.name}}, ...")}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("Precisa do e-mail da instalação ligado (Configurações). Quem recusou contato, está bloqueado ou é marcado como pessoal não recebe. Sem e-mail no cadastro, nada é enviado.")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function CallWebhookForm({
   config,
   onChange,
@@ -854,6 +932,13 @@ export function ActionConfigForm({
     case "notify_team":
       return (
         <NotifyTeamForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "send_email":
+      return (
+        <SendEmailForm
           config={action.config}
           onChange={(config) => onChange({ type: action.type, config })}
         />

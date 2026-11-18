@@ -183,6 +183,21 @@ export const actionSchema = z.discriminatedUnion("type", [
       ]),
     }),
   }),
+  // "Enviar e-mail": destinatário numa escolha FECHADA (nunca um endereço livre).
+  z.object({
+    type: z.literal("send_email"),
+    config: z.object({
+      /** Aceita `{{contact.name}}` e `{{lead.title}}`. */
+      assunto: z.string().min(1).max(150),
+      mensagem: z.string().min(1).max(3000),
+      destinatario: z.union([
+        z.literal("contato"),
+        z.literal("dono_do_lead"),
+        z.literal("gerentes"),
+        z.object({ usuario_id: z.string().uuid() }),
+      ]),
+    }),
+  }),
   z.object({
     type: z.literal("start_message_flow"),
     config: z.object({ flow_pointer_id: z.string().uuid() }),
