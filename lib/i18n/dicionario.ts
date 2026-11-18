@@ -19929,6 +19929,12 @@ export const DICIONARIO: Traducoes = {
       es: "Cuando la conversación pasa a una persona, el valor que este campo tiene en la tarjeta aparece en el resumen de la transferencia. Desactivado por defecto.",
     },
   "Exemplo para a IA": { es: "Ejemplo para la IA" },
+  "Conversa nova vira card numa etapa que eu escolho": { es: "La conversación nueva se vuelve tarjeta en una etapa que yo elijo" },
+  "Vale para o funil de entrada. Desligado, a conversa nova vira card na primeira etapa aberta.": { es: "Vale para el embudo de entrada. Desactivado, la conversación nueva se vuelve tarjeta en la primera etapa abierta." },
+  "Tags a tirar (separadas por vírgula)": { es: "Etiquetas a quitar (separadas por coma)" },
+  "Tirar de onde": { es: "Quitar de dónde" },
+  "Do negócio (card)": { es: "Del negocio (tarjeta)" },
+  "Do contato": { es: "Del contacto" },
   "Conversa marcada como exemplo para a IA.": { es: "Conversación marcada como ejemplo para la IA." },
   "A conversa deixou de ser exemplo para a IA.": { es: "La conversación dejó de ser ejemplo para la IA." },
   'Para não depender do dado, ponha um texto de reserva: {{primeiro_nome|"aluno"}}.': {

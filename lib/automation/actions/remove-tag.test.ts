@@ -12,7 +12,6 @@ import { describe, expect, it } from "vitest";
 
 import { getAction } from "@/lib/automation/actions";
 import "@/lib/automation/actions/register-all";
-import { statusDoRun } from "@/lib/automation/engine";
 import type { ActionCtx } from "@/lib/automation/types";
 
 const chave = (t: string) => t.trim().toLowerCase();
