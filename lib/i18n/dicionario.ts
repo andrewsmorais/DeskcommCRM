@@ -19453,6 +19453,12 @@ export const DICIONARIO: Traducoes = {
   },
   "Vazio = padrão da instalação": { es: "Vacío = predeterminado de la instalación" },
   "Agenda do celular": { es: "Agenda del celular" },
+  "Atende:": { es: "Atiende:" },
+  "Fora do horário, a conversa deste setor não é entregue a ninguém: ela espera na Fila e é entregue quando o setor abre.": { es: "Fuera del horario, la conversación de este sector no se entrega a nadie: espera en la Cola y se entrega cuando el sector abre." },
+  "fim": { es: "fin" },
+  "início": { es: "inicio" },
+  "Este setor só atende em alguns horários": { es: "Este sector solo atiende en algunos horarios" },
+  "Marque pelo menos um dia, com o início antes do fim.": { es: "Marca al menos un día, con el inicio antes del fin." },
   "O atendente vê a própria carteira e as conversas que estão no setor dele, inclusive as que estão com um colega do mesmo setor — bom para cobrir férias e ausências. As conversas dos outros setores continuam fora do alcance dele.": {
     es: "El agente ve su propia cartera y las conversaciones que están en su sector, incluso las que están con un compañero del mismo sector — útil para cubrir vacaciones y ausencias. Las conversaciones de los otros sectores siguen fuera de su alcance.",
   },
@@ -19873,6 +19879,7 @@ export const DICIONARIO: Traducoes = {
   "Convida um colega para atender junto — o responsável pela conversa não muda.": { es: "Invita a un colega a atender en conjunto — el responsable de la conversación no cambia." },
   "O convidado passa a ver esta conversa e as mensagens dela, e pode responder junto. O responsável pela conversa continua o mesmo.": { es: "El invitado pasa a ver esta conversación y sus mensajes, y puede responder en conjunto. El responsable de la conversación sigue siendo el mismo." },
   "Não foi possível convidar agora. Tente de novo.": { es: "No se pudo invitar ahora. Inténtalo de nuevo." },
+  "Horário do setor": { es: "Horario del sector" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },

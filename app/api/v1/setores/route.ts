@@ -75,7 +75,12 @@ export async function POST(req: NextRequest): Promise<Response> {
   const db = await createClient();
   const { data, error } = await db
     .from("setores")
-    .insert({ organization_id: orgId, nome: input.nome, descricao: input.descricao ?? null })
+    .insert({
+      organization_id: orgId,
+      nome: input.nome,
+      descricao: input.descricao ?? null,
+      ...(input.horario ? { horario: input.horario } : {}),
+    })
     .select("id, nome, descricao")
     .single();
   if (error) {

@@ -75,6 +75,7 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const mudancas: Record<string, unknown> = {};
   if (input.nome !== undefined) mudancas.nome = input.nome;
   if (input.descricao !== undefined) mudancas.descricao = input.descricao ?? null;
+  if (input.horario !== undefined) mudancas.horario = input.horario;
   if (Object.keys(mudancas).length > 0) {
     mudancas.updated_at = new Date().toISOString();
     const { error } = await db

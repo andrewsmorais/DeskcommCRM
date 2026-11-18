@@ -49955,3 +49955,16 @@ do $participacoes_realtime$ begin
 end $participacoes_realtime$;
 
 do $f$ begin perform public.fn_aplicar_travas_de_suporte(); end $f$;
+
+-- ---- horário por setor (migration 0545) ----
+-- Fatia 3 do O7 (docs/chataionline/o7-setores-fila.md). Adaptado do produto
+-- original (9062 de lá: `attendant_sectors.schedule`) ao modelo daqui (0496).
+alter table public.setores
+  add column if not exists horario jsonb not null default '{}'::jsonb;
+
+alter table public.setores drop constraint if exists setores_horario_objeto;
+alter table public.setores add constraint setores_horario_objeto
+  check (jsonb_typeof(horario) = 'object');
+
+comment on column public.setores.horario is
+  'Horário do setor ({timezone, windows:[{dow,start,end}]}, o mesmo formato de attendant_availability.schedule). {} = qualquer hora. Fora dele a distribuição (lib/routing/eligibles.ts) não entrega a conversa do setor: ela espera na Fila. Migration 0545.';

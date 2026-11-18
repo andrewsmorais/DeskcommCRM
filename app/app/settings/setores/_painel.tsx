@@ -15,14 +15,54 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
 import type { SetorComMembros } from "@/lib/setores/servico";
 
 type Pessoa = { id: string; nome: string };
-type Rascunho = { id: string | null; nome: string; descricao: string; membros: string[] };
+type Dia = { aberto: boolean; inicio: string; fim: string };
+type Rascunho = {
+  id: string | null;
+  nome: string;
+  descricao: string;
+  membros: string[];
+  /** Horário do setor (migration 0545): desligado = atende a qualquer hora. */
+  comHorario: boolean;
+  fuso: string | null;
+  dias: Dia[];
+};
 
-const VAZIO: Rascunho = { id: null, nome: "", descricao: "", membros: [] };
+/** Domingo = 0, como `getDay` e como a jornada do atendente. */
+const DIAS_DA_SEMANA = [1, 2, 3, 4, 5, 6, 0] as const;
+
+function diasPadrao(): Dia[] {
+  return Array.from({ length: 7 }, (_, dow) => ({
+    aberto: dow >= 1 && dow <= 5,
+    inicio: "08:00",
+    fim: "18:00",
+  }));
+}
+
+/** O horário gravado vira o rascunho da tela: um intervalo por dia (o primeiro). */
+function diasDoHorario(horario: SetorComMembros["horario"]): Dia[] {
+  const dias = diasPadrao().map((d) => ({ ...d, aberto: false }));
+  for (const w of horario?.windows ?? []) {
+    const d = dias[w.dow];
+    if (d && !d.aberto) dias[w.dow] = { aberto: true, inicio: w.start, fim: w.end };
+  }
+  return dias;
+}
+
+const VAZIO: Rascunho = {
+  id: null,
+  nome: "",
+  descricao: "",
+  membros: [],
+  comHorario: false,
+  fuso: null,
+  dias: diasPadrao(),
+};
 
 export function PainelDeSetores({
   setores,
@@ -32,6 +72,16 @@ export function PainelDeSetores({
   atendentes: Pessoa[];
 }) {
   const t = useT();
+  const { activeOrg } = useAuth();
+  const nomeDoDia: Record<number, string> = {
+    0: t("Dom"),
+    1: t("Seg"),
+    2: t("Ter"),
+    3: t("Qua"),
+    4: t("Qui"),
+    5: t("Sex"),
+    6: t("Sáb"),
+  };
   const router = useRouter();
   const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const [apagando, setApagando] = useState<string | null>(null);
@@ -41,10 +91,21 @@ export function PainelDeSetores({
   function salvar(e: React.FormEvent) {
     e.preventDefault();
     if (!rascunho) return;
+    const fuso = rascunho.fuso ?? activeOrg?.timezone ?? "America/Sao_Paulo";
+    const janelas = rascunho.comHorario
+      ? rascunho.dias.flatMap((d, dow) =>
+          d.aberto && d.inicio < d.fim ? [{ dow, start: d.inicio, end: d.fim }] : [],
+        )
+      : [];
+    if (rascunho.comHorario && janelas.length === 0) {
+      toast.error(t("Marque pelo menos um dia, com o início antes do fim."));
+      return;
+    }
     const corpo = {
       nome: rascunho.nome,
       descricao: rascunho.descricao.trim() ? rascunho.descricao : null,
       membros: rascunho.membros,
+      horario: { timezone: fuso, windows: janelas },
     };
     startTransition(async () => {
       try {
@@ -142,6 +203,66 @@ export function PainelDeSetores({
                 )}
               </p>
             </fieldset>
+            <fieldset className="space-y-2" data-testid="horario-do-setor">
+              <legend className="text-sm font-medium">{t("Horário do setor")}</legend>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={rascunho.comHorario}
+                  onChange={(e) => setRascunho({ ...rascunho, comHorario: e.target.checked })}
+                  data-testid="setor-com-horario"
+                />
+                {t("Este setor só atende em alguns horários")}
+              </label>
+              {rascunho.comHorario ? (
+                <div className="space-y-1">
+                  {DIAS_DA_SEMANA.map((dow) => {
+                    const d = rascunho.dias[dow]!;
+                    const mudar = (novo: Partial<Dia>) =>
+                      setRascunho({
+                        ...rascunho,
+                        dias: rascunho.dias.map((x, i) => (i === dow ? { ...x, ...novo } : x)),
+                      });
+                    return (
+                      <div key={dow} className="flex flex-wrap items-center gap-2 text-sm">
+                        <label className="flex w-20 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-primary"
+                            checked={d.aberto}
+                            onChange={(e) => mudar({ aberto: e.target.checked })}
+                          />
+                          {nomeDoDia[dow]}
+                        </label>
+                        <Input
+                          type="time"
+                          className="h-8 w-28"
+                          value={d.inicio}
+                          disabled={!d.aberto}
+                          aria-label={`${nomeDoDia[dow]} — ${t("início")}`}
+                          onChange={(e) => mudar({ inicio: e.target.value })}
+                        />
+                        <span className="text-muted-foreground">{t("até")}</span>
+                        <Input
+                          type="time"
+                          className="h-8 w-28"
+                          value={d.fim}
+                          disabled={!d.aberto}
+                          aria-label={`${nomeDoDia[dow]} — ${t("fim")}`}
+                          onChange={(e) => mudar({ fim: e.target.value })}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Fora do horário, a conversa deste setor não é entregue a ninguém: ela espera na Fila e é entregue quando o setor abre.",
+                )}
+              </p>
+            </fieldset>
             <div className="flex gap-2">
               <Button type="submit" disabled={isPending || !rascunho.nome.trim()}>
                 {t("Salvar")}
@@ -175,6 +296,15 @@ export function PainelDeSetores({
                     {s.descricao ? (
                       <p className="text-xs text-muted-foreground">{s.descricao}</p>
                     ) : null}
+                    {(s.horario?.windows.length ?? 0) > 0 ? (
+                      <p className="text-xs text-muted-foreground" data-testid="resumo-horario-do-setor">
+                        {t("Atende:")}{" "}
+                        {DIAS_DA_SEMANA.flatMap((dow) => {
+                          const w = s.horario?.windows.find((x) => x.dow === dow);
+                          return w ? [`${nomeDoDia[dow]} ${w.start}–${w.end}`] : [];
+                        }).join(" · ")}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button
@@ -186,6 +316,12 @@ export function PainelDeSetores({
                           nome: s.nome,
                           descricao: s.descricao ?? "",
                           membros: s.membros,
+                          comHorario: (s.horario?.windows.length ?? 0) > 0,
+                          fuso: s.horario?.timezone ?? null,
+                          dias:
+                            (s.horario?.windows.length ?? 0) > 0
+                              ? diasDoHorario(s.horario)
+                              : diasPadrao(),
                         })
                       }
                     >

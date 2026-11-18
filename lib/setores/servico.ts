@@ -17,10 +17,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
+import { availabilityScheduleSchema, type AvailabilitySchedule } from "@/lib/schemas/routing";
+
 export const setorInputSchema = z.object({
   nome: z.string().trim().min(1).max(60),
   descricao: z.string().trim().max(300).nullable().optional(),
   membros: z.array(z.string().uuid()).max(200).default([]),
+  /**
+   * Horário do setor (migration 0545): o mesmo formato da jornada do atendente.
+   * `windows` vazio = atende a qualquer hora. Fora do horário a distribuição
+   * não entrega a conversa do setor — ela espera a abertura na Fila.
+   */
+  horario: availabilityScheduleSchema.optional(),
 });
 export type SetorInput = z.infer<typeof setorInputSchema>;
 
@@ -28,6 +36,7 @@ export type SetorComMembros = {
   id: string;
   nome: string;
   descricao: string | null;
+  horario: AvailabilitySchedule | null;
   membros: string[];
 };
 
@@ -39,7 +48,7 @@ export async function listarSetores(
   const [{ data: setores, error }, { data: membros, error: erroMembros }] = await Promise.all([
     db
       .from("setores")
-      .select("id, nome, descricao")
+      .select("id, nome, descricao, horario")
       .eq("organization_id", organizationId)
       .order("nome"),
     db.from("setor_membros").select("setor_id, user_id").eq("organization_id", organizationId),
@@ -50,10 +59,14 @@ export async function listarSetores(
   for (const m of (membros ?? []) as { setor_id: string; user_id: string }[]) {
     porSetor.set(m.setor_id, [...(porSetor.get(m.setor_id) ?? []), m.user_id]);
   }
-  return ((setores ?? []) as { id: string; nome: string; descricao: string | null }[]).map((s) => ({
-    ...s,
-    membros: porSetor.get(s.id) ?? [],
-  }));
+  return ((setores ?? []) as { id: string; nome: string; descricao: string | null; horario: unknown }[]).map((s) => {
+    const horario = availabilityScheduleSchema.safeParse(s.horario);
+    return {
+      ...s,
+      horario: horario.success ? horario.data : null,
+      membros: porSetor.get(s.id) ?? [],
+    };
+  });
 }
 
 /**
