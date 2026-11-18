@@ -443,6 +443,12 @@ export const AUDIT_ACTIONS = [
   // reordenar e reorganizar grupos não é `template.updated` — o texto não foi
   // tocado. A remoção de mídia vai no `template.updated` (campo `removidas`).
   "template.reordered",
+  // Levar a configuração embora e aplicá-la em outra organização são atos
+  // próprios (blueprint de respostas rápidas): o import NÃO emite um
+  // `template.created` por linha — o rastro é um `template.imported` só, com a
+  // contagem, e o autor de cada linha fica em `message_templates.created_by_user_id`.
+  "template.exported",
+  "template.imported",
   "template.media_added",
   "template_group.created",
   "template_group.updated",
