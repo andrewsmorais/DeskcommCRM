@@ -20035,6 +20035,13 @@ export const DICIONARIO: Traducoes = {
   "Janela de {dias} dias: o relatório por canal cobre no máximo {maximo} dias.": {
     es: "Ventana de {dias} días: el informe por canal cubre como máximo {maximo} días.",
   },
+  "Por etiqueta": { es: "Por etiqueta" },
+  "Erro ao carregar as etiquetas.": { es: "Error al cargar las etiquetas." },
+  "1ª resposta (mediana)": { es: "1.ª respuesta (mediana)" },
+  "Uma conversa com mais de uma etiqueta aparece em cada uma delas, por isso não há total.": { es: "Una conversación con más de una etiqueta aparece en cada una, por eso no hay total." },
+  "Janela de {dias} dias: o relatório por etiqueta cobre no máximo {maximo} dias.": {
+    es: "Ventana de {dias} días: el informe por etiqueta cubre como máximo {maximo} días.",
+  },
   "Aviso de agendamento": { es: "Aviso de cita" },
   "Receba no WhatsApp cada horário marcado, remarcado ou cancelado, e às 7h o resumo do dia.": { es: "Recibe en WhatsApp cada cita agendada, reprogramada o cancelada, y a las 7h el resumen del día." },
   "Das 22h às 7h não sai aviso, para não acordar ninguém: o que for marcado nesse horário aparece no resumo das 7h. O horário é o da empresa.": { es: "De 22h a 7h no se envían avisos, para no despertar a nadie: lo que se agende en ese horario aparece en el resumen de las 7h. El horario es el de la empresa." },

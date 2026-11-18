@@ -8,6 +8,7 @@ import { janelaDoMes, mesLocal } from "@/lib/metas/periodo";
 import { useAttendantMetrics, type AttendantMetric } from "@/hooks/metrics/useAttendantMetrics";
 import { AtritoPanel } from "./AtritoPanel";
 import { CanaisPanel } from "./CanaisPanel";
+import { EtiquetasPanel } from "./EtiquetasPanel";
 import { MetaDoMesPanel, type EstadoDaMeta } from "./MetaDoMesPanel";
 import { PerdasPanel } from "./PerdasPanel";
 import { PrevisaoPanel } from "./PrevisaoPanel";
@@ -203,6 +204,9 @@ export function MetricsClient({ canCompare, currentUserId }: Props) {
       {/* Por canal (#2390): a mesma janela e o mesmo filtro de atendente da
           tabela acima; a operação se organiza por número de WhatsApp. */}
       <CanaisPanel owner={selectedOwner} />
+
+      {/* Por etiqueta: o mesmo recorte, agrupado pela etiqueta da conversa (com mediana). */}
+      <EtiquetasPanel owner={selectedOwner} />
     </div>
   );
 }
