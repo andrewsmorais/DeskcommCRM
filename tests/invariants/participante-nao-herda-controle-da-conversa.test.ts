@@ -291,3 +291,61 @@ describe("participação não herda o controle da conversa", () => {
       .toBe(0);
   });
 });
+
+/**
+ * 0555 — o mesmo, numa conversa PRIVADA (auditoria de 18/11, achado 5).
+ *
+ * As travas da 0544 usavam a régua de dois argumentos, que não conhece
+ * `is_private`. Na visibilidade "todos" ela é verdadeira para qualquer
+ * atendente; o convite torna a privada visível e a trava deixava a convidada
+ * tirar a privacidade, assumir, fechar e apagar a fala do dono. O controle
+ * positivo (mesma org, mesma conversa NÃO privada) mostra que a recusa é pela
+ * privacidade, não por uma trava que impede tudo.
+ */
+describe("0555 · o convite não dá controle de conversa privada", () => {
+  const MODO_TODOS_E_PRIVADA = `
+    update public.organizations
+       set settings = coalesce(settings, '{}'::jsonb) || '{"visibility_mode":"all"}'::jsonb
+     where id = '${ORG_A}';
+    update public.conversations set is_private = true
+     where organization_id = '${ORG_A}' and id = '${CONVERSA_A}';
+    ${REABRIR_PARTICIPACAO};`;
+  const MODO_TODOS_ABERTA = `
+    update public.organizations
+       set settings = coalesce(settings, '{}'::jsonb) || '{"visibility_mode":"all"}'::jsonb
+     where id = '${ORG_A}';
+    update public.conversations set is_private = false
+     where organization_id = '${ORG_A}' and id = '${CONVERSA_A}';`;
+  const FALA_DO_DONO = `update public.messages set direction = 'outbound',
+      sent_via = 'user', sent_by_user_id = '${DONO}'
+      where organization_id = '${ORG_A}' and id = '${MENSAGEM_A}';`;
+
+  it("a convidada lê a privada pelo convite (é o que abre a porta)", () => {
+    expect(contarComo(CONVIDADA, CONVERSA, MODO_TODOS_E_PRIVADA)).toBe(1);
+  });
+
+  it("a convidada não tira a privacidade, não assume, não fecha e não apaga", () => {
+    expect(afetarComo(CONVIDADA, `update public.conversations set is_private = false
+      where organization_id = '${ORG_A}' and id = '${CONVERSA_A}'`, MODO_TODOS_E_PRIVADA)).toBe(0);
+    expect(afetarComo(CONVIDADA, `update public.conversations set assigned_to_user_id = '${CONVIDADA}'
+      where organization_id = '${ORG_A}' and id = '${CONVERSA_A}'`, MODO_TODOS_E_PRIVADA)).toBe(0);
+    expect(afetarComo(CONVIDADA, `update public.conversations set status = 'closed'
+      where organization_id = '${ORG_A}' and id = '${CONVERSA_A}'`, MODO_TODOS_E_PRIVADA)).toBe(0);
+    expect(afetarComo(CONVIDADA, `delete from public.messages
+      where organization_id = '${ORG_A}' and id = '${MENSAGEM_A}'`, MODO_TODOS_E_PRIVADA + FALA_DO_DONO)).toBe(0);
+    expect(afetarComo(CONVIDADA, `update public.messages set body = 'reescrita'
+      where organization_id = '${ORG_A}' and id = '${MENSAGEM_A}'`, MODO_TODOS_E_PRIVADA + FALA_DO_DONO)).toBe(0);
+  });
+
+  it("CONTROLE: o dono e o gestor seguem mandando na privada", () => {
+    for (const quem of [DONO, GESTOR]) {
+      expect(afetarComo(quem, `update public.conversations set status = 'closed'
+        where organization_id = '${ORG_A}' and id = '${CONVERSA_A}'`, MODO_TODOS_E_PRIVADA)).toBe(1);
+    }
+  });
+
+  it("CONTROLE: na mesma conversa ABERTA, com visibilidade 'todos', o atendente controla (régua de antes)", () => {
+    expect(afetarComo(SEM_CONVITE, `update public.conversations set status = 'closed'
+      where organization_id = '${ORG_A}' and id = '${CONVERSA_A}'`, MODO_TODOS_ABERTA)).toBe(1);
+  });
+});

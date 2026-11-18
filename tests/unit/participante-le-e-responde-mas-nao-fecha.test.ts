@@ -49,3 +49,26 @@ describe("convite não amplia a autoridade de fechar ou mudar status (#2542)", (
     expect(estado.efeito).toHaveBeenCalledOnce();
   });
 });
+
+describe("o portão de controle pergunta a régua com a privacidade (auditoria de 18/11, achado 5)", () => {
+  it("conversa privada: a pergunta vai com p_is_private = true", async () => {
+    const { exigirControleDaConversa } = await import("@/lib/inbox/controle-da-conversa");
+    const chamadas: Array<Record<string, unknown>> = [];
+    const sb = {
+      rpc: async (_fn: string, args: Record<string, unknown>) => {
+        chamadas.push(args);
+        return { data: false, error: null };
+      },
+    } as unknown as SupabaseClient;
+    await expect(
+      exigirControleDaConversa(
+        sb,
+        { organization_id: ORG, actor: { type: "user", id: COLEGA }, requestId: "t" },
+        { assigned_to_user_id: DONO, is_private: true },
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(chamadas).toEqual([
+      { p_org: ORG, p_assigned_to_user_id: DONO, p_is_private: true },
+    ]);
+  });
+});

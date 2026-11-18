@@ -51485,3 +51485,42 @@ alter table public.setores add constraint setores_horario_objeto
 
 comment on column public.setores.horario is
   'Horário do setor ({timezone, windows:[{dow,start,end}]}, o mesmo formato de attendant_availability.schedule). {} = qualquer hora. Fora dele a distribuição (lib/routing/eligibles.ts) não entrega a conversa do setor: ela espera na Fila. Migration 0545.';
+
+-- ---- convidado não manda na conversa privada (migration 0555) ----
+-- Auditoria de 18/11, achado 5: as travas restritivas da 0544 com a régua de
+-- três argumentos (`is_private`). Ver o cabeçalho da migration.
+do $$
+begin
+  -- Num bloco só: o update.sh aplica sem ON_ERROR_STOP, e um create que
+  -- falhasse depois do drop deixaria a tabela SEM a trava restritiva.
+  drop policy if exists conversation_participant_read_is_not_control_update on public.conversations;
+  create policy conversation_participant_read_is_not_control_update
+    on public.conversations as restrictive for update to authenticated
+    using (public.fn_can_view_conversation(organization_id, assigned_to_user_id, is_private))
+    with check (true);
+  drop policy if exists conversation_participant_read_is_not_control_delete on public.conversations;
+  create policy conversation_participant_read_is_not_control_delete
+    on public.conversations as restrictive for delete to authenticated
+    using (public.fn_can_view_conversation(organization_id, assigned_to_user_id, is_private));
+  drop policy if exists message_participant_reply_is_not_history_update on public.messages;
+  create policy message_participant_reply_is_not_history_update
+    on public.messages as restrictive for update to authenticated
+    using (
+      (sent_by_user_id = auth.uid() and direction = 'outbound' and sent_via in ('user','crm'))
+      or exists (select 1 from public.conversations c
+        where c.id = messages.conversation_id and c.organization_id = messages.organization_id
+          and public.fn_can_view_conversation(c.organization_id, c.assigned_to_user_id, c.is_private))
+    ) with check (
+      exists (select 1 from public.conversations c
+        where c.id = messages.conversation_id and c.organization_id = messages.organization_id
+          and (public.fn_can_view_conversation(c.organization_id, c.assigned_to_user_id, c.is_private)
+            or (messages.sent_by_user_id = auth.uid() and messages.direction = 'outbound'
+              and messages.sent_via in ('user','crm'))))
+    );
+  drop policy if exists message_participant_reply_is_not_history_delete on public.messages;
+  create policy message_participant_reply_is_not_history_delete
+    on public.messages as restrictive for delete to authenticated
+    using (exists (select 1 from public.conversations c
+      where c.id = messages.conversation_id and c.organization_id = messages.organization_id
+        and public.fn_can_view_conversation(c.organization_id, c.assigned_to_user_id, c.is_private)));
+end $$;

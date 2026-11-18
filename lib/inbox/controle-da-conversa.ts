@@ -13,12 +13,17 @@ import { traduzir } from "@/lib/i18n/dicionario";
 export async function exigirControleDaConversa(
   supabase: SupabaseClient,
   ctx: HandlerCtx,
-  conversa: { assigned_to_user_id: string | null },
+  // `is_private` OBRIGATÓRIO no tipo (auditoria de 18/11, achado 5): a régua de
+  // dois argumentos não conhece privacidade, e o convidado de uma conversa
+  // privada passava aqui como se ela fosse aberta. Quem chama tem de ler a
+  // coluna — um `undefined` esquecido viraria "não é privada" calado.
+  conversa: { assigned_to_user_id: string | null; is_private: boolean | null },
 ): Promise<void> {
   if (ctx.actor.type !== "user" || conversa.assigned_to_user_id === ctx.actor.id) return;
   const { data, error } = await supabase.rpc("fn_can_view_conversation", {
     p_org: ctx.organization_id,
     p_assigned_to_user_id: conversa.assigned_to_user_id,
+    p_is_private: conversa.is_private === true,
   });
   if (error) throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
   if (data !== true) throw new ApiError(403, "forbidden", undefined, ctx.requestId,

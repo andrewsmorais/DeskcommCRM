@@ -57,7 +57,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const sessao = await createClient();
   const { data: visivel } = await sessao
     .from("conversations")
-    .select("id, assigned_to_user_id")
+    .select("id, assigned_to_user_id, is_private")
     .eq("organization_id", orgId)
     .eq("id", id)
     .maybeSingle();
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     await exigirControleDaConversa(
       sessao,
       { organization_id: orgId, actor: { type: "user", id: authz.user.id }, requestId, idioma: authz.user.idioma },
-      visivel as { assigned_to_user_id: string | null },
+      visivel as { assigned_to_user_id: string | null; is_private: boolean | null },
     );
   } catch (err) {
     if (err instanceof ApiError) return fail(err.code, err.message, err.status, { requestId });

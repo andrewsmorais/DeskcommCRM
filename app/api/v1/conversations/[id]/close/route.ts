@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const user = authz.user;
 
   const { data: visible, error: readError } = await supabase.from("conversations")
-    .select("id, organization_id, service_revision, is_group, assigned_to_user_id").eq("id", id)
+    .select("id, organization_id, service_revision, is_group, assigned_to_user_id, is_private").eq("id", id)
     .eq("organization_id", authz.org.orgId).maybeSingle();
   if (readError) return fail("internal_error", readError.message, 500, { requestId });
   if (!visible) return fail("not_found", t("Conversa não encontrada."), 404, { requestId });
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
     await exigirControleDaConversa(
       supabase,
       { organization_id: authz.org.orgId, actor: { type: "user", id: user.id }, requestId, idioma: user.idioma },
-      visible as { assigned_to_user_id: string | null },
+      visible as { assigned_to_user_id: string | null; is_private: boolean | null },
     );
   } catch (err) {
     if (err instanceof ApiError) return fail(err.code, err.message, err.status, { requestId });
