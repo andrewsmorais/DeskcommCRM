@@ -388,6 +388,9 @@ export function normalizaData(raw: string): string | null {
  * é pulada, as demais seguem. `linha` é 1-based já contando o cabeçalho, para
  * bater com o que o usuário vê no editor.
  */
+/** Maior endereço de e-mail que o SMTP aceita (RFC 5321). */
+const EMAIL_MAX = 254;
+
 export function mapLinha(
   cells: string[],
   indices: Record<string, number>,
@@ -410,8 +413,13 @@ export function mapLinha(
 
   const email = get("email");
   if (email !== "") {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return { contato: {}, motivo: _t("e-mail inválido: ") + `"${email}"` };
+    // O teto vem ANTES da regex: ela volta atrás a cada ponto depois do `@`, e
+    // numa célula de 1 MB (`a@....@`) isso travava o processo do app — um só
+    // para todas as organizações — por minutos (auditoria de 18/11, achado 8).
+    // 254 é o maior endereço que o SMTP aceita (RFC 5321).
+    if (email.length > EMAIL_MAX || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const mostrado = email.length > 80 ? `${email.slice(0, 80)}…` : email;
+      return { contato: {}, motivo: _t("e-mail inválido: ") + `"${mostrado}"` };
     }
     contato.email = email;
   }
