@@ -246,6 +246,42 @@ const setSectorInputShape = {
   setor: z.string().trim().min(1).max(80).describe("nome do setor (ex.: Financeiro) ou o id dele"),
 };
 
+/**
+ * Num turno de atendimento a IA só mexe na conversa DESTE atendimento
+ * (auditoria de 18/11, achado 6). O `conversation_id` vem dos argumentos, que o
+ * modelo escreve — e o modelo lê o texto do cliente. Sem esta trava, um cliente
+ * (ou alguém num grupo com "IA responde") fazia a IA silenciar para sempre e
+ * tirar o dono de OUTRA conversa da empresa. As outras portas com o mesmo
+ * efeito já eram presas ao turno: a passagem para humano, o passo de setor do
+ * chatbot e as ferramentas de agenda (`turnContactId`).
+ *
+ * A régua, na ordem da confiança: a fronteira do atendimento em execução (a
+ * conversa exata); sem ela, o contato do turno (a conversa tem de ser dele).
+ * Chamada sem contexto de turno (cliente MCP externo, humano) segue como antes.
+ */
+async function exigirConversaDoTurno(ctx: McpContext, conversationId: string): Promise<void> {
+  if (ctx.actor.type !== "ai_agent") return;
+  const recusa = "conversa_fora_do_atendimento: só dá para mudar o setor da conversa deste atendimento";
+  // Import tardio: a fronteira arrasta o motor (agenda, entregas, fila), e as
+  // ferramentas MCP são carregadas também por quem não roda turno nenhum.
+  const { currentExecutionBoundary } = await import("@/lib/atendimento/fronteira-server");
+  const fronteira = currentExecutionBoundary();
+  if (fronteira) {
+    if (fronteira.conversation_id !== conversationId) throw new Error(recusa);
+    return;
+  }
+  const doTurno = ctx.turnContactId ?? ctx.contatoDoTurno ?? null;
+  if (!doTurno) return;
+  const { data, error } = await ctx.supabase
+    .from("conversations")
+    .select("contact_id")
+    .eq("organization_id", ctx.organizationId)
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data || (data as { contact_id: string | null }).contact_id !== doTurno) throw new Error(recusa);
+}
+
 const UUID_DO_SETOR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const crmSetConversationSector: McpToolDefinition<typeof setSectorInputShape> = {
@@ -261,6 +297,7 @@ export const crmSetConversationSector: McpToolDefinition<typeof setSectorInputSh
   requiresRole: "agent",
   requiresScope: "mcp:write",
   handler: async (input, ctx) => {
+    await exigirConversaDoTurno(ctx, input.conversation_id);
     const { data: setores, error } = await ctx.supabase
       .from("setores")
       .select("id, nome")
