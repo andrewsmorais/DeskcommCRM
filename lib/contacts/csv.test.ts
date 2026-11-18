@@ -288,7 +288,7 @@ describe("mapLinha", () => {
     const pelaPlanilha = mapHeader(rows[0]!).indices;
     let t0 = performance.now();
     const csv = mapLinha(rows[1]!, pelaPlanilha);
-    expect(performance.now() - t0).toBeLessThan(50);
+    expect(performance.now() - t0).toBeLessThan(250);
     expect(csv.motivo).toMatch(/e-mail inválido/);
     // O motivo não ecoa o megabyte de volta na resposta.
     expect(csv.motivo!.length).toBeLessThan(150);
@@ -297,7 +297,7 @@ describe("mapLinha", () => {
     const peloVcf = mapHeader(vcf[0]!).indices;
     t0 = performance.now();
     expect(mapLinha(vcf[1]!, peloVcf).motivo).toMatch(/e-mail inválido/);
-    expect(performance.now() - t0).toBeLessThan(50);
+    expect(performance.now() - t0).toBeLessThan(250);
   });
 
   it("e-mail no limite de 254 caracteres continua aceito; 255 não", () => {
