@@ -30,13 +30,20 @@ export function chatIndividualDaMensagem(chat: string | null): string | null {
  * O chat (já validado por `chatIndividualDaMensagem`) é de um número da ficha? Se não
  * for, o envio segue a regra de sempre, a mesma que `reply-address` mostra na tela.
  *
- * `@lid` não traz número para comparar e segue valendo: é o endereço que o WhatsApp deu.
+ * `@lid` não traz número para comparar, então só vale se o identificador ainda estiver
+ * LIGADO à ficha (`wa_lid` do principal ou de um extra). Antes (auditoria 18/11, achado
+ * 14) ele valia sempre: depois de tirar o número da ficha, a resposta seguia para o
+ * número removido, enquanto a tela dizia "principal".
  */
 export function chatSegueNaFicha(
   chat: string,
   numerosDaFicha: ReadonlyArray<string | null | undefined>,
+  lidsDaFicha: ReadonlyArray<string | null | undefined> = [],
 ): boolean {
-  if (chat.endsWith("@lid")) return true;
+  if (chat.endsWith("@lid")) {
+    const digitos = chat.slice(0, chat.indexOf("@"));
+    return lidsDaFicha.some((lid) => lid === digitos);
+  }
   return mesmoTelefoneNaLista(numerosDaFicha, `+${chat.slice(0, chat.indexOf("@"))}`) !== undefined;
 }
 
@@ -64,7 +71,7 @@ export async function chatIdDaUltimaRecebida(
   try {
     const { data: extras, error: erroExtras } = await admin
       .from("contact_phones")
-      .select("phone_number")
+      .select("phone_number, wa_lid")
       .eq("organization_id", args.organizationId)
       .eq("contact_id", args.contactId);
     if (erroExtras) throw erroExtras;
@@ -85,17 +92,18 @@ export async function chatIdDaUltimaRecebida(
     if (typeof externalId !== "string") return null;
     const chat = chatIndividualDaMensagem(chatIdFromWaMessageId(externalId));
     if (!chat) return null;
-    if (chatSegueNaFicha(chat, extras.map((e) => e.phone_number))) return chat;
+    const lidsDosExtras = extras.map((e) => (e as { wa_lid?: string | null }).wa_lid);
+    if (chatSegueNaFicha(chat, extras.map((e) => e.phone_number), lidsDosExtras)) return chat;
 
     // Só quem não bateu com um extra paga a leitura do principal.
     const { data: ficha, error: erroFicha } = await admin
       .from("contacts")
-      .select("phone_number")
+      .select("phone_number, wa_lid")
       .eq("organization_id", args.organizationId)
       .eq("id", args.contactId)
       .maybeSingle();
     if (erroFicha) throw erroFicha;
-    return chatSegueNaFicha(chat, [ficha?.phone_number]) ? chat : null;
+    return chatSegueNaFicha(chat, [ficha?.phone_number], [ficha?.wa_lid]) ? chat : null;
   } catch (erro) {
     // Só a organização no log: o chat e o contato carregam telefone.
     logger.warn("waha: endereço da última mensagem recebida indisponível; segue pela regra de hoje", {

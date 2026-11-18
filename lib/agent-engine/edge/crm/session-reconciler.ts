@@ -209,8 +209,8 @@ async function ultimaRecebidaDaFicha(
 ): Promise<string | null> {
   if (m.is_group || !m.contact_id) return null;
   try {
-    const { rows: extras } = await pool.query<{ phone_number: string }>(
-      `select phone_number from contact_phones
+    const { rows: extras } = await pool.query<{ phone_number: string; wa_lid: string | null }>(
+      `select phone_number, wa_lid from contact_phones
        where organization_id = $1 and contact_id = $2`,
       [m.organization_id, m.contact_id],
     );
@@ -227,7 +227,15 @@ async function ultimaRecebidaDaFicha(
     if (!externalId) return null;
     const chat = chatIndividualDaMensagem(chatIdFromWaMessageId(externalId));
     if (!chat) return null;
-    return chatSegueNaFicha(chat, [m.phone_number, ...extras.map((e) => e.phone_number)]) ? chat : null;
+    // `@lid` só vale se ainda estiver ligado à ficha (principal ou extra).
+    const { rows: principal } = await pool.query<{ wa_lid: string | null }>(
+      `select wa_lid from contacts where organization_id = $1 and id = $2`,
+      [m.organization_id, m.contact_id],
+    );
+    const lids = [principal[0]?.wa_lid, ...extras.map((e) => e.wa_lid)];
+    return chatSegueNaFicha(chat, [m.phone_number, ...extras.map((e) => e.phone_number)], lids)
+      ? chat
+      : null;
   } catch (err) {
     // Só a organização no log: o chat e o contato carregam telefone.
     log.warn('watchdog: endereço da última recebida indisponível; segue pela regra de hoje', {

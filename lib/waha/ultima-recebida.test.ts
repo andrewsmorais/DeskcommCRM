@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({ warn: vi.fn() }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: mocks.warn, info: vi.fn(), error: vi.fn() } }));
 
 import { resolveWahaChatId } from "./send";
-import { chatIdDaUltimaRecebida, chatIndividualDaMensagem } from "./ultima-recebida";
+import { chatIdDaUltimaRecebida, chatIndividualDaMensagem, chatSegueNaFicha } from "./ultima-recebida";
 
 /**
  * O dublê do Supabase guarda as respostas por tabela e anota cada filtro. A
@@ -75,13 +75,22 @@ describe("chatIdDaUltimaRecebida — o número que a pessoa escreveu", () => {
     // Sabotagem: devolver `null` sempre (sem ler a última recebida) deixa vermelho.
   });
 
-  it("a última recebida em @lid também vale (é o endereço que o WhatsApp deu)", async () => {
+  it("a última recebida em @lid vale quando o identificador está ligado ao extra", async () => {
     respostas = {
-      contact_phones: { data: [{ phone_number: "+5515999998888" }], error: null },
+      contact_phones: { data: [{ phone_number: "+5515999998888", wa_lid: "100000000000001" }], error: null },
       messages: { data: [{ external_id: "false_100000000000001@lid_3A60443E83484256AF03" }], error: null },
     };
     expect(await chatIdDaUltimaRecebida(adminDeTeste(), ARGS)).toBe("100000000000001@lid");
     // Sabotagem: filtrar só `@c.us` faz o @lid sumir e a resposta cair no principal.
+  });
+
+  it("achado 14: @lid que NÃO está mais ligado à ficha → null (não responde ao número removido)", async () => {
+    respostas = {
+      contact_phones: { data: [{ phone_number: "+5515999998888", wa_lid: "999" }], error: null },
+      messages: { data: [{ external_id: "false_100000000000001@lid_3A60443E83484256AF03" }], error: null },
+      contacts: { data: { phone_number: "+5511999990020", wa_lid: null }, error: null },
+    };
+    expect(await chatIdDaUltimaRecebida(adminDeTeste(), ARGS)).toBeNull();
   });
 
   it("última recebida de GRUPO → null (quem chama cai na regra de sempre)", async () => {
@@ -160,10 +169,11 @@ describe("chatIdDaUltimaRecebida — o número tem de seguir na ficha", () => {
     organization_id,
     phone_number,
   });
-  const extra = (phone_number: string, organization_id = ORG_A): Linha => ({
+  const extra = (phone_number: string, organization_id = ORG_A, wa_lid: string | null = null): Linha => ({
     contact_id: "ficha-1",
     organization_id,
     phone_number,
+    wa_lid,
   });
 
   /**
@@ -273,11 +283,14 @@ describe("chatIdDaUltimaRecebida — o número tem de seguir na ficha", () => {
     expect(await chatIdDaUltimaRecebida(cliente(tabelas("+5511999990099")), ARGS)).toBeNull();
   });
 
-  it("@lid não tem número para comparar: segue valendo, sem ler o principal", async () => {
+  it("@lid ligado ao extra: segue valendo, sem ler o principal", async () => {
     expect(
       await chatIdDaUltimaRecebida(
         cliente(
-          { contact_phones: [extra(EXTRA)], messages: [recebidaPor("100000000000001@lid")] },
+          {
+            contact_phones: [extra(EXTRA, ORG_A, "100000000000001")],
+            messages: [recebidaPor("100000000000001@lid")],
+          },
           { erroEm: "contacts" },
         ),
         ARGS,
@@ -377,5 +390,14 @@ describe("chatIndividualDaMensagem — só conversa individual", () => {
     expect(chatIndividualDaMensagem("@c.us")).toBeNull();
     expect(chatIndividualDaMensagem("abc@lid")).toBeNull();
     // Sabotagem: aceitar qualquer sufixo (sem checagem) faz o grupo passar e deixa vermelho.
+  });
+});
+
+describe("chatSegueNaFicha — @lid só enquanto ligado à ficha (achado 14)", () => {
+  it("liga: vale; desligado ou sem lista: não vale; número segue a regra de sempre", () => {
+    expect(chatSegueNaFicha("100@lid", [], ["100"])).toBe(true);
+    expect(chatSegueNaFicha("100@lid", [], ["200", null])).toBe(false);
+    expect(chatSegueNaFicha("100@lid", ["+5511999990020"])).toBe(false);
+    expect(chatSegueNaFicha("5511999990020@c.us", ["+5511999990020"])).toBe(true);
   });
 });
