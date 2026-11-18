@@ -20080,6 +20080,9 @@ export const DICIONARIO: Traducoes = {
   "Abra este endereço no celular. No computador, Chrome e Edge instalam pelo ícone na barra de endereço.": { es: "Abre esta dirección en el celular. En la computadora, Chrome y Edge instalan desde el ícono en la barra de direcciones." },
   "Avisos": { es: "Avisos" },
   "Limpeza automática de mídia antiga": { es: "Limpieza automática de multimedia antigua" },
+  "Ligado: apaga a mídia com mais de {n} dias.": { es: "Activado: elimina la multimedia con más de {n} días." },
+  "Desligado: a mídia das conversas não é apagada por idade.": { es: "Desactivado: la multimedia de las conversaciones no se elimina por antigüedad." },
+  "Ao ligar, a mídia de mensagem com mais de {n} dias começará a ser apagada.": { es: "Al activarlo, la multimedia de mensajes con más de {n} días comenzará a eliminarse." },
   "Mídia apagada pela política de retenção.": { es: "Multimedia eliminada por la política de retención." },
   "Mídia apagada pela política de retenção ({n} dias)": {
     es: "Multimedia eliminada por la política de retención ({n} días)",
