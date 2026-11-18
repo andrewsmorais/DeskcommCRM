@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type DragEvent,
   type KeyboardEvent,
 } from "react";
 import { PaperPlaneTilt } from "@/lib/ui/icons";
@@ -148,11 +149,25 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [totalDaFila, setTotalDaFila] = useState(0);
   const [legendaInicial, setLegendaInicial] = useState<string | null>(null);
   const pendingFile = fila[0] ?? null;
-  const setPendingFile = (f: File | null) => {
-    setFila(f ? [f] : []);
-    setTotalDaFila(f ? 1 : 0);
+  /**
+   * UMA porta para os três gestos — o "+" (agora com vários arquivos), a imagem
+   * colada e o arquivo arrastado. Todos caem na mesma fila: a prévia mostra um
+   * por vez ("1 de 3"), com a legenda no primeiro, e nada sai sem o atendente ver.
+   */
+  const escolherArquivos = (files: File[]) => {
+    setFila(files);
+    setTotalDaFila(files.length);
     setLegendaInicial(null);
   };
+  const setPendingFile = (f: File | null) => escolherArquivos(f ? [f] : []);
+  /**
+   * O realce do arraste (trazido do produto original, #3708). `dragenter` e
+   * `dragleave` disparam também ao passar sobre os FILHOS (campo, botões); com
+   * um booleano solto o realce piscaria. O contador mantém aceso enquanto o
+   * ponteiro estiver dentro.
+   */
+  const [arrastandoArquivo, setArrastandoArquivo] = useState(false);
+  const arrasteEmCurso = useRef(0);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [mode, setMode] = useState<"reply" | "note">(initialMode);
@@ -180,6 +195,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // nota interna nunca chega ao cliente, e é onde o atendente registra por que
   // a conversa esfriou — barrá-la tira exatamente o que ainda dá para fazer.
   const respostaBarrada = isDisabled || (mode === "reply" && !!janelaFechada);
+
+  /**
+   * O que o arraste aceita — a MESMA guarda do "+" e do Ctrl+V: caixa liberada
+   * para resposta e nenhuma prévia aberta (um segundo anexo trocaria em silêncio
+   * o que o atendente já escolheu). Um drop com regra própria furaria o
+   * "bloquear até assumir": botão desabilitado não impede soltar arquivo.
+   */
+  const aceitaArquivoArrastado = mode === "reply" && !respostaBarrada && fila.length === 0;
 
   function autoresize() {
     const ta = taRef.current;
@@ -352,6 +375,43 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     setPendingFile(imagem);
   }
 
+  function trazArquivo(e: DragEvent<HTMLElement>): boolean {
+    return Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  }
+
+  /** O `preventDefault` impede o navegador de ABRIR o arquivo no lugar da conversa — vale mesmo com a caixa travada. */
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    if (!trazArquivo(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = aceitaArquivoArrastado ? "copy" : "none";
+  }
+
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (!trazArquivo(e) || !aceitaArquivoArrastado) return;
+    e.preventDefault();
+    arrasteEmCurso.current += 1;
+    setArrastandoArquivo(true);
+  }
+
+  /** Sem checar o tipo de propósito: alguns navegadores dão `types` vazio na saída. */
+  function onDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    arrasteEmCurso.current = Math.max(0, arrasteEmCurso.current - 1);
+    if (arrasteEmCurso.current === 0) setArrastandoArquivo(false);
+  }
+
+  /** Soltou: o arquivo cai na MESMA fila do "+", que abre a prévia. Nada sai daqui. */
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    if (!trazArquivo(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    arrasteEmCurso.current = 0;
+    setArrastandoArquivo(false);
+    if (!aceitaArquivoArrastado) return;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length) escolherArquivos(files);
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Escape" && menuOpen) {
       setMenuDismissed(true);
@@ -375,11 +435,26 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   return (
     <>
       <div
+        data-testid="composer"
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
         className={cn(
           "relative border-t border-border bg-background px-3 py-2",
           mode === "note" && "border-warning/40 bg-warning-bg",
         )}
       >
+        {/* O realce do arraste: a única confirmação de que o espaço aceita
+            arquivo. `pointer-events-none` para não roubar os eventos dos filhos. */}
+        {arrastandoArquivo && (
+          <div
+            data-testid="arraste-de-arquivo"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-sm border-2 border-dashed border-primary bg-primary/10 px-3 text-center text-xs font-medium text-primary"
+          >
+            {t("Solte o arquivo para anexar")}
+          </div>
+        )}
         {mode === "reply" && (
           <ReplyReviewPanel conversationId={conversationId} disabled={isDisabled} />
         )}
@@ -498,7 +573,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           {mode === "reply" && (
             <AttachMenu
               disabled={respostaBarrada}
-              onPick={setPendingFile}
+              onPick={escolherArquivos}
               onPickContact={() => setContactPickerOpen(true)}
             />
           )}

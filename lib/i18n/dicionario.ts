@@ -19903,6 +19903,7 @@ export const DICIONARIO: Traducoes = {
   "Horário do setor": { es: "Horario del sector" },
   Transcrição: { es: "Transcripción" },
   "Transcrevendo…": { es: "Transcribiendo…" },
+  "Solte o arquivo para anexar": { es: "Suelta el archivo para adjuntarlo" },
   // Cold Call (vindo do produto original)
   "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.": { es: "Llama a una lista de leads, uno por vez, con guion y resultado de cada llamada." },
   "Quando uma ligação recebida não for atendida": { es: "Cuando una llamada recibida no sea atendida" },
