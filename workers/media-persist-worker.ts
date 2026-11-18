@@ -73,13 +73,25 @@ export async function persistMessageMedia(row: EventRow): Promise<HandlerResult>
   if (!msg?.media_url) return { consumer_key, status: "skipped", detail: "no media_url" };
   if (msg.media_storage_path) return { consumer_key, status: "skipped", detail: "already stored" };
 
-  const markStatus = async (media_status: "stored" | "failed", patch: Record<string, unknown> = {}) => {
-    const { error: updErr } = await admin
+  // Auditoria 18/11, achado 16: a linha foi lida lá em cima e o download e o
+  // upload levam segundos. Se a LGPD anonimizou a mensagem nesse intervalo
+  // (`media_url` e `metadata` zerados), gravar por cima traria de volta o
+  // endereço da foto e os dados do remetente. Por isso a gravação só vale se a
+  // mensagem ainda estiver como o worker a leu; devolve quantas linhas mudou.
+  const markStatus = async (
+    media_status: "stored" | "failed",
+    patch: Record<string, unknown> = {},
+  ): Promise<number> => {
+    const { data: gravadas, error: updErr } = await admin
       .from("messages")
       .update({ metadata: { ...(msg.metadata ?? {}), media_status }, ...patch })
       .eq("id", msg.id)
-      .eq("organization_id", msg.organization_id);
+      .eq("organization_id", msg.organization_id)
+      .eq("media_url", msg.media_url as string)
+      .is("media_storage_path", null)
+      .select("id");
     if (updErr) throw new Error(`message update failed: ${updErr.message}`);
+    return gravadas?.length ?? 0;
   };
 
   const isLastAttempt = row.attempts >= DRAIN_MAX_ATTEMPTS - 1;
@@ -145,11 +157,20 @@ export async function persistMessageMedia(row: EventRow): Promise<HandlerResult>
     return { consumer_key, status: "error", detail: uploadErr.message };
   }
 
-  await markStatus("stored", {
+  const gravadas = await markStatus("stored", {
     media_storage_path: path,
     media_size_bytes: media.buffer.byteLength,
     media_mime: media.mime,
   });
+  if (gravadas === 0) {
+    // A mensagem mudou enquanto o arquivo subia (anonimização, retenção): o
+    // arquivo recém-subido não tem dono — apaga, para não ficar órfão no bucket.
+    const { error: removeErr } = await admin.storage.from("whatsapp-media").remove([path]);
+    if (removeErr) {
+      logger.warn("[media-persist] arquivo órfão não removido", { message_id: msg.id, detail: removeErr.message });
+    }
+    return { consumer_key, status: "skipped", detail: "message changed while persisting" };
+  }
 
   // Grupo nunca é derivado: a IA não serve grupos, e derivar custaria visão/
   // transcrição PAGA sem consumidor nenhum do outro lado — ninguém leria "o
