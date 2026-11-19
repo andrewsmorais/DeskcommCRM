@@ -7,6 +7,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * A régua está em `lib/cold-call/regras.ts`. O funil é um funil comum, marcado em `settings`.
  */
 import { exigirExtra } from "@/lib/billing/extras";
+import { respostaDoLimiteDoBanco } from "@/lib/billing/limite-no-banco";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
@@ -231,7 +232,12 @@ export async function POST(): Promise<Response> {
       })
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
+    if (error) {
+      // O funil do Cold Call conta como funil do plano (o banco barra acima do teto).
+      const noLimite = respostaDoLimiteDoBanco(error, requestId);
+      if (noLimite) return noLimite;
+      throw new Error(error.message);
+    }
 
     const { error: erroEtapas } = await supabase.from("crm_stages").insert(
       ETAPAS_DO_COLD_CALL.map((etapa, i) => ({

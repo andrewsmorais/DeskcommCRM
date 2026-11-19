@@ -10,3 +10,5 @@ Recursos que passam a depender do plano: **IA respondendo em grupos** e **automa
 **Prospecção, ligações por IA (com o Cold Call) e respostas em nota de voz** viraram extras cobrados à parte: não fazem parte de nenhum plano e só funcionam na empresa em que o dono da plataforma os liga, em Admin › Organizações.
 
 Na **troca de plano**, o cliente recebe um e-mail no ato do pedido (a descida diz a data em que vale; a subida traz o valor e o link da diferença) e outro quando a troca vale. A descida passa a valer na data certa mesmo sem a renovação paga, e o e-mail de "plano reduzido" sai nesse dia.
+
+Os **limites de cada plano** (números de WhatsApp, funis, agentes, chatbots ligados e pessoas da equipe) também passam a ser conferidos **dentro do banco**: quem tentar gravar direto, sem passar pelas telas, é barrado do mesmo jeito.
