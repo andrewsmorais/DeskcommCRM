@@ -3053,6 +3053,7 @@ export const DICIONARIO: Traducoes = {
   "Exportar marcados em CSV": { es: "Exportar marcados en CSV" },
   "Exportar marcados em vCard": { es: "Exportar marcados en vCard" },
   "Limpar marcação": { es: "Limpiar selección" },
+  "Uma ou mais pessoas escolhidas não fazem mais parte da equipe. Tire-as da lista de convidados para salvar o compromisso.": { es: "Una o más personas elegidas ya no forman parte del equipo. Quítalas de la lista de invitados para guardar la cita." },
   "contato(s) sincronizado(s)": { es: "contacto(s) sincronizado(s)" },
   "contato(s) já existente(s) — nada duplicado": { es: "contacto(s) ya existente(s) — nada duplicado" },
   "contato(s) com erro na gravação": { es: "contacto(s) con error al guardar" },

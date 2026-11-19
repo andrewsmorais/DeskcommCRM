@@ -118,17 +118,22 @@ export interface ParticipanteDoAgendamento {
 }
 
 /**
- * A lista de convidados do evento: e-mail da ficha do contato, depois o
- * convidado digitado na tela. Mesmo endereço duas vezes vira uma linha — o
- * Google recusa o evento inteiro se `attendees` tiver e-mail repetido.
+ * A lista de convidados do evento: e-mail da ficha do contato, o convidado
+ * digitado na tela e, por último, os CONVIDADOS DA EQUIPE (migration 0561) — as
+ * pessoas da organização escolhidas no compromisso, com o e-mail que o executor
+ * resolveu (conta Google conectada; sem ela, o de login).
  *
- * Os dois pedem RSVP (`aguardandoResposta`): o convite existe para a pessoa
+ * Mesmo endereço duas vezes vira uma linha, e a deduplicação é UMA só para os
+ * três: o Google recusa o evento inteiro se `attendees` tiver e-mail repetido.
+ *
+ * Todos pedem RSVP (`aguardandoResposta`): o convite existe para a pessoa
  * aceitar na caixa dela, não para gravar um "sim" em nome dela.
  */
 export function participantesDoAgendamento(input: {
   contactEmail?: string | null;
   contactName?: string | null;
   guestEmail?: string | null;
+  teamGuests?: readonly { email?: string | null; nome?: string | null }[] | null;
 }): ParticipanteDoAgendamento[] {
   const out: ParticipanteDoAgendamento[] = [];
   const vistos = new Set<string>();
@@ -144,6 +149,7 @@ export function participantesDoAgendamento(input: {
   };
   entra(input.contactEmail, input.contactName);
   entra(input.guestEmail);
+  for (const membro of input.teamGuests ?? []) entra(membro.email, membro.nome);
   return out;
 }
 
@@ -163,6 +169,18 @@ export interface AgendamentoParaGoogle {
   location_details?: string | null;
   meeting_url?: string | null;
   participantes?: ParticipanteDoAgendamento[];
+  /**
+   * Os convidados da equipe (0561) — e-mails resolvidos pelo executor e ids.
+   *
+   * Os IDs vão para `extendedProperties.private` do evento (`chataionline_guests`):
+   * é como a passada seguinte sabe QUEM nós convidamos e consegue DESconvidar
+   * quem foi tirado da lista. Os checkpoints guardam hashes, não e-mails.
+   *
+   * Os e-mails entram no hash do grupo `guest` (ver `localProjection`), então
+   * mudar a equipe publica a alteração como qualquer outro campo.
+   */
+  convidados_da_equipe?: readonly { email: string; nome?: string | null }[] | null;
+  convidados_equipe_ids?: readonly string[] | null;
   /** Quando já existe, é a identidade do evento lá — nunca se gera outra. */
   google_ical_uid?: string | null;
 }
@@ -300,6 +318,29 @@ function localDoEvento(a: AgendamentoParaGoogle): string | undefined {
   }
 }
 
+/**
+ * As `extendedProperties.private` que marcam o evento como nosso.
+ *
+ * Uma função só, usada pelo POST e pelo PATCH: o PATCH que atualiza a lista de
+ * convidados da equipe precisa reenviar as MESMAS chaves, senão o evento
+ * deixaria de ser reconhecido como nosso na passada seguinte. O
+ * `chataionline_guests` só aparece quando há convidados da equipe a registrar.
+ */
+export function propriedadesPrivadas(a: {
+  organization_id: string;
+  id: string;
+  convidados_equipe_ids?: readonly string[] | null;
+}): Record<string, string> {
+  return {
+    [`${PREFIXO_PROPRIEDADE}_org`]: a.organization_id,
+    [`${PREFIXO_PROPRIEDADE}_appointment`]: a.id,
+    [`${PREFIXO_PROPRIEDADE}_v`]: VERSAO_DA_PROPRIEDADE,
+    ...(a.convidados_equipe_ids?.length
+      ? { [`${PREFIXO_PROPRIEDADE}_guests`]: a.convidados_equipe_ids.join(",") }
+      : {}),
+  };
+}
+
 function instanteValido(iso: string, campo: string): Date {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) {
@@ -359,11 +400,7 @@ export function paraEventoDoGoogle(a: AgendamentoParaGoogle): CorpoDeEventoDoGoo
     transparency: "opaque",
     reminders: { useDefault: true },
     extendedProperties: {
-      private: {
-        [`${PREFIXO_PROPRIEDADE}_org`]: a.organization_id,
-        [`${PREFIXO_PROPRIEDADE}_appointment`]: a.id,
-        [`${PREFIXO_PROPRIEDADE}_v`]: VERSAO_DA_PROPRIEDADE,
-      },
+      private: propriedadesPrivadas(a),
     },
   };
 

@@ -3342,6 +3342,7 @@ export type Database = {
           source: string
           starts_at: string
           status: string
+          team_guest_user_ids: string[]
           time_zone: string
           title: string
           updated_at: string
@@ -3408,6 +3409,7 @@ export type Database = {
           source?: string
           starts_at: string
           status?: string
+          team_guest_user_ids?: string[]
           time_zone?: string
           title: string
           updated_at?: string
@@ -3474,6 +3476,7 @@ export type Database = {
           source?: string
           starts_at?: string
           status?: string
+          team_guest_user_ids?: string[]
           time_zone?: string
           title?: string
           updated_at?: string

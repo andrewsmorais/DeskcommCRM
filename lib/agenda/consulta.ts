@@ -521,6 +521,13 @@ export interface AgendamentoListado {
    * vínculo e não paga o preço de quem publica. (issue #1744)
    */
   leadIds?: string[];
+  /**
+   * Pessoas da equipe convidadas além do responsável (migration 0561).
+   *
+   * É o que deixa a tela mostrar quem mais está no compromisso — e o que
+   * explica por que ele aparece na agenda de quem não é o dono.
+   */
+  convidadosDaEquipe?: string[];
 }
 
 export interface ParametrosDaLista {
@@ -838,7 +845,7 @@ export async function listaAgendamentos(
   let q = supabase
     .from("calendar_appointments")
     .select(
-      "id, title, starts_at, ends_at, time_zone, status, revision, meeting_state, meeting_url, owner_user_id, contact_id, location_kind, location_details, calendar_event_types(id, name, slug), contacts(name, display_name)",
+      "id, title, starts_at, ends_at, time_zone, status, revision, meeting_state, meeting_url, owner_user_id, contact_id, location_kind, location_details, calendar_event_types(id, name, slug), contacts(name, display_name), team_guest_user_ids",
     )
     .eq("organization_id", organizationId)
     .order("starts_at", { ascending: true })
@@ -850,7 +857,22 @@ export async function listaAgendamentos(
 
   if (idsPorLead) q = q.in("id", idsPorLead);
   if (params.contactId) q = q.eq("contact_id", params.contactId);
-  if (params.ownerUserId) q = q.eq("owner_user_id", params.ownerUserId);
+  if (params.ownerUserId) {
+    /**
+     * A AGENDA DE QUEM FOI CONVIDADO TAMBÉM É DELE (migration 0561).
+     *
+     * "Minha agenda" mostra o que eu vou ATENDER (sou o dono) e aquilo para o
+     * que fui CHAMADO. Sem isso, a SDR marca com o closer, o closer abre a
+     * própria agenda e não vê nada.
+     *
+     * `cs` é "contém" de array no PostgREST. O id entra numa expressão `or`,
+     * então só segue se for uuid: vírgula ou chave mudariam o filtro.
+     */
+    const pessoa = params.ownerUserId.trim().toLowerCase();
+    q = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(pessoa)
+      ? q.or(`owner_user_id.eq.${pessoa},team_guest_user_ids.cs.{${pessoa}}`)
+      : q.eq("owner_user_id", params.ownerUserId);
+  }
   if (params.situacao) q = q.eq("status", params.situacao);
   if (params.depoisDe) {
     const cursor = decodificarCursorDaLista(params.depoisDe);
@@ -986,6 +1008,9 @@ export async function listaAgendamentos(
         tipo: tipo ? { slug: texto(tipo.slug) ?? "", nome: texto(tipo.name) ?? "" } : null,
         local: { tipo: texto(l.location_kind), descricao: texto(l.location_details) },
         leadIds: vinculosPorAlvo?.get(String(l.id)) ?? [],
+        convidadosDaEquipe: Array.isArray(l.team_guest_user_ids)
+          ? (l.team_guest_user_ids as unknown[]).map(String)
+          : [],
       } satisfies AgendamentoListado;
     }),
     proximo:

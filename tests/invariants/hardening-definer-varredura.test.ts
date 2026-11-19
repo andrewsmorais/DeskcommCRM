@@ -132,6 +132,10 @@ const AUTHENTICATED_PERMITIDO: readonly Excecao[] = [
       "service_role negado, suporte readonly/expirado, MFA e retomada.",
   },
   {
+    fn: "fn_set_channel_distribution_mode(uuid,uuid,text)",
+    razao: "PATCH app/api/v1/settings/routing/channels/modo/route.ts usa createClient da sessão; RPC (migration 0559) exige manager, suporte de escrita e MFA, e só grava o modo de distribuição de um número da própria org. tests/invariants/jeito-de-distribuir-por-numero.test.ts prova os dois sentidos do modo por número.",
+  },
+  {
     fn: "fn_set_channel_routing(uuid,uuid,uuid[],boolean)",
     razao: "PATCH app/api/v1/settings/routing/channels/route.ts usa createClient da sessão; RPC exige manager, suporte de escrita, MFA e canal/membros da org na mesma transação. tests/invariants/channel-routing.test.ts prova viewer, tenants A/B, membro revogado, policy vazia e MFA platform aal1/aal2.",
   },
