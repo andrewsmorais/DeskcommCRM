@@ -84,7 +84,7 @@ function cand(id: string, over: Record<string, unknown> = {}, data: Record<strin
 
 type Cenario = {
   trava?: boolean;
-  campanhas?: Array<{ id: string; config: unknown; search?: unknown }>;
+  campanhas?: Array<{ id: string; status?: string; config: unknown; search?: unknown }>;
   candidatos?: Record<string, ReturnType<typeof cand>[]>;
   falhaNaCampanhas?: Error;
   falhaNoUnlock?: Error;
