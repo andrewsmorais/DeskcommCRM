@@ -10911,6 +10911,10 @@ export type Database = {
         Args: { p_lid: string; p_org: string; p_telefone: string }
         Returns: boolean
       }
+      fn_titulares_apagados_a_pedido: {
+        Args: { p_org: string; p_telefones: string[] }
+        Returns: string[]
+      }
       fn_upsert_wa_contact: {
         Args: {
           p_chat_id: string

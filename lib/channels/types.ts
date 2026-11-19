@@ -5,10 +5,11 @@
 // mudar de casa.
 import type { SendMessageInput } from "@/lib/schemas";
 import type { FetchedMedia } from "@/lib/messaging/media/types";
+import type { ContatoDoAparelho } from "@/lib/waha/client";
 import type { OutboundMedia } from "@/lib/waha/media-send";
 import type { Escolhas } from "./escolhas";
 
-export type { OutboundMedia };
+export type { OutboundMedia, ContatoDoAparelho };
 
 export type ChannelProvider =
   | "waha"
@@ -66,6 +67,17 @@ export interface ChannelCapabilities {
   alteraMensagemEnviada: boolean;
   /** O adapter deste canal aceita reagir a mensagens. */
   podeReagir: boolean;
+  /**
+   * O canal fala com um APARELHO pareado que tem uma agenda salva para ler?
+   * Só um número pareado com o aplicativo do WhatsApp tem a lista de contatos
+   * do celular do outro lado; um canal oficial expõe só quem já passou por ele.
+   *
+   * É a pergunta que a tela faz para decidir se OFERECE o gesto "Sincronizar
+   * agenda do celular" — declarativa porque a tela não tem adapter em mãos, e
+   * perguntar QUAL provider é o que a doutrina de canal proíbe. Quem executa o
+   * gesto confirma pela presença do método `listPhonebook` no adapter.
+   */
+  phonebook: boolean;
 }
 
 /**
@@ -450,6 +462,17 @@ export interface ChannelAdapter {
    * quem chama testa a presença em vez de perguntar QUAL provider é.
    */
   checkHealth?(input: ChannelTenantScope & { sessionRef: string }): Promise<ChannelHealth>;
+
+  /**
+   * Uma PÁGINA da agenda do aparelho pareado (`limit`/`offset`, com ordenação
+   * fixa lá dentro para o offset não pular nem repetir linha). OPCIONAL: canal
+   * sem aparelho não implementa, e quem chama testa a presença do método.
+   */
+  listPhonebook?(input: ChannelTenantScope & {
+    sessionRef: string;
+    limit: number;
+    offset: number;
+  }): Promise<ContatoDoAparelho[]>;
 
   /** Grupos do número. Ausente = o canal não lista grupos. */
   listGroups?(input: { sessionRef: string }): Promise<ChannelGroup[]>;

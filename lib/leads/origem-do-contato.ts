@@ -30,6 +30,9 @@
  * vai procurar um defeito que não há.
  */
 
+/** `contacts.source` de quem entrou pela sincronização da agenda do celular. */
+export const ORIGEM_AGENDA_DO_CELULAR = "whatsapp_agenda";
+
 /** As chaves que respondem "de onde veio", antes de cair na coluna `source`. */
 const CHAVES_DA_ORIGEM = ["utm_source", "ad_platform"] as const;
 

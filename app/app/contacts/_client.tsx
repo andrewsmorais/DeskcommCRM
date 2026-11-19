@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
-import { Plus, DownloadSimple, MagnifyingGlass, UploadSimple, UsersThree } from "@/lib/ui/icons";
+import { ArrowsClockwise, Plus, DownloadSimple, MagnifyingGlass, UploadSimple, UsersThree } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,6 +24,7 @@ import { queryDaExportacao, type FormatoDeExport } from "@/lib/contacts/exportar
 import { roleAtLeast } from "@/lib/auth/types";
 import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { MergeDialog } from "@/components/contacts/MergeDialog";
+import { SyncPhoneContactsDialog } from "@/components/contacts/SyncPhoneContactsDialog";
 import { EmptyContacts } from "@/components/empty";
 import type { ContactOrderBy } from "@/lib/schemas/contacts";
 
@@ -63,6 +64,7 @@ export function ContactsListClient() {
   const [limit, setLimit] = useState<number>(25);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [agendaOpen, setAgendaOpen] = useState(false);
   const [duplicadosOpen, setDuplicadosOpen] = useState(false);
 
   useEffect(() => {
@@ -196,6 +198,11 @@ export function ContactsListClient() {
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <UploadSimple size={16} weight="bold" aria-hidden />
             <span>{t("Importar CSV")}</span>
+          </Button>
+          {/* Os contatos salvos no celular do número conectado — a porta que o CSV não tem. */}
+          <Button variant="outline" onClick={() => setAgendaOpen(true)}>
+            <ArrowsClockwise size={16} weight="bold" aria-hidden />
+            <span>{t("Agenda do celular")}</span>
           </Button>
           {/*
             A porta de VOLTA do mesmo dado: importar sem exportar deixava o CRM
@@ -400,6 +407,7 @@ export function ContactsListClient() {
 
       <NewContactDialog open={createOpen} onOpenChange={setCreateOpen} />
       <ImportContactsDialog open={importOpen} onOpenChange={setImportOpen} />
+      <SyncPhoneContactsDialog open={agendaOpen} onOpenChange={setAgendaOpen} />
       <MergeDialog open={duplicadosOpen} onOpenChange={setDuplicadosOpen} />
     </div>
   );

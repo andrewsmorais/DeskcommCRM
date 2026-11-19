@@ -64,6 +64,7 @@ export const AUDIT_ACTIONS = [
   "contact.updated",
   // A tela de Contatos devolvendo a base em CSV/vCard — portabilidade (LGPD art. 18, V).
   "contacts.exported",
+  "contacts.synced_from_phone",
   "contacts.imported",
   "contact.anonymized",
   "contact.address_book_name_filled",

@@ -48386,6 +48386,36 @@ create trigger trg_fusao_soma_marcas_do_contato
   execute function public.fn_fusao_soma_marcas_do_contato();
 
 
+-- ---- titulares apagados em lote (migration 0560) ----
+create or replace function public.fn_titulares_apagados_a_pedido(
+  p_org uuid,
+  p_telefones text[]
+)
+returns text[] language sql stable
+set search_path = public, extensions, pg_temp as $$
+  select coalesce(array_agg(t.telefone), '{}'::text[])
+    from unnest(coalesce(p_telefones, '{}'::text[])) as t(telefone)
+   where t.telefone is not null
+     and exists (
+       select 1
+         from public.lgpd_marcas_de_apagamento m
+        where m.organization_id = p_org
+          and m.marca_telefone is not null
+          and exists (
+            select 1
+              from unnest(public.fn_telefone_variantes(t.telefone)) as v(digitos)
+             where m.marca_telefone = hmac(convert_to(v.digitos, 'UTF8'), m.sal, 'sha256')
+          )
+     );
+$$;
+-- AS DUAS ORIGENS DE EXECUTE: a resposta diz QUEM pediu apagamento, então nem
+-- `anon` nem `authenticated` a fazem. Mesma negação da unitária.
+revoke execute on function public.fn_titulares_apagados_a_pedido(uuid, text[]) from public, anon, authenticated;
+grant execute on function public.fn_titulares_apagados_a_pedido(uuid, text[]) to service_role;
+
+notify pgrst, 'reload schema';
+
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria
