@@ -78,8 +78,11 @@ export function AuthProvider({
       refreshing,
       signOut: async () => {
         resetRealtimeAuthentication();
+        // O aviso deste navegador sai junto com a sessão (auditoria 18/11, nº 20).
+        const { encerrarPushDesteNavegador } = await import("@/lib/notifications/push_client");
+        const endpoint = await encerrarPushDesteNavegador();
         const { signOut } = await import("@/app/actions/auth/signOut");
-        await signOut();
+        await signOut(endpoint ?? undefined);
       },
     }),
     [user, activeOrg, refreshing],

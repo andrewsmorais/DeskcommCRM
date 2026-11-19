@@ -238,3 +238,30 @@ export async function removerPushDoMembro(
     .eq("user_id", userId);
   if (error) logger.warn("push_subscriptions_revoke_cleanup_failed", { detail: error.message });
 }
+
+/**
+ * Apaga as inscrições de quem SAIU DA CONTA (auditoria 18/11, achado 20).
+ *
+ * Com `endpoint`, só a deste navegador ("Sair"); sem ele, todas as da pessoa em
+ * todas as organizações ("Sair de todos os dispositivos" e troca de senha).
+ * Service role porque a sessão já está acabando — e o filtro é sempre o
+ * `userId` resolvido pelo servidor (`getUser()`), nunca algo que veio do corpo.
+ * O `endpoint` só estreita: com ele, nada de outra pessoa é alcançável.
+ */
+export async function removerPushAoSair(
+  userId: string,
+  endpoint: string | null,
+  criarAdmin: () => Admin = createAdminClient,
+): Promise<void> {
+  // Nunca lança: sair da conta não pode falhar porque a limpeza falhou.
+  try {
+    let q = criarAdmin().from("push_subscriptions").delete().eq("user_id", userId);
+    if (endpoint) q = q.eq("endpoint", endpoint);
+    const { error } = await q;
+    if (error) logger.warn("push_subscriptions_logout_cleanup_failed", { detail: error.message });
+  } catch (err) {
+    logger.warn("push_subscriptions_logout_cleanup_failed", {
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+}

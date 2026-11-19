@@ -18,6 +18,7 @@ import { RecoveryCodesPanel } from "@/components/auth/RecoveryCodesPanel";
 import { MfaEnrollModal } from "@/components/auth/MfaEnrollModal";
 import { regenerateRecoveryCodes } from "@/app/actions/settings/regenerateRecoveryCodes";
 import { signOutEverywhere } from "@/app/actions/settings/signOutEverywhere";
+import { encerrarPushDesteNavegador } from "@/lib/notifications/push_client";
 import {
   definirExigenciaDeMfa,
   desativarMfaDaConta,
@@ -69,6 +70,8 @@ export function SecurityClient({
 
   function handleSignOutAll() {
     startSignOut(async () => {
+      // Este navegador também deixa de receber (o servidor apaga as linhas de todos).
+      await encerrarPushDesteNavegador();
       await signOutEverywhere();
     });
   }

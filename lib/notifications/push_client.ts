@@ -58,3 +58,31 @@ export async function syncPushSubscription(): Promise<void> {
     }),
   });
 }
+
+/**
+ * DESLIGA O AVISO DESTE NAVEGADOR AO SAIR DA CONTA (auditoria 18/11, achado 20).
+ *
+ * Sair da conta apagava a sessão, mas a inscrição Web Push seguia no navegador
+ * e no banco: o servidor continuava mandando "nova mensagem de Fulano" para a
+ * tela de bloqueio de um computador onde ninguém estava mais logado.
+ *
+ * Cancela a inscrição no navegador e devolve o endereço dela, para a ação de
+ * sair apagar a linha do banco. Nunca lança e nunca demora mais que `teto`:
+ * sair da conta não pode ficar preso num navegador que não responde.
+ */
+export async function encerrarPushDesteNavegador(teto = 1500): Promise<string | null> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
+  const trabalho = (async () => {
+    const registros = await navigator.serviceWorker.getRegistrations();
+    let endpoint: string | null = null;
+    for (const reg of registros) {
+      const sub = await reg.pushManager?.getSubscription();
+      if (!sub) continue;
+      endpoint ??= sub.endpoint;
+      await sub.unsubscribe().catch(() => false);
+    }
+    return endpoint;
+  })().catch(() => null);
+  const espera = new Promise<null>((resolve) => setTimeout(() => resolve(null), teto));
+  return Promise.race([trabalho, espera]);
+}

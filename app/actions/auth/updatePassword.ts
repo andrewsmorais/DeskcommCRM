@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resetPasswordSchema, type ResetPasswordInput } from "@/lib/auth/schemas";
 import { audit } from "@/lib/audit";
+import { removerPushAoSair } from "@/lib/notifications/web_push";
 import { mfaBloqueadoPorFalhas, registrarFalhaDeMfa } from "@/lib/auth/rate-limit";
 
 export type UpdatePasswordResult = {
@@ -108,6 +109,10 @@ export async function updatePassword(
     userAgent,
   });
 
+  // Trocar a senha costuma ser reação a acesso indevido: o aviso deixa de ir
+  // para os aparelhos de antes. Volta sozinho no navegador onde a pessoa entrar
+  // de novo (`syncPushSubscription` reinscreve ao abrir o app).
+  await removerPushAoSair(user.id, null);
   await supabase.auth.signOut();
   redirect("/login?reset=success");
 }
