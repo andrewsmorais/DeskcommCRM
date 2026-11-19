@@ -34,12 +34,18 @@
 
 | | Essencial | Impulso | Escala |
 |---|---|---|---|
-| Números de WhatsApp | 2 | 4 | 6 (pode subir por empresa) |
+| Números de WhatsApp | 2 | 4 | 6 (proposta pode subir por empresa) |
 | Agentes de IA | 1 | 2 | 3 |
 | Chatbots ligados | 1 | 2 | 3 |
 | Funis | 2 | 4 | 6 |
 | Usuários | 2 | 4 | 6 |
-| Como contrata | checkout | checkout | "Falar com especialista"; o dono ativa |
+| Como contrata | checkout | checkout | checkout (desde 19/11); proposta acima do pacote o dono ativa |
+
+- **Extras cobrados à parte** (nenhum plano inclui; o dono liga por empresa em Admin › Organizações,
+  coluna `subscriptions.extras`): prospecção, ligações por IA (com Cold Call) e nota de voz.
+- Desde 19/11: IA em grupo e automações avançadas (ganho/perda, IA, e-mail, aviso à equipe, mídia) no
+  Impulso; Jev e telefone oculto no Escala (o Jev fica fora do card: precisa de chave). Descer de plano
+  exige caber no plano novo.
 
 - Recursos por plano: lista `RECURSOS_DO_PLANO` no mesmo arquivo (API, webhooks, follow-up da IA,
   relatórios completos etc. a partir do Impulso; permissões avançadas, auditoria e marca própria
@@ -151,6 +157,7 @@
 | 18/11 | **Distribuição: modo "Menor carga" (S5)**. O rodízio já existia no produto; faltava o modo que dá a conversa a quem tem menos conversas abertas. `least_load` em `lib/schemas/routing.ts` (+ `modoDistribuiSozinho`), `selectLeastLoad` em `lib/routing/decide.ts`, escolha na tela Configurações › Atendimento. Vale para a organização toda; o modo por número ficou para depois (a configuração mora na organização, não no canal). Sem schema novo; teste em `lib/routing/decide.test.ts` | `chataionline/seguranca-auditoria` |
 | 18/11 | **Conversa sem resposta volta para a fila (S5)**. Opção `unanswered_return_after_minutes` em `settings.routing` (desligada por padrão), cron novo `app/api/v1/cron/conversa-sem-resposta` (a cada 5 min, no `docker/scheduler/entrypoint.sh`), regra pura em `lib/routing/sem-resposta.ts`, escolha em Configurações › Atendimento. Usa a `fn_conversation_assign` (motivo `release`, com a trava "só se o dono ainda é este") e pede o roteamento de novo. Conta do mais recente entre a fala do cliente e o momento em que o atendente assumiu. Sem schema novo. Testes em `lib/routing/sem-resposta.test.ts`; falta provar contra banco real | `chataionline/seguranca-auditoria` |
 | 18/11 | **Cada número com seu jeito de distribuir (S5)**. Migration **0559**: coluna `channel_sessions.routing_mode` (NULL = segue a organização) e função `fn_set_channel_distribution_mode` (gerente+, suporte com escrita, MFA). O worker (`lib/routing/worker.ts`, `modoDoNumero`) usa o modo do número antes do da organização. Rota `PATCH /api/v1/settings/routing/channels/modo`; escolha por número em Configurações › Atendimento › Responsáveis por número. Invariantes `tests/invariants/jeito-de-distribuir-por-numero.test.ts` (função e worker, nos dois sentidos) e `tests/invariants/atualizar-card-e-fila-sem-resposta.test.ts` (prova contra banco real do passo "Atualizar o card" e da chamada do cron de fila) | `chataionline/seguranca-auditoria` |
+| 19/11 | **Planos (Opus 5.5 alto)**: Escala pelo checkout com 7 dias grátis e troca de plano entre os três; recursos novos distribuídos por plano com trava na rota e no motor (`ia_em_grupo`, `automacoes_avancadas`, `jev`; telefone oculto em `permissoes_avancadas`); extras à parte (`lib/billing/extras.ts`, migration **0562**); descer exige caber (`lib/billing/uso-do-plano.ts`); cron `troca-de-plano-vencida`; e-mails `troca_agendada`/`troca_aguardando_pagamento`. Auditoria das travas (2 auditores): 23 achados, 17 consertados, 3 a decidir, 3 pendentes (o maior: limites passáveis gravando direto no banco). Planilha, aba "Auditoria planos 19/11". Página de vendas: ramo `chataionline/escala-no-checkout` | `.changes/planos-escala-no-checkout-e-extras.md` |
 
 - **O5b — Público do agente (dois agentes no mesmo número)** — porta do upstream #3722 (fa05a7f2b, c1118f652, 98ab14938): etiquetas, funis e origem do contato decidem qual agente do número atende; ninguém aceita = silêncio com a mensagem na caixa de entrada. A fatia 2 (o roteador respeitar o público, 80f94fc03) **não** foi portada: depende do contexto do CRM no roteador (#3917) e das regras de remetente, que o fork não tem. Prova: `evidence/publico-do-agente/1-publico-do-agente-na-tela-do-gatilho.png`.
 
@@ -170,6 +177,11 @@
 
 ## 5. O que falta / pendências conhecidas
 
+- **Travas de limite no próprio banco** (auditoria de planos 19/11, achado 5): gravar direto pela
+  chave pública (chatbots, funis, agentes, equipe) passa por cima dos limites. Já existia. Opus alto.
+- **Decidir** (aba "Auditoria planos 19/11"): teste grátis do Escala (só com cartão?), ligar extras de
+  quem já usa, webhook de saída no Essencial.
+
 - **Conferir na VPS de teste** os 2 pontos "Conferir" da auditoria de 18/11 (push depois de sair; DNS na busca do site do prospecto) e auditar o ponto adiado (conferência "tem WhatsApp?" da prospecção). Os 9 achados baixos (9 a 16 e 19) já foram consertados, ver a linha logo acima.
 - **Nunca foi testado pela tela, numa instalação limpa, depois das duas auditorias:** criar conta →
   escolher plano → conectar WhatsApp → primeiro lead → IA e chatbot respondendo. Prioridade 1.
@@ -187,9 +199,11 @@
 
 ## 6. Dia de subir para a VPS (checklist)
 
-Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0561**). Depois de atualizar, a rotina `contact-names` começa a preencher o nome da agenda do celular aos poucos (5 contatos a cada 10 min); ela só funciona se o número tiver a opção de guardar o histórico ligada no WhatsApp.
+Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0562**). A página de vendas nova
+(Qwen, ramo `chataionline/escala-no-checkout`) só sobe DEPOIS do `update.sh`: ela grava colunas da 0562. Depois de atualizar, a rotina `contact-names` começa a preencher o nome da agenda do celular aos poucos (5 contatos a cada 10 min); ela só funciona se o número tiver a opção de guardar o histórico ligada no WhatsApp.
 
 No `.env` da instalação (achar a pasta com `docker compose ls`):
+- `EXIGIR_ASSINATURA=true` (sem ela, plano vencido e recurso fora do plano não são barrados)
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL=suporte@chataionline.io`, `SUPPORT_EMAIL`, `SUPPORT_WHATSAPP`
 - trocar o `INTERNAL_SECRET` (apareceu num print) — troque ANTES de gerar códigos de recuperação: trocar depois invalida os códigos já emitidos
 - quem já tinha verificação em duas etapas: gerar códigos de recuperação novos em Configurações › Segurança (a migration 0527 apaga os antigos, que nunca funcionaram)
