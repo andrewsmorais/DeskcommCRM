@@ -135,7 +135,9 @@ export async function enriquecerSitesPendentes(
       rows.map((r) => r.website),
       agoraIso,
       6,
-      fetch,
+      // `undefined` = o fetch com IP fixado (auditoria 18/11, nº 21). Passar o
+      // `fetch` global aqui reabria o DNS rebinding no caminho do lote.
+      undefined,
       undefined,
       rows.map((r) => r.tentativas ?? 0),
     );

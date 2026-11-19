@@ -18,8 +18,11 @@
  *   não citável. Definitivo e citável só o comprovado: HTTP/SSL do site,
  *   agregador, e o domínio inexistente (NXDOMAIN com certeza do resolvedor).
  *
- * Residual conhecido: DNS rebinding entre a verificação e o connect (TOCTOU),
- * declarado na guarda da casa. Fora do modelo de ameaça desta fase.
+ * DNS rebinding (TOCTOU entre a verificação e o connect): FECHADO desde a
+ * auditoria de 18/11 (nº 21). O `fetch` padrão daqui é `fetchComIpFixo`
+ * (`lib/net/fetch-com-ip-fixo.ts`): resolve uma vez, recusa se QUALQUER
+ * endereço for interno e conecta só nos endereços conferidos, mantendo o nome
+ * do site no SNI/Host — o certificado continua validado contra o domínio.
  */
 import { lookup as lookupDns } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -49,6 +52,7 @@ import {
   temLinkComHrefHttp,
 } from "@/lib/prospecting/leitura-do-html";
 import { LIMITE_TENTATIVAS } from "@/lib/prospecting/site-efetivo";
+import { fetchComIpFixo } from "@/lib/net/fetch-com-ip-fixo";
 
 const TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 5;
@@ -218,7 +222,7 @@ function medicaoBarrada(b: Pick<Busca, "status" | "desafioAntiRobo">): boolean {
 
 async function buscar(
   urlInicial: string,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = fetchComIpFixo,
   verificar: VerificadorDeHost = verificadorPadrao,
 ): Promise<Busca> {
   let atual = urlInicial.startsWith("http://") || urlInicial.startsWith("https://")
@@ -334,7 +338,7 @@ function anoDesatualizado(html: string): string | null {
 export async function auditarSite(
   url: string,
   agoraIso: string,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = fetchComIpFixo,
   verificar: VerificadorDeHost = verificadorPadrao,
   tentativasAnteriores = 0,
 ): Promise<SiteEnrichment> {
@@ -490,7 +494,7 @@ export async function auditarSites(
   urls: string[],
   agoraIso: string,
   paralelismo = 6,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = fetchComIpFixo,
   verificar: VerificadorDeHost = verificadorPadrao,
   tentativasAnteriores: number[] | number = 0,
   prazoMs = PRAZO_DO_LOTE_MS,

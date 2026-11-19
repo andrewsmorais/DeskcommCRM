@@ -83,7 +83,9 @@ describe("enriquecerSitesPendentes", () => {
       ["https://a.com", "https://instagram.com/x"],
       expect.any(String),
       6,
-      expect.anything(),
+      // NUNCA o `fetch` global: `undefined` deixa o padrão, que fixa o IP
+      // conferido na conexão (auditoria 18/11, nº 21 — DNS rebinding).
+      undefined,
       undefined,
       [0, 0],
     );
