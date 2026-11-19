@@ -6,12 +6,30 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/i18n/useT";
 import { nomeDoCanal } from "@/lib/channels/estado";
 import type { ChannelRoutingSettings } from "@/lib/routing/channel-policies";
+import { ROUTING_MODES, type RoutingMode } from "@/lib/schemas/routing";
+
+const ROTULO_DO_MODO: Record<RoutingMode, string> = {
+  manual: "Manual (atendente puxa da fila)",
+  round_robin: "Rodízio (distribui automático)",
+  least_load: "Menor carga (quem tem menos conversas)",
+};
 
 export function ChannelRoutingForm({ initial }: { initial: ChannelRoutingSettings }) {
   const t = useT(); const router = useRouter();
   const [channels, setChannels] = useState(initial.channels);
   const [busy, setBusy] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  async function salvarModo(id: string) {
+    const channel = channels.find((c) => c.id === id);
+    setBusy(id); setFeedback("");
+    try {
+      const response = await fetch("/api/v1/settings/routing/channels/modo", { method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel_session_id: id, routing_mode: channel?.routing_mode ?? null }) });
+      const result = await response.json();
+      if (!response.ok) { setFeedback(t(result.error?.message ?? "Não foi possível salvar. Tente novamente.")); return; }
+      setFeedback(t("Jeito de distribuir salvo.")); router.refresh();
+    } catch { setFeedback(t("Não foi possível salvar. Tente novamente.")); } finally { setBusy(null); }
+  }
   async function save(id: string, reset: boolean) {
     setBusy(id); setFeedback("");
     try {
@@ -30,6 +48,23 @@ export function ChannelRoutingForm({ initial }: { initial: ChannelRoutingSetting
     {channels.map((channel) => <fieldset key={channel.id} className="rounded-lg border p-4 space-y-3" disabled={busy !== null}>
       <legend className="px-2 font-medium">{t(nomeDoCanal(channel))}</legend>
       <p className="text-sm" data-testid="channel-routing-state">{t(channel.mode === "legacy_unconfigured" ? "Usa todos os atendentes elegíveis da organização." : channel.mode === "restricted_empty" ? "Ninguém configurado — as conversas ficarão na fila." : "Somente as pessoas selecionadas recebem este número.")}</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="space-y-1 text-sm">
+          <span className="block font-medium">{t("Jeito de distribuir neste número")}</span>
+          <select
+            className="h-9 rounded-md border bg-background px-2 text-sm"
+            value={channel.routing_mode ?? ""}
+            onChange={(e) => {
+              const valor = e.target.value === "" ? null : (e.target.value as RoutingMode);
+              setChannels((current) => current.map((c) => c.id === channel.id ? { ...c, routing_mode: valor } : c));
+            }}
+          >
+            <option value="">{t("Igual ao da organização")}</option>
+            {ROUTING_MODES.map((m) => <option key={m} value={m}>{t(ROTULO_DO_MODO[m])}</option>)}
+          </select>
+        </label>
+        <Button variant="outline" onClick={() => void salvarModo(channel.id)}>{t("Salvar jeito de distribuir")}</Button>
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {initial.members.map((member) => <label key={member.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted">
           <input type="checkbox" checked={channel.user_ids.includes(member.id)} onChange={(e) => setChannels((current) => current.map((c) => c.id === channel.id ? { ...c, user_ids: e.target.checked ? [...c.user_ids, member.id] : c.user_ids.filter((id) => id !== member.id) } : c))} />

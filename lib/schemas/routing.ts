@@ -242,3 +242,12 @@ export const channelRoutingPatchSchema = z.object({
   user_ids: z.array(z.string().uuid()).max(1000),
   reset: z.boolean().default(false),
 }).strict();
+
+/** PATCH de `/api/v1/settings/routing/channels/modo` — o jeito de distribuir de UM número (0559). */
+export const channelDistributionModePatchSchema = z
+  .object({
+    channel_session_id: z.string().uuid(),
+    /** `null` = volta a seguir o modo da organização. */
+    routing_mode: z.enum(ROUTING_MODES).nullable(),
+  })
+  .strict();

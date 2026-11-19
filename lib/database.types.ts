@@ -4245,6 +4245,7 @@ export type Database = {
           organization_id: string
           phone_number: string | null
           provider: string
+          routing_mode: string | null
           status: string
           status_reason: string | null
           updated_at: string
@@ -4281,6 +4282,7 @@ export type Database = {
           organization_id: string
           phone_number?: string | null
           provider?: string
+          routing_mode?: string | null
           status?: string
           status_reason?: string | null
           updated_at?: string
@@ -4317,6 +4319,7 @@ export type Database = {
           organization_id?: string
           phone_number?: string | null
           provider?: string
+          routing_mode?: string | null
           status?: string
           status_reason?: string | null
           updated_at?: string
@@ -10266,6 +10269,10 @@ export type Database = {
           p_user: string
         }
         Returns: string
+      }
+      fn_set_channel_distribution_mode: {
+        Args: { p_channel: string; p_mode: string | null; p_org: string }
+        Returns: Json
       }
       fn_set_channel_routing: {
         Args: {

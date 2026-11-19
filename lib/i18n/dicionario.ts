@@ -3044,6 +3044,10 @@ export const DICIONARIO: Traducoes = {
   "não tem a etiqueta": { es: "no tiene la etiqueta" },
   "é exatamente": { es: "es exactamente" },
   "não é": { es: "no es" },
+  "Jeito de distribuir neste número": { es: "Forma de distribuir en este número" },
+  "Igual ao da organização": { es: "Igual que la organización" },
+  "Salvar jeito de distribuir": { es: "Guardar forma de distribuir" },
+  "Jeito de distribuir salvo.": { es: "Forma de distribuir guardada." },
   "Não há e-mail cadastrado para quem deveria receber. Preencha o e-mail e tente de novo.": {
     es: "No hay correo registrado para quien debía recibirlo. Complete el correo e inténtelo de nuevo.",
   },
