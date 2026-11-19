@@ -25,6 +25,8 @@ export interface NovoAgendamento {
    * Google quando existe. Vazio ou ausente não convida outra pessoa.
    */
   guest_email?: string;
+  /** Pessoas da equipe convidadas (até 20). Ausente = ninguém. */
+  team_guest_user_ids?: string[];
 }
 
 /**

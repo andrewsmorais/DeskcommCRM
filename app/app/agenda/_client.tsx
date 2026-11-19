@@ -21,9 +21,14 @@ import { HistoricoDaAgenda } from "@/components/agenda/HistoricoDaAgenda";
 import type { Agendamento, HorarioLivre, VisaoDaAgenda } from "@/components/agenda/tipos";
 import { EmptyAgenda } from "@/components/empty";
 import { rotuloDoLocal } from "@/lib/agenda/locais";
+import {
+  MAXIMO_DE_CONVIDADOS_DA_EQUIPE,
+  equipeParaSalvar,
+} from "@/lib/agenda/convidados-da-equipe";
 import { ancoraAoFecharPainel } from "@/lib/agenda/ancora-depois-de-marcar";
 import { ancoraLocalDoDia } from "@/lib/agenda/semana-semente";
 import { janelaDoMesVisivel } from "@/lib/agenda/janela-do-mes-visivel";
+import { quadroDisponivel } from "@/lib/agenda/quadro-por-profissional";
 import { recorteDaGrade as recorteDaGradeDe } from "@/lib/agenda/recorte-da-grade";
 import { resolverResponsavelDoPainel } from "@/lib/agenda/responsavel-do-painel";
 import { useVinculoDaMarcacao } from "@/lib/agenda/vinculo-da-marcacao";
@@ -46,6 +51,9 @@ const VISOES: Array<{ id: VisaoDaAgenda; rotulo: string }> = [
   { id: "dia", rotulo: "Dia" },
   { id: "semana", rotulo: "Semana" },
   { id: "mes", rotulo: "Mês" },
+  // UMA LINHA POR PROFISSIONAL, o dia na horizontal. Visão da MESMA agenda:
+  // mesmos compromissos, mesmos filtros, navegação de um dia por vez.
+  { id: "quadro", rotulo: "Quadro" },
 ];
 
 /**
@@ -159,9 +167,26 @@ export function AgendaClient({
     },
     [podeMarcar, registrarVinculoDaRota],
   );
+  /**
+   * OS CONVIDADOS DA EQUIPE — pessoas desta organização além do responsável.
+   * A lista sai de `usePessoasDaAgenda`, a mesma fonte da barra de pessoas.
+   */
+  const [convidadosDaEquipe, setConvidadosDaEquipe] = React.useState<string[]>([]);
+  /**
+   * A EQUIPE QUE O COMPROMISSO JÁ TINHA quando o painel abriu. Só serve ao
+   * diff do PATCH: remarcar manda `starts_at` sempre, e se a lista fosse junto
+   * por omissão o compromisso perderia a equipe com um 200 mudo.
+   * `equipeParaSalvar` devolve `undefined` quando ninguém foi mexido e `[]`
+   * quando a pessoa tirou todo mundo.
+   */
+  const [equipeAoAbrir, setEquipeAoAbrir] = React.useState<string[]>([]);
   /** Abrir o painel do zero: o vínculo volta a ser o da rota, nunca o da vez anterior. */
   const abrirMarcacao = React.useCallback(() => {
     reiniciarVinculo();
+    // A equipe também volta ao zero: sem isto, os convidados de um compromisso
+    // remarcado antes seguiriam marcados numa marcação NOVA.
+    setConvidadosDaEquipe([]);
+    setEquipeAoAbrir([]);
     setMarcando(true);
   }, [reiniciarVinculo]);
   // O horário que veio de um CLIQUE NA GRADE. Preenchido, o painel abre já em
@@ -244,7 +269,7 @@ export function AgendaClient({
     [busca, caminho],
   );
   const endereco = enderecoEditado ?? tipo?.localDetalhes ?? "";
-  const [visao, setVisao] = React.useState<VisaoDaAgenda>("semana");
+  const [visaoEscolhida, setVisao] = React.useState<VisaoDaAgenda>("semana");
   /**
    * No CELULAR a agenda abre no DIA, não na semana.
    *
@@ -299,6 +324,26 @@ export function AgendaClient({
   // comentário que afirma o contrário é o defeito de novo.
   const { data: pessoas = [] } = usePessoasDaAgenda();
 
+  // O QUADRO SÓ APARECE COM DOIS OU MAIS PROFISSIONAIS COM AGENDA. A conta sai da
+  // MESMA lista do filtro de pessoas. Se a escolha "quadro" ficar órfã (a equipe
+  // encolheu, ou a lista ainda não chegou), a tela mostra a semana em vez de um
+  // quadro de uma linha só. A escolha não é apagada: com dois de volta, o quadro
+  // volta sozinho.
+  const temQuadro = quadroDisponivel(pessoas.length);
+  const visao: VisaoDaAgenda = visaoEscolhida === "quadro" && !temQuadro ? "semana" : visaoEscolhida;
+
+  /**
+   * QUEM ATENDE a marcação aberta por um clique no QUADRO: a linha clicada diz o
+   * profissional. Sem isto o painel abria com o dono do tipo, oferecia a jornada
+   * dele e gravava na agenda dele. Vale só para a marcação aberta pelo quadro;
+   * fechar o painel zera.
+   */
+  const [profissionalDoClique, setProfissionalDoClique] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- zerar ao fechar É o ponto: o painel fecha por vários caminhos e todos precisam esquecer a linha clicada.
+    if (!marcando) setProfissionalDoClique(null);
+  }, [marcando]);
+
   // A JANELA ACOMPANHA O MÊS QUE O PAINEL MOSTRA.
   //
   // ⚠️ Isto era `hoje + 30 dias`, fixo na abertura. O mês visível era estado
@@ -339,7 +384,12 @@ export function AgendaClient({
   // 422 porque ninguém está em `attendant_availability`).
   const { data: horarios, isError: horariosFalharam } = useHorariosLivres(
     marcando && tipo
-      ? { event_type_id: tipo.id, de: janelaDeBusca.de, ate: janelaDeBusca.ate }
+      ? {
+          event_type_id: tipo.id,
+          owner_user_id: profissionalDoClique ?? undefined,
+          de: janelaDeBusca.de,
+          ate: janelaDeBusca.ate,
+        }
       : null,
   );
 
@@ -585,7 +635,7 @@ export function AgendaClient({
             data-testid="alternador-de-visao"
             className="flex items-center gap-0.5 rounded-md border border-border bg-surface p-0.5"
           >
-            {VISOES.map((v) => (
+            {VISOES.filter((v) => v.id !== "quadro" || temQuadro).map((v) => (
               <button
                 key={v.id}
                 type="button"
@@ -787,6 +837,60 @@ export function AgendaClient({
                     )}
               </p>
             </div>
+            {/*
+              A EQUIPE — logo abaixo do e-mail digitado, pela mesma razão: quem
+              participa se decide ANTES do horário. Também na REMARCAÇÃO: ao
+              abrir, a lista vem preenchida com a equipe que o compromisso já
+              tem, e o PATCH leva só a diferença (`equipeParaSalvar`).
+            */}
+            {
+              <fieldset>
+                <legend className="block">
+                  {t("Equipe no compromisso")}{" "}
+                  <span className="font-normal opacity-70">({t("opcional")})</span>
+                </legend>
+                <p className="mt-1 text-xs text-text-muted">
+                  {t(
+                    "O responsável já recebe o convite. Marque quem mais precisa participar: cada pessoa vê o compromisso na própria agenda.",
+                  )}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2" data-testid="convidados-da-equipe">
+                  {pessoas.map((pessoa) => {
+                    const marcada = convidadosDaEquipe.includes(pessoa.id);
+                    const cheio =
+                      !marcada && convidadosDaEquipe.length >= MAXIMO_DE_CONVIDADOS_DA_EQUIPE;
+                    return (
+                      <label
+                        key={pessoa.id}
+                        className={cn(
+                          "inline-flex min-h-11 cursor-pointer items-center rounded-full border px-3 py-1 text-xs lg:min-h-0",
+                          marcada
+                            ? "border-border-strong bg-surface-elevated"
+                            : "border-border bg-surface",
+                          cheio && "cursor-not-allowed opacity-50",
+                        )}
+                        title={cheio ? t("O convite cabe em até 20 pessoas da equipe.") : undefined}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={marcada}
+                          disabled={cheio}
+                          onChange={() =>
+                            setConvidadosDaEquipe((antes) =>
+                              antes.includes(pessoa.id)
+                                ? antes.filter((x) => x !== pessoa.id)
+                                : [...antes, pessoa.id],
+                            )
+                          }
+                        />
+                        {pessoa.nome}
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            }
             {!remarcandoId ? (
               <>
                 <EnderecoDaMarcacao
@@ -830,7 +934,11 @@ export function AgendaClient({
                   // regra está em `lib/agenda/responsavel-do-painel.ts`: com a
                   // lista da equipe vazia (o 403 do item 1 da issue 896) este
                   // fallback dizia "Você" para a jornada de OUTRA pessoa.
-                  resolverResponsavelDoPainel({ pessoas, donoId: tipo.donoId, usuarioId })
+                  resolverResponsavelDoPainel({
+                    pessoas,
+                    donoId: profissionalDoClique ?? tipo.donoId,
+                    usuarioId,
+                  })
                 }
                 tipo={tipo.nome}
                 duracaoMin={tipo.duracaoMin}
@@ -895,11 +1003,16 @@ export function AgendaClient({
                         revision: agendamentos.find((a) => a.id === remarcandoId)?.revision,
                         starts_at: instante,
                         guest_email: convidado,
+                        // SÓ A DIFERENÇA: `undefined` não mexe na lista, `[]` tira
+                        // todo mundo. Sem o diff, remarcar desconvidaria a equipe.
+                        team_guest_user_ids: equipeParaSalvar(equipeAoAbrir, convidadosDaEquipe),
                       })
                       .then((r) => {
                         setRemarcandoId(null);
                         setMarcando(false);
                         setEmailConvidado("");
+                        setConvidadosDaEquipe([]);
+                        setEquipeAoAbrir([]);
                         setEnderecoEditado(null);
                         setObservacao("");
                         return r;
@@ -908,15 +1021,24 @@ export function AgendaClient({
                   return marcar
                     .mutateAsync({
                       event_type_id: tipo.id,
+                      // O profissional da linha clicada no quadro; fora dele, a rota
+                      // resolve o dono do tipo (campo ausente, como sempre foi).
+                      owner_user_id: profissionalDoClique ?? undefined,
                       contact_id: contactId || undefined,
                       conversation_id: conversationId || undefined,
                       starts_at: instante,
                       guest_email: convidado,
+                      // `undefined` (e não `[]`) quando ninguém foi marcado: o
+                      // caminho de sempre segue idêntico.
+                      team_guest_user_ids: convidadosDaEquipe.length
+                        ? convidadosDaEquipe
+                        : undefined,
                       location_details: endereco.trim(),
                       description: observacao.trim() || undefined,
                     })
                     .then((r) => {
                       setEmailConvidado("");
+                      setConvidadosDaEquipe([]);
                       setEnderecoEditado(null);
                       setObservacao("");
                       // Guardado para o fechamento saber para onde levar a grade.
@@ -1059,6 +1181,11 @@ export function AgendaClient({
         // "Disponível quando a agenda estiver conectada", que é falso: PATCH e
         // DELETE não tocam o Google. Só a IA conseguia remarcar ou cancelar.
         onRemarcar={(id) => {
+          // A equipe que o compromisso JÁ tem entra no seletor: editar é ver o
+          // que está lá, não uma tela em branco que desconvidaria todo mundo.
+          const equipe = agendamentos.find((a) => a.id === id)?.convidadosDaEquipe ?? [];
+          setEquipeAoAbrir(equipe);
+          setConvidadosDaEquipe(equipe);
           setRemarcandoId(id);
           setMarcando(true);
         }}
@@ -1157,6 +1284,19 @@ export function AgendaClient({
            sem ele, abrir um card trocava a URL por só `?compromisso=`, o fecho
            não achava tipo nenhum para manter e o F5 seguinte voltava ao
            primeiro (#1657). */
+        donoId={isolada}
+        // A PORTA DO QUADRO: o mesmo clique num bloco livre, mas a linha diz QUEM
+        // atende — o painel abre com essa pessoa e grava na agenda dela.
+        onMarcarComProfissional={
+          podeMarcar
+            ? (instante, pessoaId) => {
+                setHorarioEscolhido({ instante, rotulo: format(new Date(instante), "HH:mm") });
+                setRemarcandoId(null);
+                abrirMarcacao();
+                setProfissionalDoClique(pessoaId);
+              }
+            : undefined
+        }
         onAbrirAgendamento={(id) => {
           const parametros = new URLSearchParams();
           if (tipo) parametros.set("tipo", tipo.id);

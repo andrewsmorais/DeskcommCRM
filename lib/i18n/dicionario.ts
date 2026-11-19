@@ -20379,6 +20379,25 @@ export const DICIONARIO: Traducoes = {
   "Limite de chats de site atingido.": { es: "Límite de chats de sitio alcanzado." },
   "Chat não encontrado.": { es: "Chat no encontrado." },
   "Cifra indisponível.": { es: "Cifrado no disponible." },
+  // Convidados da equipe no compromisso (migration 0561).
+  "Equipe no compromisso": { es: "Equipo en el compromiso" },
+  "Com a equipe:": { es: "Con el equipo:" },
+  "com a equipe": { es: "con el equipo" },
+  "O responsável já recebe o convite. Marque quem mais precisa participar: cada pessoa vê o compromisso na própria agenda.": {
+    es: "El responsable ya recibe la invitación. Marca a quién más debe participar: cada persona ve el compromiso en su propia agenda.",
+  },
+  "O convite cabe em até 20 pessoas da equipe.": {
+    es: "La invitación admite hasta 20 personas del equipo.",
+  },
+  // Quadro por profissional na agenda.
+  "Quadro por profissional de {data}": { es: "Tablero por profesional del {data}" },
+  "Nenhum profissional na agenda ainda. Quem atende é definido em Configurações › Agendamentos.": {
+    es: "Todavía no hay profesionales en la agenda. Quién atiende se define en Configuración › Citas.",
+  },
+  "1 agendamento": { es: "1 cita" },
+  "{n} agendamentos": { es: "{n} citas" },
+  "Marcar com {pessoa} às {hora} de {data}": { es: "Agendar con {pessoa} a las {hora} del {data}" },
+  "{pessoa} às {hora} — sem horário livre": { es: "{pessoa} a las {hora} — sin horario libre" },
 };
 /**
  * Traduz, ou devolve o próprio texto.

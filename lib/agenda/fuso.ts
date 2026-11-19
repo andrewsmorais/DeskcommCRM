@@ -212,3 +212,14 @@ export function diaLocalISO(instante: Date, fuso: string): string {
 export function diaDaSemanaLocal(instante: Date, fuso: string): number {
   return localMoment(instante, fuso).dow;
 }
+
+/**
+ * A "data de parede" de um instante num fuso: um `Date` cujos campos locais
+ * (ano, mês, dia, hora, minuto) são os que o relógio do FUSO marcava naquele
+ * instante. É o que permite usar `format` do date-fns para escrever a hora da
+ * organização, e não a do navegador.
+ */
+export function dataDeParede(instante: Date, fuso: string): Date {
+  const p = partesNoFuso(instante, fuso);
+  return new Date(p.ano, p.mes - 1, p.dia, p.hora, p.minuto, p.segundo);
+}
