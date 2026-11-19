@@ -101,6 +101,7 @@ const QUEM_LE_A_AGENDA: Record<string, string> = {
   "lib/automation/template.ts": "a guarda que recusa {{contact.address_book_name}}",
   "lib/database.types.ts": "tipos gerados do banco",
   "lib/audit/actions.ts": "só o NOME da ação de auditoria (contact.address_book_name_filled); não lê a coluna",
+  "lib/contacts/agenda-do-celular.ts": "só GRAVA o nome da agenda no campo da equipe, ao criar o contato; nunca o monta em mensagem",
   "lib/types/contacts.ts": "tipo da ficha e da lista de contatos",
   "hooks/inbox/useConversationsRealtime.ts": "tipo do contato da caixa de entrada",
   "app/api/v1/conversations/_handler.ts": "select da caixa de entrada (tela da equipe)",

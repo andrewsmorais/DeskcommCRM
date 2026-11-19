@@ -177,7 +177,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       const { data, error } = await supabase
         .from("contacts")
         .select(
-          "id, organization_id, name, display_name, address_book_name, email, phone_number, cpf_hash, tags",
+          "id, organization_id, name, display_name, email, phone_number, cpf_hash, tags",
         )
         .eq("organization_id", authz.org.orgId)
         .eq("kind", "person")
