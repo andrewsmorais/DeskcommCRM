@@ -50251,13 +50251,9 @@ grant all on table public.setor_membros to service_role;
 revoke execute on function public.fn_emitir_plano_alterado() from public, anon, authenticated;
 
 -- ---- e-mail de cancelamento (migration 0498) ----
-alter table public.transactional_email_log
-  drop constraint if exists transactional_email_log_tipo_check;
-alter table public.transactional_email_log
-  add constraint transactional_email_log_tipo_check check (tipo in (
-    'boas_vindas','plano_contratado','plano_melhorado','plano_reduzido','reembolso',
-    'escala_ativo','baseline','cancelamento'
-  ));
+-- A constraint `transactional_email_log_tipo_check` é reconstruída UMA vez só,
+-- com o vocabulário final, no bloco da migration 0562 (no fim deste arquivo).
+-- Reaplicar este bloco antigo num banco com os tipos novos falharia.
 
 -- ---- endurecimento do banco pós-auditoria de segurança (migration 0499) ----
 -- 0499 — endurecimento do banco depois da auditoria de segurança (04/11/2026).
@@ -50668,25 +50664,10 @@ alter table public.subscriptions add column if not exists troca_valor_cents inte
 alter table public.subscriptions add column if not exists troca_link text;
 alter table public.subscriptions add column if not exists troca_pedida_em timestamptz;
 
--- Uma troca pela metade (tipo sem plano, ou o contrário) não tem dono: limpa
--- antes das constraints, para o update.sh de um banco qualquer não quebrar.
-update public.subscriptions
-   set troca_plano = null, troca_tipo = null, troca_efetiva_em = null,
-       troca_pagamento_id = null, troca_valor_cents = null, troca_link = null,
-       troca_pedida_em = null
- where (troca_plano is null) <> (troca_tipo is null)
-    or (troca_tipo is not null and troca_tipo not in ('upgrade', 'downgrade'))
-    or (troca_plano is not null and troca_plano not in ('essencial', 'impulso'))
-    or (troca_valor_cents is not null and troca_valor_cents < 0);
-
-alter table public.subscriptions drop constraint if exists subscriptions_troca_coerente;
-alter table public.subscriptions
-  add constraint subscriptions_troca_coerente check (
-    (troca_plano is null) = (troca_tipo is null)
-    and (troca_tipo is null or troca_tipo in ('upgrade', 'downgrade'))
-    and (troca_plano is null or troca_plano in ('essencial', 'impulso'))
-    and (troca_valor_cents is null or troca_valor_cents >= 0)
-  );
+-- A limpeza de troca pela metade e a constraint `subscriptions_troca_coerente`
+-- moram UMA vez só, com o vocabulário final (o Escala também é destino), no
+-- bloco da migration 0562, no fim deste arquivo. Reaplicar a versão antiga
+-- apagaria toda troca pedida para o Escala a cada update.sh.
 
 create unique index if not exists idx_subscriptions_troca_pagamento
   on public.subscriptions (troca_pagamento_id)

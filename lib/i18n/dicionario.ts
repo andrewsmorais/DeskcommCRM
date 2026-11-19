@@ -20413,6 +20413,8 @@ export const DICIONARIO: Traducoes = {
   "Nenhum plano inclui estes recursos. Ligue só para quem contratou o extra com você.": { es: "Ningún plan incluye estos recursos. Actívelos solo para quien contrató el extra con usted." },
   "Esta organização ainda não tem plano. Os extras entram junto de um plano.": { es: "Esta organización todavía no tiene plan. Los extras se agregan junto con un plan." },
   "O Escala normal é contratado pela página de vendas. Use isto só para quem fechou uma proposta acima do pacote.": { es: "El Escala normal se contrata en la página de ventas. Use esto solo para quien cerró una propuesta por encima del paquete." },
+  "Escolha o Essencial, o Impulso ou o Escala.": { es: "Elija Essencial, Impulso o Escala." },
+  "Seu Escala tem números combinados com a nossa equipe. Para trocar de plano, fale com a gente pelo suporte.": { es: "Su Escala tiene cantidades acordadas con nuestro equipo. Para cambiar de plan, hable con nosotros por soporte." },
 };
 /**
  * Traduz, ou devolve o próprio texto.
