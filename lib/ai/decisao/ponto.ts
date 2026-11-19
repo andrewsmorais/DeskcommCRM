@@ -33,6 +33,7 @@
  * não vem — e é por isso que o resultado é discriminado em vez de um valor com
  * default.
  */
+import { recursoNegadoAoMotor } from "@/lib/billing/acesso";
 import { allowlistedFetch, buildAllowlist } from "@/lib/agent-engine/edge/egress";
 import { byteaToBuffer, decryptKey } from "@/lib/crypto/aes_gcm";
 import { logger } from "@/lib/logger";
@@ -135,6 +136,10 @@ export async function destinoDasTarefas(
     if (orgErr) throw orgErr;
     const config = lerConfigDoJev(org?.settings);
     if (tarefas.some((t) => estadoEfetivoDaTarefa(config, t) === "desligada")) return null;
+    // O Jev é recurso do Escala. Ligado num plano que não o inclui (desceu de
+    // plano depois de ligar), nada sai para a rede: o caminho de sempre assume,
+    // e a escolha fica gravada para quando a empresa voltar ao Escala.
+    if (await recursoNegadoAoMotor(organizationId, "jev")) return null;
     const origem = config.origem;
 
     const { data, error } = await admin

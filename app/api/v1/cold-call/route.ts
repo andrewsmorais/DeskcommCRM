@@ -6,6 +6,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  *
  * A régua está em `lib/cold-call/regras.ts`. O funil é um funil comum, marcado em `settings`.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
@@ -198,6 +199,9 @@ export async function POST(): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("manager", { requestId, resource: "crm_pipelines" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const desligado = await seColdCallDesligado(requestId);
   if (desligado) return desligado;
   const orgId = authz.org.orgId;
@@ -268,6 +272,9 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("manager", { requestId, resource: "crm_pipelines" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const desligado = await seColdCallDesligado(requestId);
   if (desligado) return desligado;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);

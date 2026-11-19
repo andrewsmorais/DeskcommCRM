@@ -10,6 +10,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * prévia fora do orçamento seria gasto de IA da organização que a tela de Uso
  * de IA não mostra e o teto não para.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
@@ -58,6 +59,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("manager", { requestId, resource: "ai_providers" });
   if (!authz.ok) return authz.response;
+  // Nota de voz é EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "nota_de_voz", { requestId });
+  if (semOExtra) return semOExtra;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { org } = authz;
 

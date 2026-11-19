@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Plano da organização no painel do dono da plataforma — e a ativação do
- * Escala, que não passa pelo checkout ("Falar com especialista"). Os números
- * nascem no pacote base do Escala e só podem subir (a rota recusa abaixo).
+ * Plano da organização no painel do dono da plataforma, os EXTRAS cobrados à
+ * parte (prospecção, ligações, nota de voz) e o Escala por PROPOSTA — para o
+ * cliente que precisa de mais do que o pacote do Escala do checkout. Os
+ * números nascem no pacote base do Escala e só podem subir (a rota recusa abaixo).
  */
 import * as React from "react";
 import { toast } from "sonner";
@@ -30,6 +31,7 @@ type Leitura = {
     ate: string | null;
     no_asaas: boolean;
     valor_mensal_cents: number | null;
+    extras?: string[];
   } | null;
   ativo: boolean;
   limites: Partial<Limites> | null;
@@ -37,6 +39,7 @@ type Leitura = {
 };
 
 const CHAVES: (keyof Limites)[] = ["whatsapp", "agentes_ia", "chatbots", "pipelines", "usuarios"];
+const EXTRAS = ["prospeccao", "ligacoes", "nota_de_voz"] as const;
 
 function daquiUmMes(): string {
   const d = new Date();
@@ -62,6 +65,12 @@ export function PlanoDoTenant({ organizationId }: { organizationId: string }) {
   const [valor, setValor] = React.useState("349,90");
   const [enviando, setEnviando] = React.useState(false);
   const [conflitoAsaas, setConflitoAsaas] = React.useState<string | null>(null);
+  const [extras, setExtras] = React.useState<string[]>([]);
+  const rotulosDosExtras: Record<(typeof EXTRAS)[number], string> = {
+    prospeccao: t("Prospecção automática"),
+    ligacoes: t("Ligações por IA e Cold Call"),
+    nota_de_voz: t("Respostas da IA em nota de voz"),
+  };
 
   const carregar = React.useCallback(async () => {
     const res = await fetch(`/api/v1/admin/tenants/${organizationId}/plano`);
@@ -72,6 +81,7 @@ export function PlanoDoTenant({ organizationId }: { organizationId: string }) {
     }
     const dados = corpo.data as Leitura;
     setLeitura(dados);
+    setExtras(dados.assinatura?.extras ?? []);
     const base = dados.pacote_base_escala;
     const atuais = dados.assinatura?.plano === "escala" ? dados.limites : null;
     setLimites({
@@ -126,6 +136,26 @@ export function PlanoDoTenant({ organizationId }: { organizationId: string }) {
     }
   }
 
+  async function gravarExtras(proximos: string[]) {
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/v1/admin/tenants/${organizationId}/plano`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extras: proximos }),
+      });
+      const corpo = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(corpo?.error?.message ?? t("Não foi possível gravar os extras."));
+        return;
+      }
+      setExtras(proximos);
+      toast.success(t("Extras atualizados."));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   if (erro) {
     return (
       <Card className="p-5 text-sm text-muted-foreground">
@@ -151,7 +181,41 @@ export function PlanoDoTenant({ organizationId }: { organizationId: string }) {
       </div>
 
       <div className="space-y-3 border-t pt-4">
+        <h3 className="text-sm font-semibold">{t("Extras cobrados à parte")}</h3>
+        <p className="text-xs text-muted-foreground">
+          {t("Nenhum plano inclui estes recursos. Ligue só para quem contratou o extra com você.")}
+        </p>
+        {a ? (
+          <div className="space-y-2">
+            {EXTRAS.map((extra) => (
+              <label key={extra} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  disabled={enviando}
+                  checked={extras.includes(extra)}
+                  data-testid={`extra-${extra}`}
+                  onChange={(e) =>
+                    void gravarExtras(
+                      e.target.checked ? [...extras, extra] : extras.filter((x) => x !== extra),
+                    )
+                  }
+                />
+                {rotulosDosExtras[extra]}
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("Esta organização ainda não tem plano. Os extras entram junto de um plano.")}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-3 border-t pt-4">
         <h3 className="text-sm font-semibold">{t("Ativar o Escala (proposta fechada)")}</h3>
+        <p className="text-xs text-muted-foreground">
+          {t("O Escala normal é contratado pela página de vendas. Use isto só para quem fechou uma proposta acima do pacote.")}
+        </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {CHAVES.map((chave) => (
             <div key={chave} className="space-y-1">

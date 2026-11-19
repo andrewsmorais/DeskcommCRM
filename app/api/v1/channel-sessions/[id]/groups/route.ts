@@ -7,6 +7,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 import { requireRole } from "@/lib/auth/require-role";
 import { alternarGrupo, criarDepsDeGrupos, definirIaDoGrupo, GrupoError, listarGruposDoNumero } from "@/lib/grupos/servico";
 import { requireSupportWrite } from "@/lib/impersonate/support";
@@ -98,6 +99,13 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     // sessão autenticada — um `organization_id` forjado no body é ignorado,
     // como na chave de cima.
     if (corpo.data.ia_responde !== undefined) {
+      // Ligar a IA no grupo é recurso do Impulso em diante (grupo tem muita
+      // mensagem, e cada uma é custo de IA). DESLIGAR vale em qualquer plano:
+      // quem desceu de plano precisa conseguir calar a IA que ficou ligada.
+      if (corpo.data.ia_responde === true) {
+        const recusado = await exigirRecursoDoPlano(authz.org.orgId, "ia_em_grupo", { requestId });
+        if (recusado) return recusado;
+      }
       const r = await definirIaDoGrupo(deps, {
         organizationId: authz.org.orgId,
         channelSessionId: id.data,

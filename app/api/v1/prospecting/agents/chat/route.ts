@@ -1,4 +1,5 @@
 import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { requireRole } from "@/lib/auth/require-role";
 import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
@@ -22,6 +23,9 @@ export async function POST(req: Request) {
   if (support) return support;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
+  // Prospecção é EXTRA cobrado à parte: só a organização que o tem (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(auth.org.orgId, "prospeccao", { requestId });
+  if (semOExtra) return semOExtra;
   // Chama o modelo da chave da plataforma: sem assinatura ativa, não chama.
   const semAssinatura = await exigirAssinaturaAtiva(auth.org.orgId, { requestId });
   if (semAssinatura) return semAssinatura;

@@ -22,8 +22,13 @@
  * Entra resolvida (`marcaDaSaida`), como em todo e-mail do produto: o nome,
  * o logo e a cor são os da instalação, nunca digitados aqui.
  *
- * O Escala fica de fora de propósito: ele é ativado pelo dono da plataforma
- * depois de uma conversa, com números combinados, e ainda não tem e-mail.
+ * Desde 19/11/2026 os três planos se contratam pelo checkout, então o Escala
+ * tem os mesmos e-mails dos outros. O e-mail "Escala ativado" ficou só para o
+ * Escala com números COMBINADOS pelo dono da plataforma (proposta acima do
+ * pacote base), que não passa pelo checkout.
+ *
+ * Mais dois avisam a TROCA pedida pelo cliente, antes de ela valer: a descida
+ * agendada para o fim do período e a subida que espera o pagamento da diferença.
  */
 import {
   PLANOS_COMERCIAIS,
@@ -37,8 +42,8 @@ import { tagDeIdioma } from "@/lib/i18n/datas";
 // Os textos destes e-mails são em português; a data segue o mesmo idioma.
 import { IDIOMA_PADRAO } from "@/lib/i18n/idiomas";
 
-/** Os planos que têm e-mail. O Escala é combinado à mão e não entra. */
-export type PlanoComEmail = Exclude<PlanoComercial, "escala">;
+/** Os planos que têm e-mail: os três (o Escala também se contrata no checkout). */
+export type PlanoComEmail = PlanoComercial;
 
 export type EmailMontado = { subject: string; html: string; text: string };
 
@@ -88,7 +93,20 @@ const DESTAQUES: ReadonlyArray<{
   { texto: "Follow-up automático, que chama de volta quem sumiu", recurso: "follow_up" },
   { texto: "Agente que organiza o CRM sozinho", recurso: "organizar_crm" },
   { texto: "Comandas e propostas", recurso: "comandas_e_propostas" },
-  { texto: "Relatórios completos", recurso: "relatorios_completos" },
+  { texto: "IA que responde nos grupos de WhatsApp", recurso: "ia_em_grupo" },
+  {
+    texto: "Automações que mandam e-mail, foto e aviso para a equipe",
+    recurso: "automacoes_avancadas",
+  },
+  { texto: "Distribuição automática de leads", recurso: "distribuicao_automatica" },
+  { texto: "Skills e processos para os agentes de IA", recurso: "skills" },
+  { texto: "API e webhooks", recurso: "api" },
+  { texto: "Relatórios completos e metas", recurso: "relatorios_completos" },
+  { texto: "Distribuição de leads por número e por time", recurso: "distribuicao_avancada" },
+  { texto: "Permissões avançadas e telefone oculto para a equipe", recurso: "permissoes_avancadas" },
+  { texto: "Logs e auditoria de tudo o que acontece no CRM", recurso: "auditoria" },
+  { texto: "IA ligada ao banco de dados do seu sistema", recurso: "integracoes_avancadas" },
+  { texto: "Marca própria", recurso: "multimarca" },
 ];
 
 export function destaquesDoPlano(plano: PlanoComEmail): string[] {
@@ -372,7 +390,9 @@ export function montarPlanoMelhorado(ctx: ContextoDaMudanca): EmailMontado {
       {
         tipo: "p",
         texto:
-          "Por onde começar: que tal ligar o follow-up automático? Ele chama de volta quem perguntou o preço e sumiu, e costuma ser o recurso que mais recupera venda. Com mais agentes e chatbots, você também pode dedicar cada um a um número e a um tipo de conversa.",
+          ctx.anterior === "essencial"
+            ? "Por onde começar: que tal ligar o follow-up automático? Ele chama de volta quem perguntou o preço e sumiu, e costuma ser o recurso que mais recupera venda. Com mais agentes e chatbots, você também pode dedicar cada um a um número e a um tipo de conversa."
+            : "Por onde começar: com mais números, agentes e chatbots, dedique cada um a um tipo de conversa, e use a distribuição por número e por time para cada cliente cair direto com quem deve atender.",
       },
       { tipo: "resumo", titulo: "Sua assinatura agora", linhas: linhasDoResumo(plano, ctx.resumo) },
       { tipo: "botao", rotulo: "Explorar os novos recursos", url: `${ctx.urlDoApp}/app` },
@@ -405,7 +425,7 @@ export function montarPlanoReduzido(ctx: ContextoDaMudanca): EmailMontado {
       {
         tipo: "p",
         texto:
-          "Se hoje você tem mais do que isso, tudo continua funcionando. Você só não consegue criar mais agentes, chatbots, funis, números ou usuários até ficar dentro do limite.",
+          "Para ter mais agentes, chatbots, funis, números ou usuários do que isso, é só subir de plano de novo, quando quiser.",
       },
       ...(perdidos.length > 0
         ? ([
@@ -440,9 +460,9 @@ export const EXCLUSIVOS_DO_ESCALA: ReadonlyArray<{
   recurso: keyof typeof RECURSOS_DO_PLANO;
 }> = [
   { texto: "Distribuição de leads por número e por time", recurso: "distribuicao_avancada" },
-  { texto: "Permissões avançadas para a sua equipe", recurso: "permissoes_avancadas" },
+  { texto: "Permissões avançadas e telefone oculto para a equipe", recurso: "permissoes_avancadas" },
   { texto: "Logs e auditoria de tudo o que acontece no CRM", recurso: "auditoria" },
-  { texto: "Integrações avançadas para os agentes de IA", recurso: "integracoes_avancadas" },
+  { texto: "IA ligada ao banco de dados do seu sistema", recurso: "integracoes_avancadas" },
   { texto: "Marca própria", recurso: "multimarca" },
 ];
 
@@ -482,7 +502,7 @@ export function montarEscalaAtivo(ctx: ContextoDoEscala): EmailMontado {
       {
         tipo: "p",
         texto:
-          "Que alegria ter você no Escala ❤️ Conversamos, montamos juntos a proposta, e agora está tudo liberado na sua conta, do jeito que combinamos.",
+          "Que alegria ter você no Escala ❤️ A proposta que combinamos já está liberada na sua conta.",
       },
       { tipo: "forte", texto: "O que você tem a partir de hoje" },
       {
@@ -499,7 +519,7 @@ export function montarEscalaAtivo(ctx: ContextoDoEscala): EmailMontado {
       {
         tipo: "p",
         texto:
-          "Tudo o que já existia no Impulso continua aqui: campanhas, follow-up automático, agente que organiza o CRM, API, webhooks e relatórios completos.",
+          "Tudo o que já existia no Impulso continua aqui: follow-up automático, agente que organiza o CRM, IA nos grupos, automações, API, webhooks e relatórios completos.",
       },
       {
         tipo: "p",
@@ -509,6 +529,119 @@ export function montarEscalaAtivo(ctx: ContextoDoEscala): EmailMontado {
       ...(contatos.length > 0 ? [{ tipo: "lista" as const, itens: contatos }] : []),
       { tipo: "botao", rotulo: `Abrir o ${marca.nome}`, url: `${ctx.urlDoApp}/app` },
       { tipo: "p", texto: "Um abraço, e vamos escalar juntos 🚀" },
+      assinatura(marca),
+    ],
+  });
+}
+
+// ── 7 e 8. Troca pedida, ainda não valendo ──────────────────────────────────
+
+export type ContextoDaTrocaPedida = {
+  marca: MarcaDeSaida;
+  nome: string | null;
+  /** O plano que vale hoje. */
+  atual: PlanoComEmail;
+  /** O plano pedido. */
+  novo: PlanoComEmail;
+  ciclo: CicloDeCobranca | null;
+  urlDoApp: string;
+};
+
+/** DESCIDA agendada: vale no fim do período já pago, e nada muda até lá. */
+export function montarTrocaAgendada(
+  ctx: ContextoDaTrocaPedida & {
+    /** Quando a troca passa a valer (fim do período pago). */
+    efetivaEm: Date;
+    /** O valor do ciclo a partir dali, em centavos. */
+    novoValorDoCicloCents: number | null;
+  },
+): EmailMontado {
+  const { marca } = ctx;
+  const nomeAtual = PLANOS_COMERCIAIS[ctx.atual].nome;
+  const nomeNovo = PLANOS_COMERCIAIS[ctx.novo].nome;
+  // A data da troca é o DIA da renovação (gravada à meia-noite UTC); formatada
+  // no fuso de São Paulo, apareceria um dia antes do que o Asaas mostra.
+  const data = ctx.efetivaEm.toLocaleDateString(tagDeIdioma(IDIOMA_PADRAO), { timeZone: "UTC" });
+  const perdidos = destaquesPerdidos(ctx.atual, ctx.novo);
+  const linhas: [string, string][] = [
+    ["Plano até lá", nomeAtual],
+    ["Plano a partir de " + data, `${nomeNovo}${ctx.ciclo ? ` (${ROTULO_DO_CICLO[ctx.ciclo]})` : ""}`],
+  ];
+  if (ctx.novoValorDoCicloCents !== null)
+    linhas.push(["Próximas cobranças", formatarReais(ctx.novoValorDoCicloCents)]);
+  return renderizar(marca, {
+    assunto: `Sua troca para o ${nomeNovo} está agendada para ${data}`,
+    titulo: `Troca para o ${nomeNovo} agendada`,
+    blocos: [
+      { tipo: "p", texto: saudacao(ctx.nome) },
+      {
+        tipo: "p",
+        texto: `Recebemos o seu pedido para mudar para o ${nomeNovo}. Você já pagou o período atual, então até ${data} continua tudo como está, com todos os recursos do ${nomeAtual}.`,
+      },
+      {
+        tipo: "p",
+        texto: `Em ${data} o plano passa a ser o ${nomeNovo}, e a próxima cobrança já vem com o valor dele. Nenhum dado é apagado: contatos, conversas, funis, agentes e chatbots continuam onde estão.`,
+      },
+      ...(perdidos.length > 0
+        ? ([
+            { tipo: "forte", texto: `O que o ${nomeNovo} não inclui:` },
+            { tipo: "lista", itens: perdidos },
+          ] as Bloco[])
+        : []),
+      { tipo: "resumo", titulo: "Como fica", linhas },
+      {
+        tipo: "p",
+        texto:
+          "Mudou de ideia? Até essa data, é só abrir Plano e cobrança e desistir da troca. Nada muda.",
+      },
+      { tipo: "botao", rotulo: "Ver o meu plano", url: `${ctx.urlDoApp}/app/settings/billing` },
+      { tipo: "p", texto: "Qualquer dúvida, é só responder este e-mail." },
+      assinatura(marca),
+    ],
+  });
+}
+
+/** SUBIDA que espera o pagamento da diferença proporcional. */
+export function montarTrocaAguardandoPagamento(
+  ctx: ContextoDaTrocaPedida & {
+    valorCents: number;
+    /** O link de pagamento do Asaas (já validado como https por quem chama). */
+    link: string | null;
+  },
+): EmailMontado {
+  const { marca } = ctx;
+  const nomeNovo = PLANOS_COMERCIAIS[ctx.novo].nome;
+  const ganhos = [...limitesQueCresceram(ctx.atual, ctx.novo), ...destaquesNovos(ctx.atual, ctx.novo)];
+  return renderizar(marca, {
+    assunto: `Falta só um passo para o ${nomeNovo}`,
+    titulo: `Sua subida para o ${nomeNovo}`,
+    blocos: [
+      { tipo: "p", texto: saudacao(ctx.nome) },
+      {
+        tipo: "p",
+        texto: `Recebemos o seu pedido para subir para o ${nomeNovo}. Como você já pagou o período atual, cobramos só a diferença proporcional aos dias que faltam: ${formatarReais(ctx.valorCents)}.`,
+      },
+      {
+        tipo: "p",
+        texto:
+          "Assim que o pagamento for confirmado, o plano novo libera sozinho, sem você precisar fazer nada. A cobrança vence em 2 dias; se não for paga, você continua no plano de hoje.",
+      },
+      ...(ganhos.length > 0
+        ? ([
+            { tipo: "forte", texto: "O que você vai ganhar:" },
+            { tipo: "lista", itens: ganhos },
+          ] as Bloco[])
+        : []),
+      ...(ctx.link
+        ? ([{ tipo: "botao", rotulo: "Pagar a diferença", url: ctx.link }] as Bloco[])
+        : ([
+            {
+              tipo: "p",
+              texto: "O link de pagamento está em Plano e cobrança, dentro do CRM.",
+            },
+            { tipo: "botao", rotulo: "Abrir Plano e cobrança", url: `${ctx.urlDoApp}/app/settings/billing` },
+          ] as Bloco[])),
+      { tipo: "p", texto: "Qualquer dúvida, é só responder este e-mail." },
       assinatura(marca),
     ],
   });

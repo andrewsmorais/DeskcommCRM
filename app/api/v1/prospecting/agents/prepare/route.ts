@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { exigirExtra } from "@/lib/billing/extras";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
@@ -18,6 +19,9 @@ export async function POST(req: Request) {
   if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "ai_agents" });
   if (!auth.ok) return auth.response;
+  // Prospecção é EXTRA cobrado à parte: só a organização que o tem (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(auth.org.orgId, "prospeccao", { requestId });
+  if (semOExtra) return semOExtra;
   const parsed = prospectingAgentSetupSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success)
     return fail("validation_failed", "Complete o resumo para testar o agente.", 422, { requestId });

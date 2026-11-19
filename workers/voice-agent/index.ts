@@ -60,6 +60,7 @@ import { deveRecusarChamada, END_REASON_CONTACT_BLOCKED } from "./recusa-bloquea
 import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
 import { buscarConhecimento, resolverAcervoDoAgente } from "@/lib/ai/knowledge/busca";
 import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
+import { extraForaDaOrganizacao } from "@/lib/billing/extras";
 import { escolherCadastroPeloTronco, recusaPeloTroncoDeChegada, troncoDoCanal } from "@/lib/voip/tronco-de-chegada";
 import { registrarChamadaDeIa } from "@/lib/ai/usage/registrar-chamada";
 import { logger } from "@/lib/logger";
@@ -105,6 +106,12 @@ export async function handleStasisStart(event: AriEvent) {
   const acessoNaEntrada = await acessoPeloPlanoDaOrganizacao(routing.organization_id);
   if (!acessoNaEntrada.liberado) {
     console.warn(`[voice-agent] org ${routing.organization_id} sem acesso à IA (${acessoNaEntrada.motivo}) — recusando`);
+    await hangupChannel(channel.id, "normal");
+    return;
+  }
+  // Ligação por IA é EXTRA cobrado à parte (lib/billing/extras.ts).
+  if (await extraForaDaOrganizacao(routing.organization_id, "ligacoes")) {
+    console.warn(`[voice-agent] org ${routing.organization_id} sem o extra de ligações — recusando`);
     await hangupChannel(channel.id, "normal");
     return;
   }
@@ -380,6 +387,16 @@ export async function handleAudioSocketConnection(socket: net.Socket, uuid: stri
     await supabaseAdmin
       .from("voice_calls")
       .update({ status: "ended", end_reason: acesso.motivo, ended_at: new Date().toISOString() })
+      .eq("id", callRow.id);
+    socket.end();
+    return;
+  }
+  // Ligação por IA é EXTRA cobrado à parte (lib/billing/extras.ts).
+  if (await extraForaDaOrganizacao(callRow.organization_id, "ligacoes")) {
+    console.warn(`[audiosocket] org ${callRow.organization_id} sem o extra de ligações — encerrando`);
+    await supabaseAdmin
+      .from("voice_calls")
+      .update({ status: "ended", end_reason: "sem_extra", ended_at: new Date().toISOString() })
       .eq("id", callRow.id);
     socket.end();
     return;

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { getOrganizationBilling } from "@/lib/billing";
-import { deleteSubscription } from "@/lib/asaas";
+import { apagarCobranca, deleteSubscription } from "@/lib/asaas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
 import { ok, fail } from "@/lib/api/wrappers";
@@ -37,6 +37,13 @@ export async function POST() {
     if (billing.status === "canceled")
       return ok({ access_until: billing.current_period_end }, { requestId });
 
+    // Subida pendente: a cobrança da diferença sai junto, senão o cliente
+    // pagaria um link que não tem mais plano para aplicar (auditoria de 19/11).
+    // Se ela já foi paga, a exclusão falha e o webhook trata o pagamento sem
+    // efeito; o cancelamento segue.
+    if (billing.troca?.tipo === "upgrade" && billing.troca.pagamento_id) {
+      await apagarCobranca(billing.troca.pagamento_id).catch(() => undefined);
+    }
     if (billing.asaas_subscription_id) await deleteSubscription(billing.asaas_subscription_id);
     const status = ["suspended", "past_due", "pending"].includes(billing.status)
       ? billing.status
@@ -48,6 +55,14 @@ export async function POST() {
         status,
         canceled_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        // Cancelar encerra qualquer troca em andamento.
+        troca_plano: null,
+        troca_tipo: null,
+        troca_efetiva_em: null,
+        troca_pagamento_id: null,
+        troca_valor_cents: null,
+        troca_link: null,
+        troca_pedida_em: null,
       })
       .eq("organization_id", orgId)
       .eq("id", billing.subscription_id)

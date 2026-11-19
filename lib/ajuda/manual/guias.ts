@@ -154,21 +154,23 @@ Mensagens curtas, uma pergunta por vez, sem termos técnicos. [Emoji: não / com
     titulo: "Planos: como funcionam",
     conteudo: `Os planos são **Essencial**, **Impulso** e **Escala**. O preço é por plano (não por atendente) e cada plano define quantos números de WhatsApp, agentes de IA, chatbots, funis e usuários a conta pode ter, e quais recursos estão liberados. Os números exatos de cada plano aparecem na tabela de planos que acompanha estas instruções: use sempre aquela tabela, nunca de memória. A regra geral é: um número para cada agente ou chatbot, e um funil para cada número.
 
-**Como contratar (Essencial e Impulso):**
+**Como contratar (os três planos):**
 - A contratação é no site chataionline.io, na seção de preços. O pagamento é pelo Asaas, com Pix, boleto ou cartão.
-- Depois do pagamento, o plano é liberado sozinho.
+- Depois do pagamento, o plano é liberado sozinho, com tudo o que o card promete. Vale para o Essencial, o Impulso e o Escala.
 - Há teste grátis de 7 dias. Quando o teste vence sem pagamento, o uso do sistema é bloqueado até a assinatura ser paga; o pedido de pagamento pendente aparece na tela de plano (Billing).
 - Há reembolso integral nos primeiros 7 dias.
 
-**Escala:** é sob proposta. O cliente conversa com a equipe, que combina o pacote e ativa o plano manualmente. O Escala parte do pacote base e pode ter números maiores por proposta.
+**Trocar de plano:** em Configurações › Plano e cobrança, o administrador sobe ou desce entre os três. Subir cobra só a diferença proporcional aos dias que faltam e libera assim que o pagamento cai. Descer vale no fim do período já pago; até lá nada muda. Nos dois casos chega um e-mail explicando o que acontece e quando, e outro quando a troca vale.
+
+**Extras cobrados à parte:** prospecção automática, ligações por IA (e Cold Call) e respostas da IA em nota de voz não fazem parte de nenhum plano. Quem quiser fala com o suporte, que ativa o extra na conta.
 
 **Recursos por plano (resumo do catálogo):**
-- Desde o Essencial: agendamentos.
-- Desde o Impulso: follow-up automático, chatbot avançado (webhook, condições, aguardar, outro fluxo), agente que organiza o CRM sozinho, comandas e propostas, processos avançados e skills para IA, distribuição automática de leads, API, webhooks e relatórios completos.
-- Só no Escala: distribuição por número e por time, permissões avançadas, logs e auditoria, integrações avançadas para IA e marca própria.
+- Desde o Essencial: agendamentos, chatbot com os passos básicos, follow-up pelo chatbot, respostas rápidas com foto e áudio, chat no site e aplicativo no celular.
+- Desde o Impulso: follow-up automático, chatbot avançado (webhook, condições, aguardar, outro fluxo), agente que organiza o CRM sozinho, IA que responde em grupos, automações com IA, e-mail, mídia, aviso à equipe e negócio ganho ou perdido, comandas e propostas, processos avançados e skills para IA, distribuição automática de leads, API, webhooks e relatórios completos.
+- Só no Escala: distribuição por número e por time, permissões avançadas (inclui esconder o telefone do cliente de alguns atendentes), logs e auditoria, integrações avançadas para IA, marca própria e o Jev (segundo agente que confere as respostas).
 - Campanhas em massa também constam como recurso do Impulso em diante, mas dependem do módulo de disparo estar ligado (veja o guia do que o sistema não faz).
 
-**Quando a pessoa bate num limite ou numa tela bloqueada:** a tela diz que o recurso é de outro plano. Explique qual plano libera, mande ver os planos em chataionline.io, ou, para o Escala, falar com a equipe. Quem mexe em plano e pagamento é o administrador da conta (tela de plano, em Configurações). Você não altera plano nem cobrança.`,
+**Quando a pessoa bate num limite ou numa tela bloqueada:** a tela diz que o recurso é de outro plano. Explique qual plano libera e mande trocar em Configurações › Plano e cobrança (ou ver os planos em chataionline.io). Para um extra cobrado à parte, falar com o suporte. Quem mexe em plano e pagamento é o administrador da conta (tela de plano, em Configurações). Você não altera plano nem cobrança.`,
   },
   {
     id: "o-que-o-sistema-nao-faz",

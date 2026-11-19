@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { audit } from "@/lib/audit";
+import { extraForaDaOrganizacao } from "@/lib/billing/extras";
+import { assinaturaExigida } from "@/lib/billing/exigencia";
 import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
@@ -840,6 +842,12 @@ const ORGS_COM_PREPARO_PENDENTE =
   "and s.provider = any($1::text[]) and s.status='WORKING' and s.archived_at is null)))) " +
   "group by pc.organization_id order by min(pc.updated_at) limit 20";
 
+/** A mesma consulta, só com quem tem o extra de prospecção (antes do `limit`). */
+const ORGS_COM_PREPARO_PENDENTE_COM_EXTRA = ORGS_COM_PREPARO_PENDENTE.replace(
+  "group by pc.organization_id",
+  "and exists (select 1 from public.subscriptions s where s.organization_id=pc.organization_id and 'prospeccao' = any(s.extras)) group by pc.organization_id",
+);
+
 /** Teto de tempo do preparo de UMA organização dentro do tick. */
 const PRAZO_DO_PREPARO_MS = 100_000;
 
@@ -855,8 +863,16 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requ
   // (`prepararCandidatos`) — FORA do bloqueio da organização, com teto por rodada
   // e bloqueio próprio. Dentro do bloqueio elas seguravam a organização por
   // minutos (409 na tela) com 100+ leads; fora, o envio e a tela não esperam.
+  // Com a camada comercial ligada, só entra na fila quem tem o EXTRA de
+  // prospecção — no próprio SQL, antes do `limit`: filtrar depois deixaria 20
+  // organizações sem o extra na frente para sempre, e quem pagou nunca rodaria.
+  const soComOExtra = assinaturaExigida()
+    ? " and exists (select 1 from public.subscriptions s where s.organization_id=pc.organization_id and 'prospeccao' = any(s.extras))"
+    : "";
   const { rows: organizations } = await pool.query<{ organization_id: string }>(
-    "select pc.organization_id from prospecting_campaigns pc where (pc.status='running' or pc.search_status in ('starting','running')) and public.fn_org_operante(pc.organization_id) group by pc.organization_id order by min(pc.updated_at) limit 20",
+    "select pc.organization_id from prospecting_campaigns pc where (pc.status='running' or pc.search_status in ('starting','running')) and public.fn_org_operante(pc.organization_id)" +
+      soComOExtra +
+      " group by pc.organization_id order by min(pc.updated_at) limit 20",
   );
   // Segunda consulta, à parte (a primeira não muda): quem só tem rascunho/pausada.
   // Fail-open: se ela falhar, as organizações que já rodam seguem como antes.
@@ -865,7 +881,9 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requ
     // Módulo desligado (o padrão): lista vazia, e o ramo (c) não seleciona ninguém.
     const conferir = await moduloLigado(admin, "conferir_whatsapp");
     apenasPreparo = (
-      await pool.query<{ organization_id: string }>(ORGS_COM_PREPARO_PENDENTE, [
+      await pool.query<{ organization_id: string }>(
+        assinaturaExigida() ? ORGS_COM_PREPARO_PENDENTE_COM_EXTRA : ORGS_COM_PREPARO_PENDENTE,
+        [
         conferir ? provedoresQueConferemNumero() : [],
       ])
     ).rows.map((r) => r.organization_id);
@@ -876,8 +894,16 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requ
   }
   const deadline = Date.now() + 180000;
   let processed = 0;
+  // A prospecção é EXTRA cobrado à parte (lib/billing/extras.ts): organização
+  // que não o tem (ou deixou de ter) não busca, não prepara e não envia. A
+  // campanha fica como está, e volta a andar se o extra for ligado de novo.
+  const semOExtra = new Set<string>();
+  for (const org of new Set([...organizations.map((o) => o.organization_id), ...apenasPreparo])) {
+    if (await extraForaDaOrganizacao(org, "prospeccao")) semOExtra.add(org);
+  }
   for (const { organization_id: org } of organizations) {
     if (Date.now() >= deadline) break;
+    if (semOExtra.has(org)) continue;
     try {
       await withProspectingLock(pool, org, async (db) => {
         await db.query(
@@ -1067,6 +1093,7 @@ export async function tickProspecting(pool: pg.Pool, admin: SupabaseClient, requ
   const paraPreparar = [...new Set([...organizations.map((o) => o.organization_id), ...apenasPreparo])];
   for (const org of paraPreparar) {
     if (Date.now() >= deadline) break;
+    if (semOExtra.has(org)) continue;
     try {
       await prepararCandidatos(
         pool,

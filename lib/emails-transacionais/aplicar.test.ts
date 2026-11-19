@@ -139,12 +139,58 @@ describe("aplicaEmailTransacional", () => {
     expect(arg.text).not.toContain("R$");
   });
 
-  it("sair do Escala não envia, mas registra o plano como base", async () => {
+  it("sair do Escala envia o e-mail de plano reduzido, como nos outros planos", async () => {
     const m = montar({ assinatura: { plan_type: "impulso" }, ultimoPlano: "escala" });
     const r = await aplicaEmailTransacional(m.deps, evento("plano.alterado"));
-    expect(r.status).toBe("skipped");
+    expect(r.status).toBe("ok");
+    expect(m.reservas[0]).toMatchObject({ tipo: "plano_reduzido", planType: "impulso" });
+  });
+
+  it("descida agendada: avisa a data, com a troca lida do banco", async () => {
+    const m = montar({
+      assinatura: {
+        plan_type: "escala",
+        troca_plano: "impulso",
+        troca_tipo: "downgrade",
+        troca_efetiva_em: "2026-12-19T00:00:00.000Z",
+        troca_pedida_em: "2026-11-19T15:00:00.000Z",
+      },
+    });
+    const r = await aplicaEmailTransacional(
+      m.deps,
+      evento("plano.troca_pedida", { user_id: "u1" }),
+    );
+    expect(r.status).toBe("ok");
+    expect(m.reservas[0]).toMatchObject({
+      tipo: "troca_agendada",
+      dedupeKey: "troca_agendada:2026-11-19T15:00:00.000Z",
+      planType: null,
+    });
+  });
+
+  it("subida aguardando pagamento: só link do Asaas vira botão", async () => {
+    const m = montar({
+      assinatura: {
+        plan_type: "essencial",
+        troca_plano: "impulso",
+        troca_tipo: "upgrade",
+        troca_valor_cents: 3000,
+        troca_link: "https://evil.example/pague",
+        troca_pedida_em: "2026-11-19T15:00:00.000Z",
+      },
+    });
+    const r = await aplicaEmailTransacional(m.deps, evento("plano.troca_pedida", { user_id: "u1" }));
+    expect(r.status).toBe("ok");
+    expect(m.reservas[0]).toMatchObject({ tipo: "troca_aguardando_pagamento" });
+    const enviado = m.enviar.mock.calls[0]![0] as unknown as { html: string };
+    expect(enviado.html).not.toContain("evil.example");
+  });
+
+  it("troca pedida forjada (sem troca no banco) não envia", async () => {
+    const m = montar({ assinatura: { plan_type: "impulso" } });
+    const r = await aplicaEmailTransacional(m.deps, evento("plano.troca_pedida", { user_id: "u1" }));
+    expect(r.detail).toBe("sem_troca_pedida");
     expect(m.enviar).not.toHaveBeenCalled();
-    expect(m.reservas[0]).toMatchObject({ tipo: "baseline", planType: "impulso" });
   });
 
   it("reembolso forjado (assinatura não suspensa) não envia", async () => {

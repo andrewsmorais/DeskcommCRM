@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { exigirExtra } from "@/lib/billing/extras";
 import { type NextRequest } from "next/server";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
@@ -50,6 +51,9 @@ export async function POST(req: NextRequest) {
   // `resolveAuthDual`; aqui o token é recusado logo abaixo, mas o teto vem antes, como nas irmãs.
   const teto = await tetoDeEscritaDoToken(auth, "prospecting", requestId);
   if (teto) return teto;
+  // Prospecção é EXTRA cobrado à parte: só a organização que o tem (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(auth.organizationId, "prospeccao", { requestId });
+  if (semOExtra) return semOExtra;
   if (auth.via === "token")
     return fail("forbidden", "Importar planilha exige a tela.", 403, { requestId, headers });
   const org = auth.organizationId;

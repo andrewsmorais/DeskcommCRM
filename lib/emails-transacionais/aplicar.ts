@@ -25,7 +25,7 @@
  */
 import type { EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
 import type { MarcaDeSaida } from "@/lib/branding/saida";
-import { limitesEfetivos } from "@/lib/billing/catalogo";
+import { escalaComProposta, limitesEfetivos, planoComercial } from "@/lib/billing/catalogo";
 import { decidirEmailDePlano } from "@/lib/emails-transacionais/decisao";
 import {
   montarBoasVindas,
@@ -35,6 +35,8 @@ import {
   montarPlanoMelhorado,
   montarPlanoReduzido,
   montarReembolso,
+  montarTrocaAgendada,
+  montarTrocaAguardandoPagamento,
   type CicloDeCobranca,
   type EmailMontado,
   type FormaDePagamento,
@@ -46,6 +48,8 @@ export const EVENTO_CONTA_CRIADA = "conta.criada";
 export const EVENTO_PLANO_ALTERADO = "plano.alterado";
 export const EVENTO_REEMBOLSO_CONFIRMADO = "reembolso.confirmado";
 export const EVENTO_ASSINATURA_CANCELADA = "assinatura.cancelada";
+/** A troca de plano que o cliente PEDIU (ainda não vale). Emitido pela rota da troca. */
+export const EVENTO_TROCA_PEDIDA = "plano.troca_pedida";
 
 export type TipoDeEmail =
   | "boas_vindas"
@@ -55,6 +59,8 @@ export type TipoDeEmail =
   | "reembolso"
   | "cancelamento"
   | "escala_ativo"
+  | "troca_agendada"
+  | "troca_aguardando_pagamento"
   /** Não é e-mail: registra o plano de uma mudança que não gera texto. */
   | "baseline";
 
@@ -68,6 +74,12 @@ export type AssinaturaLida = {
   expires_at: string | null;
   current_period_end: string | null;
   limites_personalizados?: unknown;
+  troca_plano?: string | null;
+  troca_tipo?: string | null;
+  troca_efetiva_em?: string | null;
+  troca_valor_cents?: number | null;
+  troca_link?: string | null;
+  troca_pedida_em?: string | null;
 };
 
 export interface DbDosEmails {
@@ -177,6 +189,8 @@ export async function aplicaEmailTransacional(
       const decisao = decidirEmailDePlano({
         plano: assinatura.plan_type,
         ultimoPlano: await deps.db.ultimoPlano(org),
+        escalaComProposta:
+          assinatura.plan_type === "escala" && escalaComProposta(assinatura.limites_personalizados),
       });
       const dedupeKey = `plano:${row.id}`;
 
@@ -219,7 +233,8 @@ export async function aplicaEmailTransacional(
         });
       }
 
-      const plano = assinatura.plan_type as "essencial" | "impulso";
+      const plano = planoComercial(assinatura.plan_type ?? "");
+      if (!plano) return resultado("skipped", "plano_desconhecido");
       const base = {
         marca,
         nome: primeiroNome(quem.nome),
@@ -309,8 +324,87 @@ export async function aplicaEmailTransacional(
       });
     }
 
+    case EVENTO_TROCA_PEDIDA: {
+      // A troca e as datas vêm do BANCO, nunca do payload (regra 1): um evento
+      // forjado só produz e-mail se a assinatura tem MESMO uma troca pedida.
+      const assinatura = await deps.db.assinatura(org);
+      const atual = planoComercial(assinatura?.plan_type ?? "");
+      const novo = planoComercial(assinatura?.troca_plano ?? "");
+      const tipoDaTroca = assinatura?.troca_tipo;
+      const pedidaEm = texto(assinatura?.troca_pedida_em);
+      if (!assinatura || !atual || !novo || atual === novo || !pedidaEm)
+        return resultado("skipped", "sem_troca_pedida");
+      const quem = await deps.db.destinatario(org, texto(row.payload?.user_id));
+      if (!quem) return resultado("skipped", "sem_destinatario");
+      const marca = await deps.marca(org);
+      const base = {
+        marca,
+        nome: primeiroNome(quem.nome),
+        atual,
+        novo,
+        ciclo: ciclo(assinatura.billing_cycle),
+        urlDoApp: deps.urlDoApp,
+      };
+
+      if (tipoDaTroca === "downgrade") {
+        const efetivaEm = dataOuNula(assinatura.troca_efetiva_em ?? null);
+        if (!efetivaEm) return resultado("skipped", "sem_data_da_troca");
+        return entregar(deps, {
+          org,
+          tipo: "troca_agendada",
+          // Um aviso por pedido: pedir, desistir e pedir de novo são dois e-mails.
+          dedupeKey: `troca_agendada:${pedidaEm}`,
+          // `null`: o plano que VALE ainda é o atual; o histórico de planos não muda.
+          planType: null,
+          quem,
+          marca,
+          montar: () =>
+            montarTrocaAgendada({
+              ...base,
+              efetivaEm,
+              // Nada do payload entra no texto (regra 1): `emit_event` é
+              // alcançável por qualquer membro, e um valor forjado sairia
+              // escrito com a marca da empresa. O valor novo está na tela.
+              novoValorDoCicloCents: null,
+            }),
+        });
+      }
+      if (tipoDaTroca === "upgrade") {
+        const valor = assinatura.troca_valor_cents;
+        if (typeof valor !== "number" || !Number.isInteger(valor) || valor <= 0)
+          return resultado("skipped", "sem_valor_da_troca");
+        return entregar(deps, {
+          org,
+          tipo: "troca_aguardando_pagamento",
+          dedupeKey: `troca_pagamento:${pedidaEm}`,
+          planType: null,
+          quem,
+          marca,
+          montar: () =>
+            montarTrocaAguardandoPagamento({
+              ...base,
+              valorCents: valor,
+              link: linkDePagamento(assinatura.troca_link ?? null),
+            }),
+        });
+      }
+      return resultado("skipped", "sem_troca_pedida");
+    }
+
     default:
       return resultado("skipped", "evento_fora_do_escopo");
+  }
+}
+
+/** Só um link https do próprio Asaas vira botão; qualquer outra coisa some. */
+function linkDePagamento(v: string | null): string | null {
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    if (u.protocol !== "https:") return null;
+    return u.hostname === "asaas.com" || u.hostname.endsWith(".asaas.com") ? u.toString() : null;
+  } catch {
+    return null;
   }
 }
 

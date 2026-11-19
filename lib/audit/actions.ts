@@ -1177,6 +1177,10 @@ export const AUDIT_ACTIONS = [
   "billing.plan_change_requested",
   /** O cliente desistiu da troca de plano em andamento. */
   "billing.plan_change_canceled",
+  /** Rodada que aplicou na data as descidas de plano agendadas (cron troca-de-plano-vencida). */
+  "billing.plan_change_due_run",
+  /** Dono da plataforma ligou ou desligou extras cobrados à parte de uma organização. */
+  "billing.extras_alterados",
   // Pergunta respondida pelo assistente do botão Ajuda (app/api/v1/ajuda).
   "ajuda.pergunta",
   // A chave POR GRUPO "Permitir que a IA responda neste grupo" (#2729,

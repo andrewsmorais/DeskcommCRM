@@ -41,6 +41,7 @@
  * que o broker emite na criação — por isso o primeiro QR não se perde mesmo
  * saindo antes de o banco conhecer o id.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -103,6 +104,9 @@ export async function POST(request: Request): Promise<Response> {
     allowPlatformAdmin: true,
   });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user, org: activeOrg } = authz;
 
   try {

@@ -23,6 +23,7 @@ import type { Logger } from "../../obs/logger";
 import { enqueueJob } from "../../queue/queue";
 import { decidirRajada, debounceEfetivo } from "./debounce";
 import { loadConversationAgentConfig } from "../../agent/agent-config";
+import { recursoNegadoAoMotor } from "@/lib/billing/acesso";
 import { grupoLiberaIa } from "@/lib/grupos/ia-no-grupo";
 import { avisoDeEventoMorto, IA_QUE_NAO_RESPONDEU } from "@/lib/event-log/aviso-de-evento-morto";
 import { TIPOS_DERIVAVEIS, DERIVACAO_TERMINADA } from "@/lib/messaging/media/derivable";
@@ -300,6 +301,13 @@ async function processEvent(
   if (convRows[0]?.is_group !== false) {
     if (!grupoLiberaIa(convRows[0]?.ia_responde)) {
       log.info("drain: conversa de grupo sem a chave da IA liberada — evento pulado", { event_id: event.id });
+      return "processado";
+    }
+    // A chave por grupo é recurso do Impulso em diante. Grupo ligado num plano
+    // que não o inclui (desceu de plano depois de ligar) fica calado, sem
+    // apagar a escolha: voltando ao Impulso, ele volta a responder.
+    if (await recursoNegadoAoMotor(event.organization_id, "ia_em_grupo")) {
+      log.info("drain: IA em grupo fora do plano da organização — evento pulado", { event_id: event.id });
       return "processado";
     }
     log.info("drain: grupo liberado pela chave por grupo (#2729) — turno segue o caminho normal", {

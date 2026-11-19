@@ -9,6 +9,8 @@ import type { NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { regraUsaAutomacaoAvancada } from "@/lib/billing/automacao-do-plano";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAutomationRuleSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
@@ -56,6 +58,15 @@ export async function POST(req: NextRequest): Promise<Response> {
       requestId,
       details: parsed.error.flatten(),
     });
+  }
+
+  // Automação avançada (gatilho de ganho/perda, IA, e-mail, aviso à equipe ou
+  // mídia) é do Impulso em diante (lib/billing/automacao-do-plano.ts).
+  if (regraUsaAutomacaoAvancada(parsed.data)) {
+    const foraDoPlano = await exigirRecursoDoPlano(activeOrg.orgId, "automacoes_avancadas", {
+      requestId,
+    });
+    if (foraDoPlano) return foraDoPlano;
   }
 
   // Secrets de call_webhook nunca ficam em claro no jsonb (migration 0041).

@@ -24,26 +24,31 @@ describe("decidirEmailDePlano", () => {
       motivo: "mesmo_plano",
     });
   });
-  it("entrar no Escala envia escala_ativo; continuar nele não", () => {
-    expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: "impulso" })).toEqual({
-      enviar: true,
-      tipo: "escala_ativo",
-    });
+  it("o Escala do checkout tem os mesmos e-mails dos outros planos", () => {
     expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: null })).toEqual({
       enviar: true,
-      tipo: "escala_ativo",
+      tipo: "contratado",
+    });
+    expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: "impulso" })).toMatchObject({
+      tipo: "melhorado",
+      anterior: "impulso",
+    });
+    expect(decidirEmailDePlano({ plano: "impulso", ultimoPlano: "escala" })).toMatchObject({
+      tipo: "reduzido",
+      anterior: "escala",
     });
     expect(decidirEmailDePlano({ plano: "escala", ultimoPlano: "escala" })).toMatchObject({
       enviar: false,
       motivo: "mesmo_plano",
     });
   });
-  it("sair do Escala não envia, mas registra", () => {
-    expect(decidirEmailDePlano({ plano: "essencial", ultimoPlano: "escala" })).toMatchObject({
-      enviar: false,
-      motivo: "escala_sem_email",
-      registrar: "essencial",
-    });
+  it("Escala com números combinados pelo dono: escala_ativo, uma vez", () => {
+    expect(
+      decidirEmailDePlano({ plano: "escala", ultimoPlano: "impulso", escalaComProposta: true }),
+    ).toEqual({ enviar: true, tipo: "escala_ativo" });
+    expect(
+      decidirEmailDePlano({ plano: "escala", ultimoPlano: "escala", escalaComProposta: true }),
+    ).toMatchObject({ enviar: false, motivo: "mesmo_plano" });
   });
   it("plano desconhecido", () => {
     expect(decidirEmailDePlano({ plano: "xpto", ultimoPlano: null })).toMatchObject({

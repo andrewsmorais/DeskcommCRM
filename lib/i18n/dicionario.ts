@@ -18251,9 +18251,9 @@ export const DICIONARIO: Traducoes = {
   "Incluir empresas de teste": { es: "Incluir empresas de prueba" },
   "Abas das métricas": { es: "Pestañas de las métricas" },
   // Planos por recurso (27/10/2026): limites do plano, travas e ativação do Escala.
-  "Agentes de IA não ocupam vagas de usuários. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem. Se você mudar para um plano menor, nada do que já existe é apagado: só não dá para criar mais até voltar ao limite.":
+  "Agentes de IA não ocupam vagas de usuários. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem. Para mudar para um plano menor, primeiro deixe a conta dentro dele: arquive ou desligue o que sobra. Nada é apagado.":
     {
-      es: "Los agentes de IA no ocupan cupos de usuarios. Las invitaciones válidas reservan un cupo hasta que se acepten, se revoquen o venzan. Si cambias a un plan menor, no se borra nada de lo que ya existe: solo no podrás crear más hasta volver al límite.",
+      es: "Los agentes de IA no ocupan cupos de usuarios. Las invitaciones válidas reservan un cupo hasta que se acepten, se revoquen o venzan. Para cambiar a un plan menor, primero deje la cuenta dentro de él: archive o desactive lo que sobra. No se borra nada.",
     },
   "Ativar o Escala (proposta fechada)": { es: "Activar Escala (propuesta cerrada)" },
   "Ativar o Escala": { es: "Activar Escala" },
@@ -20402,6 +20402,17 @@ export const DICIONARIO: Traducoes = {
   "Ligado, a prospecção pergunta ao WhatsApp, pelo número por QR que a campanha escolheu, se cada telefone achado numa busca tem conta, e quem não tem sai da abordagem. A pergunta só sai na janela e nos dias da prospecção daquele número, até 50 por número por dia; campanha sem número escolhido não pergunta nada. Mesmo assim, consultar em quantidade pode chamar a atenção do WhatsApp e arriscar o número. Desligado, nada é consultado e a abordagem segue como antes.": {
     es: "Activado, la prospección le pregunta a WhatsApp, por el número por QR que eligió la campaña, si cada teléfono encontrado en una búsqueda tiene cuenta, y quien no la tiene sale del contacto. La pregunta solo sale en la franja y los días de prospección de ese número, hasta 50 por número por día; una campaña sin número elegido no pregunta nada. Aun así, consultar en cantidad puede llamar la atención de WhatsApp y poner el número en riesgo. Desactivado, no se consulta nada y el contacto sigue como antes.",
   },
+  "Extras cobrados à parte": { es: "Extras cobrados aparte" },
+  "Contratado": { es: "Contratado" },
+  "Prospecção automática": { es: "Prospección automática" },
+  "Ligações por IA e Cold Call": { es: "Llamadas por IA y Cold Call" },
+  "Respostas da IA em nota de voz": { es: "Respuestas de la IA en nota de voz" },
+  "Precisa de mais do que o Escala oferece, ou de um extra como prospecção, ligações ou respostas em áudio?": { es: "¿Necesita más de lo que ofrece Escala, o un extra como prospección, llamadas o respuestas en audio?" },
+  "Não foi possível gravar os extras.": { es: "No fue posible guardar los extras." },
+  "Extras atualizados.": { es: "Extras actualizados." },
+  "Nenhum plano inclui estes recursos. Ligue só para quem contratou o extra com você.": { es: "Ningún plan incluye estos recursos. Actívelos solo para quien contrató el extra con usted." },
+  "Esta organização ainda não tem plano. Os extras entram junto de um plano.": { es: "Esta organización todavía no tiene plan. Los extras se agregan junto con un plan." },
+  "O Escala normal é contratado pela página de vendas. Use isto só para quem fechou uma proposta acima do pacote.": { es: "El Escala normal se contrata en la página de ventas. Use esto solo para quien cerró una propuesta por encima del paquete." },
 };
 /**
  * Traduz, ou devolve o próprio texto.

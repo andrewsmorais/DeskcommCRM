@@ -20,7 +20,7 @@ const banco = vi.hoisted(() => ({
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: vi.fn() }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn() }));
 vi.mock("@/lib/billing", () => ({ getOrganizationBilling: vi.fn() }));
-vi.mock("@/lib/asaas", () => ({ deleteSubscription: vi.fn() }));
+vi.mock("@/lib/asaas", () => ({ deleteSubscription: vi.fn(), apagarCobranca: vi.fn(async () => undefined) }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: banco.criar }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 
@@ -131,15 +131,25 @@ describe("POST /api/v1/billing/cancel", () => {
       ["id", SUB_ID],
       ["updated_at", ATUALIZADO_EM],
     ]);
-    expect(banco.update).toHaveBeenCalledExactlyOnceWith({
-      status: "canceled",
-      canceled_at: expect.any(String),
-      updated_at: expect.any(String),
-    });
-    // A escrita não altera plano, atendentes ou fim do período já contratado.
+    expect(banco.update).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        status: "canceled",
+        canceled_at: expect.any(String),
+        updated_at: expect.any(String),
+      }),
+    );
+    // A escrita não altera plano, atendentes ou fim do período já contratado:
+    // além da situação, só limpa a troca de plano que estivesse em andamento.
     expect(Object.keys(banco.update.mock.calls[0]?.[0] ?? {}).sort()).toEqual([
       "canceled_at",
       "status",
+      "troca_efetiva_em",
+      "troca_link",
+      "troca_pagamento_id",
+      "troca_pedida_em",
+      "troca_plano",
+      "troca_tipo",
+      "troca_valor_cents",
       "updated_at",
     ]);
     expect(await resposta.json()).toEqual({ data: { access_until: ACESSO_ATE } });

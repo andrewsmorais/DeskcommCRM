@@ -11,12 +11,13 @@
  *
  * Sem e-mail, por ordem:
  *   - plano desconhecido (sem `plan_type`, ou fora do catálogo);
- *   - SAIR do Escala: ainda não tem texto (decisão do dono, 28/10/2026). O plano
- *     entra no histórico mesmo assim (`baseline`), para a comparação seguinte
- *     não partir de um passado errado;
- *
- * ENTRAR no Escala (vindo de outro plano ou de nenhum) é `escala_ativo`.
  *   - o mesmo plano de novo: renovação, reativação, o vaivém de estados.
+ *
+ * Os três planos têm os mesmos e-mails (contratado, melhorado, reduzido) desde
+ * que o Escala passou a ser contratado pelo checkout (19/11/2026). A única
+ * exceção é o Escala com números COMBINADOS pelo dono da plataforma (proposta
+ * acima do pacote base): ENTRAR nele é `escala_ativo`, que fala da proposta e
+ * não mostra valor nem próxima cobrança.
  */
 import { PLANOS_COMERCIAIS, planoComercial, type PlanoComercial } from "@/lib/billing/catalogo";
 import type { PlanoComEmail } from "@/lib/emails-transacionais/modelos";
@@ -28,35 +29,25 @@ export type DecisaoDePlano =
   | { enviar: true; tipo: "reduzido"; anterior: PlanoComEmail }
   | {
       enviar: false;
-      motivo: "plano_desconhecido" | "escala_sem_email" | "mesmo_plano";
+      motivo: "plano_desconhecido" | "mesmo_plano";
       /** O plano que o histórico deve passar a registrar, quando há um. */
       registrar: PlanoComercial | null;
     };
-
-function comEmail(plano: PlanoComercial): plano is PlanoComEmail {
-  return plano !== "escala";
-}
 
 export function decidirEmailDePlano(args: {
   plano: string | null;
   /** O último plano dito à pessoa por e-mail (ou registrado como base). */
   ultimoPlano: string | null;
+  /** Escala com números combinados pelo dono (proposta acima do pacote). */
+  escalaComProposta?: boolean;
 }): DecisaoDePlano {
   const plano = args.plano ? planoComercial(args.plano) : null;
   if (!plano) return { enviar: false, motivo: "plano_desconhecido", registrar: null };
 
   const ultimo = args.ultimoPlano ? planoComercial(args.ultimoPlano) : null;
-
-  if (!comEmail(plano)) {
-    return ultimo === plano
-      ? { enviar: false, motivo: "mesmo_plano", registrar: null }
-      : { enviar: true, tipo: "escala_ativo" };
-  }
-  if (ultimo !== null && !comEmail(ultimo)) {
-    return { enviar: false, motivo: "escala_sem_email", registrar: plano };
-  }
-  if (ultimo === null) return { enviar: true, tipo: "contratado" };
   if (ultimo === plano) return { enviar: false, motivo: "mesmo_plano", registrar: null };
+  if (plano === "escala" && args.escalaComProposta) return { enviar: true, tipo: "escala_ativo" };
+  if (ultimo === null) return { enviar: true, tipo: "contratado" };
 
   return PLANOS_COMERCIAIS[plano].ordem > PLANOS_COMERCIAIS[ultimo].ordem
     ? { enviar: true, tipo: "melhorado", anterior: ultimo }

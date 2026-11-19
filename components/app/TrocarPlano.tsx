@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Trocar de plano (Essencial ↔ Impulso) pela tela de Plano e cobrança.
+ * Trocar de plano (entre Essencial, Impulso e Escala) pela tela de Plano e cobrança.
  *
  * O que aparece antes do clique é a mesma conta que a rota faz
  * (`lib/billing/troca-de-plano.ts`, calculada no servidor): quanto se paga
@@ -22,13 +22,13 @@ import { localeDeData } from "@/lib/i18n/datas";
 import type { Idioma } from "@/lib/i18n/idiomas";
 
 export type OpcaoDeTroca = {
-  slug: "essencial" | "impulso";
+  slug: "essencial" | "impulso" | "escala";
   nome: string;
   valorDoCicloCents: number;
   decisao: DecisaoDeTroca;
 };
 
-const NOMES: Record<string, string> = { essencial: "Essencial", impulso: "Impulso" };
+const NOMES: Record<string, string> = { essencial: "Essencial", impulso: "Impulso", escala: "Escala" };
 
 export function TrocarPlano({
   idioma,
@@ -205,7 +205,7 @@ export function TrocarPlano({
           })}
           <li className="text-sm text-muted-foreground">
             {t(
-              "Precisa de mais números, agentes ou usuários? O Escala é contratado com a nossa equipe.",
+              "Precisa de mais do que o Escala oferece, ou de um extra como prospecção, ligações ou respostas em áudio?",
             )}{" "}
             <a href={suporteUrl} target="_blank" rel="noopener noreferrer" className="underline">
               {t("Falar com o suporte")}

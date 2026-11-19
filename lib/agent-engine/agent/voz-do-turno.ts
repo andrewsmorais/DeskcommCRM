@@ -18,6 +18,7 @@ import { resolveOrgLlmConfig, type LlmEdgeConfig } from '../edge/llm/credentials
 import { aplicarOrcamento, LlmBudgetExceededError, type OrcamentoCallInput as RastroDaChamada } from '../edge/llm/run-model-call';
 import { chaveDeOrcamentoDaInstalacao } from '@/lib/instalacao/comportamento';
 import { logger } from '@/lib/logger';
+import { extraForaDaOrganizacao } from '@/lib/billing/extras';
 import type { ChannelCapabilities } from '@/lib/channels/types';
 import { formatoDaVozParaCanal, type FormatoDaVoz } from '@/lib/ai/voz/formato';
 import { lerPedidoDeAudio } from './pedido-de-audio';
@@ -151,6 +152,15 @@ export async function resolverVozDoTurno(
   const textosDaConversa =
     input.inboundTexts ?? (input.inboundText === undefined ? [] : [input.inboundText]);
   if (!deveFalar(input.vozQuando, input.inboundType, textosDaConversa)) return null;
+  // Nota de voz é EXTRA cobrado à parte (lib/billing/extras.ts): sem ele a
+  // resposta sai em texto, sem pagar síntese nenhuma. Só pergunta quando o
+  // turno ia mesmo falar — o caminho comum não paga leitura.
+  if (await extraForaDaOrganizacao(input.tenantId, 'nota_de_voz')) {
+    logger.info('[voz-do-turno] organização sem o extra de nota de voz — respondendo em texto', {
+      organization_id: input.tenantId,
+    });
+    return null;
+  }
 
   try {
     const { rows } = await input.pool.query<{ settings: Record<string, unknown> | null }>(

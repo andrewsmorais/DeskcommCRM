@@ -23,7 +23,14 @@ import {
   type PrecosDoPlano,
 } from "@/lib/billing/troca-de-plano";
 import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
-import { RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "@/lib/billing/catalogo";
+import {
+  EXTRAS_COBRADOS_A_PARTE,
+  LISTA_DE_EXTRAS,
+  PLANOS_COMERCIAIS,
+  RECURSOS_DO_PLANO,
+  planoInclui,
+  type RecursoDoPlano,
+} from "@/lib/billing/catalogo";
 import { consultarCotaDaEquipe } from "@/lib/billing/equipe";
 import { contarCanaisDoPlano } from "@/lib/channels/cota-do-plano";
 import { disparoEmMassaLigado } from "@/lib/instalacao/disparo-em-massa";
@@ -50,9 +57,14 @@ export default async function BillingPage() {
     ? await consultarCotaDaEquipe(admin, activeOrg.orgId).catch(() => null)
     : null;
 
-  // Troca de plano (Essencial ↔ Impulso): a prévia da mesma conta que a rota faz.
+  // Troca de plano (entre os três): a prévia da mesma conta que a rota faz.
   let opcoesDeTroca: OpcaoDeTroca[] | null = null;
-  if (billing && billing.status !== "canceled" && ehPlanoTrocavel(billing.plan_slug)) {
+  if (
+    billing &&
+    billing.status !== "canceled" &&
+    ehPlanoTrocavel(billing.plan_slug) &&
+    !billing.escala_com_proposta
+  ) {
     const { data: precos } = await admin
       .from("plans")
       .select("slug, price_monthly, price_quarterly, price_yearly")
@@ -70,7 +82,7 @@ export default async function BillingPage() {
           return [
             {
               slug,
-              nome: slug === "essencial" ? "Essencial" : "Impulso",
+              nome: PLANOS_COMERCIAIS[slug].nome,
               valorDoCicloCents: precoDoCiclo(novo, ciclo),
               decisao: decidirTroca({
                 planoAtual: billing.plan_slug,
@@ -121,6 +133,12 @@ export default async function BillingPage() {
   ]);
 
   const t = (texto: string) => traduzir(texto, idioma);
+  // Rótulos literais em t(): a cerca de i18n recusa t() sobre variável.
+  const rotuloDoExtra: Record<keyof typeof EXTRAS_COBRADOS_A_PARTE, string> = {
+    prospeccao: t("Prospecção automática"),
+    ligacoes: t("Ligações por IA e Cold Call"),
+    nota_de_voz: t("Respostas da IA em nota de voz"),
+  };
   const formatDate = (date: string) =>
     format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: localeDeData(idioma) });
 
@@ -277,7 +295,7 @@ export default async function BillingPage() {
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
               {t(
-                "Agentes de IA não ocupam vagas de usuários. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem. Se você mudar para um plano menor, nada do que já existe é apagado: só não dá para criar mais até voltar ao limite.",
+                "Agentes de IA não ocupam vagas de usuários. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem. Para mudar para um plano menor, primeiro deixe a conta dentro dele: arquive ou desligue o que sobra. Nada é apagado.",
               )}
             </p>
             <h3 className="mt-6 text-base font-medium">{t("Recursos do plano")}</h3>
@@ -292,10 +310,23 @@ export default async function BillingPage() {
                         ? billing.is_active
                           ? t("Incluído")
                           : t("Assinatura inativa")
-                        : `${t("A partir de")} ${oferta.desde === "impulso" ? "Impulso" : "Escala"}`}
+                        : `${t("A partir de")} ${PLANOS_COMERCIAIS[oferta.desde].nome}`}
                     </span>
                   </li>
                 ))}
+            </ul>
+            <h3 className="mt-6 text-base font-medium">{t("Extras cobrados à parte")}</h3>
+            <ul className="mt-3 space-y-2 text-sm">
+              {LISTA_DE_EXTRAS.map((extra) => (
+                <li key={extra} className="flex justify-between gap-3">
+                  <span>{rotuloDoExtra[extra]}</span>
+                  <span className="text-muted-foreground">
+                    {(billing.extras ?? []).includes(extra)
+                      ? t("Contratado")
+                      : t("Fale com o suporte")}
+                  </span>
+                </li>
+              ))}
             </ul>
           </Card>
 

@@ -22,7 +22,8 @@ import type { ActionResultDetail } from "@/lib/automation/types";
 import { audit } from "@/lib/audit";
 import { regraDoEvento } from "@/lib/automation/gatilho-de-data-do-funil";
 import { ENTIDADE_ESPERADA_POR_GATILHO } from "@/lib/schemas/webhooks";
-import { acessoPeloPlanoDaOrganizacao } from "@/lib/billing/acesso";
+import { acessoPeloPlanoDaOrganizacao, recursoNegadoAoMotor } from "@/lib/billing/acesso";
+import { regraUsaAutomacaoAvancada } from "@/lib/billing/automacao-do-plano";
 import { logger } from "@/lib/logger";
 import { horasDoIntervaloNaConfig } from "@/lib/automation/limite-por-contato";
 
@@ -33,6 +34,7 @@ const EXPECTED_ENTITY_KIND: Record<string, string> = ENTIDADE_ESPERADA_POR_GATIL
 interface RuleRow {
   id: string;
   name: string;
+  trigger_event?: string | null;
   trigger_config?: Record<string, unknown> | null;
   conditions: RuleCondition[];
   actions: Array<{ type: string; config?: Record<string, unknown> }>;
@@ -365,7 +367,7 @@ export async function runAutomationForEvent(
 
   const { data: rules, error } = await admin
     .from("automation_rules")
-    .select("id, name, trigger_config, conditions, actions")
+    .select("id, name, trigger_event, trigger_config, conditions, actions")
     .eq("organization_id", row.organization_id)
     .eq("trigger_event", row.event_type)
     .eq("is_active", true)
@@ -421,17 +423,40 @@ export async function runAutomationForEvent(
     };
   }
 
+  // ═══ AUTOMAÇÃO AVANÇADA SÓ NO PLANO QUE A INCLUI ═══
+  //
+  // A regra gravada antes de a organização descer de plano não é apagada: ela
+  // para de rodar enquanto o plano não a incluir (lib/billing/automacao-do-plano.ts),
+  // e volta sozinha se a empresa subir de novo. Só pergunta ao plano quando há
+  // alguma regra avançada no evento: o caminho comum não paga leitura nenhuma.
+  const avancadasForaDoPlano =
+    matched.some(regraUsaAutomacaoAvancadaDaLinha) &&
+    (await recursoNegadoAoMotor(row.organization_id, "automacoes_avancadas"));
+  const doPlano = avancadasForaDoPlano
+    ? matched.filter((r) => !regraUsaAutomacaoAvancadaDaLinha(r))
+    : matched;
+  if (avancadasForaDoPlano) {
+    logger.info("[automation.engine] regra avançada fora do plano — não roda", {
+      organization_id: row.organization_id,
+      event_type: row.event_type,
+      regras: matched.filter(regraUsaAutomacaoAvancadaDaLinha).map((r) => r.id),
+    });
+  }
+  if (!doPlano.length) {
+    return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "skipped", detail: "fora_do_plano" };
+  }
+
   const context = await buildContext(admin, row);
 
   // Limite por contato: a pergunta ao banco é feita UMA vez por regra, antes do
   // filtro (que é síncrono). Sem contato resolvível a regra segue (fail-open).
-  const temAlgumLimite = matched.some(
+  const temAlgumLimite = doPlano.some(
     (rule) => regraRodaUmaVezPorContato(rule) || intervaloPorContatoHoras(rule) !== null,
   );
   const contatoIdDoEvento = temAlgumLimite ? await contatoDoEventoOuContexto(admin, row, context) : null;
   const motivoDoBloqueio = new Map<string, MotivoDoBloqueio>();
   if (contatoIdDoEvento) {
-    for (const rule of matched) {
+    for (const rule of doPlano) {
       // Com as duas chaves, o intervalo vence (a tela não deixa configurar as duas).
       const horas = intervaloPorContatoHoras(rule);
       if (horas !== null) {
@@ -448,7 +473,7 @@ export async function runAutomationForEvent(
   }
 
   const barradasPeloLimite: Array<{ rule: RuleRow; motivo: MotivoDoBloqueio }> = [];
-  const applicable = matched.filter((rule) => {
+  const applicable = doPlano.filter((rule) => {
     if (!evaluateConditions(rule.conditions ?? [], context)) return false;
     const motivo = motivoDoBloqueio.get(rule.id);
     if (motivo) {
@@ -634,4 +659,9 @@ export async function runAutomationForEvent(
   }
 
   return { consumer_key: AUTOMATION_CONSUMER_KEY, status: "ok" };
+}
+
+/** A linha da regra, como o motor a lê, na régua de `automacao-do-plano.ts`. */
+function regraUsaAutomacaoAvancadaDaLinha(rule: RuleRow): boolean {
+  return regraUsaAutomacaoAvancada({ trigger_event: rule.trigger_event, actions: rule.actions });
 }

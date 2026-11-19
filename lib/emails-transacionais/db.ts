@@ -53,7 +53,7 @@ export function criarDbDosEmails(admin: Admin): DbDosEmails {
       const { data, error } = await admin
         .from("subscriptions")
         .select(
-          "plan_type, status, billing_cycle, contracted_amount_cents, expires_at, current_period_end, limites_personalizados",
+          "plan_type, status, billing_cycle, contracted_amount_cents, expires_at, current_period_end, limites_personalizados, troca_plano, troca_tipo, troca_efetiva_em, troca_valor_cents, troca_link, troca_pedida_em",
         )
         .eq("organization_id", organizationId)
         .order("updated_at", { ascending: false })

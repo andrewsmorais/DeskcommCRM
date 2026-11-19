@@ -25,6 +25,7 @@
 import {
   LIMITES_DO_PLANO,
   PLANOS_COMERCIAIS,
+  EXTRAS_COBRADOS_A_PARTE,
   RECURSOS_DO_PLANO,
   type LimiteDoPlano,
   type PlanoComercial,
@@ -62,13 +63,15 @@ function tabelaDePlanos(): string {
       .filter((r) => r.desde === p)
       .map((r) => r.nome);
     const extra = desde.length ? ` Libera a partir dele: ${desde.join("; ")}.` : "";
-    const escala =
-      p === "escala" ? " (números a partir destes; o valor final sai da proposta)" : "";
-    return `- ${plano.nome}: ${limites}${escala}.${extra}`;
+    return `- ${plano.nome}: ${limites}.${extra}`;
   });
+  const extras = Object.values(EXTRAS_COBRADOS_A_PARTE)
+    .map((e) => e.nome)
+    .join("; ");
   return [
-    "Cada plano inclui tudo do plano anterior.",
+    "Cada plano inclui tudo do plano anterior. Os três se contratam pela página de vendas, com 7 dias grátis, e liberam sozinhos.",
     ...linhas,
+    `Extras cobrados à parte, fora de qualquer plano (ativados pelo suporte): ${extras}.`,
     "Não cite preços: eles estão na página de planos do site. Se perguntarem, diga onde ver.",
   ].join("\n");
 }

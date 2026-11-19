@@ -89,13 +89,13 @@ describe("troca de plano — a régua da Umbler Talk", () => {
       ok: false,
       motivo: "mesmo_plano",
     });
-    expect(decidirTroca(pedido({ planoNovo: "escala" }))).toEqual({
+    // Escala com números combinados pelo dono não troca sozinho.
+    expect(
+      decidirTroca(pedido({ planoAtual: "escala", planoNovo: "impulso", escalaPersonalizado: true })),
+    ).toEqual({ ok: false, motivo: "sob_consulta" });
+    expect(decidirTroca(pedido({ planoNovo: "xpto" }))).toEqual({
       ok: false,
-      motivo: "sob_consulta",
-    });
-    expect(decidirTroca(pedido({ planoAtual: "escala" }))).toEqual({
-      ok: false,
-      motivo: "sob_consulta",
+      motivo: "plano_invalido",
     });
     expect(decidirTroca(pedido({ canceladaEm: "2026-11-10T00:00:00.000Z" }))).toEqual({
       ok: false,
@@ -109,6 +109,20 @@ describe("troca de plano — a régua da Umbler Talk", () => {
       ok: false,
       motivo: "assinatura_inativa",
     });
+  });
+
+  it("o Escala do checkout troca como os outros: sobe pagando a diferença, desce no fim do período", () => {
+    const ESCALA = { price_monthly: 34990, price_quarterly: 94473, price_yearly: 335904 };
+    const sobe = decidirTroca(pedido({ planoAtual: "impulso", planoNovo: "escala", precoAtual: IMPULSO, precoNovo: ESCALA }));
+    expect(sobe).toMatchObject({ ok: true, tipo: "upgrade", aplicarAgora: false, novoValorDoCicloCents: 34990 });
+    const desce = decidirTroca(pedido({ planoAtual: "escala", planoNovo: "essencial", precoAtual: ESCALA, precoNovo: ESSENCIAL }));
+    expect(desce).toMatchObject({ ok: true, tipo: "downgrade", aplicarAgora: false, novoValorDoCicloCents: 8990 });
+  });
+
+  it("teste já vencido não troca de graça nem na hora", () => {
+    expect(
+      decidirTroca(pedido({ status: "trialing", fimDoPeriodo: "2026-11-01T00:00:00.000Z" })),
+    ).toEqual({ ok: false, motivo: "assinatura_inativa" });
   });
 
   it("sem início gravado, o período tem o tamanho do ciclo", () => {

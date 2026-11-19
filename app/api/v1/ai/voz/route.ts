@@ -9,6 +9,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * da ORGANIZAÇÃO (um recurso contratado uma vez, não por agente), o mesmo
  * desenho de `organizations.settings.llm`.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
@@ -129,6 +130,9 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("admin", { requestId, resource: "ai_providers" });
   if (!authz.ok) return authz.response;
+  // Nota de voz é EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "nota_de_voz", { requestId });
+  if (semOExtra) return semOExtra;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user, org } = authz;
 

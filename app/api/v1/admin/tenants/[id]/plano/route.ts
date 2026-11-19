@@ -1,10 +1,12 @@
 /**
  * GET  /api/v1/admin/tenants/[id]/plano — o plano da organização e os limites em vigor
  * POST /api/v1/admin/tenants/[id]/plano — ATIVA O ESCALA com os números da proposta
+ * PATCH /api/v1/admin/tenants/[id]/plano — liga e desliga os EXTRAS cobrados à parte
  *
- * O Escala não passa pelo checkout da página de vendas ("Falar com
- * especialista"): o dono da plataforma conversa com o cliente, fecha a
- * proposta e ativa aqui. Grava a assinatura única da organização
+ * Desde 19/11/2026 o Escala se contrata pelo checkout, como os outros planos.
+ * Este POST ficou para a PROPOSTA: o cliente que precisa de mais do que o
+ * pacote do Escala conversa com o dono da plataforma, fecha a proposta e o
+ * dono ativa aqui. Grava a assinatura única da organização
  * (`subscriptions`, único por organization_id) com `plan_type = 'escala'`, o
  * período, o valor mensal combinado (para o MRR) e os números da proposta
  * (`limites_personalizados`, migration 0492 — nunca abaixo do pacote base).
@@ -22,8 +24,15 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { apagarCobranca, deleteSubscription } from "@/lib/asaas";
 import { getOrganizationBilling } from "@/lib/billing";
-import { PLANOS_COMERCIAIS, limitesEfetivos } from "@/lib/billing/catalogo";
+import {
+  LISTA_DE_EXTRAS,
+  PLANOS_COMERCIAIS,
+  extrasLidos,
+  limitesEfetivos,
+  type ExtraCobradoAParte,
+} from "@/lib/billing/catalogo";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +73,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     admin
       .from("subscriptions")
       .select(
-        "plan_type, status, current_period_end, asaas_subscription_id, contracted_amount_cents, limites_personalizados",
+        "plan_type, status, current_period_end, asaas_subscription_id, contracted_amount_cents, limites_personalizados, extras",
       )
       .eq("organization_id", id)
       .maybeSingle(),
@@ -80,6 +89,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
             ate: assinatura.current_period_end,
             no_asaas: Boolean(assinatura.asaas_subscription_id),
             valor_mensal_cents: assinatura.contracted_amount_cents,
+            extras: extrasLidos(assinatura.extras),
           }
         : null,
       ativo: leitura.billing?.is_active ?? false,
@@ -123,7 +133,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     admin.from("plans").select("id").eq("slug", "escala").maybeSingle(),
     admin
       .from("subscriptions")
-      .select("id, plan_type, status, asaas_subscription_id, current_period_end")
+      .select("id, plan_type, status, asaas_subscription_id, current_period_end, troca_tipo, troca_pagamento_id")
       .eq("organization_id", id)
       .maybeSingle(),
   ]);
@@ -133,10 +143,12 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   if (erroAtual)
     return fail("internal_error", "Não foi possível ler a assinatura.", 500, { requestId });
 
+  // Qualquer recorrência viva no Asaas — inclusive a de um Escala comprado no
+  // checkout, que desde 19/11 é o caso comum — continuaria cobrando junto da
+  // proposta. Só substitui com confirmação, e aí a recorrência é cancelada lá.
   const asaasEmVigor =
     atual?.asaas_subscription_id &&
-    ["active", "trialing", "past_due"].includes(String(atual.status)) &&
-    atual.plan_type !== "escala";
+    ["active", "trialing", "past_due"].includes(String(atual.status));
   if (asaasEmVigor && !body.substituir_assinatura_asaas) {
     return fail(
       "state_conflict",
@@ -144,6 +156,23 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       409,
       { requestId, details: { plano_atual: atual?.plan_type } },
     );
+  }
+
+  if (asaasEmVigor && atual?.asaas_subscription_id) {
+    try {
+      await deleteSubscription(atual.asaas_subscription_id);
+    } catch {
+      return fail(
+        "upstream_unavailable",
+        "Não foi possível cancelar a recorrência no Asaas. Nada foi mudado; tente de novo ou cancele por lá antes.",
+        503,
+        { requestId },
+      );
+    }
+  }
+  // Subida pendente: a cobrança da diferença não pode ficar pagável sem troca.
+  if (atual?.troca_tipo === "upgrade" && atual.troca_pagamento_id) {
+    await apagarCobranca(atual.troca_pagamento_id).catch(() => undefined);
   }
 
   const agora = new Date().toISOString();
@@ -163,8 +192,17 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     contracted_amount_cents: body.valor_mensal_cents,
     contracted_currency: "BRL",
     contracted_at: agora,
-    price_source: "proposta_escala",
+    price_source: "manual",
     limites_personalizados: body.limites,
+    // A proposta substitui qualquer troca pedida antes (uma descida agendada
+    // derrubaria o Escala na data, e a cron apagaria os números combinados).
+    troca_plano: null,
+    troca_tipo: null,
+    troca_efetiva_em: null,
+    troca_pagamento_id: null,
+    troca_valor_cents: null,
+    troca_link: null,
+    troca_pedida_em: null,
     updated_at: agora,
   };
   const { error } = await admin
@@ -194,4 +232,71 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     { organization_id: id, plano: "escala", ate: fim.toISOString(), limites: body.limites },
     { requestId },
   );
+}
+
+const extrasSchema = z
+  .object({
+    extras: z
+      .array(z.enum(LISTA_DE_EXTRAS as [ExtraCobradoAParte, ...ExtraCobradoAParte[]]))
+      .max(LISTA_DE_EXTRAS.length),
+  })
+  .strict();
+
+/**
+ * Liga e desliga os extras cobrados à parte (prospecção, ligações, nota de voz).
+ * Grava a lista INTEIRA (o que não vier, desliga). Só super-admin, e só numa
+ * organização que já tem assinatura: extra sem plano não tem o que acompanhar.
+ */
+export async function PATCH(req: NextRequest, ctx: Ctx) {
+  const { id } = await ctx.params;
+  const supportDenied = await requireSupportWrite(id);
+  if (supportDenied) return supportDenied;
+
+  const requestId = randomUUID();
+  if (!UUID_RX.test(id)) return fail("invalid_request", "id inválido.", 400, { requestId });
+  let adminCtx: Awaited<ReturnType<typeof requirePlatformAdmin>>;
+  try {
+    adminCtx = await requirePlatformAdmin();
+  } catch {
+    return fail("forbidden", "Platform admin required", 403, { requestId });
+  }
+  const parsed = extrasSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success)
+    return fail("validation_failed", "Escolha os extras da lista.", 422, { requestId });
+  const extras = [...new Set(parsed.data.extras)];
+
+  const admin = createAdminClient();
+  const { data: atual, error: erroAtual } = await admin
+    .from("subscriptions")
+    .select("id, extras")
+    .eq("organization_id", id)
+    .maybeSingle();
+  if (erroAtual)
+    return fail("internal_error", "Não foi possível ler a assinatura.", 500, { requestId });
+  if (!atual)
+    return fail(
+      "state_conflict",
+      "Esta organização ainda não tem plano. Os extras entram junto de um plano.",
+      409,
+      { requestId },
+    );
+  const { error } = await admin
+    .from("subscriptions")
+    .update({ extras, updated_at: new Date().toISOString() })
+    .eq("organization_id", id)
+    .eq("id", atual.id);
+  if (error) return fail("internal_error", "Não foi possível gravar os extras.", 500, { requestId });
+
+  void audit({
+    action: "billing.extras_alterados",
+    actorUserId: adminCtx.user.id,
+    actingAsPlatformAdmin: true,
+    bypassedRls: true,
+    organizationId: id,
+    resourceType: "subscription",
+    resourceId: atual.id,
+    requestId,
+    metadata: { antes: extrasLidos(atual.extras), depois: extras },
+  });
+  return ok({ organization_id: id, extras }, { requestId });
 }

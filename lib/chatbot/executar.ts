@@ -18,7 +18,12 @@ import { comPrefixoDaEmpresa, lerVariaveisDaEmpresa, semVariaveisDaEmpresa } fro
 import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { acessoPeloPlanoDaOrganizacao, verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import {
+  acessoPeloPlanoDaOrganizacao,
+  recursoNegadoAoMotor,
+  verificarRecursoDoPlano,
+} from "@/lib/billing/acesso";
+import { PASSOS_AVANCADOS } from "./passos-avancados";
 import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { espacarEnvio } from "@/lib/automation/throttle";
 import { parseServiceBoundary, type ServiceBoundary } from "@/lib/atendimento/fronteira";
@@ -340,6 +345,18 @@ export async function atenderPeloChatbot(
       escolhido ??= { id: f.id, grafo: g.data, gatilho: "toda_conversa_nova" };
     }
     if (!escolhido) return "nao_atende";
+    // Passo avançado (Impulso em diante) só roda no plano que o inclui. Gravar
+    // já é barrado na rota; isto cobre o fluxo salvo antes de descer de plano
+    // ou escrito direto pelo banco. Sem o plano, a conversa segue sem chatbot.
+    if (
+      escolhido.grafo.nodes.some((n) => PASSOS_AVANCADOS.has(String(n.type))) &&
+      (await recursoNegadoAoMotor(e.organizationId, "chatbot_avancado"))
+    ) {
+      log.info("chatbot: fluxo com passo avançado fora do plano — não inicia", {
+        flow_id: escolhido.id,
+      });
+      return "nao_atende";
+    }
     fluxoId = escolhido.id;
     grafo = escolhido.grafo;
 

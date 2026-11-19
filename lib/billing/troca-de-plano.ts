@@ -1,22 +1,26 @@
 /**
  * Troca de plano pelo próprio cliente — a regra, sem efeito nenhum.
  *
- * É a régua dos termos da Umbler Talk (a referência deste produto):
- *   - SUBIR (Essencial → Impulso): paga a diferença proporcional aos dias que
+ * É a régua dos termos da Umbler Talk (a referência deste produto), e vale
+ * entre os TRÊS planos (o Escala se contrata pelo checkout desde 19/11/2026):
+ *   - SUBIR (Essencial → Impulso → Escala): paga a diferença proporcional aos dias que
  *     faltam no período já pago, e o plano novo vale assim que o pagamento é
  *     confirmado. Diferença abaixo do mínimo de cobrança do Asaas (R$ 5) não
  *     vira cobrança: o plano muda na hora.
- *   - DESCER (Impulso → Essencial): o plano atual segue até o fim do período
+ *   - DESCER (Escala → Impulso → Essencial): o plano atual segue até o fim do período
  *     já pago, e o próximo período vem com o valor menor. Nada é devolvido.
  *   - No período de teste não há o que acertar: a troca vale na hora, nos dois
  *     sentidos, e a primeira cobrança já sai com o valor do plano novo.
- *   - O Escala é sob consulta e não passa por aqui; troca de ciclo também não.
+ *   - Troca de ciclo não passa por aqui.
+ *   - Escala com números PERSONALIZADOS pelo dono da plataforma (proposta
+ *     acima do pacote base) não troca sozinho: a proposta tem preço próprio, e
+ *     a conta proporcional sairia errada. Esse caso fala com o suporte.
  *
  * Os preços vêm da tabela `plans` (o mesmo catálogo que o checkout confere).
  */
 import { PLANOS_COMERCIAIS, planoComercial, type PlanoComercial } from "@/lib/billing/catalogo";
 
-export const PLANOS_TROCAVEIS = ["essencial", "impulso"] as const;
+export const PLANOS_TROCAVEIS = ["essencial", "impulso", "escala"] as const;
 export type PlanoTrocavel = (typeof PLANOS_TROCAVEIS)[number];
 
 /** Mínimo de cobrança do Asaas; abaixo disso a diferença não é cobrada. */
@@ -58,6 +62,8 @@ export type PedidoDeTroca = {
   precoAtual: PrecosDoPlano;
   precoNovo: PrecosDoPlano;
   agora: Date;
+  /** O Escala atual tem números acima do pacote base (proposta do dono)? */
+  escalaPersonalizado?: boolean;
 };
 
 export type DecisaoDeTroca =
@@ -89,10 +95,8 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 export function decidirTroca(p: PedidoDeTroca): DecisaoDeTroca {
   const atual = planoComercial(p.planoAtual);
   if (!atual) return { ok: false, motivo: "plano_invalido" };
-  if (atual === "escala") return { ok: false, motivo: "sob_consulta" };
-  if (!ehPlanoTrocavel(p.planoNovo)) {
-    return { ok: false, motivo: p.planoNovo === "escala" ? "sob_consulta" : "plano_invalido" };
-  }
+  if (atual === "escala" && p.escalaPersonalizado) return { ok: false, motivo: "sob_consulta" };
+  if (!ehPlanoTrocavel(p.planoNovo)) return { ok: false, motivo: "plano_invalido" };
   if (p.planoNovo === atual) return { ok: false, motivo: "mesmo_plano" };
   if (!cicloValido(p.ciclo)) return { ok: false, motivo: "periodo_desconhecido" };
   if (p.status === "canceled" || p.canceladaEm)
@@ -106,6 +110,11 @@ export function decidirTroca(p: PedidoDeTroca): DecisaoDeTroca {
       : "downgrade";
 
   if (p.status === "trialing") {
+    // Teste que já venceu (o webhook da primeira cobrança ainda não chegou) não
+    // troca de graça e na hora: espera a assinatura ficar em dia.
+    const fimDoTeste = p.fimDoPeriodo ? Date.parse(p.fimDoPeriodo) : NaN;
+    if (!Number.isFinite(fimDoTeste) || fimDoTeste <= p.agora.getTime())
+      return { ok: false, motivo: "assinatura_inativa" };
     return {
       ok: true,
       tipo,
@@ -182,9 +191,10 @@ export function planoEmVigor(
 }
 
 export const MENSAGEM_DA_RECUSA: Record<MotivoDaRecusa, string> = {
-  plano_invalido: "Escolha o Essencial ou o Impulso.",
+  plano_invalido: "Escolha o Essencial, o Impulso ou o Escala.",
   mesmo_plano: "Este já é o seu plano.",
-  sob_consulta: "O Escala é contratado com a nossa equipe. Fale com a gente pelo suporte.",
+  sob_consulta:
+    "Seu Escala tem números combinados com a nossa equipe. Para trocar de plano, fale com a gente pelo suporte.",
   assinatura_cancelada:
     "A assinatura está cancelada. Contrate de novo pela página de planos para escolher o plano.",
   assinatura_inativa:

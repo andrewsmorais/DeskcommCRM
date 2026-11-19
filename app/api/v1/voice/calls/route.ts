@@ -5,6 +5,7 @@
  * contato, escopado pela org, igual todo resto do sistema resolve
  * destinatário a partir de dado próprio, nunca do que o cliente mandou.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -42,6 +43,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const authz = await requireRole("agent", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user, org: activeOrg } = authz;
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));

@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 import { requireRole } from "@/lib/auth/require-role";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -32,6 +33,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ user_id: 
   const pedido = z.object({ ocultar: z.boolean() }).safeParse(await req.json().catch(() => null));
   if (!z.string().uuid().safeParse(alvo).success || !pedido.success)
     return fail("validation_failed", t("Pedido inválido."), 422, { requestId });
+  // Esconder o telefone é parte das "Permissões avançadas" (Escala). MOSTRAR de
+  // novo vale em qualquer plano: quem desceu de plano não fica preso na regra.
+  if (pedido.data.ocultar) {
+    const foraDoPlano = await exigirRecursoDoPlano(authz.org.orgId, "permissoes_avancadas", {
+      requestId,
+    });
+    if (foraDoPlano) return foraDoPlano;
+  }
 
   const admin = createAdminClient();
   const { data: membro } = await admin

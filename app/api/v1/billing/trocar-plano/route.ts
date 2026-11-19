@@ -1,5 +1,5 @@
 /**
- * Troca de plano pelo próprio cliente — Essencial ↔ Impulso (0508).
+ * Troca de plano pelo próprio cliente — entre Essencial, Impulso e Escala (0508).
  *
  * POST pede a troca; DELETE desiste da que está em andamento. A regra mora em
  * `lib/billing/troca-de-plano.ts` (a da Umbler Talk): subir paga a diferença
@@ -37,6 +37,7 @@ import {
   precoDoCiclo,
   type PrecosDoPlano,
 } from "@/lib/billing/troca-de-plano";
+import { excessosParaOPlano, frasesDoExcesso, lerUsoDoPlano } from "@/lib/billing/uso-do-plano";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -106,9 +107,47 @@ async function precosDoCatalogo(
   return slugs.every((s) => mapa.has(s)) ? mapa : null;
 }
 
-/** O vencimento da cobrança da diferença: dois dias, como uma fatura comum. */
-function vencimentoDaDiferenca(agora: Date): string {
-  return new Date(agora.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * O vencimento da cobrança da diferença: dois dias, como uma fatura comum — mas
+ * NUNCA depois da véspera da renovação. Paga depois da renovação, a diferença
+ * (calculada sobre os dias que faltavam) compraria um período INTEIRO do plano
+ * maior pelo preço do menor (auditoria de 19/11). `null` = não há tempo: a
+ * subida espera a renovação.
+ */
+function vencimentoDaDiferenca(agora: Date, fimDoPeriodo: string | null): string | null {
+  const fim = fimDoPeriodo ? Date.parse(fimDoPeriodo) : NaN;
+  if (!Number.isFinite(fim)) return null;
+  const vespera = fim - DIA_MS;
+  if (vespera <= agora.getTime()) return null;
+  return new Date(Math.min(agora.getTime() + 2 * DIA_MS, vespera)).toISOString().slice(0, 10);
+}
+
+/**
+ * Pede o e-mail do pedido de troca (`plano.troca_pedida`, consumido pelos
+ * e-mails de relacionamento). Cortesia: falhar aqui nunca desfaz a troca, que
+ * já está gravada. O e-mail lê a troca do BANCO; o payload só leva quem pediu.
+ */
+async function avisarTrocaPedida(
+  admin: ReturnType<typeof createAdminClient>,
+  args: { orgId: string; subscriptionId: string; userId: string },
+): Promise<void> {
+  try {
+    const { error } = await admin.rpc("emit_event" as never, {
+      p_event_type: "plano.troca_pedida",
+      p_entity_kind: "subscription",
+      p_entity_id: args.subscriptionId,
+      p_payload: { user_id: args.userId },
+      p_metadata: { source: "billing.trocar-plano" },
+      p_organization_id: args.orgId,
+    } as never);
+    if (error) throw error;
+  } catch (err) {
+    logger.warn("[billing] aviso da troca pedida não foi enfileirado", {
+      erro: err instanceof Error ? err.message : "desconhecido",
+    });
+  }
 }
 
 function reais(cents: number): string {
@@ -146,7 +185,11 @@ export async function POST(req: Request) {
         { requestId },
       );
     const atual = planoComercial(b.plan_slug);
-    if (!atual || atual === "escala")
+    if (!atual)
+      return fail("plano_invalido", MENSAGEM_DA_RECUSA.plano_invalido, 422, { requestId });
+    // Escala com números combinados (proposta acima do pacote) não troca sozinho:
+    // a conta proporcional usaria o preço da tabela, não o da proposta.
+    if (atual === "escala" && b.escala_com_proposta)
       return fail("sob_consulta", MENSAGEM_DA_RECUSA.sob_consulta, 422, { requestId });
     if (!b.asaas_subscription_id)
       return fail(
@@ -177,11 +220,33 @@ export async function POST(req: Request) {
       precoAtual: precos.get(atual)!,
       precoNovo: precos.get(novo) ?? precos.get(atual)!,
       agora,
+      escalaPersonalizado: b.escala_com_proposta === true,
     });
     if (!decisao.ok)
       return fail(decisao.motivo, MENSAGEM_DA_RECUSA[decisao.motivo], 422, { requestId });
 
     const admin = createAdminClient();
+    // Para DESCER, primeiro caber no plano novo (lib/billing/uso-do-plano.ts):
+    // senão o que só cabe no maior continuaria funcionando pelo preço do menor.
+    // Leitura que falha recusa — nunca deixa descer no escuro.
+    if (decisao.tipo === "downgrade") {
+      const uso = await lerUsoDoPlano(admin, orgId);
+      if (!uso)
+        return fail(
+          "billing_unavailable",
+          "Não foi possível conferir o uso do seu plano. Tente novamente.",
+          503,
+          { requestId },
+        );
+      const excessos = excessosParaOPlano(uso, novo);
+      if (excessos.length > 0)
+        return fail(
+          "uso_acima_do_plano",
+          `Para mudar para o ${PLANOS_COMERCIAIS[novo].nome}, primeiro deixe a conta dentro dele: ${frasesDoExcesso(excessos, novo)}. Arquive ou desligue o que sobra e peça a troca de novo.`,
+          422,
+          { requestId, details: { excessos } },
+        );
+    }
     const subId = b.asaas_subscription_id;
     const precoAtualDoCiclo = cicloValido(b.billing_cycle)
       ? precoDoCiclo(precos.get(atual)!, b.billing_cycle)
@@ -219,6 +284,9 @@ export async function POST(req: Request) {
         contracted_amount_cents: decisao.novoValorDoCicloCents,
         contracted_at: agora.toISOString(),
         price_source: "catalogo",
+        // Números combinados de um Escala antigo não sobrevivem à troca: senão,
+        // descer e subir de novo devolveria a proposta pelo preço da tabela.
+        limites_personalizados: null,
       });
       if (error || data?.length !== 1) {
         await atualizarValorDaAssinatura(subId, precoAtualDoCiclo).catch(() => undefined);
@@ -246,11 +314,19 @@ export async function POST(req: Request) {
     }
 
     if (decisao.tipo === "upgrade") {
+      const vencimento = vencimentoDaDiferenca(agora, b.current_period_end);
+      if (!vencimento)
+        return fail(
+          "renovacao_proxima",
+          "Sua renovação é em menos de um dia. Peça a subida depois que ela for paga: assim a diferença é calculada sobre o período novo.",
+          422,
+          { requestId },
+        );
       const cliente = await clienteDaAssinatura(subId);
       const cobranca = await criarCobrancaAvulsa({
         cliente,
         valorCents: decisao.valorCents,
-        vencimento: vencimentoDaDiferenca(agora),
+        vencimento,
         descricao: `Troca para o plano ${PLANOS_COMERCIAIS[novo].nome}: diferença proporcional aos ${decisao.diasRestantes} dias restantes do período (${reais(decisao.valorCents)}).`,
         referencia: `troca:${b.subscription_id}`,
       });
@@ -267,6 +343,11 @@ export async function POST(req: Request) {
         await apagarCobranca(cobranca.id).catch(() => undefined);
         return recusaDoBanco();
       }
+      await avisarTrocaPedida(admin, {
+        orgId,
+        subscriptionId: b.subscription_id!,
+        userId,
+      });
       void audit({
         action: "billing.plan_change_requested",
         actorUserId: userId,
@@ -305,6 +386,11 @@ export async function POST(req: Request) {
       await atualizarValorDaAssinatura(subId, precoAtualDoCiclo).catch(() => undefined);
       return recusaDoBanco();
     }
+    await avisarTrocaPedida(admin, {
+      orgId,
+      subscriptionId: b.subscription_id!,
+      userId,
+    });
     void audit({
       action: "billing.plan_change_requested",
       actorUserId: userId,
@@ -353,6 +439,7 @@ export async function DELETE() {
     const troca = b.troca;
     if (!troca) return ok({ desistiu: false }, { requestId });
     const admin = createAdminClient();
+    let desfazerNoAsaas: (() => Promise<void>) | null = null;
 
     if (troca.tipo === "upgrade") {
       if (troca.pagamento_id) {
@@ -370,8 +457,10 @@ export async function DELETE() {
     } else {
       // Volta a recorrência ao valor do plano que continua.
       const atual = planoComercial(b.plan_slug);
-      const precos = atual ? await precosDoCatalogo([atual]) : null;
-      if (!atual || !precos || !b.asaas_subscription_id || !cicloValido(b.billing_cycle))
+      const destino = planoComercial(troca.plano);
+      const precos =
+        atual && destino ? await precosDoCatalogo(atual === destino ? [atual] : [atual, destino]) : null;
+      if (!atual || !destino || !precos || !b.asaas_subscription_id || !cicloValido(b.billing_cycle))
         return fail(
           "billing_unavailable",
           "Não foi possível confirmar o valor do seu plano. Tente novamente.",
@@ -382,6 +471,13 @@ export async function DELETE() {
         b.asaas_subscription_id,
         precoDoCiclo(precos.get(atual)!, b.billing_cycle),
       );
+      // Se o banco recusar a desistência logo abaixo, a recorrência volta ao
+      // valor da troca que continua valendo (nunca plano menor cobrado maior).
+      desfazerNoAsaas = () =>
+        atualizarValorDaAssinatura(
+          b.asaas_subscription_id!,
+          precoDoCiclo(precos.get(destino)!, b.billing_cycle as "monthly"),
+        ).then(() => undefined);
     }
 
     let consulta = admin
@@ -393,13 +489,15 @@ export async function DELETE() {
       .eq("troca_plano", troca.plano);
     if (troca.pagamento_id) consulta = consulta.eq("troca_pagamento_id", troca.pagamento_id);
     const { data, error } = await consulta.select("id");
-    if (error || data?.length !== 1)
+    if (error || data?.length !== 1) {
+      if (desfazerNoAsaas) await desfazerNoAsaas().catch(() => undefined);
       return fail(
         "billing_conflict",
         "A assinatura mudou enquanto a desistência era registrada. Atualize a página para conferir.",
         409,
         { requestId },
       );
+    }
     void audit({
       action: "billing.plan_change_canceled",
       actorUserId: userId,

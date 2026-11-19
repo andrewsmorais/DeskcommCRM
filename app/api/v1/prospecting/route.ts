@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { exigirExtra } from "@/lib/billing/extras";
 import { type NextRequest } from "next/server";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
@@ -197,6 +198,9 @@ export async function POST(req: NextRequest) {
   if (!auth.ok) return auth.response;
   const teto = await tetoDeEscritaDoToken(auth, "prospecting", requestId);
   if (teto) return teto;
+  // Prospecção é EXTRA cobrado à parte: só a organização que o tem (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(auth.organizationId, "prospeccao", { requestId });
+  if (semOExtra) return semOExtra;
 
   const parsed = prospectingInputSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success)

@@ -49,6 +49,31 @@ function preparar(sub: unknown = assinatura, catalogo: unknown = plano) {
 
 beforeEach(() => vi.clearAllMocks());
 
+describe("descida agendada", () => {
+  it("enquanto a descida não vale, criar já respeita o plano menor", async () => {
+    preparar(
+      {
+        ...assinatura,
+        plan_type: "escala",
+        plan_id: "plano-escala",
+        troca_plano: "essencial",
+        troca_tipo: "downgrade",
+        troca_efetiva_em: "2998-01-01T00:00:00.000Z",
+      },
+      { name: "Escala", slug: "escala", limits: {} },
+    );
+    const r = await getOrganizationBilling(ORG);
+    expect(r.ok && r.billing?.plan_slug).toBe("escala");
+    expect(r.ok && r.billing?.limits).toMatchObject({
+      whatsapp: 2,
+      agentes_ia: 1,
+      chatbots: 1,
+      pipelines: 2,
+      usuarios: 2,
+    });
+  });
+});
+
 describe("plano persistido da organização", () => {
   it("resolve por plan_id mesmo quando o checkout não gravou plan_type", async () => {
     const { assinaturaQuery, planoQuery } = preparar();
@@ -72,6 +97,8 @@ describe("plano persistido da organização", () => {
         canceled_at: null,
         plan_type: null,
         troca: null,
+        escala_com_proposta: false,
+        extras: [],
       },
     });
     expect(assinaturaQuery.eq).toHaveBeenCalledWith("organization_id", ORG);

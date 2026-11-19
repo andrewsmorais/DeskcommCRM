@@ -19,7 +19,7 @@ import { decideRouting } from "@/lib/routing/decide";
 import { lerQualificacaoDaIA } from "@/lib/routing/qualificacao-da-ia";
 import { loadEligibleAttendants, InvalidRoutingChannel } from "@/lib/routing/eligibles";
 import { ROUTING_MODES, modoDistribuiSozinho, routingConfigSchema, type RoutingMode } from "@/lib/schemas/routing";
-import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { recursoNegadoAoMotor, verificarRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const ROUTING_WORKER_KEY = "worker.routing.v1";
 export const ROUTING_EVENT_TYPE = "conversation.routing_requested";
@@ -197,7 +197,14 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
 
   // Cada número pode ter o seu jeito de distribuir (migration 0559):
   // `channel_sessions.routing_mode` preenchido vence o da organização.
-  const modo = await modoDoNumero(admin, orgId, conv.channel_session_id, config.mode);
+  // O jeito POR NÚMERO é "Distribuição por número e por time" (Escala): num
+  // plano que não o inclui, vale o da organização, mesmo com a coluna gravada
+  // (direto pelo banco, ou antes de descer de plano).
+  const porNumero = await modoDoNumero(admin, orgId, conv.channel_session_id, config.mode);
+  const modo =
+    porNumero !== config.mode && (await recursoNegadoAoMotor(orgId, "distribuicao_avancada"))
+      ? config.mode
+      : porNumero;
 
   if (modo !== "manual") {
     const acesso = await verificarRecursoDoPlano(orgId, "distribuicao_automatica");

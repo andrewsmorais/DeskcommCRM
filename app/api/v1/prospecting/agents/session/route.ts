@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { exigirExtra } from "@/lib/billing/extras";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
@@ -49,6 +50,9 @@ export async function PATCH(req: Request) {
   if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
+  // Prospecção é EXTRA cobrado à parte: só a organização que o tem (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(auth.org.orgId, "prospeccao", { requestId });
+  if (semOExtra) return semOExtra;
   const parsed = agentSessionPatchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success)
     return fail("validation_failed", "Confira a conversa e a configuração antes de salvar.", 422, {

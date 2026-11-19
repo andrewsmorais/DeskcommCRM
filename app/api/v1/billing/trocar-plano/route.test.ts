@@ -28,6 +28,16 @@ vi.mock("@/lib/asaas", () => ({
   criarCobrancaAvulsa: vi.fn(),
 }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
+const uso = vi.hoisted(() => ({
+  atual: { whatsapp: 1, pipelines: 1, agentes_ia: 1, chatbots: 1, usuarios: 1 } as Record<
+    string,
+    number
+  > | null,
+}));
+vi.mock("@/lib/billing/uso-do-plano", async (original) => ({
+  ...(await original<typeof import("@/lib/billing/uso-do-plano")>()),
+  lerUsoDoPlano: vi.fn(async () => uso.atual),
+}));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -50,6 +60,13 @@ vi.mock("@/lib/supabase/admin", () => ({
                   price_monthly: 14990,
                   price_quarterly: 40473,
                   price_yearly: 143904,
+                },
+                {
+                  id: "p-esc",
+                  slug: "escala",
+                  price_monthly: 34990,
+                  price_quarterly: 94473,
+                  price_yearly: 335904,
                 },
               ].filter((p) => slugs.includes(p.slug)),
               error: null,
@@ -116,6 +133,7 @@ beforeEach(() => {
   banco.updates = [];
   banco.filtros = [];
   banco.linhasAfetadas = 1;
+  uso.atual = { whatsapp: 1, pipelines: 1, agentes_ia: 1, chatbots: 1, usuarios: 1 };
   vi.mocked(requireSupportWrite).mockResolvedValue(null);
   vi.mocked(requireRole).mockResolvedValue({
     ok: true,
@@ -224,13 +242,88 @@ describe("POST /api/v1/billing/trocar-plano", () => {
       }),
     });
     expect((await pedir("impulso")).status).toBe(409);
-    expect((await pedir("escala")).status).toBe(422);
     expect((await pedir("qualquer")).status).toBe(422);
+    // Escala com números combinados pelo dono não troca sozinho.
+    vi.mocked(getOrganizationBilling).mockResolvedValueOnce({
+      ok: true,
+      billing: assinatura({ plan_slug: "escala", escala_com_proposta: true }),
+    });
+    expect((await pedir("impulso")).status).toBe(422);
     vi.mocked(requireSupportWrite).mockResolvedValueOnce(
       new Response(null, { status: 403 }) as never,
     );
     expect((await pedir("impulso")).status).toBe(403);
     expect(criarCobrancaAvulsa).not.toHaveBeenCalled();
+  });
+
+  it("descer exige caber no plano novo: com uso acima, recusa sem mexer no Asaas", async () => {
+    vi.mocked(getOrganizationBilling).mockResolvedValue({
+      ok: true,
+      billing: assinatura({ plan_slug: "impulso", plan_type: "impulso" }),
+    });
+    uso.atual = { whatsapp: 3, pipelines: 1, agentes_ia: 2, chatbots: 1, usuarios: 1 };
+    const res = await pedir("essencial");
+    expect(res.status).toBe(422);
+    const corpo = await res.json();
+    expect(corpo.error.code).toBe("uso_acima_do_plano");
+    expect(corpo.error.message).toContain("3 números de WhatsApp conectados (o Essencial permite 2)");
+    expect(atualizarValorDaAssinatura).not.toHaveBeenCalled();
+    expect(banco.updates).toHaveLength(0);
+  });
+
+  it("descer no teste também exige caber (subir ao Escala, montar tudo e descer não vale)", async () => {
+    vi.mocked(getOrganizationBilling).mockResolvedValue({
+      ok: true,
+      billing: assinatura({ plan_slug: "escala", plan_type: "escala", status: "trialing" }),
+    });
+    uso.atual = { whatsapp: 6, pipelines: 6, agentes_ia: 3, chatbots: 3, usuarios: 6 };
+    expect((await pedir("essencial")).status).toBe(422);
+    expect(banco.updates).toHaveLength(0);
+  });
+
+  it("sem conseguir contar o uso, não desce no escuro", async () => {
+    vi.mocked(getOrganizationBilling).mockResolvedValue({
+      ok: true,
+      billing: assinatura({ plan_slug: "impulso", plan_type: "impulso" }),
+    });
+    uso.atual = null;
+    expect((await pedir("essencial")).status).toBe(503);
+    expect(atualizarValorDaAssinatura).not.toHaveBeenCalled();
+  });
+
+  it("subir a menos de um dia da renovação: recusa, sem criar cobrança", async () => {
+    vi.mocked(getOrganizationBilling).mockResolvedValue({
+      ok: true,
+      // Anual, Essencial → Escala, 20 h antes da renovação: a diferença passa do
+      // mínimo do Asaas e venceria depois de o período renovar.
+      billing: assinatura({
+        billing_cycle: "yearly",
+        current_period_start: new Date(Date.now() - 364 * 86_400_000).toISOString(),
+        current_period_end: new Date(Date.now() + 20 * 3_600_000).toISOString(),
+      }),
+    });
+    const res = await pedir("escala");
+    expect(res.status).toBe(422);
+    expect((await res.json()).error.code).toBe("renovacao_proxima");
+    expect(criarCobrancaAvulsa).not.toHaveBeenCalled();
+  });
+
+  it("a cobrança da diferença vence antes da renovação", async () => {
+    const fim = new Date(Date.now() + 40 * 3_600_000);
+    vi.mocked(getOrganizationBilling).mockResolvedValue({
+      ok: true,
+      billing: assinatura({
+        billing_cycle: "yearly",
+        current_period_start: new Date(Date.now() - 363 * 86_400_000).toISOString(),
+        current_period_end: fim.toISOString(),
+      }),
+    });
+    expect((await pedir("escala")).status).toBe(200);
+    const pedidoDaCobranca = vi.mocked(criarCobrancaAvulsa).mock.calls[0]?.[0];
+    expect(pedidoDaCobranca).toBeDefined();
+    expect(
+      pedidoDaCobranca!.vencimento <= new Date(fim.getTime() - 86_400_000).toISOString().slice(0, 10),
+    ).toBe(true);
   });
 
   it("Asaas fora do ar: nada é gravado", async () => {

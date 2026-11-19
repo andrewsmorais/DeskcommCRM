@@ -1,6 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { limitesEfetivos, planoComercial, type LimiteDoPlano } from "@/lib/billing/catalogo";
+import {
+  escalaComProposta,
+  extrasLidos,
+  limitesEfetivos,
+  planoComercial,
+  type ExtraCobradoAParte,
+  type LimiteDoPlano,
+} from "@/lib/billing/catalogo";
 import { planoEmVigor } from "@/lib/billing/troca-de-plano";
 
 /** Troca de plano pedida pelo cliente e ainda não aplicada (0508). */
@@ -33,6 +40,10 @@ export interface OrganizationBilling {
   /** O plano gravado na assinatura (pode diferir de `plan_slug` num downgrade já vencido). */
   plan_type?: string | null;
   troca?: TrocaDePlano | null;
+  /** Escala com números acima do pacote base, combinados com o dono (0492). */
+  escala_com_proposta?: boolean;
+  /** Extras cobrados à parte que o dono da plataforma ligou (migration 0562). */
+  extras?: ExtraCobradoAParte[];
 }
 
 export type BillingReadResult =
@@ -57,7 +68,7 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
     const { data: assinatura, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_start, current_period_end, canceled_at, asaas_subscription_id, seats, billing_cycle, limites_personalizados, troca_plano, troca_tipo, troca_efetiva_em, troca_valor_cents, troca_link, troca_pedida_em, troca_pagamento_id",
+        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_start, current_period_end, canceled_at, asaas_subscription_id, seats, billing_cycle, limites_personalizados, troca_plano, troca_tipo, troca_efetiva_em, troca_valor_cents, troca_link, troca_pedida_em, troca_pagamento_id, extras",
       )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false, nullsFirst: false })
@@ -128,7 +139,12 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
         limits: {
           ...plano.limits,
           // A promessa da página mora no catálogo, não no JSON da tabela `plans`.
-          ...limitesEfetivos(slug, assinatura.limites_personalizados),
+          ...limitesComDescidaPendente(
+            limitesEfetivos(slug, assinatura.limites_personalizados),
+            assinatura.troca_tipo === "downgrade" && emVigor !== assinatura.troca_plano
+              ? planoComercial(assinatura.troca_plano ?? "")
+              : null,
+          ),
         },
         status: assinatura.status,
         current_period_end: assinatura.current_period_end,
@@ -153,11 +169,29 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
                 pagamento_id: assinatura.troca_pagamento_id ?? null,
               }
             : null,
+        escala_com_proposta: slug === "escala" && escalaComProposta(assinatura.limites_personalizados),
+        extras: extrasLidos(assinatura.extras),
       },
     };
   } catch {
     return leituraIndisponivel("consulta_indisponivel");
   }
+}
+
+/**
+ * Com uma DESCIDA agendada, criar passa a respeitar o plano menor já: o pedido
+ * só sai com a conta dentro dele (`lib/billing/uso-do-plano.ts`), e sem isto
+ * daria para voltar a crescer até a data e descer com tudo de pé.
+ */
+function limitesComDescidaPendente(
+  efetivos: Record<LimiteDoPlano, number>,
+  destino: ReturnType<typeof planoComercial>,
+): Record<LimiteDoPlano, number> {
+  if (!destino) return efetivos;
+  const menor = limitesEfetivos(destino, null);
+  const r = { ...efetivos };
+  for (const k of Object.keys(r) as LimiteDoPlano[]) r[k] = Math.min(r[k], menor[k]);
+  return r;
 }
 
 export function canUse(

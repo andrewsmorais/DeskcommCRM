@@ -5,6 +5,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * Move ou encerra o lead pelos MESMOS caminhos do quadro (`moveLeadHandler`, `encerraDemanda`),
  * e deixa uma linha na timeline: é dela que saem as tentativas da fila.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
@@ -67,6 +68,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("agent", { requestId, resource: "crm_leads" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const desligado = await seColdCallDesligado(requestId);
   if (desligado) return desligado;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);

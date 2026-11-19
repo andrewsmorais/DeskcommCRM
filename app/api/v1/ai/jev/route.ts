@@ -38,6 +38,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 import { llmEdgeConfigFromEnv, temIaDeSempre } from "@/lib/agent-engine/edge/llm/credentials";
 import { camadasEfetivas } from "@/lib/agent-engine/guardrails/camadas-da-org";
@@ -783,6 +784,9 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   if (pedido && pedido.estado !== estadoAnterior) mudanca.tarefas = { [pedido.tarefa]: pedido.estado };
   if (corpo.ligado === false && atual.ligado) mudanca.ligado = false;
   if (corpo.ligado === true && !atual.ligado) {
+    // O Jev é recurso do Escala. Desligar continua livre em qualquer plano.
+    const foraDoPlano = await exigirRecursoDoPlano(org.orgId, "jev", { requestId });
+    if (foraDoPlano) return foraDoPlano;
     const { data: creds, error: credsErr } = await admin
       .from("ai_provider_credentials")
       .select("provider, is_active, validated_at, created_at")

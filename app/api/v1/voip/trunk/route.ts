@@ -8,6 +8,7 @@
  * migration 0349. `password` no body é opcional numa atualização (mantém a
  * senha já cifrada se omitida), obrigatório na primeira vez.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
@@ -73,6 +74,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("admin", { requestId, resource: "voip_trunk_settings" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user: authUser, org: activeOrg } = authz;
 
   let rawBody: unknown;

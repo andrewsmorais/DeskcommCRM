@@ -21,6 +21,7 @@
  * campo. A ponte WebRTC pro navegador do atendente não está implementada
  * neste esqueleto.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
@@ -136,6 +137,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("manager", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user: authUser, org: activeOrg } = authz;
 
   // A ligação abre uma sessão de voz da IA (chave da plataforma quando a

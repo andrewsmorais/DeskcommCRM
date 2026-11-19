@@ -181,3 +181,17 @@ export async function recursoForaDoPlano(orgId: string, recurso: RecursoDoPlano)
   const acesso = await verificarRecursoDoPlano(orgId, recurso);
   return !acesso.ok && acesso.code === "billing_feature";
 }
+
+/**
+ * Para o MOTOR (worker, cron, turno do agente): o recurso está fora do plano
+ * desta organização? Fecha em tudo o que é FATO — plano que não inclui, sem
+ * assinatura, assinatura parada — e só deixa passar a leitura indisponível:
+ * um soluço do banco não pode calar no meio quem pagou.
+ */
+export async function recursoNegadoAoMotor(
+  orgId: string,
+  recurso: RecursoDoPlano,
+): Promise<boolean> {
+  const acesso = await verificarRecursoDoPlano(orgId, recurso);
+  return !acesso.ok && acesso.code !== "billing_unavailable";
+}

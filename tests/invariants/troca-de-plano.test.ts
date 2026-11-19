@@ -32,10 +32,18 @@ describe("0508 — troca de plano", () => {
   it("troca incoerente é recusada; a coerente grava", () =>
     prova(`
       ${recusa(`update subscriptions set troca_plano='impulso' where id='${sub}'`)}
-      ${recusa(`update subscriptions set troca_plano='escala', troca_tipo='upgrade' where id='${sub}'`)}
+      ${recusa(`update subscriptions set troca_plano='xpto', troca_tipo='upgrade' where id='${sub}'`)}
       ${recusa(`update subscriptions set troca_plano='impulso', troca_tipo='lateral' where id='${sub}'`)}
       ${recusa(`update subscriptions set troca_plano='impulso', troca_tipo='upgrade', troca_valor_cents=-1 where id='${sub}'`)}
       update subscriptions set troca_plano='impulso', troca_tipo='upgrade', troca_pagamento_id='pay_0508', troca_valor_cents=3000 where id='${sub}';
+      -- 0562: o Escala também é destino de troca (sobe pelo checkout).
+      update subscriptions set troca_plano='escala', troca_tipo='upgrade', troca_pagamento_id='pay_0562', troca_valor_cents=5000 where id='${sub2}';
+    `));
+
+  it("0562 — extras só com nome conhecido; a cobrança aplicada fica guardada", () =>
+    prova(`
+      ${recusa(`update subscriptions set extras=array['brinde']::text[] where id='${sub}'`)}
+      update subscriptions set extras=array['prospeccao','nota_de_voz']::text[], troca_aplicada_pagamento_id='pay_x' where id='${sub}';
     `));
 
   it("uma cobrança de troca não aponta para duas assinaturas", () =>

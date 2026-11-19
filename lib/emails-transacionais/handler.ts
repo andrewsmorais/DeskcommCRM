@@ -20,6 +20,7 @@ import {
   EVENTO_CONTA_CRIADA,
   EVENTO_PLANO_ALTERADO,
   EVENTO_REEMBOLSO_CONFIRMADO,
+  EVENTO_TROCA_PEDIDA,
   aplicaEmailTransacional,
 } from "@/lib/emails-transacionais/aplicar";
 import { criarDbDosEmails } from "@/lib/emails-transacionais/db";
@@ -31,6 +32,7 @@ export const emailsTransacionaisHandler: EventHandler = {
     EVENTO_PLANO_ALTERADO,
     EVENTO_REEMBOLSO_CONFIRMADO,
     EVENTO_ASSINATURA_CANCELADA,
+    EVENTO_TROCA_PEDIDA,
   ],
   async handle(row): Promise<HandlerResult> {
     try {

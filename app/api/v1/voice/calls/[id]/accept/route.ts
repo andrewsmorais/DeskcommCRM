@@ -1,6 +1,7 @@
 /**
  * POST /api/v1/voice/calls/[id]/accept — atende uma chamada recebida (§5.2).
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 
 import { ok, fail } from "@/lib/api/wrappers";
@@ -27,6 +28,9 @@ export async function POST(
 
   const authz = await requireRole("agent", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
+  // Ligações são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user, org: activeOrg } = authz;
 
   const wacalls = getWacallsClient();
