@@ -96,6 +96,7 @@ describe("config de atendimento — routing + visibilidade na mesma porta", () =
     // vale), no schema do jsonb eles têm o padrão (null e false).
     const {
       handoff_return_after_minutes: _padrao,
+      unanswered_return_after_minutes: _semResposta,
       conversation_stays_with_attendant: _fica,
       ...semPrazo
     } = routingConfigSchema.parse(antigo);

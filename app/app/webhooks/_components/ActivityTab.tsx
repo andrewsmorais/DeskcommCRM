@@ -111,6 +111,14 @@ const MOTIVO_DA_PARADA: Record<string, string> = {
     "A pessoa escolhida como responsável não é atendente desta equipe. Escolha outra pessoa na automação.",
   invalid_owner:
     "A pessoa escolhida como responsável não pode atender — o papel dela é só de visualização. Escolha um atendente.",
+  no_email: "Não há e-mail cadastrado para quem deveria receber. Preencha o e-mail e tente de novo.",
+  no_recipient:
+    "A pessoa escolhida para receber o e-mail não foi encontrada nesta equipe. Abra a automação e escolha outra.",
+  lookup_failed: "Não foi possível consultar o e-mail de quem receberia. A automação tenta de novo no próximo evento.",
+  email_not_configured:
+    "O envio de e-mail não está configurado nesta instalação (falta a chave do serviço de e-mail).",
+  empty_after_render:
+    "A mensagem ficou vazia depois de preencher os campos do contato, então nada foi enviado.",
   missing_input:
     "A ação não recebeu o que precisava (o lead do evento ou a pessoa configurada). Abra a automação e revise.",
   no_tags:

@@ -90,6 +90,13 @@ const ORIGENS: DeclaracaoDeOrigem[] = [
     produtor: { arquivo: "lib/agenda/escolha-no-envio.ts" },
   },
   {
+    arquivo: "lib/automation/actions/send-email.ts",
+    expressao: "alvo.reason",
+    porque:
+      "a escolha do destinatário do e-mail devolve o motivo de recusa pelo `reason` do resultado; os códigos possíveis são literais da própria `resolverEnderecos`, no mesmo arquivo, varrido ao lado",
+    produtor: { arquivo: "lib/automation/actions/send-email.ts" },
+  },
+  {
     arquivo: "lib/automation/actions/send-whatsapp.ts",
     expressao: "classificada.motivo",
     porque:

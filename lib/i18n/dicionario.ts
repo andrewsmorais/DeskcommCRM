@@ -3044,6 +3044,21 @@ export const DICIONARIO: Traducoes = {
   "não tem a etiqueta": { es: "no tiene la etiqueta" },
   "é exatamente": { es: "es exactamente" },
   "não é": { es: "no es" },
+  "Não há e-mail cadastrado para quem deveria receber. Preencha o e-mail e tente de novo.": {
+    es: "No hay correo registrado para quien debía recibirlo. Complete el correo e inténtelo de nuevo.",
+  },
+  "A pessoa escolhida para receber o e-mail não foi encontrada nesta equipe. Abra a automação e escolha outra.": {
+    es: "La persona elegida para recibir el correo no se encontró en este equipo. Abra la automatización y elija otra.",
+  },
+  "Não foi possível consultar o e-mail de quem receberia. A automação tenta de novo no próximo evento.": {
+    es: "No fue posible consultar el correo de quien lo recibiría. La automatización lo intenta de nuevo en el próximo evento.",
+  },
+  "O envio de e-mail não está configurado nesta instalação (falta a chave do serviço de e-mail).": {
+    es: "El envío de correo no está configurado en esta instalación (falta la clave del servicio de correo).",
+  },
+  "A mensagem ficou vazia depois de preencher os campos do contato, então nada foi enviado.": {
+    es: "El mensaje quedó vacío después de completar los campos del contacto, por lo que no se envió nada.",
+  },
   "Cliente esperando e ninguém responde?": { es: "¿Cliente esperando y nadie responde?" },
   "Se a conversa está com um atendente e o cliente fica sem resposta, ela pode voltar para a fila e ser distribuída de novo.": {
     es: "Si la conversación está con un agente y el cliente se queda sin respuesta, puede volver a la cola y distribuirse de nuevo.",
