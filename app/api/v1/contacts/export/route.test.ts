@@ -304,3 +304,69 @@ describe("a trilha de auditoria", () => {
     });
   });
 });
+
+describe("os contatos marcados na tela (?ids=)", () => {
+  const ID_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const ID_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  /** Cadeia do PostgREST gravando cada filtro, para provar o escopo. */
+  function clienteComMarcados(linhas: Contact[]) {
+    const filtros: Array<[string, ...unknown[]]> = [];
+    const cadeia: Record<string, unknown> = {};
+    for (const metodo of ["select", "eq", "is", "in"]) {
+      cadeia[metodo] = (...args: unknown[]) => {
+        filtros.push([metodo, ...args]);
+        return metodo === "in" ? Promise.resolve({ data: linhas, error: null }) : cadeia;
+      };
+    }
+    vi.mocked(createClient).mockResolvedValue({
+      rpc: RPC,
+      from: () => cadeia,
+    } as never);
+    return filtros;
+  }
+
+  it("⭐ o arquivo é só dos marcados, no escopo da org ativa, sem passar pela lista", async () => {
+    const filtros = clienteComMarcados([contato(1, { id: ID_A }), contato(2, { id: ID_B })]);
+
+    const res = await chamar(`?formato=csv&ids=${ID_A},${ID_B}`);
+
+    expect(res.status).toBe(200);
+    expect(listContactsHandler).not.toHaveBeenCalled();
+    expect(dadosDoCsv(await res.text())).toHaveLength(2);
+    expect(filtros).toContainEqual(["eq", "organization_id", ORG_ID]);
+    expect(filtros).toContainEqual(["eq", "kind", "person"]);
+    expect(filtros).toContainEqual(["is", "is_merged_into", null]);
+    expect(filtros).toContainEqual(["in", "id", [ID_A, ID_B]]);
+  });
+
+  it("a trilha diz que foi seleção, sem listar quem", async () => {
+    clienteComMarcados([contato(1, { id: ID_A })]);
+    await chamar(`?formato=vcf&ids=${ID_A}`);
+    const meta = vi.mocked(audit).mock.calls[0]![0].metadata as Record<string, unknown>;
+    expect(meta.total).toBe(1);
+    expect(JSON.stringify(meta)).not.toContain(ID_A);
+    expect((meta.filtros as Record<string, unknown>).marcados).toBe(true);
+  });
+
+  it("id que não é uuid, vazio ou mais de 100 é 422 e nada é lido", async () => {
+    const filtros = clienteComMarcados([]);
+    const muitos = Array.from({ length: 101 }, (_, k) => `00000000-0000-4000-8000-${String(k).padStart(12, "0")}`);
+    for (const q of ["?ids=nao-e-uuid", "?ids=", `?ids=${muitos.join(",")}`]) {
+      const res = await chamar(q);
+      expect(res.status).toBe(422);
+    }
+    expect(filtros).toHaveLength(0);
+  });
+
+  it("papel abaixo de manager continua sem ler nada, mesmo com ids", async () => {
+    const filtros = clienteComMarcados([]);
+    vi.mocked(requireRole).mockResolvedValue({
+      ok: false,
+      response: new Response(null, { status: 403 }),
+    } as never);
+    const res = await chamar(`?ids=${ID_A}`);
+    expect(res.status).toBe(403);
+    expect(filtros).toHaveLength(0);
+  });
+});

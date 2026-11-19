@@ -44,6 +44,10 @@ interface Props {
   orderBy: ContactOrderBy;
   orderDir: "asc" | "desc";
   onSort: (column: ContactOrderBy) => void;
+  /** Seleção em lote: sem estas três props a tabela não mostra caixinha nenhuma. */
+  selecionados?: ReadonlySet<string>;
+  onAlternar?: (id: string) => void;
+  onAlternarTodos?: (marcar: boolean) => void;
 }
 
 function displayName(c: Contact, t: (texto: string) => string = (texto) => texto): string {
@@ -107,7 +111,19 @@ function SortableHead({
   );
 }
 
-export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
+export function ContactsTable({
+  contacts,
+  orderBy,
+  orderDir,
+  onSort,
+  selecionados,
+  onAlternar,
+  onAlternarTodos,
+}: Props) {
+  const comSelecao = selecionados !== undefined && onAlternar !== undefined;
+  const todosMarcados =
+    comSelecao && contacts.length > 0 && contacts.every((c) => selecionados.has(c.id));
+  const algunsMarcados = comSelecao && !todosMarcados && contacts.some((c) => selecionados.has(c.id));
   const localeDaData = useLocaleDeData();
   const t = useT();
   const clientesLigado = useActiveOrg()?.cliente_pela_agenda === true;
@@ -158,6 +174,20 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
     <Table>
       <TableHeader>
         <TableRow>
+          {comSelecao && (
+            <TableHead className="w-10">
+              <input
+                type="checkbox"
+                className="h-4 w-4 cursor-pointer accent-primary"
+                aria-label={t("Marcar todos os contatos da lista")}
+                checked={todosMarcados}
+                ref={(el) => {
+                  if (el) el.indeterminate = algunsMarcados;
+                }}
+                onChange={(e) => onAlternarTodos?.(e.target.checked)}
+              />
+            </TableHead>
+          )}
           <SortableHead
             label={t("Nome")}
             column="display_name"
@@ -195,7 +225,22 @@ export function ContactsTable({ contacts, orderBy, orderDir, onSort }: Props) {
       </TableHeader>
       <TableBody>
         {contacts.map((c) => (
-          <TableRow key={c.id} className="cursor-pointer">
+          <TableRow
+            key={c.id}
+            className="cursor-pointer"
+            data-state={comSelecao && selecionados.has(c.id) ? "selected" : undefined}
+          >
+            {comSelecao && (
+              <TableCell className="w-10">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 cursor-pointer accent-primary"
+                  aria-label={`${t("Marcar")} ${displayName(c, t)}`}
+                  checked={selecionados.has(c.id)}
+                  onChange={() => onAlternar(c.id)}
+                />
+              </TableCell>
+            )}
             <TableCell className="font-medium">
               <Link href={`/app/contacts/${c.id}`} className="hover:underline">
                 {displayName(c)}

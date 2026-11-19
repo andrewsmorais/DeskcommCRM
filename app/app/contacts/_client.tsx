@@ -47,6 +47,9 @@ const SOURCE_OPTIONS = [
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
+/** O teto do pedido de export (`TETO_DOS_MARCADOS` na rota). */
+const TETO_DE_MARCADOS = 100;
+
 export function ContactsListClient() {
   const t = useT();
   const orgAtiva = useActiveOrg();
@@ -114,6 +117,41 @@ export function ContactsListClient() {
    * nem `limit` — o arquivo é o conjunto filtrado inteiro, não a página que a
    * pessoa rolou até aqui.
    */
+  // Seleção em lote: só quem pode exportar vê as caixinhas (é a única ação do
+  // lote), e o teto é o do pedido — 100 por arquivo.
+  const [marcados, setMarcados] = useState<Set<string>>(() => new Set());
+  const alternarMarcado = useCallback((id: string) => {
+    setMarcados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }, []);
+
+  const marcarTodos = useCallback(
+    (marcar: boolean) => {
+      setMarcados((atual) => {
+        const novo = new Set(atual);
+        for (const c of allContacts) {
+          if (!marcar) novo.delete(c.id);
+          else if (novo.size < TETO_DE_MARCADOS) novo.add(c.id);
+        }
+        return novo;
+      });
+    },
+    [allContacts],
+  );
+
+  const exportarMarcados = useCallback(
+    (formato: FormatoDeExport) => {
+      window.location.href = `/api/v1/contacts/export?${queryDaExportacao(formato, {
+        ids: [...marcados],
+      })}`;
+    },
+    [marcados],
+  );
+
   const exportar = useCallback(
     (formato: FormatoDeExport) => {
       const qs = queryDaExportacao(formato, {
@@ -300,7 +338,41 @@ export function ContactsListClient() {
       ) : (
         <>
           <Card className="overflow-hidden">
+            {podeExportar && marcados.size > 0 && (
+              <div
+                className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-2 text-sm"
+                role="region"
+                aria-label={t("Contatos marcados")}
+              >
+                <span className="font-medium">
+                  {marcados.size} {marcados.size === 1 ? t("marcado") : t("marcados")}
+                </span>
+                {marcados.size >= TETO_DE_MARCADOS && (
+                  <span className="text-muted-foreground">
+                    {t("Máximo de 100 por arquivo.")}
+                  </span>
+                )}
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => exportarMarcados("csv")}>
+                    {t("Exportar marcados em CSV")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => exportarMarcados("vcf")}>
+                    {t("Exportar marcados em vCard")}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setMarcados(new Set())}>
+                    {t("Limpar marcação")}
+                  </Button>
+                </div>
+              </div>
+            )}
             <ContactsTable
+              {...(podeExportar
+                ? {
+                    selecionados: marcados,
+                    onAlternar: alternarMarcado,
+                    onAlternarTodos: marcarTodos,
+                  }
+                : {})}
               contacts={allContacts}
               orderBy={orderBy}
               orderDir={orderDir}

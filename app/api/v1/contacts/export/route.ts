@@ -40,6 +40,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
+import { z } from "zod";
 
 import { audit } from "@/lib/audit";
 import { ApiError } from "@/lib/api/types";
@@ -66,6 +67,9 @@ const TAMANHO_DA_PAGINA = 100;
 /** Mesmo teto do export de auditoria — cabe na memória do processo que serve o CRM. */
 const TETO_DO_EXPORT = 10_000;
 const FORMATOS: readonly FormatoDeExport[] = ["csv", "vcf"];
+/** Quantos contatos marcados na tela cabem num pedido (a URL tem teto, e a lista também). */
+const TETO_DOS_MARCADOS = 100;
+const idsSchema = z.array(z.string().uuid()).min(1).max(TETO_DOS_MARCADOS);
 
 /**
  * O CPF em claro de quem tem cifra, um por contato.
@@ -114,6 +118,25 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
   const formato = bruto as FormatoDeExport;
 
+  // `?ids=a,b,c` — os contatos MARCADOS na tela. Quando vem, o arquivo é só
+  // deles e os filtros da lista não entram (a pessoa já escolheu um a um).
+  const idsBrutos = url.searchParams.get("ids");
+  let idsMarcados: string[] | null = null;
+  if (idsBrutos !== null) {
+    const lidosIds = idsSchema.safeParse(
+      idsBrutos.split(",").map((x) => x.trim()).filter(Boolean),
+    );
+    if (!lidosIds.success) {
+      return fail(
+        "validation_failed",
+        t("Marque de 1 a 100 contatos para exportar."),
+        422,
+        { requestId },
+      );
+    }
+    idsMarcados = [...new Set(lidosIds.data)];
+  }
+
   const filtros = contactListQuerySchema.safeParse({
     search: url.searchParams.get("search") ?? undefined,
     // A lista daqui filtra por UMA etiqueta.
@@ -148,7 +171,25 @@ export async function GET(req: NextRequest): Promise<Response> {
   let truncado = false;
 
   try {
-    for (;;) {
+    if (idsMarcados) {
+      // Mesmo escopo da lista: org ATIVA, só pessoa, sem lápide de fusão. Um id
+      // de outra organização (ou de grupo) simplesmente não volta.
+      const { data, error } = await supabase
+        .from("contacts")
+        .select(
+          "id, organization_id, name, display_name, address_book_name, email, phone_number, cpf_hash, tags",
+        )
+        .eq("organization_id", authz.org.orgId)
+        .eq("kind", "person")
+        .is("is_merged_into", null)
+        .in("id", idsMarcados);
+      if (error) {
+        return fail("internal_error", t("Não foi possível ler os contatos."), 500, { requestId });
+      }
+      const achados = (data ?? []) as unknown as Contact[];
+      lidos.push(...achados);
+      if (formato === "csv") await decifraCpfs(supabase, achados, cpfs);
+    } else for (;;) {
       const { contacts, cursor: proximo, has_more } = await listContactsHandler(
         supabase,
         ctx,
@@ -200,6 +241,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       filtros: {
         busca: filtros.data.search !== undefined,
         etiquetas: filtros.data.tag ? 1 : 0,
+        marcados: idsMarcados !== null,
         origem: filtros.data.source ?? null,
       },
     },

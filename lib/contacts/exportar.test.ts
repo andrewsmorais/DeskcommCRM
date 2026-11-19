@@ -252,6 +252,22 @@ describe("a query do export é a da tela", () => {
   });
 });
 
+describe("queryDaExportacao — contatos marcados", () => {
+  it("com ids, o arquivo é só deles: os filtros da lista não viajam", () => {
+    const qs = new URLSearchParams(
+      queryDaExportacao("csv", { ids: ["a", "b"], search: "ana", tags: ["vip"], source: "manual" }),
+    );
+    expect(qs.get("ids")).toBe("a,b");
+    expect([...qs.keys()].sort()).toEqual(["formato", "ids"]);
+  });
+
+  it("ids vazio volta ao comportamento de sempre", () => {
+    const qs = new URLSearchParams(queryDaExportacao("vcf", { ids: [], search: "ana" }));
+    expect(qs.has("ids")).toBe(false);
+    expect(qs.get("search")).toBe("ana");
+  });
+});
+
 describe("csvDosContatos — célula que começa como fórmula (auditoria 18/11, achado 15)", () => {
   it("nome e e-mail com =, @, + e - viram texto; telefone e número negativo ficam", () => {
     const csv = csvDosContatos([

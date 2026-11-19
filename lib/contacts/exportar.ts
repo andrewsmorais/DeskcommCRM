@@ -161,6 +161,8 @@ export interface FiltrosDaTela {
   pessoais?: boolean;
   order_by?: string;
   order_dir?: "asc" | "desc";
+  /** Contatos marcados na tela: quando vêm, o arquivo é só deles e os filtros não viajam. */
+  ids?: readonly string[];
 }
 
 /**
@@ -177,6 +179,10 @@ export function queryDaExportacao(
 ): string {
   const qs = new URLSearchParams();
   qs.set("formato", formato);
+  if (filtros.ids && filtros.ids.length > 0) {
+    qs.set("ids", filtros.ids.join(","));
+    return qs.toString();
+  }
   if (filtros.search) qs.set("search", filtros.search);
   for (const marcador of marcadoresEscolhidos(filtros.tags ?? [])) qs.append("tag", marcador);
   if (filtros.tagMode === "ou") qs.set("modo", "ou");
