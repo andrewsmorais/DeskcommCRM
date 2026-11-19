@@ -53,8 +53,10 @@ import { opcoesDoPreparo } from "./opcoes-do-preparo";
 import { gravarPrevia, previaPorGerar } from "./previa";
 import { campaignConfigSchema, type Prospect } from "./schema";
 import { enriquecerSitesPendentes } from "./site-enrich";
+import { canalDaCampanha } from "./canal-da-campanha";
 import {
   consultaPelaConexao,
+  orcamentoDeConferencia,
   TETO_DE_WHATSAPP_POR_RODADA,
   verificarWhatsappPendentes,
   type ConsultaWhatsapp,
@@ -79,7 +81,12 @@ export interface ResumoDoPreparo {
   pulou: boolean;
 }
 
-type CampanhaDoPreparo = { id: string; config: unknown; search: ({ niche?: string } & Record<string, unknown>) | null };
+type CampanhaDoPreparo = {
+  id: string;
+  status?: string;
+  config: unknown;
+  channel_session_id?: string | null;
+  search: ({ niche?: string } & Record<string, unknown>) | null };
 type CandidatoDoPreparo = {
   id: string;
   data: Prospect;
@@ -93,11 +100,14 @@ export interface DependenciasDoPreparo {
   /** O módulo `conferir_whatsapp` (`lib/instalacao/modulos.ts`), desligado por padrão. */
   conferirWhatsapp: (admin: SupabaseClient) => Promise<boolean>;
   consultaWhatsapp: typeof consultaPelaConexao;
+  /** Janela, dias e teto diário do número (auditoria 18/11, nº 22). */
+  orcamentoWhatsapp?: typeof orcamentoDeConferencia;
   dormir?: (ms: number) => Promise<void>;
 }
 const DEPENDENCIAS_PADRAO: DependenciasDoPreparo = {
   conferirWhatsapp: (admin) => moduloLigado(admin, "conferir_whatsapp"),
   consultaWhatsapp: consultaPelaConexao,
+  orcamentoWhatsapp: orcamentoDeConferencia,
 };
 
 /** A chave NÃO é a do `withProspectingLock` (`prospecting:<org>`): bloqueios independentes. */
@@ -187,29 +197,40 @@ async function trabalhar(
   // ENVIO (arquivar campanha rodando a pausa); este filtro cobre o TRABALHO de fundo.
   const campanhas = (
     await db.query<CampanhaDoPreparo>(
-      "select id, config, search from prospecting_campaigns where organization_id=$1 and status in ('draft','running','paused') and coalesce(config->>'arquivada_em','') = '' order by created_at desc",
+      "select id, status, config, channel_session_id, search from prospecting_campaigns where organization_id=$1 and status in ('draft','running','paused') and coalesce(config->>'arquivada_em','') = '' order by created_at desc",
       [org],
     )
   ).rows;
 
   // Passo 0 — o WhatsApp: o telefone da empresa tem WhatsApp? Vem ANTES de tudo
   // porque decide quem sai da lista — e quem sai não deve gastar verificação de
-  // site nem, sobretudo, prévia de IA. Pela conexão da campanha, se ela escolheu uma
-  // (senão qualquer uma conectada que saiba perguntar); sem ela, o passo não faz nada
-  // e o resto segue igual.
+  // site nem, sobretudo, prévia de IA. SÓ pela conexão que a campanha escolheu, na
+  // janela e nos dias da prospecção dela e dentro do teto diário do número; sem
+  // conexão escolhida, o passo não faz nada e o resto segue igual.
   // Só com o módulo `conferir_whatsapp` ligado: quem pergunta é o número do cliente,
   // e consulta em massa é risco de banimento que ninguém mediu (#3887).
   const conferir = campanhas.length > 0 && (await deps.conferirWhatsapp(admin));
   let restanteDeWhatsapp = conferir ? TETO_DE_WHATSAPP_POR_RODADA : 0;
   const consultas = new Map<string, ConsultaWhatsapp | null>();
+  // O que cada NÚMERO ainda pode conferir agora (janela, dias, teto diário).
+  const orcamentos = new Map<string, number>();
+  const orcamento = deps.orcamentoWhatsapp ?? orcamentoDeConferencia;
   for (const c of campanhas) {
     if (restanteDeWhatsapp <= 0 || Date.now() >= deadline) break;
     try {
-      const cfg = campaignConfigSchema.safeParse(c.config);
-      const canal = cfg.success ? cfg.data.channel_session_id : null;
-      if (!consultas.has(canal ?? ""))
-        consultas.set(canal ?? "", await deps.consultaWhatsapp(db, org, canal));
-      const consultar = consultas.get(canal ?? "");
+      // SÓ o número que a campanha escolheu (auditoria 18/11, nº 22). Rascunho
+      // ainda sem número não confere nada: "qualquer conexão" alcançava o número
+      // de atendimento, que ninguém ofereceu à prospecção.
+      const canal = canalDaCampanha(c);
+      if (!canal) continue;
+      // Campanha PAUSADA não usa o número para nada, conferência inclusive: quem
+      // pausou quer o número quieto para ela.
+      if (c.status === "paused") continue;
+      if (!orcamentos.has(canal)) orcamentos.set(canal, await orcamento(db, org, canal));
+      const doNumero = orcamentos.get(canal) ?? 0;
+      if (doNumero <= 0) continue;
+      if (!consultas.has(canal)) consultas.set(canal, await deps.consultaWhatsapp(db, org, canal));
+      const consultar = consultas.get(canal);
       if (!consultar) continue;
       const r = await verificarWhatsappPendentes(
         db,
@@ -217,12 +238,14 @@ async function trabalhar(
         requestId,
         deadline,
         c.id,
-        restanteDeWhatsapp,
+        Math.min(restanteDeWhatsapp, doNumero),
         consultar,
         deps.dormir,
+        canal,
       );
       resumo.whatsapp += r.verificados;
       restanteDeWhatsapp -= r.verificados;
+      orcamentos.set(canal, doNumero - r.verificados);
       // Transporte fora: as outras campanhas dariam o mesmo erro nesta rodada.
       if (r.interrompida) break;
     } catch (error) {

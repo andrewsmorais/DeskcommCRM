@@ -20,12 +20,18 @@
  * desligado por padrão): quem pergunta é o número do cliente, e consulta em massa
  * a partir dele é risco de banimento que ninguém mediu.
  *
- * `numeroTemConta` do adapter do canal (`lib/channels/types.ts`), pela sessão de
- * uma conexão da organização que saiba perguntar (a da campanha, se ela já
- * escolheu — e SÓ ela; senão qualquer uma conectada — `provedoresQueConferemNumero`). Não
- * manda mensagem nenhuma: só pergunta se o número existe no WhatsApp. Sem
- * conexão capaz, nada acontece — o veredito fica ausente e a abordagem segue como
- * antes (o canal oficial não tem esta pergunta).
+ * `numeroTemConta` do adapter do canal (`lib/channels/types.ts`), pela sessão da
+ * conexão QUE A CAMPANHA ESCOLHEU — e só ela. Não manda mensagem nenhuma: só
+ * pergunta se o número existe no WhatsApp. Sem conexão escolhida, ou se ela não
+ * sabe perguntar (o canal oficial) ou não está conectada, nada acontece — o
+ * veredito fica ausente e a abordagem segue como antes.
+ *
+ * ⚠️ Até a auditoria de 18/11 (nº 22), campanha SEM conexão escolhida perguntava
+ * por "qualquer uma conectada" — inclusive o número de ATENDIMENTO, que nunca
+ * foi oferecido à prospecção —, fora da janela e dos dias da prospecção e sem
+ * teto diário (15 por minuto passava de 20 mil por dia). As três portas agora
+ * são as do envio: o número da campanha, a janela da prospecção daquele número
+ * (`janelaDeProspeccaoAberta`) e `TETO_DIARIO_DE_CONFERENCIA_POR_NUMERO`.
  *
  * ═══ O que limita ═══
  *
@@ -54,6 +60,8 @@ import {
   resolveSessionRef,
   type ChannelSessionRef,
 } from "@/lib/channels";
+import { dayStartInTz, janelaDeProspeccaoAberta } from "@/lib/agent-engine/pacing/engine";
+import { loadChannelKnobs } from "@/lib/agent-engine/pacing/store";
 import { logger } from "@/lib/logger";
 import type { Prospect, VereditoWhatsapp } from "./schema";
 
@@ -67,6 +75,11 @@ export const MOTIVO_SEM_WHATSAPP = "Sem WhatsApp neste número.";
 export const TETO_DE_WHATSAPP_POR_RODADA = 15;
 /** Pausa entre duas consultas seguidas: nada de rajada a partir do número do cliente. */
 export const PAUSA_ENTRE_CONSULTAS_MS = 2000;
+/**
+ * Conferências por NÚMERO por dia (no fuso da janela dele). Somadas as campanhas
+ * que usam o mesmo número: o WhatsApp vê o número, não a campanha.
+ */
+export const TETO_DIARIO_DE_CONFERENCIA_POR_NUMERO = 50;
 
 /**
  * Pergunta se o telefone tem WhatsApp. `true`/`false` é resposta; `null` é "não deu
@@ -91,6 +104,9 @@ export async function consultaPelaConexao(
   org: string,
   canalPreferido: string | null,
 ): Promise<ConsultaWhatsapp | null> {
+  // Sem conexão escolhida pela campanha, ninguém pergunta (auditoria 18/11, nº 22):
+  // "qualquer uma conectada" alcançava o número de atendimento.
+  if (!canalPreferido) return null;
   const provedores = provedoresQueConferemNumero();
   if (provedores.length === 0) return null;
   const capazes = (
@@ -100,7 +116,7 @@ export async function consultaPelaConexao(
       [org, provedores],
     )
   ).rows;
-  const canal = canalPreferido ? capazes.find((c) => c.id === canalPreferido) : capazes[0];
+  const canal = capazes.find((c) => c.id === canalPreferido);
   if (!canal) return null;
   const adapter = getAdapter(canal.provider);
   if (typeof adapter.numeroTemConta !== "function") return null;
@@ -130,6 +146,33 @@ const SQL_GRAVAR =
   "updated_at = now() " +
   "where organization_id=$1 and id=$2 and status in ('new','queued') and data->'whatsapp' is null";
 
+/**
+ * Quantas conferências este número ainda pode fazer AGORA: zero fora da janela
+ * ou dos dias da prospecção dele (a mesma régua do envio, `worker.ts`), e o que
+ * sobra do teto diário fora disso. O dia é o do fuso da janela do número.
+ */
+export async function orcamentoDeConferencia(
+  db: Pick<pg.PoolClient, "query">,
+  org: string,
+  canal: string,
+  agora: Date = new Date(),
+): Promise<number> {
+  const { knobs } = await loadChannelKnobs(db as never, org, canal);
+  if (!janelaDeProspeccaoAberta(agora, knobs)) return 0;
+  const inicio = dayStartInTz(agora, knobs.timezone);
+  const usados = (
+    await db.query<{ n: number }>(
+      "select count(*)::int as n from prospecting_candidates " +
+        "where organization_id=$1 and data->'whatsapp'->>'canal'=$2 " +
+        // Texto contra texto, os dois em ISO UTC (`toISOString`): ordenam como o
+        // instante, e um valor antigo fora do formato não derruba a contagem.
+        "and data->'whatsapp'->>'verificado_em' >= $3",
+      [org, canal, inicio.toISOString()],
+    )
+  ).rows[0]?.n ?? 0;
+  return Math.max(0, TETO_DIARIO_DE_CONFERENCIA_POR_NUMERO - usados);
+}
+
 const dormirPadrao = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export interface ResultadoDaVerificacao {
@@ -148,6 +191,8 @@ export async function verificarWhatsappPendentes(
   teto: number,
   consultar: ConsultaWhatsapp,
   dormir: (ms: number) => Promise<void> = dormirPadrao,
+  /** O número que perguntou: gravado no veredito, é o que o teto diário conta. */
+  canal?: string,
 ): Promise<ResultadoDaVerificacao> {
   const resultado: ResultadoDaVerificacao = { verificados: 0, semWhatsapp: 0, interrompida: false };
   if (teto <= 0) return resultado;
@@ -168,7 +213,11 @@ export async function verificarWhatsappPendentes(
       });
       break;
     }
-    const veredito: VereditoWhatsapp = { existe, verificado_em: new Date().toISOString() };
+    const veredito: VereditoWhatsapp = {
+      existe,
+      verificado_em: new Date().toISOString(),
+      ...(canal ? { canal } : {}),
+    };
     await db.query(SQL_GRAVAR, [org, p.id, JSON.stringify(veredito), existe, MOTIVO_SEM_WHATSAPP]);
     resultado.verificados++;
     if (!existe) resultado.semWhatsapp++;

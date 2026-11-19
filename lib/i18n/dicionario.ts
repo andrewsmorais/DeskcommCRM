@@ -20398,6 +20398,10 @@ export const DICIONARIO: Traducoes = {
   "{n} agendamentos": { es: "{n} citas" },
   "Marcar com {pessoa} às {hora} de {data}": { es: "Agendar con {pessoa} a las {hora} del {data}" },
   "{pessoa} às {hora} — sem horário livre": { es: "{pessoa} a las {hora} — sin horario libre" },
+  // Módulo "Conferir WhatsApp na prospecção" (auditoria 18/11, nº 22).
+  "Ligado, a prospecção pergunta ao WhatsApp, pelo número por QR que a campanha escolheu, se cada telefone achado numa busca tem conta, e quem não tem sai da abordagem. A pergunta só sai na janela e nos dias da prospecção daquele número, até 50 por número por dia; campanha sem número escolhido não pergunta nada. Mesmo assim, consultar em quantidade pode chamar a atenção do WhatsApp e arriscar o número. Desligado, nada é consultado e a abordagem segue como antes.": {
+    es: "Activado, la prospección le pregunta a WhatsApp, por el número por QR que eligió la campaña, si cada teléfono encontrado en una búsqueda tiene cuenta, y quien no la tiene sale del contacto. La pregunta solo sale en la franja y los días de prospección de ese número, hasta 50 por número por día; una campaña sin número elegido no pregunta nada. Aun así, consultar en cantidad puede llamar la atención de WhatsApp y poner el número en riesgo. Desactivado, no se consulta nada y el contacto sigue como antes.",
+  },
 };
 /**
  * Traduz, ou devolve o próprio texto.

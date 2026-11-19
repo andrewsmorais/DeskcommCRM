@@ -112,8 +112,11 @@ function montar(c: Cenario = {}) {
         };
       }
       if (sql.includes("select settings from organizations")) return { rows: [{ settings: {} }] };
-      if (sql.startsWith("select") && sql.includes("from prospecting_candidates"))
-        return { rows: (c.candidatos ?? {})[String(params[1])] ?? [] };
+      if (sql.startsWith("select") && sql.includes("from prospecting_candidates")) {
+        const linhas = (c.candidatos ?? {})[String(params[1])] ?? [];
+        // A consulta dos pendentes de WhatsApp respeita o `limit $3`, como o banco.
+        return { rows: sql.includes("data->>'phone'") ? linhas.slice(0, Number(params[2])) : linhas };
+      }
       if (sql.startsWith("update prospecting_candidates")) return { rowCount: 1, rows: [] };
       return { rows: [] };
     }),
@@ -567,8 +570,55 @@ describe("Passo 0 — o WhatsApp vem antes do site e da prévia (whatsapp.ts)", 
     prepararCandidatos(pool as never, {} as never, ORG, "req-1", Date.now() + 60_000, {
       conferirWhatsapp: async () => ligado,
       consultaWhatsapp: consultaWhatsapp as never,
+      orcamentoWhatsapp: async () => orcamentoDoTeste,
       dormir: async () => {},
     });
+  let orcamentoDoTeste = 99;
+  beforeEach(() => {
+    orcamentoDoTeste = 99;
+  });
+
+  it("número fora da janela ou com o teto do dia esgotado: nenhuma consulta (auditoria 18/11, nº 22)", async () => {
+    orcamentoDoTeste = 0;
+    const { pool, sqls } = montar({ candidatos: { [C1]: [cand("w1", { phone: "+5511987650001" })] } });
+    const consulta = vi.fn(async () => async () => true);
+    const r = await rodarCom(pool, consulta);
+    expect(consulta).not.toHaveBeenCalled();
+    expect(r.whatsapp).toBe(0);
+    expect(sqls.some((s) => s.sql.includes("'whatsapp'"))).toBe(false);
+  });
+
+  it("campanha pausada não confere pelo número dela", async () => {
+    const { pool } = montar({
+      campanhas: [{ id: C1, status: "paused", config: CONFIG }],
+      candidatos: { [C1]: [cand("w1", { phone: "+5511987650001" })] },
+    });
+    const consulta = vi.fn(async () => async () => true);
+    const r = await rodarCom(pool, consulta);
+    expect(consulta).not.toHaveBeenCalled();
+    expect(r.whatsapp).toBe(0);
+  });
+
+  it("campanha sem número escolhido não confere por nenhum", async () => {
+    const { channel_session_id: _semNumero, ...semCanal } = CONFIG as Record<string, unknown>;
+    const { pool } = montar({
+      campanhas: [{ id: C1, config: semCanal }],
+      candidatos: { [C1]: [cand("w1", { phone: "+5511987650001" })] },
+    });
+    const consulta = vi.fn(async () => async () => true);
+    const r = await rodarCom(pool, consulta);
+    expect(consulta).not.toHaveBeenCalled();
+    expect(r.whatsapp).toBe(0);
+  });
+
+  it("orçamento do número limita a rodada", async () => {
+    orcamentoDoTeste = 1;
+    const { pool } = montar({
+      candidatos: { [C1]: [cand("w1", { phone: "+5511987650001" }), cand("w2", { phone: "+5511987650002" })] },
+    });
+    const r = await rodarCom(pool, async () => async () => true);
+    expect(r.whatsapp).toBe(1);
+  });
 
   it("módulo conferir_whatsapp desligado (o padrão): nenhuma consulta sai, e o preparo segue igual", async () => {
     const { pool, sqls } = montar({ candidatos: { [C1]: [cand("w1", { phone: "+5511987650001" })] } });

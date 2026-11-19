@@ -16,6 +16,14 @@ const mocks = vi.hoisted(() => ({
   numeroTemConta: vi.fn<(i: { organizationId: string; sessionRef: string; phone: string }) => Promise<boolean | null>>(),
   provedores: ["canal-pareado"] as string[],
   temMetodo: true,
+  janelaAberta: true,
+}));
+vi.mock("@/lib/agent-engine/pacing/store", () => ({
+  loadChannelKnobs: async () => ({ knobs: { timezone: "America/Sao_Paulo" }, numberActivatedAt: null }),
+}));
+vi.mock("@/lib/agent-engine/pacing/engine", () => ({
+  janelaDeProspeccaoAberta: () => mocks.janelaAberta,
+  dayStartInTz: () => new Date("2026-11-19T03:00:00Z"),
 }));
 vi.mock("@/lib/audit", () => ({ audit: mocks.audit }));
 vi.mock("@/lib/logger", () => ({
@@ -30,6 +38,8 @@ vi.mock("@/lib/channels", () => ({
 
 import {
   consultaPelaConexao,
+  orcamentoDeConferencia,
+  TETO_DIARIO_DE_CONFERENCIA_POR_NUMERO,
   MOTIVO_SEM_WHATSAPP,
   motivoSemWhatsapp,
   PAUSA_ENTRE_CONSULTAS_MS,
@@ -177,12 +187,18 @@ describe("consultaPelaConexao", () => {
     const outraPorQr = { id: "qr-1", provider: "canal-pareado", ref: "sessao-qr" };
     expect(await consultaPelaConexao(dbCom([outraPorQr]) as never, ORG, "oficial-1")).toBeNull();
     expect(mocks.numeroTemConta).not.toHaveBeenCalled();
-    // Controle: sem conexão escolhida, a mesma conexão por QR serve.
-    expect(await consultaPelaConexao(dbCom([outraPorQr]) as never, ORG, null)).not.toBeNull();
+  });
+
+  it("campanha SEM conexão escolhida não pergunta por nenhuma — nem pela de atendimento (auditoria 18/11, nº 22)", async () => {
+    const atendimento = { id: "atend-1", provider: "canal-pareado", ref: "sessao-atendimento" };
+    const db = dbCom([atendimento]);
+    expect(await consultaPelaConexao(db as never, ORG, null)).toBeNull();
+    expect(db.query).not.toHaveBeenCalled();
+    expect(mocks.numeroTemConta).not.toHaveBeenCalled();
   });
 
   it("repassa o 'não' e o 'não deu para saber' do canal; exceção do canal também é 'não deu para saber'", async () => {
-    const consultar = (await consultaPelaConexao(dbCom([canal]) as never, ORG, null))!;
+    const consultar = (await consultaPelaConexao(dbCom([canal]) as never, ORG, "c1"))!;
     mocks.numeroTemConta.mockResolvedValueOnce(false).mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("http_502"));
     expect(await consultar("+5511987650001")).toBe(false);
     expect(await consultar("+5511987650001")).toBeNull();
@@ -197,5 +213,37 @@ describe("motivoSemWhatsapp", () => {
     expect(motivoSemWhatsapp({ whatsapp: null })).toBeNull();
     expect(motivoSemWhatsapp({})).toBeNull();
     expect(motivoSemWhatsapp(null)).toBeNull();
+  });
+});
+
+describe("orcamentoDeConferencia — janela, dias e teto diário do número (auditoria 18/11, nº 22)", () => {
+  it("fora da janela da prospecção: zero, sem nem contar", async () => {
+    mocks.janelaAberta = false;
+    const db = { query: vi.fn(async () => ({ rows: [{ n: 0 }] })) };
+    expect(await orcamentoDeConferencia(db as never, ORG, "c1")).toBe(0);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it("dentro da janela: o que sobra do teto diário DESTE número", async () => {
+    mocks.janelaAberta = true;
+    const db = { query: vi.fn(async () => ({ rows: [{ n: 12 }] })) };
+    expect(await orcamentoDeConferencia(db as never, ORG, "c1")).toBe(
+      TETO_DIARIO_DE_CONFERENCIA_POR_NUMERO - 12,
+    );
+    const [sql, params] = db.query.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain("data->'whatsapp'->>'canal'=$2");
+    expect(params.slice(0, 2)).toEqual([ORG, "c1"]);
+  });
+
+  it("teto esgotado: zero", async () => {
+    mocks.janelaAberta = true;
+    const db = { query: vi.fn(async () => ({ rows: [{ n: 999 }] })) };
+    expect(await orcamentoDeConferencia(db as never, ORG, "c1")).toBe(0);
+  });
+
+  it("o veredito grava o número que perguntou (é o que o teto conta)", async () => {
+    const { db, gravacoes } = banco([{ id: "a", phone: "+5511987650001" }]);
+    await verificarWhatsappPendentes(db as never, ORG, "req", Date.now() + 60_000, CAMP, 5, async () => true, semPausa, "c1");
+    expect(JSON.parse(String(gravacoes()[0]!.params[2]))).toMatchObject({ existe: true, canal: "c1" });
   });
 });

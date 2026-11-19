@@ -235,7 +235,7 @@ const MODULOS_NA_TELA: ReadonlyArray<{ modulo: ModuloPorFlag; id: string; rotulo
     id: "modulo-conferir-whatsapp",
     rotulo: "Conferir WhatsApp na prospecção",
     descricao:
-      "Ligado, a prospecção pergunta ao WhatsApp, pela conexão por QR da empresa, se cada telefone achado numa busca tem conta, e quem não tem sai da abordagem. A pergunta sai do número da empresa, para todo telefone achado; consulta em massa assim pode chamar a atenção do WhatsApp e arriscar o número. Desligado, nada é consultado e a abordagem segue como antes.",
+      "Ligado, a prospecção pergunta ao WhatsApp, pelo número por QR que a campanha escolheu, se cada telefone achado numa busca tem conta, e quem não tem sai da abordagem. A pergunta só sai na janela e nos dias da prospecção daquele número, até 50 por número por dia; campanha sem número escolhido não pergunta nada. Mesmo assim, consultar em quantidade pode chamar a atenção do WhatsApp e arriscar o número. Desligado, nada é consultado e a abordagem segue como antes.",
   },
 ];
 

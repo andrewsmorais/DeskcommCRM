@@ -394,6 +394,8 @@ export function razaoDeAbordarSelecionado(selected: boolean): string | null {
 export interface VereditoWhatsapp {
   existe: boolean;
   verificado_em: string;
+  /** A conexão que perguntou — é por ela que o teto diário de conferências conta. */
+  canal?: string;
 }
 export interface Prospect {
   key: string;
