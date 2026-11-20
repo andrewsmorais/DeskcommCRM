@@ -73,6 +73,22 @@ export function useUpdateWebhookSource() {
   });
 }
 
+/**
+ * A chave com que a loja (Shopify, Yampi, WooCommerce) assina cada aviso.
+ * `null` remove. Só sai daqui escrita: a leitura devolve `has_secret`.
+ */
+export function useChaveDaFonte() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, secret }: { id: string; secret: string | null }) =>
+      apiClient.patch<{ data: WebhookSourceRow }>(`/api/v1/webhook-sources/${id}`, { secret }),
+    onError: showApiError,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SOURCES_KEY });
+    },
+  });
+}
+
 export function useDeleteWebhookSource() {
   const qc = useQueryClient();
   return useMutation({

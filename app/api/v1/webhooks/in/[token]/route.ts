@@ -54,6 +54,11 @@ import {
   mapearAvisoDeVenda,
   type AvisoDeVenda,
 } from "@/lib/webhooks/plataformas-de-venda";
+import {
+  avisoDaLojaAutentico,
+  ehPingDaWooCommerce,
+  mapearAvisoDaLoja,
+} from "@/lib/webhooks/lojas";
 import { atualizarNegocioDaVenda, etapasDoFunil } from "@/lib/webhooks/negocio-da-venda";
 
 export const dynamic = "force-dynamic";
@@ -139,6 +144,13 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     }
   }
 
+  // A WooCommerce manda `webhook_id=123` ao SALVAR o webhook, para conferir o
+  // endereço. Não é pedido: responde 200 e não grava nada (senão a tela da
+  // loja mostra erro e a captação registra uma recusa sem sentido).
+  if (ehPingDaWooCommerce(payload)) {
+    return ok({ ok: true, ping: true }, { requestId });
+  }
+
   // A ORIGEM, lida uma vez e usada em todos os desfechos abaixo — inclusive nos
   // que recusam. Quem publicou um formulário que não está entrando precisa ver
   // que a batida CHEGOU e por que morreu; sem isto o registro só existe quando
@@ -176,7 +188,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         req.nextUrl.searchParams.get("signature"),
         sourceSecret,
         req.headers.get("x-hotmart-hottok"),
-      )
+      ) ||
+      // Shopify, WooCommerce e Yampi: HMAC-SHA256 em base64 no cabeçalho delas.
+      avisoDaLojaAutentico(rawBody, req.headers, sourceSecret)
     : null;
   if (sourceSecret && !validSignature) {
     await audit({
@@ -238,8 +252,13 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
 
   // Kiwify / Cakto: comprador aninhado e um EVENTO de venda. O mesmo pedido é
   // um negócio só, que anda de etapa a cada aviso (lib/webhooks/plataformas-de-venda.ts).
+  // As lojas (Shopify, WooCommerce, Yampi, CartPanda) e o formato ChatAI vêm
+  // antes: o cabeçalho delas é o que separa uma da outra (lib/webhooks/lojas.ts).
   const vendaMapped: AvisoDeVenda | null =
-    respondiMapped === null && rdStationMapped === null ? mapearAvisoDeVenda(payload) : null;
+    respondiMapped === null && rdStationMapped === null
+      ? (mapearAvisoDaLoja(payload, req.headers, req.nextUrl.searchParams.get("plataforma")) ??
+        mapearAvisoDeVenda(payload))
+      : null;
 
   // Idempotência (spec §5): `external_id` é campo reservado do envio — quem
   // integra via sistema (Zapier/n8n/loja) manda o ID único do disparo e o

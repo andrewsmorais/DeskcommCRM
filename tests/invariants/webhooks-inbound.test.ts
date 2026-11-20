@@ -1461,3 +1461,150 @@ describe("POST /api/v1/webhooks/in/[token] — Kiwify e Cakto", () => {
     expect(String(log.raw_body)).not.toContain(SEGREDO_CAKTO);
   });
 });
+
+const WHIN_SOURCE_SHOPIFY = "dddddddd-6666-4000-8000-000000000008";
+const WHIN_SOURCE_WOO = "dddddddd-6666-4000-8000-000000000009";
+const WHIN_SOURCE_YAMPI = "dddddddd-6666-4000-8000-00000000000a";
+const TOKEN_SHOPIFY = "wh-in-shopify-token-1234";
+const TOKEN_WOO = "wh-in-woocommerce-token-1234";
+const TOKEN_YAMPI = "wh-in-yampi-token-1234";
+const SEGREDO_SHOPIFY = "shopify-segredo-abc";
+
+/**
+ * Lojas (lib/webhooks/lojas.ts): o aviso de cada uma chega com o comprador
+ * aninhado, e antes caía em "nenhum campo mapeável". Agora segue o mesmo
+ * caminho da Kiwify — contato + negócio que anda de etapa.
+ */
+describe("POST /api/v1/webhooks/in/[token] — lojas (Shopify, WooCommerce, Yampi)", () => {
+  beforeAll(() => {
+    sql(`
+      select set_config('app.nuvemshop_oauth_key', 'test-guc-key-0123456789abcdef0123456789abcdef', false);
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id, secret_encrypted)
+        values ('${WHIN_SOURCE_SHOPIFY}', '${GOV_ORG}', 'Shopify', '${TOKEN_SHOPIFY}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}', public.fn_encrypt_oauth('${SEGREDO_SHOPIFY}'))
+        on conflict do nothing;
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id)
+        values ('${WHIN_SOURCE_WOO}', '${GOV_ORG}', 'WooCommerce', '${TOKEN_WOO}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}'),
+               ('${WHIN_SOURCE_YAMPI}', '${GOV_ORG}', 'Yampi', '${TOKEN_YAMPI}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}')
+        on conflict do nothing;
+    `);
+  });
+
+  const lead = (id: string) => rows(`select * from public.crm_leads where id = '${id}'`)[0]!;
+  const idDo = async (res: Response) => ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+  const assinado = (topico: string, corpo: Record<string, unknown>, segredo = SEGREDO_SHOPIFY) =>
+    jsonReq(TOKEN_SHOPIFY, corpo, {
+      "x-shopify-topic": topico,
+      "x-shopify-hmac-sha256": createHmac("sha256", segredo).update(JSON.stringify(corpo)).digest("base64"),
+    });
+  const comprador = {
+    customer: { first_name: "Lia", last_name: "Shopify" },
+    email: "lia.shopify@exemplo.com",
+    line_items: [{ title: "Mochila" }],
+    total_price: "259.00",
+  };
+  let leadShopify = "";
+
+  it("Shopify: assinatura errada é 401 e nada entra", async () => {
+    const res = await POST(
+      assinado("checkouts/create", { ...comprador, phone: "11944440001", completed_at: null }, "errado"),
+      reqCtx(TOKEN_SHOPIFY),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("Shopify: checkout vira negócio em 'Carrinho abandonado', com o link de recuperação", async () => {
+    const res = await POST(
+      assinado("checkouts/create", {
+        ...comprador,
+        phone: "11944440001",
+        completed_at: null,
+        abandoned_checkout_url: "https://loja.myshopify.com/recover/1",
+      }),
+      reqCtx(TOKEN_SHOPIFY),
+    );
+    expect(res.status).toBe(200);
+    leadShopify = await idDo(res);
+    const l = lead(leadShopify);
+    expect(l.stage_id).toBe(VENDAS_CARRINHO);
+    expect(l.custom_fields).toMatchObject({
+      plataforma: "shopify",
+      produto: "Mochila",
+      link_checkout: "https://loja.myshopify.com/recover/1",
+      valor: "R$ 259,00",
+    });
+  });
+
+  it("Shopify: o pedido Pix pendente herda o MESMO negócio e vai para 'Aguardando pagamento'; pago vai para 'Pago'", async () => {
+    const pedido = (financial_status: string) => ({
+      ...comprador,
+      id: 7770001,
+      financial_status,
+      billing_address: { phone: "11944440001" },
+      order_status_url: "https://loja.myshopify.com/orders/7770001",
+    });
+    const pendente = await POST(assinado("orders/create", pedido("pending")), reqCtx(TOKEN_SHOPIFY));
+    expect(pendente.status).toBe(200);
+    expect(await idDo(pendente)).toBe(leadShopify);
+    expect(lead(leadShopify).stage_id).toBe(VENDAS_AGUARDANDO);
+    expect(lead(leadShopify).external_id).toBe("shopify:7770001");
+
+    const pago = await POST(assinado("orders/paid", pedido("paid")), reqCtx(TOKEN_SHOPIFY));
+    expect(pago.status).toBe(200);
+    expect(lead(leadShopify).stage_id).toBe(VENDAS_PAGO);
+  });
+
+  it("WooCommerce: o ping de quando o webhook é salvo responde 200 e não cria nada", async () => {
+    const antes = rows(`select count(*)::int as n from public.crm_leads where organization_id = '${GOV_ORG}'`)[0]!.n;
+    const res = await POST(formReq(TOKEN_WOO, "webhook_id=42"), reqCtx(TOKEN_WOO));
+    expect(res.status).toBe(200);
+    const depois = rows(`select count(*)::int as n from public.crm_leads where organization_id = '${GOV_ORG}'`)[0]!.n;
+    expect(depois).toBe(antes);
+  });
+
+  it("WooCommerce: pedido 'on-hold' (boleto/Pix) vai para 'Aguardando pagamento' com valor", async () => {
+    const res = await POST(
+      jsonReq(
+        TOKEN_WOO,
+        {
+          id: 901,
+          status: "on-hold",
+          total: "120.50",
+          payment_url: "https://loja.com/checkout/order-pay/901/",
+          billing: { first_name: "Rui", last_name: "Woo", phone: "21944440002", email: "rui.woo@exemplo.com" },
+          line_items: [{ name: "Cafeteira" }],
+        },
+        { "x-wc-webhook-topic": "order.created" },
+      ),
+      reqCtx(TOKEN_WOO),
+    );
+    expect(res.status).toBe(200);
+    const l = lead(await idDo(res));
+    expect(l.stage_id).toBe(VENDAS_AGUARDANDO);
+    expect(Number(l.value_cents)).toBe(12050);
+    expect(l.external_id).toBe("woocommerce:901");
+  });
+
+  it("Yampi: carrinho abandonado (cart.reminder) com o link de retomada", async () => {
+    const res = await POST(
+      jsonReq(TOKEN_YAMPI, {
+        event: "cart.reminder",
+        merchant: { id: 1, alias: "minhaloja" },
+        resource: {
+          customer: { data: { name: "Bea Yampi", email: "bea.yampi@exemplo.com", phone: { full_number: "31944440003" } } },
+          totalizers: { total: 79.9 },
+          simulate_url: "https://seguro.minhaloja.com/cart/retomar",
+          items: { data: [{ sku: { data: { title: "Hidratante" } } }] },
+        },
+      }),
+      reqCtx(TOKEN_YAMPI),
+    );
+    expect(res.status).toBe(200);
+    const l = lead(await idDo(res));
+    expect(l.stage_id).toBe(VENDAS_CARRINHO);
+    expect((l.custom_fields as Record<string, unknown>).link_checkout).toBe(
+      "https://seguro.minhaloja.com/cart/retomar",
+    );
+  });
+});

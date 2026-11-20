@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import {
   useDeleteWebhookSource,
   useUpdateWebhookSource,
+  useChaveDaFonte,
   useWebhookSourceEvents,
   type WebhookSourceRow,
 } from "@/hooks/webhooks/useWebhookSources";
@@ -85,6 +86,8 @@ export function SourceDetail({ source, open, onOpenChange }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
   const update = useUpdateWebhookSource();
+  const salvarChave = useChaveDaFonte();
+  const [chave, setChave] = React.useState("");
   const del = useDeleteWebhookSource();
   const { data: eventsRes, refetch: refetchEvents } = useWebhookSourceEvents(
     open ? source.id : null,
@@ -197,8 +200,112 @@ export function SourceDetail({ source, open, onOpenChange }: Props) {
                   <p className="font-medium text-text">{t("Formulário próprio")}</p>
                   <p>{t("Use o HTML pronto logo acima — já aponta para o endereço certo.")}</p>
                 </div>
+                <div>
+                  <p className="font-medium text-text">Shopify</p>
+                  <p>
+                    {t(
+                      "Na Shopify: Configurações › Notificações › Webhooks › Criar webhook, formato JSON, com o endereço acima. Crie um para cada evento: checkout criado, checkout atualizado, pedido criado, pagamento do pedido e pedido cancelado. A chave com que a Shopify assina os webhooks vai no campo “Chave de assinatura da loja”.",
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium text-text">Yampi</p>
+                  <p>
+                    {t(
+                      "Na Yampi: Configurações › Webhooks › Novo webhook. Copie a chave secreta para o campo “Chave de assinatura da loja”, cole o endereço acima e marque: pedido criado, pedido aprovado, pagamento recusado, carrinho abandonado e status do pedido atualizado.",
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium text-text">WooCommerce</p>
+                  <p>
+                    {t(
+                      "No WordPress: WooCommerce › Configurações › Avançado › Webhooks › Adicionar webhook. Crie um para “Pedido criado” e outro para “Pedido atualizado”, com o endereço acima na URL de entrega. O segredo que aparece lá vai no campo “Chave de assinatura da loja”. O WooCommerce não avisa carrinho abandonado.",
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium text-text">CartPanda</p>
+                  <p>
+                    {t(
+                      "Na CartPanda: Configurações › Notificações › Webhooks › Criar webhook. Cole o endereço acima com ?plataforma=cartpanda no fim e marque os eventos de pedido e de carrinho abandonado. A CartPanda não assina o aviso: deixe a chave de assinatura em branco — o endereço secreto é a proteção.",
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium text-text">Wix</p>
+                  <p>
+                    {t(
+                      "No Wix: Automações › Criar automação, escolha o gatilho da loja e a ação “Enviar solicitação HTTP” (POST) para o endereço acima, com estrutura personalizada: evento_da_venda (carrinho_abandonado, aguardando_pagamento ou compra_aprovada), nome, telefone, email, produto, valor e link_checkout.",
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium text-text">{t("Recuperar a venda pelo WhatsApp")}</p>
+                  <p>
+                    {t(
+                      "Crie no funil as etapas “Carrinho abandonado”, “Aguardando pagamento” e “Pago”: cada aviso da loja leva o negócio à etapa com o nome do evento. Depois, em Follow-up, faça uma sequência que começa pela etapa “Carrinho abandonado” (com uma espera de 30 minutos antes da primeira mensagem) e outra por “Aguardando pagamento”. Ela para sozinha quando a compra entra, e a mensagem pode ser escrita pela IA com o produto, o valor e o link do checkout.",
+                    )}
+                  </p>
+                </div>
               </div>
             </details>
+          </section>
+
+          <section className="space-y-2 rounded-sm border border-border p-3">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-text">{t("Chave de assinatura da loja (opcional)")}</p>
+              {source.has_secret ? <Badge variant="success">{t("Definida")}</Badge> : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Shopify, Yampi e WooCommerce assinam cada aviso. Com a chave aqui, aviso sem a assinatura certa é recusado. Com ela definida, o botão “Enviar lead de teste” é recusado também, porque ele não assina.",
+              )}
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                autoComplete="off"
+                value={chave}
+                onChange={(e) => setChave(e.target.value)}
+                placeholder={source.has_secret ? t("Digite para trocar") : t("Cole a chave da loja")}
+                aria-label={t("Chave de assinatura da loja (opcional)")}
+                className="h-9 flex-1 rounded-sm border border-border bg-background px-3 text-sm"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!chave.trim() || salvarChave.isPending}
+                onClick={() =>
+                  salvarChave.mutate(
+                    { id: source.id, secret: chave.trim() },
+                    {
+                      onSuccess: () => {
+                        setChave("");
+                        toast.success(t("Chave guardada."));
+                      },
+                    },
+                  )
+                }
+              >
+                {t("Salvar")}
+              </Button>
+              {source.has_secret ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={salvarChave.isPending}
+                  onClick={() =>
+                    salvarChave.mutate(
+                      { id: source.id, secret: null },
+                      { onSuccess: () => toast.success(t("Chave removida.")) },
+                    )
+                  }
+                >
+                  {t("Remover")}
+                </Button>
+              ) : null}
+            </div>
           </section>
 
           <details className="rounded-sm border border-border p-3">

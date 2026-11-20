@@ -23,7 +23,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { normalizePhoneBR, type MappedLead } from "./inbound";
 
 /** Minúsculas, sem acento, espaços colapsados (nome de etapa e chave de carrinho). */
-function normalizar(texto: string): string {
+export function normalizar(texto: string): string {
   return texto
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -32,7 +32,18 @@ function normalizar(texto: string): string {
     .trim();
 }
 
-export type PlataformaDeVenda = "kiwify" | "cakto" | "hotmart";
+export type PlataformaDeVenda =
+  | "kiwify"
+  | "cakto"
+  | "hotmart"
+  // Lojas (lib/webhooks/lojas.ts): o aviso de cada uma tem formato próprio.
+  | "shopify"
+  | "woocommerce"
+  | "yampi"
+  | "cartpanda"
+  // Formato ChatAI: qualquer sistema que monte o aviso com os nossos nomes de
+  // campo (Wix pelas Automações, Make, Zapier, n8n).
+  | "loja";
 
 export const EVENTOS_DA_VENDA = [
   "carrinho_abandonado",
@@ -205,12 +216,12 @@ export type AvisoDeVenda = MappedLead & {
 };
 
 /** "R$ 1.297,90" com espaço comum — o Intl põe um espaço inseparável que vira lixo em alguns WhatsApp. */
-function emReais(centavos: number): string {
+export function emReais(centavos: number): string {
   const [inteiro = "0", fracao = "00"] = (centavos / 100).toFixed(2).split(".");
   return `R$ ${inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${fracao}`;
 }
 
-function chave(...partes: (string | null)[]): string {
+export function chave(...partes: (string | null)[]): string {
   return partes
     .map((p) => normalizar(p ?? "").replace(/\s+/g, "-"))
     .join(":")
