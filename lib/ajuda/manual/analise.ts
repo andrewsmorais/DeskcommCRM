@@ -74,6 +74,22 @@ export const MANUAL_ANALISE: ManualDoGrupo = {
     ],
   },
 
+  "/app/ads/campanhas": {
+    oQueE:
+      "Mostra de qual campanha vieram as pessoas que chegaram no período e quantas compraram, em Facebook e Instagram, Google Ads, TikTok Ads, Pinterest Ads e Taboola Ads. Não precisa conectar conta de anúncios: a origem é o que o próprio CRM guarda quando a pessoa chega.",
+    comoUsar: [
+      'Escolha o período: "Últimos 7 dias", "Últimos 30 dias" ou "Últimos 90 dias".',
+      'A tabela agrupa por plataforma e, dentro dela, por campanha, com "Contatos", "Negócios", "Avançaram no funil", "Vendas", "Faturamento" e "Taxa de venda". A campanha que mais vende aparece primeiro.',
+      'Para o TikTok, o Pinterest, o Taboola e o Google aparecerem, use o link rastreável em Configurações › Conversões › Links: cada link mostra o endereço pronto para cada plataforma, que já preenche o nome da campanha no clique. O anúncio de clique para o WhatsApp do Facebook e do Instagram é reconhecido sozinho.',
+    ],
+    cuidados: [
+      "Só gerentes e administradores abrem esta tela.",
+      "O período conta as pessoas que CHEGARAM nele; as vendas dessas pessoas contam em qualquer data.",
+      'Uma venda conta quando o negócio é ganho: marcado por você, pelo agente de IA, ou ao entrar numa etapa de venda ganha (como "Pago").',
+      '"Sem campanha rastreada" mostra quantas pessoas chegaram sem link rastreável nem anúncio: é o quanto do atendimento ainda não está sendo medido.',
+    ],
+  },
+
   "/app/ads/meta": {
     oQueE:
       'Mostra o desempenho das campanhas do Meta Ads que trazem gente para o CRM: quanto foi gasto, quantos resultados e quanto custou cada um. Os números são lidos da Meta na hora em que você clica em "Atualizar"; nada fica guardado aqui.',
