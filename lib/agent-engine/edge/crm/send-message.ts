@@ -32,6 +32,7 @@ import { sendWithLedger, pgSendLedger, type SendOutcome } from './send-ledger';
 import { logger } from '@/lib/logger';
 import { registrarCustoDeVoz, resolverCaminhoDeVoz, VozLedgerTerminalError } from './send-voice';
 import type { FormatoDaVoz } from '@/lib/ai/voz/formato';
+import { extraForaDaOrganizacao } from '@/lib/billing/extras';
 export type { SendOutcome, SendLedgerStatus } from './send-ledger';
 
 import { ApiError } from '@/lib/api/types';
@@ -216,7 +217,15 @@ export async function sendTurnMessage(
   // de pagar de novo. Qualquer falha da síntese (rede, ElevenLabs, Storage)
   // cai para TEXTO: o cliente recebe a resposta, só não é a voz.
   let vozResolvida: { mediaStoragePath: string; mimeType: string } | undefined;
-  if (input.voz) {
+  // O extra de nota de voz é conferido de novo AQUI, na hora de enviar, e não
+  // só no começo do turno (`voz-do-turno.ts`): um envio que volta depois — job
+  // reagendado com a linha `queued`, turno longo, resposta aprovada mais tarde —
+  // reaproveitaria do ledger o áudio já sintetizado e mandaria nota de voz a
+  // uma empresa cujo extra foi desligado no meio (auditoria de planos de
+  // 19/11, achado 22). Sem o extra, sai em TEXTO, como na falha de síntese.
+  const vozDesligada =
+    input.voz !== undefined && (await extraForaDaOrganizacao(input.tenantId, 'nota_de_voz'));
+  if (input.voz && !vozDesligada) {
     try {
       const r = await resolverCaminhoDeVoz({
         store: pgSendLedger(db),

@@ -12,10 +12,18 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // `vi.mock` é içado para o topo do arquivo — referenciar uma const comum
 // declarada DEPOIS dispararia "Cannot access before initialization". `vi.hoisted`
 // é o escape oficial: o que está dentro dele é içado JUNTO com o `vi.mock`.
-const { sendMessageHandlerMock, resolverCaminhoDeVozMock, registrarCustoDeVozMock } = vi.hoisted(() => ({
+const { sendMessageHandlerMock, resolverCaminhoDeVozMock, registrarCustoDeVozMock, extraFora } = vi.hoisted(() => ({
   sendMessageHandlerMock: vi.fn(),
   resolverCaminhoDeVozMock: vi.fn(),
   registrarCustoDeVozMock: vi.fn(),
+  extraFora: { valor: false, perguntas: [] as string[] },
+}));
+
+vi.mock("@/lib/billing/extras", () => ({
+  extraForaDaOrganizacao: async (_org: string, extra: string) => {
+    extraFora.perguntas.push(extra);
+    return extraFora.valor;
+  },
 }));
 
 vi.mock("@/app/api/v1/messages/_handler", () => ({
@@ -93,6 +101,8 @@ beforeEach(() => {
   sendMessageHandlerMock.mockReset();
   resolverCaminhoDeVozMock.mockReset();
   registrarCustoDeVozMock.mockReset();
+  extraFora.valor = false;
+  extraFora.perguntas.length = 0;
 });
 
 describe("sendTurnMessage — voz (Fase 6a)", () => {
@@ -236,5 +246,29 @@ describe("sendTurnMessage — voz (Fase 6a)", () => {
     expect(payload.body).toBe("texto falado já limpo");
     expect(payload.media_storage_path).toBeUndefined();
     expect(registrarCustoDeVozMock).not.toHaveBeenCalled();
+  });
+
+  it("extra de nota de voz desligado na hora do envio: sai em texto, sem síntese nem áudio reaproveitado (achado 22)", async () => {
+    extraFora.valor = true;
+    sendMessageHandlerMock.mockResolvedValue({ id: "msg1", status: "sent" });
+    const db = dbComJob();
+
+    await sendTurnMessage(db, cfg, {
+      ...baseInput,
+      voz: { textoOriginal: "x", apiKey: "sk", voiceId: "v1", upload: vi.fn() },
+    });
+
+    expect(extraFora.perguntas).toEqual(["nota_de_voz"]);
+    expect(resolverCaminhoDeVozMock).not.toHaveBeenCalled();
+    const [, , payload] = sendMessageHandlerMock.mock.calls[0]!;
+    expect(payload.type).toBe("text");
+    expect(payload.media_storage_path).toBeUndefined();
+    expect(registrarCustoDeVozMock).not.toHaveBeenCalled();
+  });
+
+  it("controle: texto puro não pergunta pelo extra", async () => {
+    sendMessageHandlerMock.mockResolvedValue({ id: "msg1", status: "sent" });
+    await sendTurnMessage(dbComJob(), cfg, baseInput).catch(() => {});
+    expect(extraFora.perguntas).toEqual([]);
   });
 });
