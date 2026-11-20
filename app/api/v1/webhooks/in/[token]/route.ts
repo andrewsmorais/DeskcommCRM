@@ -47,7 +47,7 @@ import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { ApiError } from "@/lib/api/types";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
-import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import {
   avisoDaPlataformaAutentico,
   etapaDoEvento,
@@ -127,9 +127,6 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     return fail("not_found", "unknown webhook token", 404, { requestId });
   }
 
-  const recusado = await exigirRecursoDoPlano(source.organization_id, "webhooks", { requestId });
-  if (recusado) return recusado;
-
   const rawBody = await req.text();
   const contentType = req.headers.get("content-type") ?? "";
   const isForm = contentType.includes("application/x-www-form-urlencoded");
@@ -141,6 +138,30 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
       payload = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {};
     } catch {
       return fail("invalid_request", "invalid_json", 400, { requestId });
+    }
+  }
+
+  // O PLANO decide pelo que o aviso É (decisão do dono, 20/11/2026): aviso de
+  // loja ou de plataforma de venda vale em todos os planos (`lojas`);
+  // formulário, Zapier e o resto da Captação são do Impulso (`webhooks`).
+  // Antes de qualquer gravação: recusado aqui, nada fica no banco.
+  const ehAvisoDeVenda =
+    mapearAvisoDaLoja(payload, req.headers, req.nextUrl.searchParams.get("plataforma")) !== null ||
+    mapearAvisoDeVenda(payload) !== null;
+  if (!ehPingDaWooCommerce(payload)) {
+    const acessoDoPlano = await verificarRecursoDoPlano(
+      source.organization_id,
+      ehAvisoDeVenda ? "lojas" : "webhooks",
+    );
+    if (!acessoDoPlano.ok) {
+      return fail(
+        acessoDoPlano.code,
+        !ehAvisoDeVenda && acessoDoPlano.code === "billing_feature"
+          ? "No seu plano, a Captação recebe os avisos de lojas e plataformas de venda (Shopify, Yampi, WooCommerce, CartPanda, Wix, Kiwify, Hotmart, Cakto). Formulários, Zapier e outros sistemas são do plano Impulso."
+          : acessoDoPlano.message,
+        acessoDoPlano.status,
+        { requestId },
+      );
     }
   }
 

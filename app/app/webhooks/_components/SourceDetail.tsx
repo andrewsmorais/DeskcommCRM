@@ -244,7 +244,7 @@ export function SourceDetail({ source, open, onOpenChange }: Props) {
                   <p className="font-medium text-text">{t("Recuperar a venda pelo WhatsApp")}</p>
                   <p>
                     {t(
-                      "Crie no funil as etapas “Carrinho abandonado”, “Aguardando pagamento” e “Pago”: cada aviso da loja leva o negócio à etapa com o nome do evento. Depois, em Follow-up, faça uma sequência que começa pela etapa “Carrinho abandonado” (com uma espera de 30 minutos antes da primeira mensagem) e outra por “Aguardando pagamento”. Ela para sozinha quando a compra entra, e a mensagem pode ser escrita pela IA com o produto, o valor e o link do checkout.",
+                      "Crie no funil as etapas “Carrinho abandonado”, “Aguardando pagamento” e “Pago”: cada aviso da loja leva o negócio à etapa com o nome do evento. Depois, em Follow-up, faça uma sequência que começa pela etapa “Carrinho abandonado” (com uma espera de 30 minutos antes da primeira mensagem) e outra por “Aguardando pagamento”. Ela para sozinha quando a compra entra. A mensagem pode ser um texto pronto com {{produto}}, {{valor}} e {{link_checkout}}, em todos os planos, ou escrita pela IA, a partir do Impulso.",
                     )}
                   </p>
                 </div>

@@ -19,6 +19,40 @@
  * rebaixamento. A regra é a mesma nas três, e é esta.
  */
 import type { FlowGraph } from "@/lib/followup/graph-schema";
+import { ETAPAS_DO_EVENTO, normalizar, type EventoDaVenda } from "@/lib/webhooks/plataformas-de-venda";
+
+/**
+ * RECUPERAÇÃO DE VENDA EM TODOS OS PLANOS — decisão do dono, 20/11/2026.
+ *
+ * O aviso da loja (Shopify, Yampi, Kiwify…) leva o negócio a uma etapa com o
+ * nome do evento. No Essencial, o follow-up pode começar SOZINHO quando o
+ * negócio entra numa destas etapas — e só nelas —, com as mesmas peças sem IA
+ * do "só pelo chatbot". Custo de IA zero; a mensagem escrita pela IA continua
+ * do Impulso. Fora destas etapas, gatilho automático segue do Impulso.
+ */
+const EVENTOS_DE_RECUPERACAO: readonly EventoDaVenda[] = [
+  "carrinho_abandonado",
+  "aguardando_pagamento",
+  "compra_recusada",
+  "pagamento_expirado",
+];
+
+/** O gatilho de etapa, quando a etapa é de recuperação de venda. */
+export const GATILHO_DE_RECUPERACAO = "recuperacao_de_venda";
+
+export function ehEtapaDeRecuperacao(nomeDaEtapa: string | null | undefined): boolean {
+  if (!nomeDaEtapa) return false;
+  const nome = normalizar(nomeDaEtapa);
+  return EVENTOS_DE_RECUPERACAO.some((e) => ETAPAS_DO_EVENTO[e].includes(nome));
+}
+
+/**
+ * O gatilho como o PLANO o enxerga: `stage_change` numa etapa de recuperação
+ * vira `recuperacao_de_venda`; o resto, como está. Quem chama lê o nome da etapa.
+ */
+export function gatilhoParaOPlano(kind: string, nomeDaEtapa: string | null): string {
+  return kind === "stage_change" && ehEtapaDeRecuperacao(nomeDaEtapa) ? GATILHO_DE_RECUPERACAO : kind;
+}
 
 /** Quem pede a inscrição — o plano decide quais origens valem. */
 export type OrigemDaInscricao = "chatbot" | "agente" | "automacao" | "tela";
@@ -29,8 +63,10 @@ export type OrigemDaInscricao = "chatbot" | "agente" | "automacao" | "tela";
  */
 export function problemasDoFollowupPeloChatbot(graph: FlowGraph, gatilho: string): string[] {
   const problemas: string[] = [];
-  if (gatilho !== "manual")
-    problemas.push("o início precisa ser manual — quem põe o contato no follow-up é o chatbot");
+  if (gatilho !== "manual" && gatilho !== GATILHO_DE_RECUPERACAO)
+    problemas.push(
+      "o início precisa ser manual (quem põe o contato é o chatbot) ou pela etapa de recuperação de venda: Carrinho abandonado, Aguardando pagamento, Pagamento recusado ou Pagamento expirado",
+    );
   for (const no of graph.nodes) {
     const nome = "label" in no && no.label ? `“${no.label}”` : "um passo";
     switch (no.type) {
@@ -66,7 +102,7 @@ export function cabeNoFollowupPeloChatbot(graph: FlowGraph, gatilho: string): bo
 /** A frase de recusa do publicar, com o que tirar. */
 export function mensagemDoFollowupPeloChatbot(problemas: string[]): string {
   return (
-    "No seu plano, o follow-up roda só pelo chatbot (card “Iniciar follow-up”), com texto ou modelo, espera de tempo fixo e tarefa. Ajuste: " +
+    "No seu plano, o follow-up roda pelo chatbot (card “Iniciar follow-up”) ou pela etapa de recuperação de venda, com texto ou modelo, espera de tempo fixo e tarefa. Ajuste: " +
     problemas.join("; ") +
     ". O follow-up completo, com IA e gatilhos automáticos, é do plano Impulso."
   );

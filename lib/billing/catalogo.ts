@@ -41,6 +41,17 @@ export const RECURSOS_DO_PLANO = {
   distribuicao_automatica: { nome: "Distribuição automática de leads", desde: "impulso" },
   api: { nome: "API", desde: "impulso" },
   webhooks: { nome: "Webhooks", desde: "impulso" },
+  // Avisos de LOJA e de plataforma de venda (Shopify, Yampi, WooCommerce,
+  // CartPanda, Wix, Kiwify, Hotmart, Cakto) na Captação: em TODOS os planos —
+  // decisão do dono, 20/11/2026. Receber o aviso não custa nada; o que custa é a
+  // IA escrevendo a mensagem, e essa continua no Impulso (follow-up com IA).
+  // No Essencial a recuperação sai por follow-up de texto pela etapa
+  // (`lib/billing/followup-pelo-chatbot.ts`). Formulário, Zapier e o resto da
+  // Captação seguem em `webhooks` (Impulso).
+  lojas: {
+    nome: "Lojas e plataformas de venda (recuperar carrinho, Pix e boleto)",
+    desde: "essencial",
+  },
   relatorios_completos: { nome: "Relatórios completos", desde: "impulso" },
   distribuicao_avancada: { nome: "Distribuição por número e por time", desde: "escala" },
   permissoes_avancadas: { nome: "Permissões avançadas", desde: "escala" },

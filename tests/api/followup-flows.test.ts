@@ -625,6 +625,44 @@ describe("POST /api/v1/ai/followup-flows/:id/publish — plano só pelo chatbot"
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toMatch(/“Lembrete”: mensagem escrita pela IA/);
   });
+
+  // Recuperação de venda em todos os planos (decisão do dono, 20/11/2026).
+  const ETAPA = "44444444-4444-4444-8444-444444444444";
+  const publicarNaEtapa = async (graph: FlowGraph, nomeDaEtapa: string) => {
+    const db = makeDb(
+      [
+        {
+          id: ID,
+          organization_id: ORG_ID,
+          status: "draft",
+          draft_graph: graph,
+          trigger_config: { kind: "stage_change", params: { stage_id: ETAPA } },
+        },
+      ],
+      [],
+      [{ id: ETAPA, organization_id: ORG_ID, name: nomeDaEtapa, is_archived: false }],
+    );
+    session("manager", db);
+    const { POST } = await import("@/app/api/v1/ai/followup-flows/[id]/publish/route");
+    return POST(req("POST"), ctx(ID));
+  };
+
+  it("pela etapa “Carrinho abandonado”, com texto, publica no Essencial", async () => {
+    const res = await publicarNaEtapa(grafoCom(action("text")), "Carrinho abandonado");
+    expect(res.status).toBe(200);
+  });
+
+  it("pela etapa de recuperação, a mensagem escrita pela IA continua do Impulso", async () => {
+    const res = await publicarNaEtapa(grafoCom(action("ai_message")), "Aguardando pagamento");
+    expect(res.status).toBe(403);
+  });
+
+  it("pela etapa comum (“Proposta enviada”), o gatilho automático continua do Impulso", async () => {
+    const res = await publicarNaEtapa(grafoCom(action("text")), "Proposta enviada");
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toMatch(/recuperação de venda/);
+  });
 });
 
 describe("POST /api/v1/ai/followup-flows/:id/publish", () => {

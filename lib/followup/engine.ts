@@ -1,4 +1,6 @@
 import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
+import { preencherCamposDoNegocio } from "./campos-no-texto";
+import { gatilhoParaOPlano } from "@/lib/billing/followup-pelo-chatbot";
 import { enviosJaFeitos, redacoesDoPasso, redacoesNaOrdemDaVez } from "./variacoes-do-passo";
 import type { JobClaim } from "@/lib/agent-engine/queue/claim";
 import { assertAgendaEffectSupabase } from "@/lib/agenda/efeito";
@@ -310,6 +312,8 @@ function turnPayloadExtras(
   events: EnrollmentEventRef[] = [],
   /** O contato: semente estável do ponto de partida da rotação de redações. */
   semente?: string,
+  /** O negócio: `{{produto}}`, `{{link_checkout}}`… no texto (`campos-no-texto.ts`). */
+  lead?: LeadFacts,
 ): Partial<FollowupJobRequest["payload"]> {
   if (node.type === "action" && node.config.mode === "ai_message") {
     return {
@@ -324,7 +328,7 @@ function turnPayloadExtras(
     const redacoes = redacoesDoPasso(node.config);
     const ordem = redacoesNaOrdemDaVez(redacoes, semente ?? "", enviosJaFeitos(events));
     return {
-      fixed_body: interpolarVolta(ordem[0]!, events),
+      fixed_body: preencherCamposDoNegocio(interpolarVolta(ordem[0]!, events), lead),
       ...(node.config.media_url ? { fixed_media_url: node.config.media_url } : {}),
     };
   }
@@ -425,6 +429,7 @@ async function applyResult(
   smartWaits: EsperaAdaptativa[] = [],
   events: EnrollmentEventRef[] = [],
   respostaParaGravar: string | null = null,
+  lead?: LeadFacts,
 ): Promise<void> {
   const { db, clock, enqueueJob } = deps;
   await db.assertServiceBoundary?.(enrollment);
@@ -575,7 +580,7 @@ async function applyResult(
             node_id: node.id,
             source_step_key: idemKey,
             purpose: result.purpose,
-            ...turnPayloadExtras(node, smartWaits, events, enrollment.contact_id),
+            ...turnPayloadExtras(node, smartWaits, events, enrollment.contact_id, lead),
             ...(result.fixed_body ? { fixed_body: result.fixed_body } : {}),
           },
         });
@@ -925,6 +930,7 @@ async function processEnrollment(
     smartWaits,
     events,
     node.type === "match_reply" && wokeEarly ? (lastInboundBody ?? "").trim() || null : null,
+    lead,
   );
 }
 
@@ -1014,8 +1020,19 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       // Roteiro de atendimento não é follow-up: a régua dele é a de sempre
       // (`verificarGrafoDoPlano` sem gatilho), como na publicação.
       if ((data as { surface?: unknown } | null)?.surface === "atendimento") return null;
-      const kind = (data as { trigger_config?: { kind?: unknown } } | null)?.trigger_config?.kind;
-      return typeof kind === "string" ? kind : "manual";
+      const config = (data as { trigger_config?: { kind?: unknown; params?: { stage_id?: unknown } } } | null)
+        ?.trigger_config;
+      const kind = typeof config?.kind === "string" ? config.kind : "manual";
+      // Etapa de recuperação de venda vale em todos os planos: o nome decide.
+      if (kind !== "stage_change" || typeof config?.params?.stage_id !== "string") return kind;
+      const { data: etapa, error: etapaErr } = await admin
+        .from("crm_stages")
+        .select("name")
+        .eq("organization_id", enrollment.organization_id)
+        .eq("id", config.params.stage_id)
+        .maybeSingle();
+      if (etapaErr) throw new Error(`stage_query_failed: ${etapaErr.message}`);
+      return gatilhoParaOPlano(kind, (etapa as { name?: string } | null)?.name ?? null);
     },
     async loadFlowGraph(orgId, versionId) {
       const { data, error } = await admin

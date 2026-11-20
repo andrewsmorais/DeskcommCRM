@@ -190,7 +190,9 @@ export async function criarEntradaAutomatica(
   deps: DepsDaOperacao,
   input: NovaEntradaAutomatica,
 ): Promise<FonteVisivel> {
-  const acesso = await verificarRecursoDoPlano(deps.organizationId, "webhooks");
+  // A fonte serve a TODOS os planos para avisos de loja (`lojas`); o que cada
+  // aviso pode fazer é decidido na rota de captação, envio por envio.
+  const acesso = await verificarRecursoDoPlano(deps.organizationId, "lojas");
   if (!acesso.ok)
     throw new ApiError(acesso.status, acesso.code, undefined, deps.requestId, acesso.message);
   await destinoValido(deps, input.default_pipeline_id, input.default_stage_id);
@@ -255,7 +257,7 @@ export async function definirEntradaAtiva(
   input: { id: string; ativa: boolean },
 ): Promise<FonteVisivel> {
   if (input.ativa) {
-    const acesso = await verificarRecursoDoPlano(deps.organizationId, "webhooks");
+    const acesso = await verificarRecursoDoPlano(deps.organizationId, "lojas");
     if (!acesso.ok)
       throw new ApiError(acesso.status, acesso.code, undefined, deps.requestId, acesso.message);
   }

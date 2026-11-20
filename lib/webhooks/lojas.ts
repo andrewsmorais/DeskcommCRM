@@ -20,7 +20,7 @@
  *   - CartPanda: o endereço leva `?plataforma=cartpanda` (o aviso não traz
  *     assinatura nem cabeçalho próprio, e a documentação pública não está
  *     acessível — os caminhos de campo aqui são tolerantes e o PRIMEIRO aviso
- *     real deve ser conferido na tela de Capturas);
+ *     real deve ser conferido em Webhooks › Leads recebidos);
  *   - formato ChatAI: `evento_da_venda` no topo, com os nossos nomes de campo.
  *
  * Os nomes de campo vêm da documentação pública de cada loja; o que não for

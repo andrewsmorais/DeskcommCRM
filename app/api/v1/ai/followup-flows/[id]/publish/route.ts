@@ -14,6 +14,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
 import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
 import {
+  gatilhoParaOPlano,
   mensagemDoFollowupPeloChatbot,
   problemasDoFollowupPeloChatbot,
 } from "@/lib/billing/followup-pelo-chatbot";
@@ -145,6 +146,9 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // arquivada ou de outra org, o pointer fica `active` e nunca enrolla ninguém —
   // exatamente o desfecho que o bloqueio acima existe para evitar. A recusa é
   // aqui, no momento em que há um humano na tela para corrigir.
+  // O nome da etapa decide se o gatilho é de RECUPERAÇÃO DE VENDA, que vale em
+  // todos os planos (`gatilhoParaOPlano`).
+  let nomeDaEtapaDoGatilho: string | null = null;
   if (triggerKind === "stage_change") {
     const stageId = trigger.params?.stage_id;
     if (!stageId || !UUID_RX.test(stageId)) {
@@ -170,6 +174,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
         { requestId },
       );
     }
+    nomeDaEtapaDoGatilho = stage.name as string;
     if (stage.is_archived) {
       return fail(
         "trigger_stage_archived",
@@ -202,13 +207,16 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
     });
   const graph = parsedGraph.data;
   if (soPeloChatbot) {
-    const problemas = problemasDoFollowupPeloChatbot(graph, triggerKind);
+    const problemas = problemasDoFollowupPeloChatbot(
+      graph,
+      gatilhoParaOPlano(triggerKind, nomeDaEtapaDoGatilho),
+    );
     if (problemas.length)
       // Montada com os nomes dos passos: frase dinâmica não passa pelo dicionário.
       return fail("billing_feature", mensagemDoFollowupPeloChatbot(problemas), 403, { requestId });
   }
   const acesso = await verificarGrafoDoPlano(activeOrg.orgId, graph, {
-    gatilho: surface === "atendimento" ? null : triggerKind,
+    gatilho: surface === "atendimento" ? null : gatilhoParaOPlano(triggerKind, nomeDaEtapaDoGatilho),
   });
   if (!acesso.ok) return fail(acesso.code, acesso.message, acesso.status, { requestId });
   // A regra de etapa guarda o `stage_id`, e só o banco diz se a etapa existe e

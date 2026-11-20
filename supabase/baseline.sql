@@ -52196,3 +52196,8 @@ create trigger trg_cota_do_plano before insert or update of revoked_at, role on 
 drop trigger if exists trg_cota_do_plano on public.channel_sessions;
 create trigger trg_cota_do_plano before insert or update of archived_at, provider on public.channel_sessions
   for each row execute function public.fn_cota_do_plano_na_escrita();
+
+-- ---- recuperação de carrinho e Pix das lojas no card do Essencial (migration 0565) ----
+update public.plans set
+  features = '["2 números de WhatsApp","1 agente de IA","1 chatbot","CRM com 2 funis","Agendamento pela IA e pelo chatbot","Agenda com Google Meet e aviso no seu WhatsApp","Chatbot completo com modelos prontos","Recuperação de carrinho e Pix das lojas (Shopify, Yampi, Kiwify…)","Respostas rápidas com foto e áudio","Caixa de entrada compartilhada e chat da equipe","Radar de conversas e painel ao vivo","Base de conhecimento para a IA","IA que entende áudio e foto","IA passa a conversa para o atendente","Chat no site e aplicativo no celular","Relatórios essenciais"]'::jsonb
+where slug = 'essencial';

@@ -56,7 +56,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 vi.mock("@/lib/ai/dispatcher/rate-limit", () => ({
   checkRateLimit: async () => ({ allowed: true }),
 }));
-vi.mock("@/lib/billing/acesso", () => ({ exigirRecursoDoPlano: async () => null }));
+vi.mock("@/lib/billing/acesso", () => ({ verificarRecursoDoPlano: async () => ({ ok: true }) }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/webhooks/captacao", async (original) => ({
   ...(await original<typeof import("@/lib/webhooks/captacao")>()),

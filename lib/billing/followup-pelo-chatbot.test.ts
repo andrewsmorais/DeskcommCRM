@@ -7,7 +7,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { flowGraphSchema, flowNodeSchema, type FlowNode } from "@/lib/followup/graph-schema";
 import { verificarRecursoDoPlano } from "./acesso";
-import { cabeNoFollowupPeloChatbot, problemasDoFollowupPeloChatbot } from "./followup-pelo-chatbot";
+import {
+  GATILHO_DE_RECUPERACAO,
+  cabeNoFollowupPeloChatbot,
+  ehEtapaDeRecuperacao,
+  gatilhoParaOPlano,
+  problemasDoFollowupPeloChatbot,
+} from "./followup-pelo-chatbot";
 import { verificarGrafoDoPlano } from "./grafo";
 
 vi.mock("./acesso", () => ({ verificarRecursoDoPlano: vi.fn() }));
@@ -86,5 +92,50 @@ describe("régua do grafo com o gatilho", () => {
   it("sem gatilho (roteiro, dublê antigo) a régua é a de sempre", async () => {
     expect((await verificarGrafoDoPlano("org", grafo(TEXTO))).ok).toBe(false);
     expect(cabeNoFollowupPeloChatbot(grafo(TEXTO), "manual")).toBe(true);
+  });
+});
+
+describe("recuperação de venda em todos os planos (decisão do dono, 20/11/2026)", () => {
+  it.each([
+    ["Carrinho abandonado", true],
+    ["Aguardando Pagamento", true],
+    ["Pix gerado", true],
+    ["Boleto gerado", true],
+    ["Pagamento recusado", true],
+    ["Pagamento expirado", true],
+    ["Pago", false],
+    ["Novo lead", false],
+    ["Proposta enviada", false],
+  ])("a etapa «%s» é de recuperação? %s", (nome, esperado) => {
+    expect(ehEtapaDeRecuperacao(nome)).toBe(esperado);
+    expect(gatilhoParaOPlano("stage_change", nome) === GATILHO_DE_RECUPERACAO).toBe(esperado);
+  });
+
+  it("só o gatilho de ETAPA vira recuperação; silêncio continua silêncio", () => {
+    expect(gatilhoParaOPlano("silence", "Carrinho abandonado")).toBe("silence");
+    expect(gatilhoParaOPlano("stage_change", null)).toBe("stage_change");
+  });
+
+  it("na etapa de recuperação, o fluxo sem IA passa no Essencial sem consultar o plano", async () => {
+    expect(problemasDoFollowupPeloChatbot(grafo(ESPERA, TEXTO), GATILHO_DE_RECUPERACAO)).toEqual([]);
+    expect(
+      await verificarGrafoDoPlano("org", grafo(ESPERA, TEXTO), { gatilho: GATILHO_DE_RECUPERACAO }),
+    ).toEqual({ ok: true });
+    expect(verificarRecursoDoPlano).not.toHaveBeenCalled();
+  });
+
+  it("na etapa de recuperação, a mensagem escrita pela IA continua do Impulso", async () => {
+    const ia = no("action", { mode: "ai_message", prompt_hint: "recupere o carrinho" }, "IA");
+    expect(problemasDoFollowupPeloChatbot(grafo(ia), GATILHO_DE_RECUPERACAO).join()).toMatch(
+      /escrita pela IA/,
+    );
+    const r = await verificarGrafoDoPlano("org", grafo(ia), { gatilho: GATILHO_DE_RECUPERACAO });
+    expect(r.ok).toBe(false);
+  });
+
+  it("etapa comum com gatilho automático continua do Impulso", () => {
+    expect(
+      problemasDoFollowupPeloChatbot(grafo(TEXTO), gatilhoParaOPlano("stage_change", "Proposta enviada")).join(),
+    ).toMatch(/início precisa ser manual/);
   });
 });

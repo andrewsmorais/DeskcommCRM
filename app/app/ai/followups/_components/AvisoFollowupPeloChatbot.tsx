@@ -16,10 +16,10 @@ export function AvisoFollowupPeloChatbot() {
       className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200"
       data-testid="aviso-followup-pelo-chatbot"
     >
-      <p className="font-medium">{t("No seu plano, o follow-up funciona pelo chatbot.")}</p>
+      <p className="font-medium">{t("No seu plano, o follow-up funciona pelo chatbot e na recuperação de vendas.")}</p>
       <p className="mt-1">
         {t(
-          "Monte aqui com início manual, mensagem de texto ou modelo, espera de tempo fixo e tarefa, publique e escolha no card “Iniciar follow-up” do chatbot. Mensagem escrita pela IA, condições, gatilhos automáticos e o agente de IA pondo contatos em follow-up são do plano Impulso.",
+          "Monte aqui com mensagem de texto ou modelo, espera de tempo fixo e tarefa. Ele começa pelo card “Iniciar follow-up” do chatbot (início manual) ou, para recuperar vendas das lojas, sozinho pela etapa “Carrinho abandonado”, “Aguardando pagamento”, “Pagamento recusado” ou “Pagamento expirado”. Mensagem escrita pela IA, condições, os outros gatilhos automáticos e o agente de IA pondo contatos em follow-up são do plano Impulso.",
         )}{" "}
         <Link href="/app/settings/billing" className="underline underline-offset-2">
           {t("Ver planos")}
