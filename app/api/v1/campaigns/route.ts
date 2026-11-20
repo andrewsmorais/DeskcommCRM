@@ -29,6 +29,7 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,8 @@ const COLUNAS_DA_LISTA =
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const authz = await requireRole("manager", { requestId, resource: "campaigns" });
   if (!authz.ok) return authz.response;
   const rl = await enforceRateLimit(req, "campaigns", authz.user.id, 5, 60 * 1000);
@@ -95,6 +98,8 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (negado) return negado;
 
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const authz = await requireRole("manager", {
     requestId,
     resource: "campaigns",

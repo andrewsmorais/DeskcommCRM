@@ -26,6 +26,8 @@ export interface BuildNativeMediaPartsArgs {
   provider: string;
   model: string;
   multimodalInput: boolean;
+  /** O agente vê fotos (migration 0533). `false` = imagem nunca anexada; PDF segue. */
+  verImagens?: boolean;
   admin: SupabaseClient;
   /** teto de mídias anexadas (default 1: só a inbound mais recente). */
   maxItems?: number;
@@ -75,6 +77,10 @@ export async function buildNativeMediaParts(args: BuildNativeMediaPartsArgs): Pr
   // no máximo 1 item — maxItems fica só como teto declarado na assinatura.
   const latestInbound = [...args.messages].reverse().find((m) => m.direction === "inbound");
   const candidates = latestInbound?.media_storage_path ? [latestInbound].slice(0, maxItems) : [];
+  // A retenção (migration 0552, #1534) anula `media_storage_path` E `media_url`
+  // ao expirar, então quem expirou nem entra em `candidates` — o download abaixo
+  // é inalcançável para mídia podada. O comentário fica porque a guarda é
+  // ESTRUTURAL (coluna nula), não uma checagem que alguém possa esquecer.
 
   const parts: NativeMediaPart[] = [];
   // ponytail: esta camada é aprimoramento, não caminho crítico — o derivado textual
@@ -85,7 +91,7 @@ export async function buildNativeMediaParts(args: BuildNativeMediaPartsArgs): Pr
     for (const m of candidates) {
       try {
         const mime = (m.media_mime ?? "").split(";")[0]!.trim().toLowerCase();
-        const isImage = m.type === "image" && mime.startsWith("image/") && caps.image;
+        const isImage = m.type === "image" && mime.startsWith("image/") && caps.image && args.verImagens !== false;
         const isPdf = m.type === "document" && mime === "application/pdf" && caps.pdf;
         if (!isImage && !isPdf) continue;
 

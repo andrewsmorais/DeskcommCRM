@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/types";
+import { motivoDaFalhaDaMensagem } from "@/lib/inbox/motivo-da-falha";
 
 /** Recarrega o fio após o canal confirmar, sem fingir sucesso antes da resposta. */
 export function useAlterarMensagem(conversationId: string | null) {
@@ -47,5 +49,36 @@ export function useAlterarMensagem(conversationId: string | null) {
     },
     onError: showApiError,
   });
-  return { editar, apagar, ocultar, restaurar };
+  // Enviar de novo a mensagem que falhou (vindo do produto original). A mesma
+  // linha é reusada: dois toques nunca mandam duas vezes.
+  const reenviar = useMutation({
+    mutationFn: ({ id, confirmado }: { id: string; confirmado: boolean }) =>
+      apiClient.post<{ data: { status: string; error_code: string | null; error_message: string | null } }>(
+        `/api/v1/messages/${id}/retry`,
+        confirmado ? { confirmado: true } : {},
+      ),
+    // O canal recusou de novo: a rota responde 200 com a linha em `failed`.
+    onSuccess: (res) => {
+      const msg = res?.data;
+      if (msg?.status !== "failed") return;
+      toast.error(t("A mensagem não saiu de novo."), { description: motivoDaFalhaDaMensagem(msg, t) });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["messages", conversationId] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "confirmacao_necessaria") return;
+      showApiError(err);
+    },
+  });
+  const reagir = useMutation({
+    mutationFn: ({ id, emoji }: { id: string; emoji: string }) =>
+      apiClient.post(`/api/v1/messages/${id}/reactions`, { emoji }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["messages", conversationId] });
+    },
+    onError: showApiError,
+  });
+  return { editar, apagar, ocultar, restaurar, reenviar, reagir };
 }

@@ -6,6 +6,7 @@
  * em modo own* recebe a contagem do SEU escopo, NUNCA o total da org — a mesma
  * garantia do listing. Head count (count:'exact', head:true) não devolve linhas.
  */
+import { aplicarOcultas, filtroDeOcultas } from "@/lib/inbox/visibilidade";
 import { randomUUID } from "node:crypto";
 
 import type { NextRequest } from "next/server";
@@ -16,10 +17,12 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { CONVERSATION_TERMINAL_STATUSES } from "@/lib/schemas";
 import { orgTemAutomatico } from "@/lib/ai/agents/org-tem-automatico";
 import { comandosDaFila } from "@/lib/inbox/comando-da-conversa";
-import { aplicarMarcador } from "@/lib/inbox/marcador-da-conversa";
+import { aplicarMarcadores, modoDeEtiqueta } from "@/lib/inbox/marcador-da-conversa";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Um par pronto para virar predicado: coluna e valor. */
 export type FiltroDeContagem = readonly [coluna: string, valor: string | boolean];
@@ -51,6 +54,14 @@ export function filtrosAuxiliaresDaContagem(
   const filtros: FiltroDeContagem[] = [];
   const canal = sp.get("channel_session_id");
   if (canal) filtros.push(["channel_session_id", canal]);
+  // O setor (migration 0496), como na lista. Só uuid: um valor torto viraria
+  // 22P02 no PostgREST e a rota inteira responderia 500 — a lista recusa o
+  // mesmo valor no schema (`setor_id: z.string().uuid()`).
+  const setor = sp.get("setor_id");
+  if (setor && UUID.test(setor)) filtros.push(["setor_id", setor]);
+  // O atendente escolhido pelo gerente, como na lista. Só uuid.
+  const atendente = sp.get("assigned_to");
+  if (atendente && UUID.test(atendente)) filtros.push(["assigned_to_user_id", atendente]);
   // O MARCADOR não entra nesta lista, e não é esquecimento: ele não é
   // IGUALDADE numa coluna, é um `or=` sobre DUAS caixas — `conversations.tags`
   // e o campo calculado do contato. `conversations` não tem coluna `tag` (`tag`
@@ -94,7 +105,10 @@ export async function GET(req: NextRequest): Promise<Response> {
   const sp = req.nextUrl.searchParams;
   const auxiliares = filtrosAuxiliaresDaContagem(sp);
   const soNaoLidas = contagemSoNaoLidas(sp);
-  const marcador = sp.get("tag");
+  // `getAll` + `modo`: o badge conta o MESMO filtro de várias etiquetas da lista.
+  const marcadores = sp.getAll("tag");
+  const modo = modoDeEtiqueta(sp.get("modo")) ?? "e";
+  const ocultas = filtroDeOcultas(sp.get("ocultas"));
 
   // ⚠️ TODA contagem nasce daqui, e daqui já sai com `organization_id` E com os
   // filtros auxiliares. Herdar tira a opção de esquecer: não existe o caminho
@@ -106,8 +120,10 @@ export async function GET(req: NextRequest): Promise<Response> {
       .eq("organization_id", org);
     for (const [coluna, valor] of auxiliares) q = q.eq(coluna, valor);
     // O marcador entra pela régua da LISTA — a mesma função, não uma segunda.
-    q = aplicarMarcador(q, marcador);
+    q = aplicarMarcadores(q, marcadores, modo);
     if (soNaoLidas) q = q.gt("unread_count_for_assignee", 0);
+    // As ocultas (migration 0510), pela MESMA régua da lista.
+    q = aplicarOcultas(q, ocultas);
     return q;
   };
 
@@ -121,6 +137,25 @@ export async function GET(req: NextRequest): Promise<Response> {
   // conjunto de comandos a Fila pede. `undefined` (não deu para saber) segue a
   // convenção da regra: assume que há automático.
   const automaticoDaOrg = await orgTemAutomatico(supabase, org);
+
+  // O badge de "Minhas" precisa contar o MESMO que a aba lista (#2848): a aba
+  // passou a trazer as conversas em que eu PARTICIPO (convite é da conversa), e
+  // um badge que só conta `assigned_to=me` mandaria a convidada procurar
+  // trabalho que a tela não mostra. Mesma fábrica da aba.
+  // ⚠️ Sem data (mock de teste sem `.is`, banco fora) = sem participações = `.eq`
+  // de sempre: o badge nunca muda de regra sozinho, só GANHA conversas quando
+  // existe convite de pé.
+  let idsParticipadas: string[] = [];
+  try {
+    const participadasDoUsuario = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("user_id", user.id)
+      .is("left_at", null);
+    idsParticipadas = (participadasDoUsuario.data ?? []).map((r) => r.conversation_id);
+  } catch {
+    idsParticipadas = [];
+  }
 
   const [fila, automatico, mine, all, closed, archived] = await Promise.all([
     // A FILA DEIXOU DE SER "sem dono + status de espera".
@@ -137,8 +172,9 @@ export async function GET(req: NextRequest): Promise<Response> {
     // A aba "Automático". Antes ela pedia `status='ai_handling'`, escrito por UM
     // caminho só em produção — por isso vivia quase vazia.
     countExact().eq("comando_da_conversa", "automatico"),
-    countExact()
-      .eq("assigned_to_user_id", user.id)
+    (idsParticipadas.length > 0
+      ? countExact().or(`assigned_to_user_id.eq.${user.id},id.in.(${idsParticipadas.join(",")})`)
+      : countExact().eq("assigned_to_user_id", user.id))
       .not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`),
     countExact(),
     // A aba "Fechadas" existia SEM número nenhum. Num inbox antigo, é o número

@@ -1,7 +1,9 @@
 import { loadOnboardingChannel } from "@/lib/channels/onboarding-session";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { requireRole } from "@/lib/auth/require-role";
+import { mfaEmDivida } from "@/lib/auth/server";
+import { requireSupportWrite } from "@/lib/impersonate/support";
 
 /**
  * Proxy WAHA's QR endpoint so the browser can <img src="..." /> without
@@ -10,10 +12,18 @@ import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
  * WAHA exposes: GET /api/{session}/auth/qr?format=image → image/png bytes.
  */
 export async function GET() {
-  const user = await loadAuthUser();
-  if (!user) return new NextResponse(null, { status: 401 });
-  const activeOrg = await resolveActiveOrg(user);
-  if (!activeOrg) return new NextResponse(null, { status: 404 });
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+  // O QR É o pareamento do canal da organização: o mesmo piso de quem inicia a
+  // conexão (`../session`, POST): admin, com a MFA provada. Antes qualquer
+  // membro recebia a imagem (auditoria de 04/11/2026).
+  const authz = await requireRole("admin", {
+    resource: "channel_sessions",
+    allowPlatformAdmin: true,
+  });
+  if (!authz.ok) return new NextResponse(null, { status: authz.response.status });
+  if (await mfaEmDivida()) return new NextResponse(null, { status: 403 });
+  const activeOrg = authz.org;
 
   const baseUrl = process.env.WAHA_API_BASE_URL;
   const apiKey = process.env.WAHA_API_KEY;

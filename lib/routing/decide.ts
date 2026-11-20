@@ -38,6 +38,18 @@ export interface DecideRoutingInput {
   /** attempts atual do event_log (antes deste processamento). */
   attempts: number;
   now: Date;
+  /**
+   * A IA ESTÁ QUALIFICANDO ESTA CONVERSA? (#3966) — `true` = sim.
+   *
+   * O pedido de roteamento nasce no INSERT (`trg_conversation_routing_requested`),
+   * antes de qualquer resposta da IA. Num número com agente de qualificação, a
+   * fila entregava a conversa a uma pessoa em menos de 1 min: a atribuição grava
+   * `assignee_kind = 'user'`, o gate da IA cala o agente (`conversa_de_humano`) e
+   * o lead ficava sem resposta até alguém olhar. A pergunta vem pronta — quem a
+   * responde é `qualificacaoEmCurso` (`./qualificacao-da-ia`) —, para a decisão
+   * continuar sem banco. `false`/ausente = distribui no nascimento, como sempre.
+   */
+  iaQualificando?: boolean;
 }
 
 /**
@@ -56,6 +68,23 @@ export function selectRoundRobin(eligibles: RoutingCandidate[]): string | null {
   return sorted[0]?.userId ?? null;
 }
 
+/**
+ * Menor carga: entre os elegíveis, quem tem MENOS conversas abertas recebe.
+ * Empate: quem recebeu há mais tempo (ou nunca), e por fim o userId — a escolha
+ * é determinística, sem sorteio.
+ */
+export function selectLeastLoad(eligibles: RoutingCandidate[]): string | null {
+  if (eligibles.length === 0) return null;
+  const sorted = [...eligibles].sort((a, b) => {
+    if (a.currentLoad !== b.currentLoad) return a.currentLoad - b.currentLoad;
+    const la = a.lastAssignedAt ?? -1;
+    const lb = b.lastAssignedAt ?? -1;
+    if (la !== lb) return la - lb;
+    return a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
+  });
+  return sorted[0]?.userId ?? null;
+}
+
 export function decideRouting(input: DecideRoutingInput): RoutingAction {
   // Idempotência (acceptance 3): conversa que já ganhou dono não é reatribuída.
   if (input.alreadyAssigned) return { kind: "skip", reason: "already_assigned" };
@@ -63,11 +92,18 @@ export function decideRouting(input: DecideRoutingInput): RoutingAction {
   // Modo manual (acceptance 5): worker não roteia.
   if (input.mode === "manual") return { kind: "skip", reason: "manual_mode" };
 
-  // 'load' é INALCANÇÁVEL: routingConfigSchema só permite manual|round_robin
-  // (G5-01). Tratado defensivamente como no-op (post-MVP), nunca dead code real.
-  if (input.mode !== "round_robin") return { kind: "skip", reason: `unsupported_mode:${input.mode}` };
+  // A IA AINDA ESTÁ QUALIFICANDO (#3966): enquanto a IA atende, a conversa não é
+  // trabalho de ninguém. O pedido volta UMA vez quando a qualificação termina
+  // (`last_handoff_at` novo ⇒ `fn_request_channel_routing`, migration 0532).
+  if (input.iaQualificando) return { kind: "skip", reason: "ia_qualificando" };
 
-  const picked = selectRoundRobin(input.eligibles);
+  // Modo desconhecido (ex.: valor antigo guardado) é no-op, nunca atribuição às cegas.
+  if (input.mode !== "round_robin" && input.mode !== "least_load") {
+    return { kind: "skip", reason: `unsupported_mode:${input.mode}` };
+  }
+
+  const picked =
+    input.mode === "least_load" ? selectLeastLoad(input.eligibles) : selectRoundRobin(input.eligibles);
   if (picked) return { kind: "assign", userId: picked };
 
   // Sem elegível (acceptance 4): re-agenda com backoff da config (não hardcoded).

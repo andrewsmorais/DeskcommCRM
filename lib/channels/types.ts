@@ -5,11 +5,20 @@
 // mudar de casa.
 import type { SendMessageInput } from "@/lib/schemas";
 import type { FetchedMedia } from "@/lib/messaging/media/types";
+import type { ContatoDoAparelho } from "@/lib/waha/client";
 import type { OutboundMedia } from "@/lib/waha/media-send";
+import type { Escolhas } from "./escolhas";
 
-export type { OutboundMedia };
+export type { OutboundMedia, ContatoDoAparelho };
 
-export type ChannelProvider = "waha" | "meta_cloud" | "zernio" | "zernio_social" | "wacalls" | "datafy";
+export type ChannelProvider =
+  | "waha"
+  | "meta_cloud"
+  | "zernio"
+  | "zernio_social"
+  | "wacalls"
+  | "datafy"
+  | "webchat";
 
 /**
  * Os providers que transportam MENSAGEM — o subconjunto sobre o qual a matriz
@@ -56,6 +65,19 @@ export interface ChannelCapabilities {
   costPerMessage: boolean;
   /** O atendente pode editar e apagar para todos uma mensagem já enviada. */
   alteraMensagemEnviada: boolean;
+  /** O adapter deste canal aceita reagir a mensagens. */
+  podeReagir: boolean;
+  /**
+   * O canal fala com um APARELHO pareado que tem uma agenda salva para ler?
+   * Só um número pareado com o aplicativo do WhatsApp tem a lista de contatos
+   * do celular do outro lado; um canal oficial expõe só quem já passou por ele.
+   *
+   * É a pergunta que a tela faz para decidir se OFERECE o gesto "Sincronizar
+   * agenda do celular" — declarativa porque a tela não tem adapter em mãos, e
+   * perguntar QUAL provider é o que a doutrina de canal proíbe. Quem executa o
+   * gesto confirma pela presença do método `listPhonebook` no adapter.
+   */
+  phonebook: boolean;
 }
 
 /**
@@ -80,6 +102,14 @@ export interface RecipientInput {
    * `waIdentity.startsWith("lid:")` — justo o caso que a regra protege.
    */
   waLid?: string | null | undefined;
+  /**
+   * Endereço (chat) da última mensagem RECEBIDA na conversa, só quando a ficha
+   * tem telefone extra. Com dois números na mesma ficha, responder pelo principal
+   * sairia por número que a pessoa não usou nesta conversa; a resposta vai, então,
+   * pelo número que ela escreveu. Vem preenchido só nesse caso: ficha sem extra
+   * segue pela regra de sempre (`waLid`, depois o principal).
+   */
+  ultimoRecebidoChatId?: string | null;
 }
 
 /** Contato compartilhado (vcard) — só `kind: "contact"`. */
@@ -131,6 +161,12 @@ export interface OutboundEnvelope extends ChannelTenantScope {
   media?: OutboundMedia;
   /** Cartão de contato — preenchido quando `kind === "contact"`. */
   contact?: OutboundContact;
+  /**
+   * Opções clicáveis para este texto (`lib/channels/escolhas.ts`). O `body`
+   * JÁ traz as opções numeradas: canal que não sabe desenhar botão ignora
+   * este campo e o contato lê a lista. Enfeite, nunca condição de envio.
+   */
+  escolhas?: Escolhas | null;
   /**
    * Id que o PROVIDER dá a esta thread, quando ele endereça por thread própria
    * em vez de por telefone (`conversations.provider_conversation_id`).
@@ -265,6 +301,45 @@ export interface ChannelAdapter {
   ): Promise<string | null>;
 
   /**
+   * O nome salvo na agenda do aparelho ligado a este canal, e o apelido do perfil.
+   *
+   * OPCIONAL: nem todo canal tem agenda. `null` significa que a pergunta nem
+   * saiu (transporte fora, canal sem o método). Um objeto com os dois campos
+   * nulos significa que o canal respondeu e não tinha nome — quem chama
+   * carimba e tenta de novo depois, em vez de perguntar a mesma pessoa para
+   * sempre.
+   *
+   * `agenda` é o nome que o dono do número GRAVOU no celular. `perfil` é o
+   * apelido que a própria pessoa pôs no WhatsApp. Quem chama não precisa saber
+   * QUAL canal guarda a agenda: testa a presença do método.
+   */
+  resolveAddressBookName?(
+    input: ChannelTenantScope & {
+      sessionRef: string;
+      phone: string | null;
+      lid: string | null;
+    },
+  ): Promise<{ agenda: string | null; perfil: string | null } | null>;
+
+  /**
+   * O telefone TEM conta nesta plataforma? Pergunta sem enviar nada — a
+   * prospecção a faz antes de abordar uma empresa (`lib/prospecting/whatsapp.ts`).
+   *
+   * TRÊS respostas, e a terceira é a que importa: `true`/`false` é o que a
+   * plataforma disse; `null` é "não deu para saber" (transporte fora, sessão
+   * caindo). Quem chama NUNCA lê `null` como "não tem" — descartaria uma empresa
+   * porque o servidor piscou. É por isso que não reaproveita
+   * `resolveRegisteredPhone`, que devolve `null` também para "não existe" e para
+   * quem só tem identidade opaca (que TEM conta).
+   *
+   * OPCIONAL: só implementa quem consegue perguntar à plataforma; quem chama
+   * testa a presença (ou usa `provedoresQueConferemNumero`), nunca o nome.
+   */
+  numeroTemConta?(
+    input: ChannelTenantScope & { sessionRef: string; phone: string },
+  ): Promise<boolean | null>;
+
+  /**
    * O número, em dígitos, pelo qual este canal REGISTRA um telefone — `null`
    * quando não souber, quando o número não existir ou quando só houver
    * identidade opaca.
@@ -353,6 +428,14 @@ export interface ChannelAdapter {
     text: string;
   }): Promise<void>;
 
+  /** Reage à mensagem existente; sem id retornado o transporte depende do eco. */
+  sendReaction?(input: ChannelTenantScope & {
+    sessionRef: string;
+    recipient: string | null;
+    externalId: string;
+    emoji: string;
+  }): Promise<{ externalId: string | null }>;
+
   /** Apaga para todos uma mensagem enviada. Mesmo contrato de `editMessage`. */
   revokeMessage?(input: ChannelTenantScope & {
     sessionRef: string;
@@ -379,6 +462,17 @@ export interface ChannelAdapter {
    * quem chama testa a presença em vez de perguntar QUAL provider é.
    */
   checkHealth?(input: ChannelTenantScope & { sessionRef: string }): Promise<ChannelHealth>;
+
+  /**
+   * Uma PÁGINA da agenda do aparelho pareado (`limit`/`offset`, com ordenação
+   * fixa lá dentro para o offset não pular nem repetir linha). OPCIONAL: canal
+   * sem aparelho não implementa, e quem chama testa a presença do método.
+   */
+  listPhonebook?(input: ChannelTenantScope & {
+    sessionRef: string;
+    limit: number;
+    offset: number;
+  }): Promise<ContatoDoAparelho[]>;
 
   /** Grupos do número. Ausente = o canal não lista grupos. */
   listGroups?(input: { sessionRef: string }): Promise<ChannelGroup[]>;

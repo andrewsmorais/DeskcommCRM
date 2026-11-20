@@ -154,5 +154,12 @@ export async function resolveMetaCreds(
   admin: SupabaseClient,
   lookup: MetaCredsLookup,
 ): Promise<MetaCredentials | null> {
-  return (await metaCredsForPhoneNumberId(admin, lookup)) ?? metaCredsFromEnv();
+  const daSessao = await metaCredsForPhoneNumberId(admin, lookup);
+  if (daSessao) return daSessao;
+  // A reserva do .env vale SÓ para o número dela (trazido do produto original).
+  // Devolvê-la para a sessão de OUTRO número sem token legível fazia essa sessão
+  // falar pelo número e pelo token do .env. Lookup sem número é o caminho legado
+  // sem sessão oficial gravada, e não é "outro número".
+  const env = metaCredsFromEnv();
+  return env && (!lookup.phoneNumberId || env.phoneNumberId === lookup.phoneNumberId) ? env : null;
 }

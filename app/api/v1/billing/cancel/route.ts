@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { getOrganizationBilling } from "@/lib/billing";
-import { deleteSubscription } from "@/lib/asaas";
+import { apagarCobranca, deleteSubscription } from "@/lib/asaas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
 import { ok, fail } from "@/lib/api/wrappers";
@@ -37,16 +37,32 @@ export async function POST() {
     if (billing.status === "canceled")
       return ok({ access_until: billing.current_period_end }, { requestId });
 
+    // Subida pendente: a cobrança da diferença sai junto, senão o cliente
+    // pagaria um link que não tem mais plano para aplicar (auditoria de 19/11).
+    // Se ela já foi paga, a exclusão falha e o webhook trata o pagamento sem
+    // efeito; o cancelamento segue.
+    if (billing.troca?.tipo === "upgrade" && billing.troca.pagamento_id) {
+      await apagarCobranca(billing.troca.pagamento_id).catch(() => undefined);
+    }
     if (billing.asaas_subscription_id) await deleteSubscription(billing.asaas_subscription_id);
     const status = ["suspended", "past_due", "pending"].includes(billing.status)
       ? billing.status
       : "canceled";
-    const { data, error } = await createAdminClient()
+    const admin = createAdminClient();
+    const { data, error } = await admin
       .from("subscriptions")
       .update({
         status,
         canceled_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        // Cancelar encerra qualquer troca em andamento.
+        troca_plano: null,
+        troca_tipo: null,
+        troca_efetiva_em: null,
+        troca_pagamento_id: null,
+        troca_valor_cents: null,
+        troca_link: null,
+        troca_pedida_em: null,
       })
       .eq("organization_id", orgId)
       .eq("id", billing.subscription_id)
@@ -59,6 +75,20 @@ export async function POST() {
         503,
         { requestId },
       );
+    // Avisa quem cancelou: o worker de e-mails confere no banco que a assinatura
+    // está mesmo cancelada. Cortesia — falhar aqui nunca desfaz o cancelamento.
+    try {
+      await admin.rpc("emit_event" as never, {
+        p_event_type: "assinatura.cancelada",
+        p_entity_kind: "subscription",
+        p_entity_id: billing.subscription_id,
+        p_payload: { user_id: authz.user.id },
+        p_metadata: { source: "billing-cancel" },
+        p_organization_id: orgId,
+      } as never);
+    } catch {
+      // sem e-mail; o cancelamento em si já está gravado
+    }
     void audit({
       action: "billing.subscription_canceled",
       actorUserId: authz.user.id,

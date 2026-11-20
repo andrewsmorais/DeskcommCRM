@@ -77,8 +77,21 @@ export default async function PublicLayout({ children }: { children: React.React
                 que o logo da EMPRESA não vaza para cá. Sem ele a spec caía na
                 "primeira <img> da página", e uma asserção de negação com seletor
                 largo passa sozinha assim que outra imagem entra na tela.
+
+                O chip claro (`dark:bg-white`) vale só quando NÃO há arte própria
+                para o tema escuro — a mesma regra da barra lateral
+                (`components/shell/Sidebar.tsx`). A arte padrão é quase sempre
+                pensada para fundo claro e sumiria crua no escuro; com logo escuro
+                configurado, quem aparece no escuro é ele, e o chip sobraria.
+                Vigiado por `tests/unit/logo-nao-some-no-tema-escuro.test.ts`.
               */}
-              <div className="rounded-md">
+              <div
+                className={
+                  marca.logoDarkUrl
+                    ? "rounded-md"
+                    : "rounded-md dark:bg-white dark:px-3 dark:py-2 dark:shadow-sm"
+                }
+              >
                 {marca.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img

@@ -10,6 +10,12 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return out;
 }
 
+function mesmosBytes(a: ArrayBuffer, b: Uint8Array): boolean {
+  if (a.byteLength !== b.length) return false;
+  const x = new Uint8Array(a);
+  return x.every((v, i) => v === b[i]);
+}
+
 /** Liga a inscrição Web Push depois da permissão. Sem VAPID no servidor, no-op. */
 export async function syncPushSubscription(): Promise<void> {
   if (typeof window === "undefined") return;
@@ -21,11 +27,22 @@ export async function syncPushSubscription(): Promise<void> {
   const publicKey = cfg?.data?.public_key as string | undefined;
   if (!cfg?.data?.enabled || !publicKey) return;
 
+  const chave = urlBase64ToUint8Array(publicKey);
   let sub = await reg.pushManager.getSubscription();
+  // Inscrição feita com OUTRA chave (o par do servidor mudou, por exemplo num
+  // backup restaurado sem o .env) nunca mais recebe nada, e o navegador não
+  // avisa: refaz com a chave atual. O PUT abaixo grava a nova. Navegador que
+  // não informa a chave da inscrição fica como está: refazer a cada abertura
+  // criaria uma inscrição nova toda vez.
+  const chaveDaInscricao = sub?.options.applicationServerKey;
+  if (sub && chaveDaInscricao && !mesmosBytes(chaveDaInscricao, chave)) {
+    await sub.unsubscribe();
+    sub = null;
+  }
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+      applicationServerKey: chave as BufferSource,
     });
   }
 
@@ -40,4 +57,32 @@ export async function syncPushSubscription(): Promise<void> {
       keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
     }),
   });
+}
+
+/**
+ * DESLIGA O AVISO DESTE NAVEGADOR AO SAIR DA CONTA (auditoria 18/11, achado 20).
+ *
+ * Sair da conta apagava a sessão, mas a inscrição Web Push seguia no navegador
+ * e no banco: o servidor continuava mandando "nova mensagem de Fulano" para a
+ * tela de bloqueio de um computador onde ninguém estava mais logado.
+ *
+ * Cancela a inscrição no navegador e devolve o endereço dela, para a ação de
+ * sair apagar a linha do banco. Nunca lança e nunca demora mais que `teto`:
+ * sair da conta não pode ficar preso num navegador que não responde.
+ */
+export async function encerrarPushDesteNavegador(teto = 1500): Promise<string | null> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
+  const trabalho = (async () => {
+    const registros = await navigator.serviceWorker.getRegistrations();
+    let endpoint: string | null = null;
+    for (const reg of registros) {
+      const sub = await reg.pushManager?.getSubscription();
+      if (!sub) continue;
+      endpoint ??= sub.endpoint;
+      await sub.unsubscribe().catch(() => false);
+    }
+    return endpoint;
+  })().catch(() => null);
+  const espera = new Promise<null>((resolve) => setTimeout(() => resolve(null), teto));
+  return Promise.race([trabalho, espera]);
 }

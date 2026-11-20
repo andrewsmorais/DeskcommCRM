@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { recursoForaDoPlano } from "@/lib/billing/acesso";
+import { AvisoFollowupPeloChatbot } from "./_components/AvisoFollowupPeloChatbot";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -21,8 +23,13 @@ export default async function FollowupFlowsPage() {
   const t = (texto: string) => traduzir(texto, user.idioma);
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
-  // Fluxos (edição) segue exigindo manager+; a Fila (leitura) é de qualquer
-  // member — o gate por tela fica dentro das abas (canWrite), não na rota.
+
+  // Sem o "Follow-up automático" no plano, a tela abre no modo "só pelo
+  // chatbot" (decisão do dono, 03/11/2026) em vez de trancar: é daqui que sai o
+  // follow-up que o card "Iniciar follow-up" usa. Fluxos (edição) segue
+  // exigindo manager+; a Fila (leitura) é de qualquer member — o gate por tela
+  // fica dentro das abas (canWrite), não na rota.
+  const soPeloChatbot = await recursoForaDoPlano(activeOrg.orgId, "follow_up");
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -42,17 +49,20 @@ export default async function FollowupFlowsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Follow-ups</h1>
           <p className="text-sm text-text-muted">
-            {t("Fluxos automáticos de reengajamento — silêncio, etapa, webhook ou resposta do contato, sem intervenção em cada mensagem.")}
+            {t(
+              "Fluxos automáticos de reengajamento — silêncio, etapa, webhook ou resposta do contato, sem intervenção em cada mensagem.",
+            )}
           </p>
         </div>
       </header>
+      {soPeloChatbot ? <AvisoFollowupPeloChatbot /> : null}
       <Tabs defaultValue="fluxos" className="flex flex-1 flex-col">
         <TabsList>
           <TabsTrigger value="fluxos">{t("Fluxos")}</TabsTrigger>
           <TabsTrigger value="fila">Fila</TabsTrigger>
         </TabsList>
         <TabsContent value="fluxos">
-          <FlowsList initialData={flows} canWrite={canWrite} />
+          <FlowsList initialData={flows} canWrite={canWrite} soPeloChatbot={soPeloChatbot} />
         </TabsContent>
         <TabsContent value="fila">
           <QueueTab canWrite={canWrite} />

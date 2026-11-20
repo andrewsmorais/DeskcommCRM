@@ -92,6 +92,15 @@ export type InboxKind =
   // A proposta rascunhada pela IA precisa de revisão de uma pessoa — a Central
   // acompanha até resolver.
   | 'proposta_pronta_para_revisao'
+  // (migration 0491) O passo "Notificar atendente" do chatbot pede uma pessoa
+  // na conversa — ref_kind='conversation'.
+  | 'chatbot_aviso'
+  // (migration 0526) Recuperação das conversas da queda do número: o resumo da
+  // conexão e um aviso por conversa cujo cliente escreveu e ficou sem resposta.
+  | 'recuperacao_da_queda'
+  | 'cliente_sem_resposta_na_queda'
+  | 'jev_pedido_de_humano'
+  | 'jev_parar_de_receber'
   | 'other';
 
 export interface InboxItemRow {

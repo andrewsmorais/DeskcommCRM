@@ -8,8 +8,10 @@
  * Postgres function (defense in depth).
  */
 import { z } from "zod";
+import { ESCOLHAS_NO_ENVIO } from "@/lib/agenda/escolha-no-envio";
 import { VALID_TOOL_IDS } from "@/lib/mcp/tools/catalog";
 import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
+import { TETO_DO_PUBLICO } from "@/lib/agent-engine/agent/publico-do-gatilho";
 import { IDS_DE_PROVEDOR } from "@/lib/ai/pontos/provedores";
 
 /**
@@ -37,12 +39,42 @@ const triggerConfigSchema = z
             start: z.string(),
             end: z.string(),
             weekdays: z.array(z.number().int().min(0).max(6)),
+            // "Não atender em feriado nacional" (vindo do produto original).
+            // DESLIGADA de fábrica; sem esta linha o Zod descartaria a chave.
+            fechado_em_feriado_nacional: z.boolean().optional(),
           })
           .nullable()
           .optional()
           .default(null),
+        // PÚBLICO DO AGENTE (#3722). Seis listas opcionais, no jsonb da
+        // versão — sem coluna nova, sem migration. Sem estas linhas o schema
+        // `.strict()` RECUSA o payload da tela (o campo chegaria como chave
+        // desconhecida) e o operador não conseguiria salvar o público.
+        // `include_` = só atende quem cumpre; `exclude_` = não atende quem
+        // cumpre, e a exclusão vence. A régua de decisão mora em
+        // `lib/agent-engine/agent/publico-do-gatilho.ts`.
+        include_tags: z.array(z.string().trim().min(1).max(60)).max(TETO_DO_PUBLICO).default([]),
+        exclude_tags: z.array(z.string().trim().min(1).max(60)).max(TETO_DO_PUBLICO).default([]),
+        include_pipeline_ids: z.array(UUID).max(TETO_DO_PUBLICO).default([]),
+        exclude_pipeline_ids: z.array(UUID).max(TETO_DO_PUBLICO).default([]),
+        // Origem do contato (`contacts.source`). Vocabulário ABERTO, como a
+        // coluna: a tela oferece as origens conhecidas, e a API aceita qualquer
+        // valor que um integrador grave em `source`.
+        include_sources: z.array(z.string().trim().min(1).max(60)).max(TETO_DO_PUBLICO).default([]),
+        exclude_sources: z.array(z.string().trim().min(1).max(60)).max(TETO_DO_PUBLICO).default([]),
       })
-      .default({ ignore_groups: true, ignore_self: true, keyword_regex: null, business_hours: null }),
+      .default({
+        ignore_groups: true,
+        ignore_self: true,
+        keyword_regex: null,
+        business_hours: null,
+        include_tags: [],
+        exclude_tags: [],
+        include_pipeline_ids: [],
+        exclude_pipeline_ids: [],
+        include_sources: [],
+        exclude_sources: [],
+      }),
     concurrency: z.enum(["one_per_conversation", "one_per_contact"]).default("one_per_conversation"),
   })
   .strict();
@@ -83,6 +115,13 @@ const followupConfigObjectSchema = z
     flow_pointer_ids: z.array(UUID).max(20).default([]),
     send_window: followupSendWindowSchema.nullable().optional().default(null),
     callback_enabled: z.boolean().optional(),
+    /**
+     * "Quando o contato tiver horário marcado", por agente de follow-up:
+     * `adiar` (padrão), `enviar` ou `nao_enviar` (pulo registrado com o motivo
+     * `compromisso_na_agenda`). Opcional: versões já gravadas não têm a chave,
+     * e ausente é o padrão — a MESMA tolerância de `send_window`.
+     */
+    quando_ha_compromisso: z.enum(ESCOLHAS_NO_ENVIO).optional(),
   })
   .strict();
 
@@ -169,11 +208,32 @@ const versionShapeSchema = z
     // pelo pacing anti-ban. Defaults espelham a migration 0059.
     split_messages: z.boolean().default(false),
     split_max_chars: z.number().int().min(80).max(4000).default(600),
+    /**
+     * Janela de coalescência de rajada inbound para ESTE agente (ms).
+     *
+     * `null`/ausente = usa o `INBOUND_DEBOUNCE_MS` da instalação (comportamento
+     * de sempre — regressão zero). 0 desliga a coalescência de rajada para o
+     * agente (job imediato). 1..60000 define a janela, com TETO de 60s para
+     * ninguém travar o atendimento sem querer (#1856).
+     */
+    inbound_debounce_ms: z.number().int().min(0).max(60000).nullable().optional(),
     followup: followupConfigSchema,
     // ── Papel OPERADOR (spec 16 §3.2) ───────────────────────────────────────
     // Todos com `.default(...)`, e é o que mantém retrocompatível: agent e
     // version que já existem, e qualquer payload que não conheça o papel,
     // seguem válidos e leem o papel como DESLIGADO.
+    // ── Voz (Fase 6b/7 do plano de voz) ─────────────────────────────────────
+    // Default FALSE/'espelhar' preserva toda versão existente — a mesma
+    // doutrina de `operator_enabled` logo abaixo: feature que gasta dinheiro
+    // não se liga por acidente.
+    voz_enabled: z.boolean().default(false),
+    // O agente vê as fotos do cliente (migration 0533). Ligado por padrão.
+    image_vision_enabled: z.boolean().default(true),
+    // `quando_pede` (#4345) é o quarto comportamento: espelhar o áudio do
+    // cliente OU falar quando ele pedir por escrito / avisar que não lê. Os
+    // três valores antigos continuam com o mesmo significado — o default segue
+    // `espelhar`, então nenhuma versão existente muda de comportamento.
+    voz_quando: z.enum(["nunca", "espelhar", "sempre", "quando_pede"]).default("espelhar"),
     operator_enabled: z.boolean().default(false),
     // `.nullable()` e não opcional: null é o valor que SIGNIFICA "herda o modelo
     // do Conversador". Omitir seria indistinguível de "ainda não decidi".
@@ -245,6 +305,10 @@ export const versionPatchSchema = versionShapeSchema
     operator_tool_ids: versionShapeSchema.shape.operator_tool_ids.removeDefault(),
     pipeline_ids: versionShapeSchema.shape.pipeline_ids.removeDefault(),
     knowledge_source_ids: versionShapeSchema.shape.knowledge_source_ids.removeDefault(),
+    // Sem `removeDefault`, um PATCH de outro campo gravaria a voz como desligada.
+    voz_enabled: versionShapeSchema.shape.voz_enabled.removeDefault(),
+    image_vision_enabled: versionShapeSchema.shape.image_vision_enabled.removeDefault(),
+    voz_quando: versionShapeSchema.shape.voz_quando.removeDefault(),
   })
   .partial();
 
@@ -267,9 +331,30 @@ export const agentMcpPatchSchema = z
 
 export const publishSchema = z.object({ version_id: UUID }).strict();
 
+/**
+ * Limites do histórico do Testar como conversa (vindo do produto original).
+ * O histórico vive só no estado da tela e viaja no corpo do POST. Sem teto,
+ * cada turno reenviaria a conversa inteira e o custo cresceria sem limite.
+ * Depois deste recorte o motor ainda aplica a janela da versão.
+ */
+import {
+  LIMITE_DO_HISTORICO_EM_CARACTERES,
+  LIMITE_DO_HISTORICO_EM_MENSAGENS,
+} from "./limites-do-teste";
+export { LIMITE_DO_HISTORICO_EM_CARACTERES, LIMITE_DO_HISTORICO_EM_MENSAGENS };
+
+/** Uma mensagem anterior do teste — o cliente digitou ou a IA respondeu. */
+export const testeHistoryMessageSchema = z
+  .object({
+    direction: z.enum(["inbound", "outbound"]),
+    body: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+
 export const testRunSchema = z
   .object({
     sample_message: z.string().trim().min(1).max(4000),
+    history: z.array(testeHistoryMessageSchema).max(LIMITE_DO_HISTORICO_EM_MENSAGENS).optional(),
     sample_contact: z
       .object({
         name: z.string().trim().min(1).max(120).optional(),

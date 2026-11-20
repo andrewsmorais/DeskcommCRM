@@ -9,6 +9,8 @@ import type { NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { regraUsaAutomacaoAvancada } from "@/lib/billing/automacao-do-plano";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAutomationRuleSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
@@ -58,12 +60,24 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
   }
 
+  // Automação avançada (gatilho de ganho/perda, IA, e-mail, aviso à equipe ou
+  // mídia) é do Impulso em diante (lib/billing/automacao-do-plano.ts).
+  if (regraUsaAutomacaoAvancada(parsed.data)) {
+    const foraDoPlano = await exigirRecursoDoPlano(activeOrg.orgId, "automacoes_avancadas", {
+      requestId,
+    });
+    if (foraDoPlano) return foraDoPlano;
+  }
+
   // Secrets de call_webhook nunca ficam em claro no jsonb (migration 0041).
-  const safeActions = await encryptRuleActionSecrets(createAdminClient(), parsed.data.actions);
+  // Regra nova não tem segredo gravado: secret_enc vindo do corpo é descartado.
+  const safeActions = await encryptRuleActionSecrets(createAdminClient(), parsed.data.actions, []);
   if (safeActions === null) {
     return fail(
       "encryption_unavailable",
-      t("Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave. Enquanto isso, você pode criar a ação sem segredo."),
+      t(
+        "Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave. Enquanto isso, você pode criar a ação sem segredo.",
+      ),
       422,
       { requestId },
     );
@@ -87,7 +101,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select("*")
     .single();
   if (insErr || !created) {
-    return fail("internal_error", insErr?.message ?? "automation_rule_insert_failed", 500, { requestId });
+    return fail("internal_error", insErr?.message ?? "automation_rule_insert_failed", 500, {
+      requestId,
+    });
   }
 
   void audit({

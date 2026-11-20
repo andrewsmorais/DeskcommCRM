@@ -60,7 +60,14 @@ vi.mock("@/lib/supabase/admin", () => ({
         },
         update: (patch: Record<string, unknown>) => {
           updateEqMock(patch);
-          return { eq: () => ({ eq: async () => ({ error: null }) }) };
+          // O caminho `ready` encadeia `.filter(...)` (guarda de LGPD) e
+          // `.select("id")`; os outros param no segundo `.eq`. O resultado serve
+          // aos dois: tem `error`, e devolve a linha gravada quando pedida.
+          const fim = {
+            filter: () => ({ select: async () => ({ data: [{ id: "m1" }], error: null }) }),
+            then: (resolve: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve),
+          };
+          return { eq: () => ({ eq: () => fim }) };
         },
         then: (resolve: (v: unknown) => unknown) =>
           Promise.resolve({ data: linha ? [linha] : [], error: null }).then(resolve),

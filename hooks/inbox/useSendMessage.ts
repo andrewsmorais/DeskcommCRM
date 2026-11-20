@@ -1,9 +1,11 @@
 "use client";
 import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useRef } from "react";
 import { apiClient } from "@/lib/api/client";
 import { randomId } from "@/lib/random-id";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
 import type { Message } from "@/lib/types/messaging";
+import { TETO_DE_MIDIA_MS } from "@/lib/waha/teto-de-midia";
 
 interface SendArgs {
   conversation_id: string;
@@ -24,6 +26,8 @@ interface SendArgs {
   /** A mensagem citada — id da NOSSA linha; o handler traduz para o do canal. */
   reply_to_message_id?: string;
   metadata?: Record<string, unknown>;
+  /** A chave "Assinar" do campo de mensagem; o servidor decide o nome. */
+  assinar?: boolean;
 }
 
 interface MessagesPage {
@@ -31,12 +35,58 @@ interface MessagesPage {
   meta?: { cursor?: string | null; has_more?: boolean };
 }
 
+/** O mesmo envio (mesma conversa, mesmo conteúdo) tem a mesma identidade. */
+const identidadeDoEnvio = (input: SendArgs) => JSON.stringify(input);
+
+/**
+ * Por quanto tempo o mesmo conteúdo depois de um erro ainda é "tentar de novo".
+ * Mais tarde que isto, "ok" ou "Bom dia!" é uma mensagem nova — e o recibo do
+ * servidor vale 24h, então reaproveitar a chave calaria a mensagem nova.
+ */
+const REAPROVEITA_CHAVE_MS = 2 * 60 * 1000;
+
+/**
+ * Quanto o navegador espera um envio COM MÍDIA: acima do teto do servidor.
+ *
+ * Com o prazo padrão de escrita (30s, o mesmo do WAHA para mídia), a tela podia
+ * desistir antes da resposta: a foto saía, o diálogo voltava com "Enviar"
+ * ativo, e um segundo clique mandava de novo. Esperando mais que o servidor, a
+ * resposta (enviou ou falhou) sempre chega, e o diálogo fica em "enviando".
+ */
+export const PRAZO_DO_ENVIO_DE_MIDIA_MS = TETO_DE_MIDIA_MS + 30_000;
+
 export function useSendMessage() {
   const qc = useQueryClient();
+  /**
+   * A chave de idempotência de cada envio que FALHOU há pouco.
+   *
+   * Depois de um erro de rede o atendente toca Enviar de novo. Com o mesmo
+   * conteúdo, a chave é a mesma e o servidor devolve o recibo do primeiro envio
+   * (que pode ter saído) em vez de mandar duas vezes. Conteúdo diferente é outra
+   * mensagem e ganha outra chave. Só em memória.
+   */
+  const chaves = useRef(new Map<string, { chave: string; falhouEm: number }>());
 
   return useMutation({
-    mutationFn: async (input: SendArgs) =>
-      apiClient.post<{ data: Message }>("/api/v1/messages", input),
+    mutationFn: async (input: SendArgs) => {
+      const identidade = identidadeDoEnvio(input);
+      const anterior = chaves.current.get(identidade);
+      // Só a chave de um envio que FALHOU há pouco: o mesmo texto depois de um
+      // envio bem-sucedido é a pessoa escrevendo outra vez.
+      const idempotencyKey =
+        anterior && Date.now() - anterior.falhouEm < REAPROVEITA_CHAVE_MS ? anterior.chave : randomId();
+      chaves.current.delete(identidade);
+      try {
+        const comMidia = Boolean(input.media_storage_path || input.media_url);
+        return await apiClient.post<{ data: Message }>("/api/v1/messages", input, {
+          idempotencyKey,
+          ...(comMidia ? { timeoutMs: PRAZO_DO_ENVIO_DE_MIDIA_MS } : {}),
+        });
+      } catch (err) {
+        chaves.current.set(identidade, { chave: idempotencyKey, falhouEm: Date.now() });
+        throw err;
+      }
+    },
     onMutate: async (args) => {
       if (args.media_storage_path || args.media_url || args.type === "contact") return {};
 

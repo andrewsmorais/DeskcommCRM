@@ -24,8 +24,14 @@ export interface ConversationCounts {
 /** Os filtros auxiliares ligados na barra, que a contagem tem de aplicar junto. */
 export interface FiltrosDaContagem {
   unread?: boolean;
-  tag?: string;
+  tag?: string | readonly string[];
+  modo?: "ou";
+  /** O atendente escolhido pelo gerente (uuid). */
+  assigned_to?: string;
   channel_session_id?: string;
+  setor_id?: string;
+  /** `so` = só as ocultas (migration 0510). Ausente = sem as ocultas, como a lista. */
+  ocultas?: "so";
 }
 
 /**
@@ -38,8 +44,12 @@ export function useConversationCounts(
 ) {
   const qs = new URLSearchParams();
   if (filtros.unread) qs.set("unread", "true");
-  if (filtros.tag) qs.set("tag", filtros.tag);
+  for (const tag of typeof filtros.tag === "string" ? [filtros.tag] : (filtros.tag ?? [])) qs.append("tag", tag);
+  if (filtros.modo) qs.set("modo", filtros.modo);
+  if (filtros.assigned_to) qs.set("assigned_to", filtros.assigned_to);
   if (filtros.channel_session_id) qs.set("channel_session_id", filtros.channel_session_id);
+  if (filtros.setor_id) qs.set("setor_id", filtros.setor_id);
+  if (filtros.ocultas) qs.set("ocultas", filtros.ocultas);
   const sufixo = qs.toString();
 
   return useQuery({

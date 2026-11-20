@@ -16,6 +16,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { registrarTrocaDeComando } from "@/lib/inbox/atividade-de-comando";
+import { removerPushDoMembro } from "@/lib/notifications/web_push";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,9 @@ export async function POST(
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org: activeOrg } = authz;
   if (targetUserId === authUser.id) {
-    return fail("state_conflict", t("Não é possível revogar o próprio acesso."), 409, { requestId });
+    return fail("state_conflict", t("Não é possível revogar o próprio acesso."), 409, {
+      requestId,
+    });
   }
 
   const supabase = await createClient();
@@ -60,12 +63,9 @@ export async function POST(
       .is("revoked_at", null);
     if (countErr) return fail("internal_error", countErr.message, 500, { requestId });
     if ((count ?? 0) <= 1) {
-      return fail(
-        "state_conflict",
-        t("Não é possível revogar o último admin do tenant."),
-        409,
-        { requestId },
-      );
+      return fail("state_conflict", t("Não é possível revogar o último admin do tenant."), 409, {
+        requestId,
+      });
     }
   }
 
@@ -84,6 +84,10 @@ export async function POST(
     .update({ revoked_at: nowIso, updated_at: nowIso })
     .eq("id", target.id);
   if (updErr) return fail("internal_error", updErr.message, 500, { requestId });
+
+  // As notificações do navegador de quem saiu param aqui: ele já não alcança a
+  // própria inscrição pela RLS, e o aviso aparece na tela de bloqueio dele.
+  await removerPushDoMembro(activeOrg.orgId, targetUserId);
 
   if (openConvs && openConvs.length > 0) {
     for (const conv of openConvs) {

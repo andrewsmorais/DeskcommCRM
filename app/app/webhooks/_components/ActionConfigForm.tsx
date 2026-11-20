@@ -1,14 +1,21 @@
 "use client";
 
 import { useT } from "@/hooks/i18n/useT";
+import { CampoComVariaveis } from "@/components/variaveis/CampoComVariaveis";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { Input } from "@/components/ui/input";
+import {
+  CHAVE_DA_ESCOLHA,
+  ESCOLHA_PADRAO,
+  lerEscolhaNoEnvio,
+  type EscolhaNoEnvio,
+} from "@/lib/agenda/escolha-no-envio";
+import { EscolhaQuandoHaCompromisso } from "@/components/agenda/EscolhaQuandoHaCompromisso";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -25,15 +32,26 @@ import type { FollowupFlowPointerRow } from "@/hooks/followup/useFollowupFlows";
 
 export type ActionItem =
   | { type: "create_or_move_lead"; config: { pipeline_id: string; stage_id: string } }
-  | { type: "send_whatsapp_message"; config: { channel_session_id: string; template: string } }
+  | {
+      type: "send_whatsapp_message";
+      config: {
+        channel_session_id: string;
+        template: string;
+        media_url?: string | null;
+        /** O que o passo faz com quem tem horário marcado. Ausente = `adiar`. */
+        quando_ha_compromisso?: EscolhaNoEnvio;
+      };
+    }
   | {
       type: "send_ai_message";
       config: { agent_id: string; channel_session_id: string; instruction: string };
     }
   | { type: "add_tag"; config: { tags: string[] } }
+  | { type: "remove_tag"; config: { tags: string[]; destino?: "card" | "contato" } }
   | { type: "assign_owner"; config: { user_id: string } }
   | { type: "call_webhook"; config: { url: string; secret?: string; secret_enc?: string; include_owner?: boolean } }
   | { type: "start_message_flow"; config: { flow_pointer_id: string } }
+  | { type: "start_chatbot_flow"; config: { chatbot_flow_id: string; channel_session_id: string } }
   // #1540 — o lembrete interno: mesmos campos do schema da API e do nó de fluxo.
   | {
       type: "create_task";
@@ -42,6 +60,24 @@ export type ActionItem =
         vence_em_dias: number;
         atribuir_a: "dono_do_lead" | { usuario_id: string };
         prioridade: string;
+      };
+    }
+  // Recado interno à equipe (nunca ao cliente).
+  | {
+      type: "notify_team";
+      config: {
+        titulo?: string;
+        mensagem: string;
+        destinatario: "dono_do_lead" | "gerentes" | { usuario_id: string };
+      };
+    }
+  // E-mail: ao contato (com as guardas de recusa) ou à equipe.
+  | {
+      type: "send_email";
+      config: {
+        assunto: string;
+        mensagem: string;
+        destinatario: "contato" | "dono_do_lead" | "gerentes" | { usuario_id: string };
       };
     };
 
@@ -55,24 +91,48 @@ export function defaultActionConfig(type: ActionItem["type"]): ActionItem {
       return { type, config: { agent_id: "", channel_session_id: "", instruction: "" } };
     case "add_tag":
       return { type, config: { tags: [] } };
+    case "remove_tag":
+      return { type, config: { tags: [], destino: "card" } };
     case "assign_owner":
       return { type, config: { user_id: "" } };
     case "call_webhook":
       return { type, config: { url: "" } };
     case "start_message_flow":
       return { type, config: { flow_pointer_id: "" } };
+    case "start_chatbot_flow":
+      return { type, config: { chatbot_flow_id: "", channel_session_id: "" } };
     // #1540 — o lembrete interno: mesma forma que o schema da API exige.
     case "create_task":
       return {
         type,
         config: { titulo: "", vence_em_dias: 1, atribuir_a: "dono_do_lead", prioridade: "medium" },
       };
+    case "notify_team":
+      return { type, config: { mensagem: "", destinatario: "dono_do_lead" } };
+    case "send_email":
+      return { type, config: { assunto: "", mensagem: "", destinatario: "contato" } };
   }
 }
 
 interface FormProps<T> {
   config: T;
   onChange: (config: T) => void;
+}
+
+
+/**
+ * O config do passo com a escolha nova — preservando o resto.
+ *
+ * `...config` é o que impede a escolha de apagar o número, a mensagem e a
+ * mídia que a pessoa acabou de preencher. `adiar` é o padrão declarado da
+ * leitura tolerante, então voltar para ele REMOVE a chave: a regra de antes
+ * desta entrega não a tem, e um payload sem ela é byte a byte o de sempre.
+ */
+function configComEscolha<T extends object>(config: T, escolha: EscolhaNoEnvio): T {
+  const { [CHAVE_DA_ESCOLHA]: _anterior, ...resto } = config as Record<string, unknown>;
+  return (
+    escolha === ESCOLHA_PADRAO ? resto : { ...resto, [CHAVE_DA_ESCOLHA]: escolha }
+  ) as T;
 }
 
 function CreateOrMoveLeadForm({
@@ -133,32 +193,18 @@ function CreateOrMoveLeadForm({
   );
 }
 
-const TEMPLATE_VARS = [
-  { token: "{{nome}}", label: "Nome" },
-  { token: "{{telefone}}", label: "Telefone" },
-  { token: "{{lead.title}}", label: "Título do lead" },
-];
 
 function SendWhatsappForm({
   config,
   onChange,
-}: FormProps<{ channel_session_id: string; template: string }>) {
+}: FormProps<{
+  channel_session_id: string;
+  template: string;
+  media_url?: string | null;
+  quando_ha_compromisso?: EscolhaNoEnvio;
+}>) {
   const t = useT();
   const { data: sessions } = useChannelSessions();
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-
-  const insertVar = (token: string) => {
-    const el = textareaRef.current;
-    const current = config.template;
-    const start = el?.selectionStart ?? current.length;
-    const end = el?.selectionEnd ?? current.length;
-    const next = current.slice(0, start) + token + current.slice(end);
-    onChange({ ...config, template: next });
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + token.length, start + token.length);
-    });
-  };
 
   return (
     <div className="space-y-2">
@@ -186,25 +232,14 @@ function SendWhatsappForm({
         ) : null}
       </div>
       <div className="space-y-1">
-        <Label>{t("Mensagem")}</Label>
-        <div className="flex flex-wrap gap-1">
-          {TEMPLATE_VARS.map((v) => (
-            <Button
-              key={v.token}
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => insertVar(v.token)}
-            >
-              {v.label}
-            </Button>
-          ))}
-        </div>
-        <Textarea
-          ref={textareaRef}
-          rows={4}
-          value={config.template}
-          onChange={(e) => onChange({ ...config, template: e.target.value })}
+        {/* O botão "Inserir variável" no lugar dos três botões fixos de antes
+            (Nome, Telefone, Título do lead): a lista sai do catálogo e só
+            oferece o que o renderizador da automação troca de verdade. */}
+        <CampoComVariaveis
+          rotulo={t("Mensagem")}
+          fonte="automacao"
+          valor={config.template}
+          onChange={(texto) => onChange({ ...config, template: texto })}
           placeholder="Oi {{nome}}, tudo bem?"
         />
         <p className="text-xs text-muted-foreground">
@@ -214,6 +249,23 @@ function SendWhatsappForm({
           {t("Respeitamos a janela de envio e o limite diário configurados para esse número em Conexões — fora da janela, a mensagem espera a próxima.")}
         </p>
       </div>
+      <div className="space-y-1">
+        <Label htmlFor="acao-whatsapp-midia">{t("Imagem, vídeo, áudio ou documento (opcional)")}</Label>
+        <Input
+          id="acao-whatsapp-midia"
+          type="url"
+          value={config.media_url ?? ""}
+          onChange={(e) => onChange({ ...config, media_url: e.target.value || null })}
+          placeholder="https://…/oferta.pdf"
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("Cole o link direto do arquivo. Com uma imagem, um vídeo ou um documento, a mensagem acima vira a legenda; o áudio sai como mensagem de voz, sem legenda. Em número oficial, fora da janela de 24h a mídia não sai — só um modelo aprovado.")}
+        </p>
+      </div>
+      <EscolhaQuandoHaCompromisso
+        escolha={lerEscolhaNoEnvio(config)}
+        onChange={(escolha) => onChange(configComEscolha(config, escolha))}
+      />
     </div>
   );
 }
@@ -234,7 +286,12 @@ function SendWhatsappForm({
 function SendAiMessageForm({
   config,
   onChange,
-}: FormProps<{ agent_id: string; channel_session_id: string; instruction: string }>) {
+}: FormProps<{
+  agent_id: string;
+  channel_session_id: string;
+  instruction: string;
+  quando_ha_compromisso?: EscolhaNoEnvio;
+}>) {
   const t = useT();
   const { data: agentes } = useAgentsList();
   const { data: sessions } = useChannelSessions();
@@ -303,6 +360,10 @@ function SendAiMessageForm({
           {t("O agente já sabe que é a PRIMEIRA mensagem, logo depois de a pessoa preencher o formulário, e recebe todos os campos que ela respondeu. Aqui você diz o que fazer com eles — quanto mais concreto, melhor a mensagem.")}
         </p>
       </div>
+      <EscolhaQuandoHaCompromisso
+        escolha={lerEscolhaNoEnvio(config)}
+        onChange={(escolha) => onChange(configComEscolha(config, escolha))}
+      />
     </div>
   );
 }
@@ -325,6 +386,49 @@ function AddTagForm({ config, onChange }: FormProps<{ tags: string[] }>) {
         }}
         placeholder="boas-vindas, novo-lead"
       />
+    </div>
+  );
+}
+
+function RemoveTagForm({
+  config,
+  onChange,
+}: FormProps<{ tags: string[]; destino?: "card" | "contato" }>) {
+  const t = useT();
+  const [text, setText] = React.useState(config.tags.join(", "));
+  const destino = config.destino ?? "card";
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label>{t("Tags a tirar (separadas por vírgula)")}</Label>
+        <Input
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            const tags = e.target.value
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            onChange({ tags, destino });
+          }}
+          placeholder="novo-lead, aguardando"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Tirar de onde")}</Label>
+        <Select
+          value={destino}
+          onValueChange={(v) => onChange({ tags: config.tags, destino: v === "contato" ? "contato" : "card" })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="card">{t("Do negócio (card)")}</SelectItem>
+            <SelectItem value="contato">{t("Do contato")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }
@@ -425,6 +529,141 @@ function CreateTaskForm({
             ))}
           </SelectContent>
         </Select>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * `notify_team` — "Mensagem para a equipe": aviso interno, nunca ao cliente.
+ * Quem recebe: o dono do negócio, os gerentes ou uma pessoa da lista.
+ */
+function NotifyTeamForm({
+  config,
+  onChange,
+}: FormProps<{
+  titulo?: string;
+  mensagem: string;
+  destinatario: "dono_do_lead" | "gerentes" | { usuario_id: string };
+}>) {
+  const t = useT();
+  const { data: members } = useAssignableMembers(true);
+  const escolhido =
+    typeof config.destinatario === "object" ? config.destinatario.usuario_id : config.destinatario;
+  return (
+    <div className="grid gap-2">
+      <div className="space-y-1">
+        <Label>{t("Avisar")}</Label>
+        <Select
+          value={escolhido}
+          onValueChange={(v) =>
+            onChange({
+              ...config,
+              destinatario: v === "dono_do_lead" || v === "gerentes" ? v : { usuario_id: v },
+            })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Dono do negócio")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="dono_do_lead">{t("Dono do negócio")}</SelectItem>
+            <SelectItem value="gerentes">{t("Todos os gerentes")}</SelectItem>
+            {(members ?? []).map((m) => (
+              <SelectItem key={m.user_id} value={m.user_id}>
+                {m.full_name ?? m.user_id.slice(0, 8)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Título do aviso (opcional)")}</Label>
+        <Input
+          value={config.titulo ?? ""}
+          maxLength={100}
+          onChange={(e) => onChange({ ...config, titulo: e.target.value || undefined })}
+          placeholder={t("Aviso da automação")}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Mensagem")}</Label>
+        <Textarea
+          value={config.mensagem}
+          maxLength={500}
+          onChange={(e) => onChange({ ...config, mensagem: e.target.value })}
+          placeholder={t("{{contact.name}} fechou {{lead.title}}")}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("Só a equipe vê este aviso — nada é enviado ao cliente. Se ninguém puder receber no aparelho, ele vai para a Central de avisos.")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** `send_email` — e-mail ao contato (com as guardas de recusa) ou à equipe. */
+function SendEmailForm({
+  config,
+  onChange,
+}: FormProps<{
+  assunto: string;
+  mensagem: string;
+  destinatario: "contato" | "dono_do_lead" | "gerentes" | { usuario_id: string };
+}>) {
+  const t = useT();
+  const { data: members } = useAssignableMembers(true);
+  const escolhido =
+    typeof config.destinatario === "object" ? config.destinatario.usuario_id : config.destinatario;
+  return (
+    <div className="grid gap-2">
+      <div className="space-y-1">
+        <Label>{t("Enviar para")}</Label>
+        <Select
+          value={escolhido}
+          onValueChange={(v) =>
+            onChange({
+              ...config,
+              destinatario:
+                v === "contato" || v === "dono_do_lead" || v === "gerentes" ? v : { usuario_id: v },
+            })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("O contato")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="contato">{t("O contato (pelo e-mail dele)")}</SelectItem>
+            <SelectItem value="dono_do_lead">{t("Dono do negócio")}</SelectItem>
+            <SelectItem value="gerentes">{t("Todos os gerentes")}</SelectItem>
+            {(members ?? []).map((m) => (
+              <SelectItem key={m.user_id} value={m.user_id}>
+                {m.full_name ?? m.user_id.slice(0, 8)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Assunto")}</Label>
+        <Input
+          value={config.assunto}
+          maxLength={150}
+          onChange={(e) => onChange({ ...config, assunto: e.target.value })}
+          placeholder={t("Seu pedido, {{contact.name}}")}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Mensagem")}</Label>
+        <Textarea
+          value={config.mensagem}
+          maxLength={3000}
+          onChange={(e) => onChange({ ...config, mensagem: e.target.value })}
+          placeholder={t("Olá {{contact.name}}, ...")}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("Precisa do e-mail da instalação ligado (Configurações). Quem recusou contato, está bloqueado ou é marcado como pessoal não recebe. Sem e-mail no cadastro, nada é enviado.")}
+        </p>
       </div>
     </div>
   );
@@ -543,6 +782,75 @@ function StartMessageFlowForm({ config, onChange }: FormProps<{ flow_pointer_id:
   );
 }
 
+function StartChatbotFlowForm({
+  config,
+  onChange,
+}: FormProps<{ chatbot_flow_id: string; channel_session_id: string }>) {
+  const t = useT();
+  const { data, isLoading } = useQuery({
+    queryKey: ["chatbot", "flows", "list"],
+    queryFn: async () => {
+      const res = await apiClient.get<{
+        data: { id: string; name: string; is_active: boolean; inicia_por_automacao?: boolean }[];
+      }>("/api/v1/chatbot-flows");
+      return res.data;
+    },
+  });
+  const { data: sessions } = useChannelSessions();
+  const fluxos = (data ?? []).filter((f) => f.is_active && f.inicia_por_automacao);
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label>{t("Chatbot")}</Label>
+        <Select
+          value={config.chatbot_flow_id}
+          onValueChange={(v) => onChange({ ...config, chatbot_flow_id: v })}
+          disabled={isLoading}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Escolha um chatbot ligado")} />
+          </SelectTrigger>
+          <SelectContent>
+            {fluxos.map((f) => (
+              <SelectItem key={f.id} value={f.id}>
+                {f.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {!isLoading && fluxos.length === 0
+            ? t(
+                'Nenhum chatbot pronto. Em Chatbots, monte um fluxo que comece com "Iniciar por automação" e ligue-o.',
+              )
+            : t(
+                'Só aparecem chatbots ligados que começam com "Iniciar por automação". Os campos do negócio chegam como variáveis, por exemplo {{produto}} e {{link_checkout}}.',
+              )}
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label>{t("Número de WhatsApp")}</Label>
+        <Select
+          value={config.channel_session_id}
+          onValueChange={(v) => onChange({ ...config, channel_session_id: v })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder={t("Escolha o número que vai falar")} />
+          </SelectTrigger>
+          <SelectContent>
+            {(sessions ?? []).map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {channelLabel(s)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 export function ActionConfigForm({
   action,
   onChange,
@@ -579,6 +887,13 @@ export function ActionConfigForm({
           onChange={(config) => onChange({ type: action.type, config })}
         />
       );
+    case "remove_tag":
+      return (
+        <RemoveTagForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
     case "assign_owner":
       return (
         <AssignOwnerForm
@@ -600,9 +915,30 @@ export function ActionConfigForm({
           onChange={(config) => onChange({ type: action.type, config })}
         />
       );
+    case "start_chatbot_flow":
+      return (
+        <StartChatbotFlowForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
     case "create_task":
       return (
         <CreateTaskForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "notify_team":
+      return (
+        <NotifyTeamForm
+          config={action.config}
+          onChange={(config) => onChange({ type: action.type, config })}
+        />
+      );
+    case "send_email":
+      return (
+        <SendEmailForm
           config={action.config}
           onChange={(config) => onChange({ type: action.type, config })}
         />

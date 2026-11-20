@@ -116,6 +116,10 @@ describe("o trigger de imutabilidade", () => {
       ["split_max_chars", 500], // default 600
       ["multimodal_input", false], // default TRUE — invertido de propósito
       ["video_frames_enabled", true], // default false
+      // Fork ChatAI Online (migration 0533): a espera da rajada (0531) e a
+      // visão de foto por agente também não mudam em versão publicada.
+      ["inbound_debounce_ms", 5000], // default null
+      ["image_vision_enabled", false], // default TRUE — invertido de propósito
     ];
     for (const [coluna, valor] of casos) {
       await expect(

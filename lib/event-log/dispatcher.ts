@@ -54,6 +54,59 @@ export interface EventHandler {
   /** Event types this handler consumes (`["message.received", "message.sent"]`). */
   events: string[];
   handle(row: EventRow): Promise<HandlerResult>;
+  /**
+   * Prazo deste handler, em ms. Sem ele vale `HANDLER_DEADLINE_MS`. Handler que
+   * só sai para rede de terceiro e volta rápido (ex.: Web Push) declara um
+   * prazo curto, para um destino lento não segurar a fila por minutos.
+   */
+  deadlineMs?: number;
+}
+
+/**
+ * PRAZO PADRÃO DE UM HANDLER.
+ *
+ * O dreno atende TODAS as organizações numa fila só, um evento por vez, e
+ * aguarda cada handler. Um handler que nunca volta (ida a serviço externo sem
+ * timeout, endpoint que segura a conexão) parava a fila de todo mundo: o
+ * reaper de `processing` só roda quando um NOVO dreno começa, e o laço do
+ * worker nunca chegava a começar outro.
+ *
+ * Estourado o prazo, o handler conta como `error` — uma tentativa, com
+ * backoff e `dead` no limite, como qualquer erro (drain.ts) — e o dreno segue
+ * para o próximo evento. `error` e não `retry`: `retry` não conta tentativa, e
+ * um evento que sempre estoura reagendaria para sempre.
+ *
+ * Idempotência: o handler estourado NÃO entra em `consumed_by`, então reroda na
+ * próxima tentativa. A chamada abandonada pode ainda terminar o efeito dela
+ * — por isso o prazo é generoso (o turno de agente e a indexação de material
+ * são os mais lentos) e fica abaixo da janela do reaper de `processing`
+ * (10 min), que já tinha exatamente este desfecho, só que com a fila parada.
+ */
+export const HANDLER_DEADLINE_MS = 5 * 60 * 1000;
+
+async function handleComPrazo(handler: EventHandler, row: EventRow): Promise<HandlerResult> {
+  const prazo = handler.deadlineMs ?? HANDLER_DEADLINE_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const estouro = new Promise<HandlerResult>((resolve) => {
+    timer = setTimeout(() => {
+      logger.error("[event-log.dispatcher] handler estourou o prazo", {
+        handler: handler.key,
+        event: row.event_type,
+        event_id: row.id,
+        prazo_ms: prazo,
+      });
+      resolve({
+        consumer_key: handler.key,
+        status: "error",
+        detail: `handler_deadline: não voltou em ${prazo} ms`,
+      });
+    }, prazo);
+  });
+  try {
+    return await Promise.race([handler.handle(row), estouro]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const _handlers: EventHandler[] = [];
@@ -87,7 +140,7 @@ export async function dispatchEvent(row: EventRow): Promise<HandlerResult[]> {
   const results: HandlerResult[] = [];
   for (const handler of matches) {
     try {
-      const r = await handler.handle(row);
+      const r = await handleComPrazo(handler, row);
       results.push(r);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);

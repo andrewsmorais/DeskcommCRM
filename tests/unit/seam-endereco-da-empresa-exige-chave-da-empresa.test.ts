@@ -19,7 +19,7 @@
  * O CASO e o CONTROLE diferem numa variável só — a organização ter ou não a
  * credencial —, com o mesmo endereço, o mesmo ponto e a mesma chave no `.env`.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // A decifragem não é o assunto: uma linha de credencial devolvida pelo banco
 // vira esta chave. O que está sob teste é o que o seam faz com a ORIGEM dela.
@@ -36,6 +36,19 @@ import {
   normalizarErro,
   runModelCall,
 } from "@/lib/agent-engine/edge/llm/run-model-call";
+
+// NA CHAVE DA INSTALAÇÃO QUEM ESCOLHE O MODELO É A PLATAFORMA
+// (`run-model-call.ts`, `configTecnicaDaPlataforma`). Este arquivo usa o padrão
+// da organização como linha de base, então a plataforma é declarada igual a ele
+// — o que se mede aqui é outra coisa.
+beforeEach(() => {
+  vi.stubEnv("PLATAFORMA_IA_PROVEDOR", "anthropic");
+  vi.stubEnv("PLATAFORMA_IA_MODELO", "claude-padrao-da-org");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const ENDERECO_DA_EMPRESA = "https://gateway.da-empresa.exemplo/v1";
@@ -269,14 +282,16 @@ describe("os controles — o que continua funcionando", () => {
   it("sem endereço próprio, a chave da instalação segue valendo no endpoint padrão", async () => {
     // A regra é sobre o ENDEREÇO. Uma trava que recusasse toda chave da
     // instalação derrubaria toda instalação de uma empresa só — o caso comum.
+    // A chamada SEGUE; o que a chave da instalação não aceita é o modelo que a
+    // empresa escolheu sem chave própria: vale o da plataforma (declarado acima).
     const { execucao, chamadas, consultas } = await chamar({ baseUrl: null, empresaTemCredencial: false });
 
     await expect(execucao).resolves.toBeDefined();
     expect(chamadas).toEqual([
       {
-        provider: "openrouter",
-        apiKey: "chave-openrouter-da-instalacao",
-        modelId: "acme/classificador-1",
+        provider: "anthropic",
+        apiKey: "chave-anthropic-da-instalacao",
+        modelId: "claude-padrao-da-org",
         baseUrl: undefined,
       },
     ]);

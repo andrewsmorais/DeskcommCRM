@@ -62,7 +62,7 @@ export const ROTULO_DO_PAPEL: Record<Role, string> = {
  * Escopo de visualização de conversas por atendente (G4-01, spec 13 §3.5).
  * Só restringe o role `agent`; viewer/manager/admin seguem org-wide.
  */
-export type VisibilityMode = "all" | "own_and_unassigned" | "own";
+export type VisibilityMode = "all" | "own_and_unassigned" | "own" | "own_and_sector";
 export const DEFAULT_VISIBILITY_MODE: VisibilityMode = "own_and_unassigned"; // G1-06a
 
 export interface UserOrgMembership {
@@ -88,6 +88,12 @@ export interface UserOrgMembership {
    * então quem usa passa por `fusoValido` e cai em `FUSO_PADRAO`.
    */
   timezone?: string | null;
+  /**
+   * `organizations.status` (`active` | `suspended` | …). Vem no mesmo embed por
+   * ser lido em TODA rota: a suspensão da plataforma é decidida em `requireRole`,
+   * e uma ida a mais ao banco por requisição só para isso não se paga.
+   */
+  organization_status?: string | null;
 }
 
 export interface AuthUser {

@@ -721,7 +721,14 @@ type CategoriaDeHost =
   /** Identificador de fio que gravamos; quem reconhece é código de fora. */
   | "PROTOCOLO"
   /** Página comercial da marca deste fork, aprovada pelo dono do produto. */
-  | "PRODUTO";
+  | "PRODUTO"
+  /**
+   * Assinatura de reconhecimento (vinda do produto original): domínio de terceiro
+   * que o código COMPARA sem nunca chamar nem exibir — o nome da rede social na
+   * 1ª mensagem da prospecção sai do host da URL. Cresce por decisão escrita,
+   * como as demais fechadas.
+   */
+  | "RECONHECIMENTO";
 
 type EntradaDeHost = { categoria: CategoriaDeHost; motivo: string };
 
@@ -731,10 +738,25 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "domínio da página de vendas ChatAI Online indicada pelo proprietário deste fork. Os links de Plano e cobrança, aviso de assinatura e cancelamento levam à oferta aprovada; não é domínio de contribuidor nem destino de dados da organização.",
   },
+  "api.elevenlabs.io": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint da API do ElevenLabs: validar a chave da empresa, listar as vozes e sintetizar a nota de voz do agente (lib/ai/voz). A chave é a da organização, cadastrada em Credenciais.",
+  },
+  "elevenlabs.io": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "painel do ElevenLabs onde a empresa pega a chave da API (link 'onde pegar a chave' em lib/ai/pontos/provedores-de-servico.ts).",
+  },
   "api.asaas.com": {
     categoria: "FORNECEDOR",
     motivo:
       "endpoint oficial de produção do provedor de cobrança Asaas autorizado pelo proprietário para assinaturas dos planos. É o destino da API, e não a marca que aparece na interface.",
+  },
+  "asaas.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "domínio das páginas de pagamento do Asaas (fatura, Pix, boleto). `lib/billing/fatura-em-aberto.ts` só aceita link de cobrança cujo host seja asaas.com ou subdomínio dele, para o botão \"Pagar a fatura em aberto\" nunca abrir endereço que não seja do fornecedor.",
   },
   "api-sandbox.asaas.com": {
     categoria: "FORNECEDOR",
@@ -763,6 +785,12 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     categoria: "FORNECEDOR",
     motivo:
       "endpoint da plataforma que roda o crawler do Google Places (`lib/prospecting/provider.ts`). É o destino do request, com a chave da PRÓPRIA organização — trocar pelo domínio do revendedor quebraria a chamada, e esconder o nome não esconde para onde o dado vai.",
+  },
+  // ── prospecção (#1758): provedor `scavio`, escolhido por organização ──
+  "api.scavio.dev": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint da API da Scavio que busca os lugares do Google Maps (`lib/prospecting/provedor-scavio.ts`), só para a organização que escolheu `scavio` em `settings.prospecting.provider`. É o destino do request, com a chave da PRÓPRIA organização — trocar pelo domínio do revendedor quebraria a chamada.",
   },
   // ── identificador de fio: NÃO é destino de chamada nem texto de tela ──────
   "s.whatsapp.net": {
@@ -910,11 +938,115 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "placeholder do campo de client id do Google: exibe o FORMATO do identificador (e o host que ele carrega) para quem vai criar a credencial no console.",
   },
+  // Decisão escrita (vinda do produto original, #4459): os hosts das redes que
+  // `lib/prospecting/sinais-da-empresa.ts` reconhece para dar NOME à rede na 1ª
+  // mensagem ("Instagram: <url>"). O produto nunca chama nem exibe estes hosts:
+  // compara o host da URL que a busca trouxe.
+  "facebook.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `Facebook` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "fb.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "apelido curto do Facebook publicado em `socials`: vira o rótulo `Facebook` nos sinais da 1ª mensagem. Nunca chamado, nunca exibido como endereço.",
+  },
+  "instagram.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `Instagram` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "linkedin.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `LinkedIn` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "tiktok.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `TikTok` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
+  "youtube.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "host comparado para rotular a rede `YouTube` nos sinais da 1ª mensagem da prospecção. Nunca chamado, nunca exibido como endereço.",
+  },
   // ── entrada conferida e identificador de fio ─────────────────────────────
   "meet.google.com": {
     categoria: "PLATAFORMA",
     motivo:
       "host do Google Meet aceito na validação do link de reunião (`meetVideoUrl`): é entrada que o produto CONFERE, não endereço que ele busca. Sem a linha, qualquer host passaria por link de reunião.",
+  },
+  "allmylinks.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "agregador de bio-links: marca agregador sem fetch. Nunca chamado, nunca exibido.",
+  },
+  // ── assinaturas de reconhecimento de site (spec 24): o código COMPARA ─────
+  // Decisão escrita (spec 24, PR da auditoria de site): domínios de terceiro
+  // que `lib/prospecting/site-classify.ts` usa para classificar o site do lead
+  // (agregador, construtor pronto, recurso do HTML). O produto NUNCA chama
+  // estes hosts e NUNCA os exibe — a tela mostra rótulos traduzidos
+  // ("WhatsApp", "Redes sociais"). Trocar pelo domínio do revendedor quebraria
+  // o reconhecimento sem esconder destino nenhum, porque dado nenhum vai para
+  // lá. Categoria própria, RECONHECIMENTO, porque não é destino (FORNECEDOR),
+  // painel (CONSOLE), amostra de tela (AMOSTRA), entrada validada
+  // (PLATAFORMA), fio gravado (PROTOCOLO) nem autoridade (AUTORIDADE).
+  "api.whatsapp.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "substring comparada no HTML baixado para detectar botão de WhatsApp (`wa.me`, `api.whatsapp.com`, `whatsapp`) no raio-X do site; também marca agregador. Nunca chamada, nunca exibida.",
+  },
+  "automatizo.dev.br": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "assinatura de construtor detectada na amostra real da VPS (redirect de agendamento morto); URL final contendo o domínio vira `construtor-Automatizo`. Nunca chamada, nunca exibida.",
+  },
+  "beacons.ai": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "agregador de bio-links: marca agregador sem fetch. Nunca chamado, nunca exibido.",
+  },
+  "canva.site": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "assinatura de construtor (Canva): URL final contendo o domínio vira `construtor-Canva`. Nunca chamada, nunca exibida.",
+  },
+  "carrd.co": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "agregador de bio-links: marca agregador sem fetch. Nunca chamado, nunca exibido.",
+  },
+  "google.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "substring `google.com/maps` comparada no HTML para detectar endereço/mapa no raio-X. Nunca chamada por causa desta regra, nunca exibida.",
+  },
+  "linkbio.co": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "agregador de bio-links: marca agregador sem fetch. Nunca chamado, nunca exibido.",
+  },
+  "sites.google.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "assinatura de construtor (Google Sites): URL final contendo o domínio vira `construtor-Google Sites`. Nunca chamada, nunca exibida.",
+  },
+  "static.parastorage.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "assinatura de HTML do Wix no raio-X. Nunca chamada, nunca exibida.",
+  },
+  "static.wixstatic.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "assinatura de HTML do Wix no raio-X. Nunca chamada, nunca exibida.",
+  },
+  "wordpress.com": {
+    categoria: "RECONHECIMENTO",
+    motivo:
+      "assinatura de construtor (WordPress.com gratuito): URL final contendo o domínio vira o rótulo. Nunca chamada, nunca exibida.",
   },
 };
 
@@ -1036,6 +1168,7 @@ describe("catraca de host de terceiro no código que embarca", () => {
       "PLATAFORMA",
       "PROTOCOLO",
       "PRODUTO",
+      "RECONHECIMENTO",
     ];
     for (const [host, entrada] of Object.entries(HOSTS_DECLARADOS)) {
       expect(categorias, `${host}: categoria desconhecida`).toContain(entrada.categoria);
@@ -1062,9 +1195,27 @@ describe("catraca de host de terceiro no código que embarca", () => {
     ).toEqual([
       "000000000000-xxxxxxxx.apps.googleusercontent.com",
       "aistudio.google.com",
+      // Decisão escrita (spec 24, auditoria de site): agregador de bio-links,
+      // marca agregador sem fetch — nunca chamado, nunca exibido.
+      "allmylinks.com",
+      // Decisão escrita (spec 24, auditoria de site): assinatura de
+      // reconhecimento comparada no HTML baixado — nunca chamada, nunca exibida.
+      "api.whatsapp.com",
       // Decisão escrita: painel de chaves da Requesty, o mesmo caso dos outros
       // CONSOLE (o link "Onde pegar a chave" da tela de Credenciais).
       "app.requesty.ai",
+      // Decisão escrita (spec 24, auditoria de site): assinatura de construtor
+      // detectada na amostra real da VPS — nunca chamada, nunca exibida.
+      "automatizo.dev.br",
+      // Decisão escrita (spec 24, auditoria de site): agregador de bio-links,
+      // marca agregador sem fetch — nunca chamado, nunca exibido.
+      "beacons.ai",
+      // Decisão escrita (spec 24, auditoria de site): assinatura de construtor
+      // (Canva) — nunca chamada, nunca exibida.
+      "canva.site",
+      // Decisão escrita (spec 24, auditoria de site): agregador de bio-links,
+      // marca agregador sem fetch — nunca chamado, nunca exibido.
+      "carrd.co",
       // Página comercial da marca deste fork, indicada pelo proprietário.
       // Apenas este domínio entra na categoria PRODUTO; o conjunto segue fechado.
       "chataionline.io",
@@ -1072,6 +1223,19 @@ describe("catraca de host de terceiro no código que embarca", () => {
       // Decisão escrita: é o painel de chaves do Jev, o mesmo caso dos outros
       // CONSOLE — o link "Onde pegar a chave" da tela de Credenciais.
       "console.typesafe.ai",
+      // Decisão escrita: RECONHECIMENTO dos sinais da prospecção (vindo do
+      // produto original) — o host só dá NOME à rede, nunca é chamado.
+      "facebook.com",
+      "fb.com",
+      // Decisão escrita (spec 24, auditoria de site): substring `google.com/maps`
+      // comparada no HTML para detectar endereço/mapa — nunca chamada por causa
+      // desta regra, nunca exibida.
+      "google.com",
+      "instagram.com",
+      // Decisão escrita (spec 24, auditoria de site): agregador de bio-links,
+      // marca agregador sem fetch — nunca chamado, nunca exibido.
+      "linkbio.co",
+      "linkedin.com",
       // Link que abre o pino que o CLIENTE mandou (`lib/messaging/localizacao.ts`).
       // Mesma natureza do `wa.me` abaixo: o produto não fala com o host, quem
       // abre é o celular do atendente. Crescimento escrito, como a regra pede.
@@ -1089,11 +1253,25 @@ describe("catraca de host de terceiro no código que embarca", () => {
       // protocolo manda. Entrou aqui porque a régua nova do #914 passou a
       // enxergá-lo, e não porque o produto ganhou host novo.
       "s.whatsapp.net",
+      // Decisão escrita (spec 24, auditoria de site): assinatura de construtor
+      // (Google Sites) — nunca chamada, nunca exibida.
+      "sites.google.com",
+      // Decisão escrita (spec 24, auditoria de site): assinatura de HTML do
+      // Wix no raio-X — nunca chamada, nunca exibida.
+      "static.parastorage.com",
+      // Decisão escrita (spec 24, auditoria de site): assinatura de HTML do
+      // Wix no raio-X — nunca chamada, nunca exibida.
+      "static.wixstatic.com",
+      "tiktok.com",
       "tusitio.com",
       // Exemplo de link do WhatsApp gerado pela tela de Conversões (#924). Está
       // aqui, e não em FORNECEDOR, porque o produto NÃO fala com esse host: quem
       // abre o link é o visitante do site. Crescimento escrito, como a regra pede.
       "wa.me",
+      // Decisão escrita (spec 24, auditoria de site): assinatura de construtor
+      // (WordPress.com gratuito) — nunca chamada, nunca exibida.
+      "wordpress.com",
+      "youtube.com",
     ]);
   });
 

@@ -40,6 +40,8 @@ export function ConnectNuvemshopClient() {
                   toast.message(t("Nuvemshop ainda não configurado neste ambiente."), {
                     description: t("Pule por enquanto e configure depois em Integrações."),
                   });
+                } else if (res.error === "mfa_required") {
+                  toast.error(t("Confirme o código do seu aplicativo de duas etapas e tente de novo."));
                 } else {
                   toast.error(`${t("Erro:")} ${res.error}`);
                 }

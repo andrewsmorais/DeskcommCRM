@@ -197,7 +197,12 @@ test.describe("J1 — onboarding do dono numa instalação fresca", () => {
     // deixou de ser suposição. Escolher "leio um código com o celular" é o que
     // sobe a sessão; antes ela subia sozinha na montagem da tela, e quem tinha
     // conta oficial entrava pelo caminho errado sem ter sido perguntado.
-    await page.getByTestId("forma-qr").locator("input").click();
+    // Com ONBOARDING_WHATSAPP_QR_DIRETO (padrão) o código já abre sozinho; só
+    // clica na forma quando a tela abriu na pergunta.
+    const pergunta = page.getByTestId("forma-qr");
+    if (await pergunta.isVisible().catch(() => false)) {
+      await pergunta.locator("input").click();
+    }
 
     // sem banner de "WAHA não está configurado"
     // O nome do transporte saiu da tela: o aviso agora fala do "WhatsApp desta

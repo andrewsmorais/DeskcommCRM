@@ -39,30 +39,34 @@ import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
 import { PROVEDORES } from "@/lib/ai/pontos/provedores";
 
 import { ModelPicker, useModelMeta } from "./ModelPicker";
-import { CHAVE_DA_INSTALACAO, CredentialPicker, STATUS_LABEL, findCredential } from "./CredentialPicker";
+import {
+  CHAVE_DA_INSTALACAO,
+  CredentialPicker,
+  STATUS_LABEL,
+  findCredential,
+} from "./CredentialPicker";
 import { rotuloDoEstadoDoCanal } from "@/lib/channels/estado";
 import { bloqueioDePublicacao } from "@/lib/ai/agents/bloqueio-de-publicacao";
 import { mesmoRascunho } from "@/lib/ai/agents/mesmo-rascunho";
+import { VozDoAgente } from "./VozDoAgente";
 import { ToolPicker } from "./ToolPicker";
 import { ObjetivoDoAgente } from "./ObjetivoDoAgente";
 import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
 import { HandoffKeywordsInput } from "./HandoffKeywordsInput";
 import { FollowupFlowPicker } from "./FollowupFlowPicker";
+import { FollowupWindowEditor, type FollowupWindowValue } from "./FollowupWindowEditor";
 import {
-  FollowupWindowEditor,
-  type FollowupWindowValue,
-} from "./FollowupWindowEditor";
+  EscolhaQuandoHaCompromisso,
+  lerEscolhaNoEnvio,
+} from "@/components/agenda/EscolhaQuandoHaCompromisso";
+import type { EscolhaNoEnvio } from "@/lib/agenda/escolha-no-envio";
 import { PainelDoOperador } from "./PainelDoOperador";
 import { PainelDeSeguranca } from "./PainelDeSeguranca";
 import { BasesDoAgente, type MaterialDoAcervo } from "./BasesDoAgente";
 import { FunisDoAgente, type CoberturaPorFunil } from "./FunisDoAgente";
 import { PublishConfirmDialog } from "./PublishConfirmDialog";
 import { ComandosDoCelular } from "./ComandosDoCelular";
-import {
-  saveAgentDraftAction,
-  publishAgentAction,
-  createMcpAgentAction,
-} from "../_actions";
+import { saveAgentDraftAction, publishAgentAction, createMcpAgentAction } from "../_actions";
 
 import {
   versionCreateSchema,
@@ -119,6 +123,15 @@ interface BaseProps {
   routerMembership?: { routerId: string; routerName: string } | null;
   readOnly?: boolean;
   organizationTimezone?: string;
+  /**
+   * Mostra empresa de IA, modelo, chave e freios. Só o super-admin da
+   * plataforma vê (`podeEditarConfigTecnica`); para o cliente os cards somem e
+   * o servidor trava os valores (lib/ai/agents/config-tecnica.ts).
+   * Ausente = mostra, o comportamento do produto original.
+   */
+  mostrarConfigTecnica?: boolean;
+  /** Provedor e modelo que o agente novo de cliente recebe sem escolher. */
+  padraoDaPlataforma?: { provider: string; model: string };
 }
 
 interface EditProps extends BaseProps {
@@ -186,7 +199,13 @@ interface FormState {
   cases_enabled: boolean;
   split_messages: boolean;
   split_max_chars: number;
+  /** Janela de rajada (ms) do agente. `null` = usa a env da instalação. */
+  inbound_debounce_ms: number | null;
+  /** O agente vê as fotos que o cliente envia (migration 0533). */
+  image_vision_enabled: boolean;
   followup: FollowupValue;
+  voz_enabled: boolean;
+  voz_quando: "nunca" | "espelhar" | "sempre" | "quando_pede";
   // Papel OPERADOR (spec 16 §3.2) — o que mexe no sistema depois da conversa.
   operator_enabled: boolean;
   /** "" = herda o modelo do Conversador (vira null no payload). */
@@ -202,6 +221,12 @@ interface FollowupValue {
   callback_enabled: boolean;
   /** Ausente em versões antigas; null = sem janela própria. */
   send_window?: FollowupWindowValue | null;
+  /**
+   * "Quando o contato tiver horário marcado" DESTE agente. Ausente nas versões
+   * antigas, e ausente é `adiar` (leitura tolerante). Mora ao lado de
+   * `send_window` porque as duas são regras de envio PROATIVO.
+   */
+  quando_ha_compromisso?: EscolhaNoEnvio;
 }
 
 const DEFAULT_FOLLOWUP: FollowupValue = {
@@ -276,16 +301,16 @@ export function buildState(args: {
     cost_budget_cents: version?.cost_budget_cents ?? 50,
     history_message_window: version?.history_message_window ?? 20,
     history_token_window: version?.history_token_window ?? 8_000,
-    handoff_keywords: version?.handoff_keywords ?? [
-      "falar com humano",
-      "atendente",
-      "pessoa real",
-    ],
+    handoff_keywords: version?.handoff_keywords ?? ["falar com humano", "atendente", "pessoa real"],
     handoff_tool_enabled: version?.handoff_tool_enabled ?? true,
     proposal_ai_draft_enabled: version?.proposal_ai_draft_enabled ?? true,
     cases_enabled: version?.cases_enabled ?? false,
     split_messages: version?.split_messages ?? false,
     split_max_chars: version?.split_max_chars ?? 600,
+    voz_enabled: version?.voz_enabled ?? false,
+    voz_quando: version?.voz_quando ?? "espelhar",
+    inbound_debounce_ms: version?.inbound_debounce_ms ?? null,
+    image_vision_enabled: version?.image_vision_enabled ?? true,
     followup: version?.followup
       ? {
           ...DEFAULT_FOLLOWUP,
@@ -349,7 +374,11 @@ function toVersionPayload(s: FormState) {
     cases_enabled: s.cases_enabled,
     split_messages: s.split_messages,
     split_max_chars: s.split_max_chars,
+    inbound_debounce_ms: s.inbound_debounce_ms,
+    image_vision_enabled: s.image_vision_enabled,
     followup: s.followup,
+    voz_enabled: s.voz_enabled,
+    voz_quando: s.voz_quando,
     operator_enabled: s.operator_enabled,
     // "" (não escolheu) → null (herda o do Conversador). São o mesmo conceito em
     // camadas diferentes, e o mapeamento vive AQUI para não se espalhar.
@@ -357,6 +386,36 @@ function toVersionPayload(s: FormState) {
     operator_tool_ids: s.operator_tool_ids,
     pipeline_ids: s.pipeline_ids,
     knowledge_source_ids: s.knowledge_source_ids,
+  };
+}
+
+/**
+ * O que o payload da tela vira DEPOIS que o servidor o aceita.
+ *
+ * `mesmoRascunho` responde "salvar mudaria alguma coisa?" comparando os dois
+ * payloads — mas o servidor NÃO grava o payload cru: `versionShapeSchema` faz
+ * `.trim()` no prompt e completa o `trigger_config` com
+ * `include_tags`/`exclude_tags`/`include_pipeline_ids`/`exclude_pipeline_ids`/
+ * `include_sources`/`exclude_sources`
+ * (`.default([])`). Comparar o formulário com o que está no banco sem passar os
+ * dois pela MESMA régua acusava alteração para sempre, e Publicar ficava apagado
+ * com "Salve o rascunho antes de publicar" mesmo depois de salvar — o defeito da
+ * #3951, que só "sumia" ao recarregar a página porque aí o formulário passava a
+ * ser hidratado do que estava gravado, e os dois lados ficavam iguais por
+ * construção.
+ *
+ * `safeParse` e não `parse`: o formulário no meio da digitação é inválido de
+ * propósito (nome vazio, modelo ainda não escolhido), e derrubar o render por
+ * isso seria trocar um defeito por outro. Sem parse, compara-se o cru — que é o
+ * que a tela sempre fez.
+ */
+function payloadQueSeraGravado(s: FormState) {
+  const cru = { cadastro: toCadastroPayload(s), versao: toVersionPayload(s) };
+  const versao = versionCreateSchema.safeParse(cru.versao);
+  const cadastro = agentMcpPatchSchema.safeParse(cru.cadastro);
+  return {
+    cadastro: cadastro.success ? cadastro.data : cru.cadastro,
+    versao: versao.success ? versao.data : cru.versao,
   };
 }
 
@@ -376,8 +435,19 @@ export function AgentForm(props: Props) {
       const ref = props.base ?? props.draft ?? props.published;
       return buildState({ agent: props.agent, version: ref, t });
     }
-    return buildState({ version: null, t, provedorPadrao: props.provedorPadrao });
+    const inicial = buildState({ version: null, t, provedorPadrao: props.provedorPadrao });
+    if (props.padraoDaPlataforma) {
+      // O cliente não escolhe: o agente nasce com a IA e a chave da plataforma.
+      return {
+        ...inicial,
+        provider: props.padraoDaPlataforma.provider as Provider,
+        model: props.padraoDaPlataforma.model,
+        credential_id: CHAVE_DA_INSTALACAO,
+      };
+    }
+    return inicial;
   }, [isEdit, props, t]);
+  const mostrarConfigTecnica = props.mostrarConfigTecnica !== false;
 
   const [form, setForm] = React.useState<FormState>(baseline);
   const [saving, setSaving] = React.useState(false);
@@ -398,10 +468,62 @@ export function AgentForm(props: Props) {
    * para sempre, e o botão "Publicar" cinza com "Salve o rascunho antes de
    * publicar" — medido numa instalação em produção, com o agente preso na versão
    * anterior até alguém publicar por fora da tela.
+   *
+   * ⚠️ Os DOIS lados passam por `payloadQueSeraGravado`: comparar o formulário
+   * com o que está gravado sem a mesma normalização é o que mantinha o botão
+   * apagado depois de salvar (#3951).
    */
+  const referenciaDoServidor = React.useMemo(
+    () => payloadQueSeraGravado(baseline),
+    [baseline],
+  );
+
+  /**
+   * O rascunho que ESTA sessão acabou de gravar.
+   *
+   * `props.draft` é uma prop do server component: ela só muda quando a página é
+   * buscada de novo. Logo depois do salvamento — e ANTES de o refresh chegar —
+   * a tela não tinha rascunho nenhum para publicar, e o botão ficava apagado com
+   * "Sem rascunho para publicar" mesmo com a versão já gravada no banco. A ação
+   * devolve `version_id`/`version_number`, então a tela não precisa esperar: ela
+   * sabe o que acabou de salvar.
+   *
+   * Este estado só é preenchido com `res.ok` — falha no salvamento não pode
+   * acender Publicar nem limpar a marca de alteração pendente.
+   */
+  const [salvo, setSalvo] = React.useState<{
+    agentId: string;
+    versionId: string;
+    versionNumber: number;
+    formulario: FormState;
+    payload: ReturnType<typeof payloadQueSeraGravado>;
+  } | null>(null);
+
+  const idDesteAgente = props.mode === "edit" ? props.agent.id : "";
+  /**
+   * Vale enquanto a prop do servidor fala do MESMO rascunho que acabamos de
+   * gravar (ou de nenhum, antes do refresh chegar). Um rascunho com outro id é
+   * de outra sessão/edição, e aí quem manda é o servidor.
+   *
+   * O rascunho que já existia é PATCHado no lugar (`saveAgentDraftAction`), então
+   * `props.draft.id` continua sendo o mesmo depois de salvar — comparar contra a
+   * prop velha acusaria alteração pendente sobre o conteúdo de antes.
+   */
+  const salvoDaqui =
+    salvo && salvo.agentId === idDesteAgente && (props.mode !== "edit" || !props.draft || props.draft.id === salvo.versionId)
+      ? salvo
+      : null;
+
+  /** O rascunho que o botão Publicar publica: o do servidor ou o recém-salvo. */
+  const rascunhoParaPublicar =
+    (props.mode === "edit" ? props.draft : null) ??
+    (salvoDaqui
+      ? { id: salvoDaqui.versionId, version_number: salvoDaqui.versionNumber }
+      : null);
+
   const dirty = !mesmoRascunho(
-    { cadastro: toCadastroPayload(form), versao: toVersionPayload(form) },
-    { cadastro: toCadastroPayload(baseline), versao: toVersionPayload(baseline) },
+    payloadQueSeraGravado(form),
+    salvoDaqui?.payload ?? referenciaDoServidor,
   );
 
   function patch(p: Partial<FormState>) {
@@ -455,6 +577,15 @@ export function AgentForm(props: Props) {
       !(props.provedoresDaInstalacao ?? []).includes(form.provider)
     )
       errors.credential_id = `${t("Esta instalação não tem chave de")} ${form.provider}. ${t("Escolha outra empresa de IA ou cadastre uma chave.")}`;
+    // Sem os cards na tela, um erro neles seria um aviso sobre algo que o
+    // cliente não vê nem resolve. Vira uma frase só, no lugar do botão.
+    if (!mostrarConfigTecnica && (errors.model || errors.credential_id)) {
+      delete errors.model;
+      delete errors.credential_id;
+      errors.config_tecnica = t(
+        "A inteligência artificial ainda não está pronta nesta conta. Fale com o suporte.",
+      );
+    }
     // ⚠️ O NÚMERO NÃO ENTRA AQUI — de propósito, e não por esquecimento.
     //
     // Esta lista é o que impede de SALVAR. Exigir o número aqui travava o
@@ -479,7 +610,7 @@ export function AgentForm(props: Props) {
       }
     }
     return errors;
-  }, [form, t]);
+  }, [form, t, mostrarConfigTecnica]);
 
   const isValid = Object.keys(validation).length === 0;
 
@@ -496,15 +627,13 @@ export function AgentForm(props: Props) {
   const publishBlockReason = React.useMemo(() => {
     if (!isEdit) return t("Salve o agente antes de publicar.");
     const motivo = bloqueioDePublicacao({
-      temRascunhoVigente: !!props.draft,
+      temRascunhoVigente: !!rascunhoParaPublicar,
       formularioValido: isValid,
       alteracoesNaoSalvas: dirty,
       provedor: form.provider,
       chave: {
         daInstalacao: form.credential_id === CHAVE_DA_INSTALACAO,
-        instalacaoTemChaveDoProvedor: (props.provedoresDaInstalacao ?? []).includes(
-          form.provider,
-        ),
+        instalacaoTemChaveDoProvedor: (props.provedoresDaInstalacao ?? []).includes(form.provider),
         estadoDaCredencialDaOrg: credSt,
       },
       numero: { estado: channelSession?.status ?? null },
@@ -530,7 +659,7 @@ export function AgentForm(props: Props) {
       case "numero_desconectado":
         return `${t("Número WhatsApp não está conectado (status:")} ${motivo.estado}).`;
     }
-  }, [isEdit, props, isValid, dirty, credSt, form.provider, form.credential_id, channelSession, t]);
+  }, [isEdit, props, isValid, dirty, credSt, form.provider, form.credential_id, channelSession, rascunhoParaPublicar, t]);
 
   // ---------------------------------------------------------------------
   // Handlers
@@ -564,6 +693,16 @@ export function AgentForm(props: Props) {
           toast.error(res.message ?? `${t("Erro")}: ${res.error}`);
           return;
         }
+        // A tela passa a saber, sem esperar o refresh, que o rascunho está
+        // salvo: Publicar acende e Salvar apaga agora (#3951). Só chega aqui com
+        // `res.ok` — falha não acende nada.
+        setSalvo({
+          agentId: props.agent.id,
+          versionId: res.data!.version_id,
+          versionNumber: res.data!.version_number,
+          formulario: form,
+          payload: payloadQueSeraGravado(form),
+        });
         toast.success(`${t("Rascunho")} v${res.data!.version_number} ${t("salvo.")}`);
         router.refresh();
       } else {
@@ -592,15 +731,16 @@ export function AgentForm(props: Props) {
   }
 
   async function handlePublish() {
-    if (!isEdit || !props.draft) return;
+    if (!isEdit || !rascunhoParaPublicar) return;
+    const alvo = rascunhoParaPublicar;
     setPublishing(true);
     try {
-      const res = await publishAgentAction(props.agent.id, props.draft.id);
+      const res = await publishAgentAction(props.agent.id, alvo.id);
       if (!res.ok) {
         toast.error(`${t("Falha ao publicar:")} ${res.error}`);
         return;
       }
-      toast.success(`v${props.draft.version_number} ${t("publicada e ativa.")}`);
+      toast.success(`v${alvo.version_number} ${t("publicada e ativa.")}`);
       setConfirmOpen(false);
       router.refresh();
     } finally {
@@ -609,7 +749,10 @@ export function AgentForm(props: Props) {
   }
 
   function handleReset() {
-    setForm(baseline);
+    // "Descartar" volta para o que está SALVO — que, logo depois de um
+    // salvamento e antes do refresh, é o rascunho desta sessão e não a prop
+    // antiga do servidor.
+    setForm(salvoDaqui?.formulario ?? baseline);
   }
 
   const disabled = readOnly || saving || publishing;
@@ -645,14 +788,20 @@ export function AgentForm(props: Props) {
         </Badge>
       );
     }
-    if (draftN) return <Badge variant="outline">{t("Rascunho")} v{draftN}</Badge>;
+    if (draftN)
+      return (
+        <Badge variant="outline">
+          {t("Rascunho")} v{draftN}
+        </Badge>
+      );
     // Sem rascunho e sem publicada: o formulário abriu da última versão que
     // existiu (props.base), e não do texto padrão. Dizer isso é o que impede o
     // autor de achar que o prompt sumiu — e de salvar por cima achando que não.
     if (props.base) {
       return (
         <Badge variant="outline">
-          {t("Pausado")} {t("· editando a v")}{props.base.version_number}
+          {t("Pausado")} {t("· editando a v")}
+          {props.base.version_number}
         </Badge>
       );
     }
@@ -677,11 +826,7 @@ export function AgentForm(props: Props) {
 
         <div className="flex flex-wrap items-center gap-2">
           {isEdit ? (
-            <Button
-              variant="outline"
-              onClick={handleReset}
-              disabled={!dirty || disabled}
-            >
+            <Button variant="outline" onClick={handleReset} disabled={!dirty || disabled}>
               {t("Descartar alterações")}
             </Button>
           ) : null}
@@ -698,8 +843,8 @@ export function AgentForm(props: Props) {
               >
                 {publishing
                   ? t("Publicando…")
-                  : props.draft
-                    ? `${t("Publicar v")}${props.draft.version_number}`
+                  : rascunhoParaPublicar
+                    ? `${t("Publicar v")}${rascunhoParaPublicar.version_number}`
                     : t("Publicar")}
               </Button>
             </span>
@@ -747,16 +892,22 @@ export function AgentForm(props: Props) {
         vocabulário interno; quem configura pensa em "quem fala com meu cliente" e
         "quem organiza minha casa".
       */}
-      <div className="flex flex-wrap gap-1 border-b" role="tablist" aria-label={t("Papéis do agente")}>
+      <div
+        className="flex flex-wrap gap-1 border-b"
+        role="tablist"
+        aria-label={t("Papéis do agente")}
+      >
         {(
           [
             ["conversa", t("Conversa com o cliente")],
             ["operacao", t("Organiza o sistema")],
-            // O TERCEIRO PAPEL. O rótulo diz o que ele FAZ, como os outros dois:
-            // "Segurança" é o nosso nome; quem configura quer saber o que é
-            // conferido antes de a mensagem chegar ao cliente dele.
-            ["seguranca", t("Confere antes de enviar")],
-          ] as const
+            // O TERCEIRO PAPEL. Só o super-admin da plataforma vê — junto com
+            // empresa de IA, modelo e chave, é configuração técnica que o
+            // cliente final não precisa (nem deve) ver.
+            ...(mostrarConfigTecnica
+              ? [["seguranca", t("Confere antes de enviar")] as const]
+              : []),
+          ] as Array<readonly [string, string]>
         ).map(([id, rotulo]) => (
           <button
             key={id}
@@ -764,7 +915,7 @@ export function AgentForm(props: Props) {
             role="tab"
             aria-selected={papel === id}
             data-testid={`papel-${id}`}
-            onClick={() => setPapel(id)}
+            onClick={() => setPapel(id as "conversa" | "operacao" | "seguranca")}
             className={
               papel === id
                 ? "border-b-2 border-foreground px-3 py-2 text-sm font-medium"
@@ -788,6 +939,7 @@ export function AgentForm(props: Props) {
           toolIds={form.operator_tool_ids}
           onToolIdsChange={(ids) => patch({ operator_tool_ids: ids })}
           modeloDoConversador={form.model}
+          mostrarModelo={mostrarConfigTecnica}
           agentId={props.mode === "edit" ? props.agent.id : null}
           disabled={disabled}
         />
@@ -862,67 +1014,71 @@ export function AgentForm(props: Props) {
             </div>
           </Card>
 
-          {/* Provider + credential + model */}
-          <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">{t("A inteligência que ele usa")}</h3>
-            <div className="space-y-1">
-              <Label htmlFor="provider">{t("Empresa de inteligência artificial")}</Label>
-              <Select
-                value={form.provider}
-                onValueChange={(v) => changeProvider(v as Provider)}
-                disabled={disabled}
-              >
-                <SelectTrigger id="provider">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {/*
-                    Derivado de PROVEDORES, nunca escrito à mão: esta lista tinha
-                    três itens fixos enquanto o sistema executava quatro, e a
-                    OpenRouter — a opção [1] do instalador — não aparecia. Um
-                    agente publicado nela abria com o campo em BRANCO, porque
-                    nenhum item casava com o valor, e o primeiro save silencioso
-                    trocava o provedor do dono por outro.
-                  */}
-                  {PROVEDORES.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.rotulo}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {mostrarConfigTecnica ? (
+            <>
+              {/* Provider + credential + model */}
+              <Card className="space-y-3 p-4">
+                <h3 className="text-sm font-medium">{t("A inteligência que ele usa")}</h3>
+                <div className="space-y-1">
+                  <Label htmlFor="provider">{t("Empresa de inteligência artificial")}</Label>
+                  <Select
+                    value={form.provider}
+                    onValueChange={(v) => changeProvider(v as Provider)}
+                    disabled={disabled}
+                  >
+                    <SelectTrigger id="provider">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/*
+                      Derivado de PROVEDORES, nunca escrito à mão: esta lista tinha
+                      três itens fixos enquanto o sistema executava quatro, e a
+                      OpenRouter — a opção [1] do instalador — não aparecia. Um
+                      agente publicado nela abria com o campo em BRANCO, porque
+                      nenhum item casava com o valor, e o primeiro save silencioso
+                      trocava o provedor do dono por outro.
+                    */}
+                      {PROVEDORES.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.rotulo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <ModelPicker
-              provider={form.provider}
-              value={form.model}
-              onChange={(modelId) => patch({ model: modelId })}
-              disabled={disabled}
-              id="model"
-            />
-            {validation.model ? (
-              <p className="text-xs text-destructive">{validation.model}</p>
-            ) : null}
+                <ModelPicker
+                  provider={form.provider}
+                  value={form.model}
+                  onChange={(modelId) => patch({ model: modelId })}
+                  disabled={disabled}
+                  id="model"
+                />
+                {validation.model ? (
+                  <p className="text-xs text-destructive">{validation.model}</p>
+                ) : null}
 
-            <CredentialPicker
-              provider={form.provider}
-              credentials={props.credentials}
-              value={form.credential_id}
-              onChange={(id) => patch({ credential_id: id })}
-              disabled={disabled}
-              id="credential_id"
-              instalacaoTemChave={(props.provedoresDaInstalacao ?? []).includes(form.provider)}
-            />
-            {validation.credential_id ? (
-              <p className="text-xs text-destructive">{validation.credential_id}</p>
-            ) : null}
-            {cred && credSt && credSt !== "validated" ? (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                {t("Credencial selecionada está com status")} {t(STATUS_LABEL[credSt])}
-                {t(". Publish bloqueado até validar.")}
-              </p>
-            ) : null}
-          </Card>
+                <CredentialPicker
+                  provider={form.provider}
+                  credentials={props.credentials}
+                  value={form.credential_id}
+                  onChange={(id) => patch({ credential_id: id })}
+                  disabled={disabled}
+                  id="credential_id"
+                  instalacaoTemChave={(props.provedoresDaInstalacao ?? []).includes(form.provider)}
+                />
+                {validation.credential_id ? (
+                  <p className="text-xs text-destructive">{validation.credential_id}</p>
+                ) : null}
+                {cred && credSt && credSt !== "validated" ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {t("Credencial selecionada está com status")} {t(STATUS_LABEL[credSt])}
+                    {t(". Publish bloqueado até validar.")}
+                  </p>
+                ) : null}
+              </Card>
+            </>
+          ) : null}
 
           {/* WhatsApp session */}
           <Card className="space-y-3 p-4">
@@ -994,85 +1150,134 @@ export function AgentForm(props: Props) {
                       {t("para poder publicar.")}
                     </>
                   ) : (
-                    t("Escolha o número para poder publicar. Sem ele, o rascunho salva mas não atende.")
+                    t(
+                      "Escolha o número para poder publicar. Sem ele, o rascunho salva mas não atende.",
+                    )
                   )}
                 </p>
               ) : null}
             </div>
           </Card>
 
-          {/* Limits */}
-          <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">{t("Freios de segurança")}</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="max_steps">{t("Ações por atendimento (1 a 25)")}</Label>
-                <Input
-                  id="max_steps"
-                  type="number"
-                  min={1}
-                  max={25}
-                  value={form.max_steps}
-                  onChange={(e) => patch({ max_steps: Number(e.target.value) })}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="token_budget">{t("Volume de texto por atendimento")}</Label>
-                <Input
-                  id="token_budget"
-                  type="number"
-                  min={1000}
-                  max={500000}
-                  step={1000}
-                  value={form.token_budget}
-                  onChange={(e) => patch({ token_budget: Number(e.target.value) })}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="cost_budget_cents">{t("Custo máximo por atendimento (centavos)")}</Label>
-                <Input
-                  id="cost_budget_cents"
-                  type="number"
-                  min={1}
-                  max={10000}
-                  value={form.cost_budget_cents}
-                  onChange={(e) => patch({ cost_budget_cents: Number(e.target.value) })}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="history_message_window">{t("Mensagens anteriores que ele lê")}</Label>
-                <Input
-                  id="history_message_window"
-                  type="number"
-                  min={0}
-                  max={200}
-                  value={form.history_message_window}
-                  onChange={(e) =>
-                    patch({ history_message_window: Number(e.target.value) })
-                  }
-                  disabled={disabled}
-                />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <Label htmlFor="history_token_window">{t("Tamanho máximo desse histórico")}</Label>
-                <Input
-                  id="history_token_window"
-                  type="number"
-                  min={0}
-                  max={50000}
-                  step={500}
-                  value={form.history_token_window}
-                  onChange={(e) =>
-                    patch({ history_token_window: Number(e.target.value) })
-                  }
-                  disabled={disabled}
-                />
-              </div>
-            </div>
-          </Card>
+          {mostrarConfigTecnica ? (
+            <>
+              {/* Limits */}
+              <Card className="space-y-3 p-4">
+                <h3 className="text-sm font-medium">{t("Freios de segurança")}</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="max_steps">{t("Ações por atendimento (1 a 25)")}</Label>
+                    <Input
+                      id="max_steps"
+                      type="number"
+                      min={1}
+                      max={25}
+                      value={form.max_steps}
+                      onChange={(e) => patch({ max_steps: Number(e.target.value) })}
+                      disabled={disabled}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="token_budget">{t("Volume de texto por atendimento")}</Label>
+                    <Input
+                      id="token_budget"
+                      type="number"
+                      min={1000}
+                      max={500000}
+                      step={1000}
+                      value={form.token_budget}
+                      onChange={(e) => patch({ token_budget: Number(e.target.value) })}
+                      disabled={disabled}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="cost_budget_cents">
+                      {t("Custo máximo por atendimento (centavos)")}
+                    </Label>
+                    <Input
+                      id="cost_budget_cents"
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={form.cost_budget_cents}
+                      onChange={(e) => patch({ cost_budget_cents: Number(e.target.value) })}
+                      disabled={disabled}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="history_message_window">
+                      {t("Mensagens anteriores que ele lê")}
+                    </Label>
+                    <Input
+                      id="history_message_window"
+                      type="number"
+                      min={0}
+                      max={200}
+                      value={form.history_message_window}
+                      onChange={(e) => patch({ history_message_window: Number(e.target.value) })}
+                      disabled={disabled}
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label htmlFor="inbound_debounce_ms">
+                      {t("Esperar antes de responder (segundos)")}
+                    </Label>
+                    <Input
+                      id="inbound_debounce_ms"
+                      type="number"
+                      min={0}
+                      max={60}
+                      step={1}
+                      placeholder={t("Vazio = padrão da instalação")}
+                      value={
+                        form.inbound_debounce_ms === null
+                          ? ""
+                          : String(Math.round(form.inbound_debounce_ms / 1000))
+                      }
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        // Vazio = usa a env da instalação (campo null). A UI fala em
+                        // SEGUNDOS; o banco e o worker falam em ms (conversão aqui,
+                        // num ponto só). Teto de 60s no campo espelha o do worker.
+                        patch({
+                          inbound_debounce_ms:
+                            raw === ""
+                              ? null
+                              : Math.max(0, Math.min(60, Number(raw))) * 1000,
+                        });
+                      }}
+                      disabled={disabled}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        "Mensagens do mesmo contato dentro desse tempo viram uma resposta só. Vazio usa a janela padrão da instalação (máximo 60 segundos).",
+                      )}
+                    </p>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <Label htmlFor="history_token_window">
+                      {t("Tamanho máximo desse histórico")}
+                    </Label>
+                    <Input
+                      id="history_token_window"
+                      type="number"
+                      min={0}
+                      max={50000}
+                      step={500}
+                      value={form.history_token_window}
+                      onChange={(e) => patch({ history_token_window: Number(e.target.value) })}
+                      disabled={disabled}
+                    />
+                  </div>
+                </div>
+              </Card>
+            </>
+          ) : null}
+          {!mostrarConfigTecnica && validation.config_tecnica ? (
+            <p className="text-sm text-destructive" data-testid="agente-ia-indisponivel">
+              {validation.config_tecnica}
+            </p>
+          ) : null}
         </div>
 
         {/* COLUMN 2 */}
@@ -1130,6 +1335,26 @@ export function AgentForm(props: Props) {
             ) : null}
           </Card>
 
+          {/* Fotos do cliente (migration 0533): ver a foto custa uma leitura paga
+              por um modelo com visão. Ligado por padrão; quem não precisa desliga. */}
+          <Card className="space-y-3 p-4" data-testid="cartao-fotos-do-cliente">
+            <h3 className="text-sm font-medium">{t("Fotos do cliente")}</h3>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="image_vision_enabled"
+                checked={form.image_vision_enabled}
+                onCheckedChange={(v) => patch({ image_vision_enabled: v })}
+                disabled={disabled}
+              />
+              <Label htmlFor="image_vision_enabled">{t("Ver as fotos que o cliente envia")}</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Ligado, o agente entende o que está na foto. Desligado, ele só sabe que chegou uma foto e pode pedir que o cliente descreva em texto. Se nenhum agente da empresa vê fotos, a leitura paga da foto deixa de ser feita.",
+              )}
+            </p>
+          </Card>
+
           {/* Estilo de resposta (split de mensagens — Onda 4) */}
           <Card className="space-y-3 p-4">
             <h3 className="text-sm font-medium">{t("Estilo de resposta")}</h3>
@@ -1170,6 +1395,68 @@ export function AgentForm(props: Props) {
             ) : null}
           </Card>
 
+          {/* Voz (plano de voz, Fase 7) */}
+          <Card className="space-y-3 p-4">
+            <h3 className="text-sm font-medium">{t("Responder falando")}</h3>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="voz_enabled"
+                checked={form.voz_enabled}
+                onCheckedChange={(v) => patch({ voz_enabled: v })}
+                disabled={disabled}
+              />
+              <Label htmlFor="voz_enabled">{t("Enviar nota de voz, não só texto")}</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Precisa de uma credencial do ElevenLabs cadastrada e de uma voz escolhida em Agente de IA → Provedores. Sem os dois, o agente continua respondendo em texto — ligar aqui não quebra nada.",
+              )}
+            </p>
+            {form.voz_enabled ? (
+              <div className="space-y-1">
+                <Label htmlFor="voz_quando">{t("Quando falar")}</Label>
+                <Select
+                  value={form.voz_quando}
+                  onValueChange={(v) => patch({ voz_quando: v as FormState["voz_quando"] })}
+                  disabled={disabled}
+                >
+                  <SelectTrigger id="voz_quando">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="espelhar">
+                      {t("Só quando o cliente mandar áudio")}
+                    </SelectItem>
+                    <SelectItem value="quando_pede">
+                      {t("Quando o cliente mandar ou pedir áudio")}
+                    </SelectItem>
+                    <SelectItem value="sempre">{t("Sempre")}</SelectItem>
+                    <SelectItem value="nunca">
+                      {t("Nunca (desligado, sem apagar a configuração)")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.voz_quando === "quando_pede" ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      "Responde em áudio quando o cliente manda áudio, pede áudio por escrito ou avisa que não consegue ler. Quem pede para continuar no texto segue recebendo texto.",
+                    )}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </Card>
+
+          {/* A voz DESTE agente: grava em `ai_agents.config.voz_voice_id`, por
+              isso só em edição. Sem escolha, herda a voz da organização. */}
+          {isEdit && (
+            <VozDoAgente
+              agentId={props.agent.id}
+              inicial={(props.agent.config ?? {}).voz_voice_id}
+              disabled={disabled}
+            />
+          )}
+
           {/* Capacidades */}
           <Card className="space-y-2 p-4">
             <h3 className="text-sm font-medium">{t("O que o agente pode fazer")}</h3>
@@ -1204,6 +1491,7 @@ export function AgentForm(props: Props) {
               onChange={(v) => patch({ trigger_config: v })}
               disabled={disabled}
               organizationTimezone={props.organizationTimezone}
+              funis={props.funis}
             />
           </Card>
 
@@ -1295,9 +1583,7 @@ export function AgentForm(props: Props) {
               <Switch
                 id="followup_enabled"
                 checked={form.followup.enabled}
-                onCheckedChange={(v) =>
-                  patch({ followup: { ...form.followup, enabled: v } })
-                }
+                onCheckedChange={(v) => patch({ followup: { ...form.followup, enabled: v } })}
                 disabled={disabled}
               />
               <Label htmlFor="followup_enabled">
@@ -1311,16 +1597,28 @@ export function AgentForm(props: Props) {
             </p>
             <FollowupWindowEditor
               value={form.followup.send_window ?? null}
-              onChange={(send_window) =>
-                patch({ followup: { ...form.followup, send_window } })
+              onChange={(send_window) => patch({ followup: { ...form.followup, send_window } })}
+              disabled={disabled || !form.followup.enabled}
+            />
+            {/*
+              Grava SEMPRE a chave, inclusive `adiar`: o PATCH da versão funde o
+              `followup`, então omitir o padrão não apagaria a escolha anterior.
+            */}
+            <EscolhaQuandoHaCompromisso
+              escolha={lerEscolhaNoEnvio(form.followup)}
+              onChange={(quando_ha_compromisso: EscolhaNoEnvio) =>
+                patch({ followup: { ...form.followup, quando_ha_compromisso } })
               }
               disabled={disabled || !form.followup.enabled}
             />
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Vale para todos os fluxos de follow-up deste agente. Cada passo de automação tem a escolha própria.",
+              )}
+            </p>
             <FollowupFlowPicker
               value={form.followup.flow_pointer_ids}
-              onChange={(ids) =>
-                patch({ followup: { ...form.followup, flow_pointer_ids: ids } })
-              }
+              onChange={(ids) => patch({ followup: { ...form.followup, flow_pointer_ids: ids } })}
               disabled={disabled}
             />
           </Card>

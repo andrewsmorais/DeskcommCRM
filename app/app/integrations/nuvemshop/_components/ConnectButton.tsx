@@ -12,6 +12,7 @@ const CONNECT_ERRORS: Record<string, string> = {
   no_active_org: "Nenhuma organização ativa.",
   forbidden: "Apenas admins podem conectar integrações.",
   not_configured: "Integração não configurada — configure as credenciais em .env.local.",
+  mfa_required: "Confirme o código do seu aplicativo de duas etapas e tente de novo.",
 };
 
 const DISCONNECT_ERRORS: Record<string, string> = {
@@ -20,6 +21,7 @@ const DISCONNECT_ERRORS: Record<string, string> = {
   forbidden: "Apenas admins podem desconectar.",
   not_connected: "Integração não está conectada.",
   db_error: "Falha de banco ao desconectar.",
+  mfa_required: "Confirme o código do seu aplicativo de duas etapas e tente de novo.",
 };
 
 export function ConnectButton({ disabled }: { disabled?: boolean }) {

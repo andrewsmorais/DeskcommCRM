@@ -12,12 +12,21 @@
 import type { Json } from "@/lib/database.types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { isAttendantEligible, OPEN_LOAD_STATUSES } from "./eligibility";
+import { isAttendantEligible, isWithinSchedule, OPEN_LOAD_STATUSES } from "./eligibility";
 import type { RoutingCandidate } from "./decide";
 import { availabilityScheduleSchema } from "@/lib/schemas/routing";
 
 export type RoutingScope =
-  | { kind: "conversation_channel"; channelSessionId: string }
+  | {
+      kind: "conversation_channel";
+      channelSessionId: string;
+      /**
+       * Setor da conversa (migration 0496): só membros dele recebem. null ou
+       * ausente = equipe toda. Setor sem membros é restrição explícita (ninguém
+       * recebe), como a política de número vazia.
+       */
+      setorId?: string | null;
+    }
   | { kind: "organization_summary" };
 export class InvalidRoutingChannel extends Error {
   constructor() { super("routing_channel_invalid"); }
@@ -45,6 +54,22 @@ export async function loadEligibleAttendants(
       if (error) throw new Error(error.message);
       allowed = new Set((responsibles ?? []).map((r: { user_id: string }) => r.user_id));
       // Policy existente vazia é restrição explícita, não ausência de configuração.
+      if (allowed.size === 0) return [];
+    }
+    if (scope.setorId) {
+      // Horário do setor (migration 0545): fora dele ninguém recebe — a conversa
+      // espera na Fila e o roteamento tenta de novo. Sem horário, 24/7.
+      const { data: setor, error: horarioError } = await supabase.from("setores")
+        .select("horario").eq("organization_id", organizationId).eq("id", scope.setorId).maybeSingle();
+      if (horarioError) throw new Error(horarioError.message);
+      const horario = availabilityScheduleSchema.safeParse((setor as { horario?: unknown } | null)?.horario ?? {});
+      if (horario.success && !isWithinSchedule(horario.data, now)) return [];
+      const { data: membros, error: setorError } = await supabase.from("setor_membros")
+        .select("user_id").eq("organization_id", organizationId).eq("setor_id", scope.setorId);
+      if (setorError) throw new Error(setorError.message);
+      const doSetor = new Set((membros ?? []).map((r: { user_id: string }) => r.user_id));
+      // Responsável do número E membro do setor: as duas regras valem juntas.
+      allowed = allowed === null ? doSetor : new Set([...allowed].filter((u) => doSetor.has(u)));
       if (allowed.size === 0) return [];
     }
   }

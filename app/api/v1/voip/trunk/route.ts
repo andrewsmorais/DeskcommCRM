@@ -8,6 +8,7 @@
  * migration 0349. `password` no body é opcional numa atualização (mantém a
  * senha já cifrada se omitida), obrigatório na primeira vez.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
@@ -24,12 +25,23 @@ export const dynamic = "force-dynamic";
 const SAFE_COLUMNS =
   "organization_id, host, port, username, password_last4, from_domain, endpoint_name, is_active, updated_by, created_at, updated_at";
 
+// Estes valores viram linhas do bloco que o operador cola no pjsip.conf
+// compartilhado da instalação: quebra de linha, colchete, `;`, `=` ou `#`
+// abririam seção ou diretiva nova no arquivo de TODAS as organizações.
+const HOST_SIP = /^[A-Za-z0-9.-]+$|^[0-9A-Fa-f:]+$/;
+const TOKEN_SIP = /^[^\s[\];=#]+$/;
 const putSchema = z.object({
-  host: z.string().trim().min(1).max(255),
+  host: z.string().trim().min(1).max(255).regex(HOST_SIP, "Informe só o host ou IP do provedor."),
   port: z.coerce.number().int().min(1).max(65535).default(5060),
-  username: z.string().trim().min(1).max(100),
-  password: z.string().trim().min(4).max(200).optional(),
-  from_domain: z.string().trim().max(255).nullable().optional(),
+  username: z.string().trim().min(1).max(100).regex(TOKEN_SIP, "Usuário SIP sem espaços nem ; = # [ ]."),
+  password: z.string().trim().min(4).max(200).regex(/^[^\r\n]+$/, "A senha não pode ter quebra de linha.").optional(),
+  from_domain: z
+    .string()
+    .trim()
+    .max(255)
+    .regex(/^$|^[A-Za-z0-9.-]+$/, "Informe só o domínio.")
+    .nullable()
+    .optional(),
   is_active: z.boolean().default(true),
 });
 
@@ -62,6 +74,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("admin", { requestId, resource: "voip_trunk_settings" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user: authUser, org: activeOrg } = authz;
 
   let rawBody: unknown;

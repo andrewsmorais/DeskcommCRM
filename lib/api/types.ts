@@ -1,6 +1,13 @@
 export interface ApiSuccess<T> {
   data: T;
-  meta?: { cursor?: string; has_more?: boolean; total?: number; request_id?: string };
+  meta?: {
+    cursor?: string;
+    has_more?: boolean;
+    total?: number;
+    request_id?: string;
+    /** Capacidade de inscrever em follow-up, dita pelo servidor (GET de enrollments). */
+    pode_inscrever?: boolean;
+  };
 }
 
 export interface ApiErrorBody {

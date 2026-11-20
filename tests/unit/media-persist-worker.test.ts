@@ -2,15 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const uploadMock = vi.fn();
 const updateEqMock = vi.fn();
+const removeMock = vi.fn();
+// Quantas linhas a gravação condicional alcança: 0 = a mensagem mudou (LGPD).
+let linhasGravadas = 1;
 const rpcMock = vi.fn();
 const messageRow = {
   id: "msg1",
   organization_id: "org1",
   conversation_id: "conv1",
-  media_url: "http://localhost:3030/api/files/abc.jpg",
+  media_url: "http://localhost:3030/api/files/abc.jpg" as string | null,
   media_mime: "image/jpeg",
   media_storage_path: null as string | null,
-  metadata: { raw_type: "image" },
+  metadata: { raw_type: "image" } as Record<string, unknown>,
 };
 
 // Grupo nunca deriva (Task 8, controller A): a IA não serve grupos, e a
@@ -54,10 +57,17 @@ vi.mock("@/lib/supabase/admin", () => ({
       },
       update: (patch: Record<string, unknown>) => {
         updateEqMock(patch);
-        return { eq: () => ({ eq: async () => ({ error: null }) }) };
+        const cadeia: Record<string, unknown> = {};
+        cadeia.eq = () => cadeia;
+        cadeia.is = () => cadeia;
+        cadeia.select = async () => ({
+          data: Array.from({ length: linhasGravadas }, () => ({ id: "msg1" })),
+          error: null,
+        });
+        return cadeia;
       },
     }),
-    storage: { from: () => ({ upload: uploadMock }) },
+    storage: { from: () => ({ upload: uploadMock, remove: removeMock }) },
     rpc: rpcMock,
   }),
 }));
@@ -102,8 +112,12 @@ describe("persistMessageMedia", () => {
   beforeEach(() => {
     uploadMock.mockReset().mockResolvedValue({ error: null });
     updateEqMock.mockReset();
+    removeMock.mockReset().mockResolvedValue({ error: null });
+    linhasGravadas = 1;
     rpcMock.mockReset().mockResolvedValue({ error: null });
     messageRow.media_storage_path = null;
+    messageRow.media_url = "http://localhost:3030/api/files/abc.jpg";
+    messageRow.metadata = { raw_type: "image" };
     conversationRow.is_group = false;
     conversationReadError = null;
     loggerWarnMock.mockReset();
@@ -180,6 +194,26 @@ describe("persistMessageMedia", () => {
         detail: "conexão recusada",
       }),
     );
+  });
+
+  it("mídia apagada pela retenção (#1534): pula com o motivo real e não baixa de novo", async () => {
+    // A poda anula `media_url` E `media_storage_path` e marca `expired`. Sem a
+    // guarda ANTES do `!media_url`, o detalhe diria "no media_url".
+    messageRow.media_url = null;
+    messageRow.metadata = { raw_type: "image", media_status: "expired" };
+    vi.mocked(fetchWahaMedia).mockClear();
+    const result = await persistMessageMedia(eventRow());
+    expect(result).toMatchObject({ status: "skipped", detail: "expired by retention" });
+    expect(fetchWahaMedia).not.toHaveBeenCalled();
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("achado 16: se a mensagem foi anonimizada durante o upload, não grava e apaga o arquivo", async () => {
+    linhasGravadas = 0;
+    const result = await persistMessageMedia(eventRow());
+    expect(result).toMatchObject({ status: "skipped", detail: "message changed while persisting" });
+    expect(removeMock).toHaveBeenCalledWith(["org1/conv1/msg1.jpg"]);
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it("pula mensagem já persistida (idempotência)", async () => {

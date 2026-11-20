@@ -41,6 +41,9 @@ import { SOCIAL_NETWORKS } from "./social/catalog";
  */
 export const CANAIS_DE_CONVERSA = [
   "whatsapp",
+  // Chat no site (migration 0518): o balão que o cliente cola no próprio site.
+  // Também escrito à mão — não passa pelo intermediário social.
+  "webchat",
   ...SOCIAL_NETWORKS.filter((rede) => rede.inbox).map((rede) => rede.id),
 ] as const satisfies readonly string[];
 

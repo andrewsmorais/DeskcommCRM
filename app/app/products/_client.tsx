@@ -301,12 +301,14 @@ export function ProdutosClient({
         <p className="mt-1 text-sm text-muted-foreground">{textos.subtitulo}</p>
       </header>
 
-      <div className="mb-4 flex items-center gap-3">
+      {/* No celular a busca ocupa a linha inteira e os botões descem: numa
+          fileira só a 375 px o campo de busca encolhia até mostrar uma letra. */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           placeholder={t("Buscar por nome, código ou marca")}
-          className="h-9 w-full max-w-sm rounded-md border px-3 text-sm"
+          className="h-9 w-full rounded-md border px-3 text-sm md:max-w-sm"
           data-testid="busca-produto"
         />
         {podeEditar ? (
@@ -365,7 +367,7 @@ export function ProdutosClient({
           {resumo.erros.length > 0 ? (
             <div className="mt-3">
               <p className="font-medium">{t("Linhas que não entraram:")}</p>
-              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+              <ul className="mt-1 space-y-0.5 wrap-anywhere text-muted-foreground">
                 {resumo.erros.slice(0, 20).map((e) => (
                   <li key={`${e.linha}-${e.motivo}`}>
                     {t("Linha")} {e.linha}: {e.motivo}
@@ -491,7 +493,17 @@ export function ProdutosClient({
             const capa = p.fotos?.[0] ? urlsDasFotos[p.fotos[0]] : undefined;
             return (
             <li key={p.id} data-testid={`produto-${p.codigo}`}>
-            <div className="flex items-center gap-4 p-3">
+            {/*
+              A linha não cabia em 375 px: preço (shrink-0) + os três botões de
+              ação somam mais que a largura útil, e a coluna do nome — `flex-1`
+              com `min-w-0` — encolhia até 0 px, levando o nome junto. Abaixo de
+              `md` a linha passa a quebrar: nome e preço em cima, ações embaixo,
+              ancoradas à direita e com `flex-wrap` próprio se ainda faltar
+              espaço. Tudo em `max-md:` — de `md` para cima a lista é a de sempre.
+            */}
+            <div
+              className="flex items-center gap-4 p-3 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1"
+            >
               {capa ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={capa} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" />
@@ -512,7 +524,13 @@ export function ProdutosClient({
                 {formatCents(p.preco_cents, p.moeda)}
               </span>
               {podeEditar ? (
-                <>
+                // Grupo próprio para as ações: sozinhas elas não cabem ao lado do
+                // preço em 375 px, e como itens soltos da linha quebravam em
+                // qualquer lugar. Aqui elas descem juntas (w-full abaixo de `md`)
+                // e, se nem assim couberem, quebram entre si em vez de vazar.
+                <div
+                  className="flex items-center gap-4 max-md:w-full max-md:flex-wrap max-md:justify-end max-md:gap-x-2 max-md:gap-y-1"
+                >
                   <Button
                     variant="ghost"
                     size="sm"
@@ -530,7 +548,7 @@ export function ProdutosClient({
                   >
                     {t(p.ativo ? "Desativar" : "Reativar")}
                   </Button>
-                </>
+                </div>
               ) : null}
             </div>
             {podeEditar && fotosAbertas === p.id ? (

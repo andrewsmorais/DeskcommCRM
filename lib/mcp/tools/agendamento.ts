@@ -135,6 +135,13 @@ export const crmListEventTypes: McpToolDefinition<typeof tiposShape> = {
         // Traduzido: `in_person` é vocabulário de banco e o modelo repassa o que
         // recebe. `rotuloDoLocal` é o MESMO tradutor que a tela usa.
         onde: rotuloDoLocal(t.localKind, t.localDetalhes) ?? null,
+        // O preço que a RECEPÇÃO cobra por este tipo, em CENTAVOS e cru: é a
+        // MESMA coluna (`calendar_event_types.default_price_cents`) que a
+        // comanda lê para sugerir o valor. Formatar em reais aqui faria o
+        // modelo repassar o texto formatado e errar a conta em qualquer
+        // reajuste; `null` é "a clínica não definiu preço", e zero seria um
+        // preço — grátis — que ninguém cadastrou.
+        preco_padrao_cents: t.precoPadraoCents ?? null,
         precisa_confirmacao: t.precisaConfirmacao,
       })),
     };
@@ -358,7 +365,6 @@ export const crmFindFreeSlots: McpToolDefinition<typeof horariosLivresShape> = {
   },
 };
 
-
 const listarShape = {
   // As duas descrições existem porque o modelo escolhia entre os dois campos no
   // escuro — nenhum tinha `.describe()`, e a única pista era o nome do campo no
@@ -450,8 +456,11 @@ export const crmListAppointments: McpToolDefinition<typeof listarShape> = {
   requiresRole: "agent",
   requiresScope: "mcp:read",
   handler: async (input, ctx) => {
+    // Num turno de conversa a IA só vê a agenda de QUEM está falando: os ids e
+    // nomes dos compromissos dos outros clientes eram o mapa para mexer neles.
+    const doTurno = ctx.actor.type === "ai_agent" ? (ctx.turnContactId ?? null) : null;
     const r = await listaAgendamentos(ctx.supabase, ctx.organizationId, {
-      contactId: input.contact_id ?? null,
+      contactId: doTurno ?? input.contact_id ?? null,
       leadId: input.lead_id ?? null,
       dia: input.dia ?? null,
       ownerUserId: input.owner_user_id ?? null,
@@ -514,7 +523,6 @@ export const crmListAppointments: McpToolDefinition<typeof listarShape> = {
   },
 };
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AS ESCRITAS
 //
@@ -530,6 +538,8 @@ export const crmListAppointments: McpToolDefinition<typeof listarShape> = {
 
 /** O que o modelo ouve em cada recusa — e cada uma diz o que FAZER, não só o que não deu. */
 const ENSINO_POR_CODIGO: Record<string, string> = {
+  appointment_de_outro_contato:
+    "esse compromisso é de outro cliente, não de quem está falando com você. Liste os compromissos desta conversa com `crm_list_appointments` e use um deles.",
   agenda_horario_indisponivel:
     "esse horário acabou de ficar indisponível. Chame `crm_find_free_slots` de novo e ofereça um dos horários que voltarem.",
   agenda_fora_da_jornada:
@@ -545,11 +555,27 @@ const ENSINO_POR_CODIGO: Record<string, string> = {
   agenda_ainda_nao_aconteceu:
     "esse compromisso ainda não começou, então não há desfecho a registrar. Se a pessoa avisou que " +
     "não vem, use `crm_cancel_appointment`; se ela quer outro dia, `crm_reschedule_appointment`.",
-  not_found: "não encontrei esse compromisso. Confirme com `crm_list_appointments` antes de tentar de novo.",
-  internal_error: "não consegui completar agora. Avise que alguém da equipe confirma, e não repita a tentativa.",
+  not_found:
+    "não encontrei esse compromisso. Confirme com `crm_list_appointments` antes de tentar de novo.",
+  internal_error:
+    "não consegui completar agora. Avise que alguém da equipe confirma, e não repita a tentativa.",
 };
 
 /** Captura o `ApiError` do handler e devolve recusa de NEGÓCIO, nunca exceção. */
+/**
+ * O ctx dos handlers da agenda. Leva o contato do turno quando a chamada vem
+ * de um turno de IA (`McpContext.turnContactId`, preenchido pelo runtime): é
+ * com ele que o handler recusa mexer no compromisso de outro cliente.
+ */
+function ctxDaAgenda(ctx: McpContext) {
+  return {
+    organization_id: ctx.organizationId,
+    actor: ctx.actor,
+    requestId: ctx.requestId,
+    ...(ctx.turnContactId ? { turnContactId: ctx.turnContactId } : {}),
+  };
+}
+
 async function semDerrubarOTurno<T>(
   chave: string,
   fn: () => Promise<T>,
@@ -570,7 +596,10 @@ async function semDerrubarOTurno<T>(
 
 const marcarShape = {
   event_type_slug: z.string().min(1).describe("o identificador legível do tipo de atendimento"),
-  starts_at: z.string().datetime({ offset: true }).describe("o instante exato do início, vindo de `crm_find_free_slots`"),
+  starts_at: z
+    .string()
+    .datetime({ offset: true })
+    .describe("o instante exato do início, vindo de `crm_find_free_slots`"),
   contact_id: z.string().uuid().describe("quem vai ser atendido"),
   owner_user_id: z.string().uuid().optional(),
   title: z.string().min(1).max(200).optional(),
@@ -727,13 +756,13 @@ const consultarEMarcarShape = {
     .regex(/^\d{4}-\d{2}-\d{2}$/, "dia deve estar em YYYY-MM-DD")
     .describe(
       "o dia CIVIL que o cliente pediu, em YYYY-MM-DD. O servidor aplica o fuso da agenda: " +
-        "nunca some nem subtraia horas para \"corrigir\" o fuso.",
+        'nunca some nem subtraia horas para "corrigir" o fuso.',
     ),
   horario: z
     .string()
     .regex(/^\d{1,2}:\d{2}$/, "horario deve estar em HH:mm")
     .describe(
-      "a HORA LOCAL que o cliente pediu no mesmo dia do campo `dia`, em HH:mm (ex.: \"14:00\"). " +
+      'a HORA LOCAL que o cliente pediu no mesmo dia do campo `dia`, em HH:mm (ex.: "14:00"). ' +
         "É a hora que aparece em `quando` na consulta — a mesma do relógio de quem atende.",
     ),
   contact_id: z.string().uuid().describe("quem vai ser atendido"),
@@ -764,7 +793,7 @@ export const crmFindAndBookAppointment: McpToolDefinition<typeof consultarEMarca
   name: "crm_find_and_book_appointment",
   description:
     "Confere UM horário e, se estiver livre, MARCA na MESMA chamada. Use quando o cliente " +
-    "JÁ disse o dia E a hora (\"quinta às 14h\", \"amanhã de manhã às 9\") e esse par ainda não " +
+    'JÁ disse o dia E a hora ("quinta às 14h", "amanhã de manhã às 9") e esse par ainda não ' +
     "foi checado: aqui consulta e marcação são uma decisão só, e é o caminho preferido — " +
     "encerrar o turno com o horário apenas consultado deixa o cliente sem agendamento. " +
     "Não use quando o cliente ainda não escolheu hora (aí é `crm_find_free_slots`) nem para " +
@@ -908,7 +937,10 @@ export const crmFindAndBookAppointment: McpToolDefinition<typeof consultarEMarca
 
 const remarcarShape = {
   appointment_id: z.string().uuid(),
-  new_starts_at: z.string().datetime({ offset: true }).describe("o novo início, vindo de `crm_find_free_slots`"),
+  new_starts_at: z
+    .string()
+    .datetime({ offset: true })
+    .describe("o novo início, vindo de `crm_find_free_slots`"),
   notes: z.string().max(2000).optional(),
 };
 
@@ -928,15 +960,11 @@ export const crmRescheduleAppointment: McpToolDefinition<typeof remarcarShape> =
   requiresScope: "mcp:write",
   handler: async (input, ctx) =>
     semDerrubarOTurno("remarcado", async () => {
-      const r = await alterarAgendamentoHandler(
-        ctx.supabase,
-        { organization_id: ctx.organizationId, actor: ctx.actor, requestId: ctx.requestId },
-        {
-          id: input.appointment_id,
-          starts_at: input.new_starts_at,
-          ...(input.notes ? { notes: input.notes } : {}),
-        },
-      );
+      const r = await alterarAgendamentoHandler(ctx.supabase, ctxDaAgenda(ctx), {
+        id: input.appointment_id,
+        starts_at: input.new_starts_at,
+        ...(input.notes ? { notes: input.notes } : {}),
+      });
       return { remarcado: true, compromisso: r };
     }),
 };
@@ -967,11 +995,10 @@ export const crmCancelAppointment: McpToolDefinition<typeof cancelarShape> = {
   requiresScope: "mcp:write",
   handler: async (input, ctx) =>
     semDerrubarOTurno("cancelado", async () => {
-      const r = await cancelarAgendamentoHandler(
-        ctx.supabase,
-        { organization_id: ctx.organizationId, actor: ctx.actor, requestId: ctx.requestId },
-        { id: input.appointment_id, reason: input.reason },
-      );
+      const r = await cancelarAgendamentoHandler(ctx.supabase, ctxDaAgenda(ctx), {
+        id: input.appointment_id,
+        reason: input.reason,
+      });
       return { cancelado: true, compromisso: r };
     }),
 };
@@ -997,15 +1024,11 @@ export const crmConfirmAppointment: McpToolDefinition<typeof confirmarShape> = {
   requiresScope: "mcp:write",
   handler: async (input, ctx) =>
     semDerrubarOTurno("confirmado", async () => {
-      const r = await alterarAgendamentoHandler(
-        ctx.supabase,
-        { organization_id: ctx.organizationId, actor: ctx.actor, requestId: ctx.requestId },
-        {
-          id: input.appointment_id,
-          status: "confirmed",
-          ...(input.notes ? { notes: input.notes } : {}),
-        },
-      );
+      const r = await alterarAgendamentoHandler(ctx.supabase, ctxDaAgenda(ctx), {
+        id: input.appointment_id,
+        status: "confirmed",
+        ...(input.notes ? { notes: input.notes } : {}),
+      });
       return { confirmado: true, compromisso: r };
     }),
 };
@@ -1030,18 +1053,18 @@ export const crmSetAppointmentOutcome: McpToolDefinition<typeof desfechoShape> =
   requiresScope: "mcp:write",
   handler: async (input, ctx) =>
     semDerrubarOTurno("registrado", async () => {
-      if (ctx.actor.type !== "user") return { registrado: false, requer_confirmacao_humana: true,
-        orientacao: "Peça à equipe para abrir o compromisso na Agenda e confirmar a presença.",
-        href: `/app/agenda?compromisso=${input.appointment_id}` };
-      const r = await alterarAgendamentoHandler(
-        ctx.supabase,
-        { organization_id: ctx.organizationId, actor: ctx.actor, requestId: ctx.requestId },
-        {
-          id: input.appointment_id,
-          status: input.outcome,
-          ...(input.notes ? { notes: input.notes } : {}),
-        },
-      );
+      if (ctx.actor.type !== "user")
+        return {
+          registrado: false,
+          requer_confirmacao_humana: true,
+          orientacao: "Peça à equipe para abrir o compromisso na Agenda e confirmar a presença.",
+          href: `/app/agenda?compromisso=${input.appointment_id}`,
+        };
+      const r = await alterarAgendamentoHandler(ctx.supabase, ctxDaAgenda(ctx), {
+        id: input.appointment_id,
+        status: input.outcome,
+        ...(input.notes ? { notes: input.notes } : {}),
+      });
       return { registrado: true, compromisso: r };
     }),
 };

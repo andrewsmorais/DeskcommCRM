@@ -125,10 +125,14 @@ describe("reconciliação compartilhada, sem importar títulos nem apagar convid
       ["guest"],
       false,
     );
+    // A ORDEM de acréscimo é a da lista de convidados (migration 0561): ficha,
+    // depois o digitado, depois a equipe — a MESMA do corpo do POST. Ordem de
+    // `attendees` não tem significado para o Google; ter duas ordens para o
+    // mesmo convite é que confundiria a leitura.
     expect(patch.attendees).toEqual([
       { email: "owner@example.test", organizer: true, responseStatus: "accepted" },
-      { email: "new@example.test", responseStatus: "needsAction" },
       { email: "lead@clinica.test", responseStatus: "needsAction", displayName: "Ian" },
+      { email: "new@example.test", responseStatus: "needsAction" },
     ]);
   });
 });

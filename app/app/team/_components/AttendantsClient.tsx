@@ -10,23 +10,14 @@ import {
   useRoutingConfig,
   useUpdateAvailability,
   useUpdateRouting,
+  useTelefoneOculto,
   type AttendantAvailability,
 } from "@/hooks/team/useAttendants";
 import { estaDePlantao } from "@/lib/routing/eligibility";
-import {
-  ROUTING_MODES,
-  type RoutingConfig,
-  type ScheduleWindow,
-} from "@/lib/schemas/routing";
+import { ROUTING_MODES, type RoutingConfig, type ScheduleWindow } from "@/lib/schemas/routing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +52,7 @@ const DOW_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MODE_LABELS: Record<(typeof ROUTING_MODES)[number], string> = {
   manual: "Manual (atendente puxa da fila)",
   round_robin: "Rodízio (distribui automático)",
+  least_load: "Menor carga (quem tem menos conversas)",
 };
 
 interface Attendant {
@@ -206,7 +198,9 @@ function ScheduleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("Horário de")} {attendant.name}</DialogTitle>
+          <DialogTitle>
+            {t("Horário de")} {attendant.name}
+          </DialogTitle>
           <DialogDescription>
             {t(
               "Sem janelas, o roteamento aceita conversa a qualquer hora — mas a Agenda não oferece NENHUM horário para marcar. Adicione janelas para publicar seus horários de atendimento.",
@@ -246,9 +240,7 @@ function ScheduleDialog({
                 <Select
                   value={String(w.dow)}
                   onValueChange={(v) =>
-                    setWindows((ws) =>
-                      ws.map((x, j) => (j === i ? { ...x, dow: Number(v) } : x)),
-                    )
+                    setWindows((ws) => ws.map((x, j) => (j === i ? { ...x, dow: Number(v) } : x)))
                   }
                 >
                   <SelectTrigger className="w-[90px]" aria-label="Dia da semana">
@@ -296,9 +288,7 @@ function ScheduleDialog({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                setWindows((ws) => [...ws, { dow: 1, start: "08:00", end: "18:00" }])
-              }
+              onClick={() => setWindows((ws) => [...ws, { dow: 1, start: "08:00", end: "18:00" }])}
             >
               <Plus size={16} className="mr-1" /> Adicionar janela
             </Button>
@@ -343,7 +333,9 @@ function RoutingCard({ canManage }: { canManage: boolean }) {
     return (
       <Card>
         <CardContent className="pt-6">
-          <p className="text-sm text-destructive">{t("Erro ao carregar a configuração de roteamento.")}</p>
+          <p className="text-sm text-destructive">
+            {t("Erro ao carregar a configuração de roteamento.")}
+          </p>
         </CardContent>
       </Card>
     );
@@ -440,6 +432,7 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
   const t = useT();
   const avail = useAttendants();
   const patch = useUpdateAvailability();
+  const telefone = useTelefoneOculto();
   const [scheduleFor, setScheduleFor] = useState<Attendant | null>(null);
   const now = useMemo(() => new Date(), []);
 
@@ -489,7 +482,9 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
           <p className="p-4 text-sm text-destructive">Erro ao carregar atendentes.</p>
         ) : attendants.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
-            {t("Nenhum atendente na organização. Convide membros com papel de atendente ou superior.")}
+            {t(
+              "Nenhum atendente na organização. Convide membros com papel de atendente ou superior.",
+            )}
           </p>
         ) : (
           <Table>
@@ -500,6 +495,8 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
                 <TableHead>{t("Carga")}</TableHead>
                 <TableHead>{t("Capacidade")}</TableHead>
                 <TableHead>{t("Horário")}</TableHead>
+                {canManage ? <TableHead>{t("Reatribuição")}</TableHead> : null}
+                {canManage ? <TableHead>{t("Telefone dos contatos")}</TableHead> : null}
                 {canManage ? <TableHead className="w-[120px]">{t("Disponível")}</TableHead> : null}
               </TableRow>
             </TableHeader>
@@ -563,6 +560,50 @@ export function AttendantsClient({ canManage, organizationTimezone }: Props) {
                         ) : null}
                       </div>
                     </TableCell>
+                    {canManage ? (
+                      <TableCell>
+                        {/* Reatribuição automática (Umbler): quando o contato
+                            escreve, o atendente sai da conversa. */}
+                        <select
+                          className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                          aria-label={`${t("Reatribuição")} — ${a.name}`}
+                          value={a.availability?.reatribuicao ?? "desligada"}
+                          title={t("Quando o contato escreve numa conversa deste atendente: desligada não faz nada; offline tira o atendente se ele estiver indisponível; sempre tira a cada mensagem nova.")}
+                          onChange={(e) =>
+                            patch.mutate({
+                              userId: a.userId,
+                              patch: { reatribuicao: e.target.value as "desligada" | "offline" | "sempre" },
+                            })
+                          }
+                        >
+                          <option value="desligada">{t("Desligada")}</option>
+                          <option value="offline">{t("Quando estiver offline")}</option>
+                          <option value="sempre">{t("Sempre")}</option>
+                        </select>
+                      </TableCell>
+                    ) : null}
+                    {canManage ? (
+                      <TableCell>
+                        {/* Telefone oculto (Umbler): o atendente vê o número
+                            mascarado. Gerente e administrador veem sempre. */}
+                        {a.availability?.role === "manager" || a.availability?.role === "admin" ? (
+                          <span className="text-xs text-muted-foreground">{t("Sempre vê")}</span>
+                        ) : (
+                          <select
+                            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                            aria-label={`${t("Telefone dos contatos")} — ${a.name}`}
+                            value={a.availability?.ocultar_telefone ? "oculto" : "visivel"}
+                            title={t("Oculto: o atendente vê o número dos contatos mascarado (+55•••••••••88) em toda tela.")}
+                            onChange={(e) =>
+                              telefone.mutate({ userId: a.userId, ocultar: e.target.value === "oculto" })
+                            }
+                          >
+                            <option value="visivel">{t("Visível")}</option>
+                            <option value="oculto">{t("Oculto")}</option>
+                          </select>
+                        )}
+                      </TableCell>
+                    ) : null}
                     {canManage ? (
                       <TableCell>
                         <Switch

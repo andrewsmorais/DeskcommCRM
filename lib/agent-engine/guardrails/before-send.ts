@@ -58,6 +58,7 @@ import { loadPromiseTable } from './promise/table';
 import type { PromiseTable } from './promise/table';
 import { renderSemanticPromiseVeto } from './promise/semantic';
 import type { PromiseClassification } from './promise/semantic';
+import { renderVetoDeAfirmacao, type ConferenciaDeFato } from './factual-claim';
 import {
   bodyContainsDisclosure,
   countPriorAcceptedSends,
@@ -146,6 +147,12 @@ export interface GateContext {
    * ao modelo no veto (erro de ensino), mas nunca vai a log (PII fora de log).
    */
   semanticPromise: PromiseClassification | null;
+  /**
+   * Conferência de fato (#2231, vinda do produto original): a afirmação de FATO
+   * da resposta contra a evidência consultada no turno. Ausente/`null` = não
+   * conferido (o gate passa) — todo envio que não é texto do agente.
+   */
+  factualClaim?: ConferenciaDeFato | null;
   /**
    * Disclosure "assistente virtual" (F4-05; blueprint 5.7) — carregado por ponteiro sob o
    * lock. `template` null = org não configurou disclosure (gate no-op). `isFirstOutbound`
@@ -272,7 +279,16 @@ export type GateVerdict =
   // `skipped: 'not_applicable'` (invariante 4 de `docs/doctrine/restricao-de-canal.md`): a
   // restrição não existe NESTE canal. Passa, mas o trace registra que não se aplicava — um
   // `pass` silencioso apagaria a diferença entre "não regrediu" e "provo que não regrediu".
-  | { pass: true; waitMs?: number; amendBody?: string; skipped?: 'not_applicable' }
+  //
+  // `skipped: 'nao_conferido'` é a conferência de fato que não conferiu (sem evidência, sem
+  // chave, falha do fornecedor): passa com o motivo no trace. `skipped: 'sandbox_send_embargo'`
+  // só nasce no Testar do agente (`preview.ts`), onde a conferência que decide vira aviso.
+  | {
+      pass: true;
+      waitMs?: number;
+      amendBody?: string;
+      skipped?: 'not_applicable' | 'sandbox_send_embargo' | 'nao_conferido';
+    }
   | {
       pass: false;
       code: string;
@@ -379,6 +395,36 @@ export const semanticPromiseGate: Gate = {
       reason: renderSemanticPromiseVeto(ctx.semanticPromise.suspectPhrase),
       // detail é LOGADO: só o rótulo da camada, nunca a frase (trecho da candidata — sem PII).
       detail: { promise_layer: 'semantic' },
+    };
+  },
+};
+
+/**
+ * Gate 6.3 — CONFERÊNCIA DE FATO (#2231, vinda do produto original): a
+ * afirmação de FATO da resposta ("abrimos às 8h", "temos estacionamento")
+ * conferida pelo Jev contra a evidência consultada NESTE turno (catálogo e base
+ * de conhecimento). Promessa e fato são camadas diferentes: a de promessa não
+ * muda nada aqui.
+ *
+ * `nao_conferido` (sem evidência, sem frases, desligada, sem chave ou falha do
+ * fornecedor) passa com o motivo no trace — fail-open com registro. `observando`
+ * (como a tarefa nasce) também passa: a observação já foi gravada em
+ * `jev_observacoes`, e ninguém aqui decide.
+ */
+export const factualClaimGate: Gate = {
+  name: 'factual_claim',
+  evaluate: (ctx) => {
+    const conferencia = ctx.factualClaim;
+    if (conferencia === null || conferencia === undefined) return { pass: true };
+    if (conferencia.veredito === 'nao_conferido') return { pass: true, skipped: 'nao_conferido' };
+    if (conferencia.estado !== 'decidindo') return { pass: true };
+    if (conferencia.veredito === 'passa') return { pass: true };
+    return {
+      pass: false,
+      code: conferencia.veredito === 'contradiz' ? 'factual_claim_contradicted' : 'factual_claim_unsupported',
+      // SÓ para o erro de ensino devolvido ao MODELO. Log e trace levam rótulo.
+      reason: renderVetoDeAfirmacao(conferencia.veredito, conferencia.frase),
+      detail: { veredito: conferencia.veredito, frases: conferencia.quantidadeDeFrases },
     };
   },
 };
@@ -581,6 +627,16 @@ function semAcento(texto: string): string {
 }
 
 /**
+ * O corpo anuncia uma verificação de agenda que ainda não aconteceu ("vou
+ * verificar os horários e já te aviso"). Lido também pela parada do laço depois
+ * do envio final (`agent/parada-apos-envio.ts`) — a MESMA régua do gate.
+ */
+export function anunciaVerificacaoDeAgenda(body: string): boolean {
+  const b = semAcento(body);
+  return AGENDA_STALL_PATTERN.test(b) || AGENDA_STALL_VER_PATTERN.test(b);
+}
+
+/**
  * Nomes de ferramenta como o modelo os lê num texto de ensino: "`a`", "`a` ou `b`",
  * "`a`, `b` ou `c`". Usado pelo veto de agenda e pelo bloco residente de agenda
  * (`inbound-turn.ts`), que precisam nomear as MESMAS ferramentas do mesmo jeito.
@@ -766,7 +822,16 @@ const spinningGate: Gate = {
     });
     return decision.allow
       ? { pass: true }
-      : { pass: false, code: decision.code, reason: decision.reason };
+      : {
+          pass: false,
+          code: decision.code,
+          reason: decision.reason,
+          // #4428: a CONTAGEM de repetições vai junto no trace. O veto já sabia
+          // (`matchCount`); sem esta linha, quem lê a tentativa depois vê só o
+          // código `mass_identical` e não consegue dizer quantas cópias o número
+          // já tinha na janela — é esse número que o motivo do follow-up grava.
+          detail: { matchCount: decision.matchCount },
+        };
   },
 };
 
@@ -800,8 +865,11 @@ const spinningGate: Gate = {
  * `GateContext.agenda`): só o caminho do agente o arma quando o agente publicado tem
  * `crm_book_appointment` nas tools, então a v7 também não muda o destino de nenhum envio que
  * já existia fora desse caso — muda o TRACE e passa a medir/impedir a promessa vazia.
+ * v8 = insere `factualClaimGate` logo depois do `semantic_promise` (conferência de fato,
+ * #2231, vinda do produto original). Sem a tarefa do Jev ligada e decidindo, ele só passa —
+ * a v8 não muda o destino de nenhum envio de quem não ligou a tarefa.
  */
-export const BEFORE_SEND_CHAIN_VERSION = 7;
+export const BEFORE_SEND_CHAIN_VERSION = 8;
 
 /**
  * Ordem FINAL da cadeia (F4-08/F4-09; edge-contract §before_send / blueprint órgão 5) — DADO
@@ -813,6 +881,8 @@ export const BEFORE_SEND_CHAIN_VERSION = 7;
  *   (4) spinning — template idêntico em massa (F2-12);
  *   (5) promise — validação determinística de preço/desconto/parcelamento (F4-01);
  *   (6) semantic_promise — promessa em texto livre que a regex não pega (F4-02);
+ *   (6.3) factual_claim — afirmação de FATO da resposta contra a evidência
+ *         consultada no turno (#2231); logo após a F4-02;
  *   (6.5) case_promise — anti-alucinação de casos humanos (spec 15 §10.2, Wave 4);
  *   (6.7) internal_vocabulary — vazamento de vocabulário interno ao cliente (doutrina
  *         `separacao-fala-e-operacao.md`); antes do disclosure porque ele pode emendar o corpo;
@@ -829,6 +899,7 @@ export const BEFORE_SEND_GATES: readonly Gate[] = [
   spinningGate,
   promiseGate,
   semanticPromiseGate,
+  factualClaimGate,
   casePromiseGate,
   internalVocabularyGate,
   agendaStallGate,
@@ -907,6 +978,12 @@ export interface RunBeforeSendArgs {
    * semântica off (gate no-op). A montagem/ordem final da cadeia é da F4-08.
    */
   classifyPromiseSemantic?: (body: string) => Promise<PromiseClassification>;
+  /**
+   * Conferência de fato (#2231): chamada ANTES do `begin` (fora da transação e
+   * do lock), com o corpo do modelo já com os ajustes de estilo. `null`/ausente
+   * = não conferido (o gate passa).
+   */
+  conferirAfirmacoes?: (body: string) => Promise<ConferenciaDeFato | null>;
   /**
    * Modo do gate de disclosure (F4-05) quando a 1ª mensagem sai sem disclosure: 'inject'
    * (default conservador — o disclosure é sempre adicionado, garantindo a apresentação) ou
@@ -1079,8 +1156,19 @@ const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTim
  */
 export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSendResult> {
   const gates = args.gates ?? BEFORE_SEND_GATES;
-  // Fora do lock (nem conexão tomada): aqui não existe transação aberta para segurar.
-  if (args.esperaForaDoLock) await args.esperaForaDoLock();
+  // Conferência de fato (#2231) ANTES de tomar conexão: ela grava em
+  // `llm_calls` (FK para `contacts`) por OUTRA conexão, e dentro da transação
+  // que lê `contacts` sob lock isso fecha um ciclo que o Postgres não detecta
+  // (medido no original, #2363). O veredito só depende do corpo — aqui o do
+  // modelo, sem os ajustes de estilo, que só trocam pontuação. Falha = não
+  // conferido: quem não sabe o que a base diz não pode proibir a frase.
+  // Começa junto com a pausa humana (fora do lock, nem conexão tomada): o
+  // cliente espera o maior dos dois, não a soma.
+  const [, factualClaim] = await Promise.all([
+    args.esperaForaDoLock ? args.esperaForaDoLock() : undefined,
+    args.conferirAfirmacoes ? args.conferirAfirmacoes(args.body).catch(() => null) : null,
+  ]);
+
   const client = await args.pool.connect();
   try {
     // ANTES do `begin`, de propósito: preferência de estilo não precisa do lock,
@@ -1211,6 +1299,7 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
         ...(promise?.versionId !== undefined ? { versionId: promise.versionId } : {}),
       },
       semanticPromise,
+      factualClaim,
       disclosure: {
         template: disclosure?.body ?? null,
         ...(disclosure?.versionId !== undefined ? { versionId: disclosure.versionId } : {}),
@@ -1355,8 +1444,10 @@ async function readStopFlags(
 ): Promise<boolean> {
   const { rows } = await db.query<{ stopped: boolean }>(
     humanMeetingCommand
-      ? 'select is_blocked as stopped from contacts where organization_id = $1 and id = $2'
-      : 'select (is_blocked or force_human) as stopped from contacts where organization_id = $1 and id = $2',
+      // Pessoal (0540) não recebe nem pelo encontro; "sempre humano" (0540)
+      // barra a IA como `force_human`, e nenhuma devolução a desfaz.
+      ? 'select (is_blocked or is_personal) as stopped from contacts where organization_id = $1 and id = $2'
+      : 'select (is_blocked or force_human or is_personal or ai_opt_out) as stopped from contacts where organization_id = $1 and id = $2',
     [organizationId, contactId],
   );
   return rows[0]?.stopped === true;

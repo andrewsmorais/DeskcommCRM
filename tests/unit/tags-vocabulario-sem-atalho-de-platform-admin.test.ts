@@ -26,6 +26,7 @@ const ORG = "00000000-0000-4000-8000-0000000000e5";
 
 const estado = vi.hoisted(() => ({ papelNoBanco: "viewer", papelDaMembresia: "viewer" }));
 const rpc = vi.hoisted(() => vi.fn());
+const from = vi.hoisted(() => vi.fn());
 const redirecionar = vi.hoisted(() =>
   vi.fn((destino: string) => {
     throw new Error(`REDIRECT:${destino}`);
@@ -47,7 +48,7 @@ vi.mock("@/lib/auth/server", () => ({
   resolveActiveOrg: async () => ({ orgId: ORG, name: "Org", role: estado.papelDaMembresia }),
   mfaEmDivida: async () => false,
 }));
-vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc }) }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc, from }) }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn() }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: async () => null }));
 vi.mock("next/navigation", () => ({ redirect: redirecionar, useRouter: () => ({ refresh: vi.fn() }) }));
@@ -72,6 +73,15 @@ beforeEach(() => {
   estado.papelNoBanco = "viewer";
   estado.papelDaMembresia = "viewer";
   redirecionar.mockClear();
+  // A página de Tags também lê `organizations.settings` (lista de contato interno).
+  from.mockReset();
+  from.mockImplementation(() => {
+    const chain: Record<string, unknown> = {};
+    chain.select = () => chain;
+    chain.eq = () => chain;
+    chain.maybeSingle = () => Promise.resolve({ data: { settings: {} }, error: null });
+    return chain;
+  });
   rpc.mockReset();
   rpc.mockImplementation(async (fn: string) => {
     if (fn === "fn_user_role_in_org") return { data: estado.papelNoBanco, error: null };
@@ -116,6 +126,29 @@ describe("CONTROLE: com papel de gerente a porta abre — senão os casos acima 
     const resposta = await postar({ acao: "renomear", tag: "vip", destino: "cliente-vip" });
     expect(resposta.status, await resposta.clone().text()).toBe(200);
     expect(chamadas()).toContain("fn_vocabulario_de_tags_operar");
+  });
+
+  it.each([
+    ["obra123-renomeada", "OBRA123-RENOMEADA"],
+    ["Prospecção", "prospecção"],
+  ])("POST renomeia só a caixa de %s para %s sem barrar antes da RPC", async (tag, destino) => {
+    const resposta = await postar({ acao: "renomear", tag, destino });
+    expect(resposta.status, await resposta.clone().text()).toBe(200);
+    const operacoes = rpc.mock.calls.filter(([fn]) => fn === "fn_vocabulario_de_tags_operar");
+    expect(operacoes).toEqual([["fn_vocabulario_de_tags_operar", {
+      p_org: ORG, p_acao: "renomear", p_tag: tag, p_destino: destino, p_cor: null,
+    }]]);
+  });
+
+  it.each([
+    { acao: "renomear", tag: " vip ", destino: "vip" },
+    { acao: "renomear", tag: " ", destino: "VIP" },
+    { acao: "apagar", tag: "vip" },
+    { acao: "definir_cor", tag: "vip", cor: "#zzzzzz" },
+  ])("POST conserva a recusa do corpo inválido %j sem chamar a operação", async (corpo) => {
+    const resposta = await postar(corpo);
+    expect(resposta.status, await resposta.clone().text()).toBe(422);
+    expect(chamadas()).not.toContain("fn_vocabulario_de_tags_operar");
   });
 
   it("a página lê o vocabulário sem redirecionar", async () => {

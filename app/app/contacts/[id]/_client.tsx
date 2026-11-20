@@ -34,9 +34,11 @@ import { TimelineView } from "@/components/contacts/TimelineView";
 import { EditContactDialog } from "@/components/contacts/EditContactDialog";
 import { AnonymizeDialog } from "@/components/contacts/AnonymizeDialog";
 import { PropostasDeDado } from "@/components/contacts/PropostasDeDado";
+import { MarcasDoContato } from "@/components/contacts/MarcasDoContato";
+import { TelefonesDaFicha } from "@/components/contacts/TelefonesDaFicha";
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
 import { ConversaNoDossie } from "@/components/kanban/ConversaNoDossie";
-import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { rotuloParaAEquipe } from "@/lib/contacts/rotulo-do-contato";
 import { origemDoContato } from "@/lib/leads/origem-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
 import { DialButton } from "@/components/voice/DialButton";
@@ -120,7 +122,7 @@ export function ContactDetailClient({ contactId }: Props) {
   // Uma decisão, um lugar (lib/contacts/rotulo-do-contato.ts). Esta tela era
   // uma das DUAS que ignoravam o telefone: contato com número e sem nome
   // aparecia como "Sem nome" aqui e com o número no inbox.
-  const displayName = rotuloDoContato(contact, t);
+  const displayName = rotuloParaAEquipe(contact, t);
 
   // Os quatro níveis que quem opera tráfego lê. O jsonb já os recebia dos dois
   // caminhos de entrada — site e clique-para-WhatsApp — e nenhuma tela o abria.
@@ -170,6 +172,8 @@ export function ContactDetailClient({ contactId }: Props) {
             ))}
             {contact.is_blocked && <Badge variant="warning">{t("Bloqueado")}</Badge>}
             {contact.is_anonymized && <Badge variant="destructive">{t("Anonimizado")}</Badge>}
+            {contact.is_personal && <Badge variant="secondary">{t("Pessoal")}</Badge>}
+            {contact.ai_opt_out && <Badge variant="secondary">{t("Sempre humano")}</Badge>}
           </div>
         </div>
         {!contact.is_anonymized && user.support?.access_mode !== "support_readonly" && (
@@ -224,6 +228,15 @@ export function ContactDetailClient({ contactId }: Props) {
 
       <ConversaNoDossie conversa={contact.conversa} />
 
+      {!contact.is_anonymized && user.support?.access_mode !== "support_readonly" && (
+        <MarcasDoContato
+          contactId={contactId}
+          pessoal={contact.is_personal === true}
+          sempreHumano={contact.ai_opt_out === true}
+          podeMexer={Boolean(activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager)}
+        />
+      )}
+
       {/* ANTES das abas, e não dentro de uma delas: é o único conteúdo desta
           tela que PEDE uma ação. Enterrado numa aba, viraria pendência que só
           quem já sabe que existe encontra — e a fila deixaria de ser fila.
@@ -254,16 +267,35 @@ export function ContactDetailClient({ contactId }: Props) {
                 <dt className="text-xs uppercase text-muted-foreground">{t("Nome")} · WhatsApp</dt>
                 <dd className="mt-1">{contact.display_name ?? "—"}</dd>
               </div>
+              {contact.address_book_name && (
+                <div>
+                  {/* Só a equipe vê: nenhuma mensagem usa este nome (migration 0546). */}
+                  <dt className="text-xs uppercase text-muted-foreground">{t("Nome na agenda do celular")}</dt>
+                  <dd className="mt-1">{contact.address_book_name}</dd>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t("Só a equipe vê. Para usar em mensagens, copie para o nome.")}
+                  </p>
+                </div>
+              )}
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Email</dt>
                 <dd className="mt-1">{contact.email ?? "—"}</dd>
               </div>
-              <div>
-                <dt className="text-xs uppercase text-muted-foreground">{t("Telefone")}</dt>
-                <dd className="mt-1">
-                  {contact.phone_number ? phoneForDisplay(contact.phone_number) : "—"}
-                </dd>
-              </div>
+              {/*
+                Os telefones da ficha (migration 0541). Sem extra, a linha segue
+                como antes ("Telefone", com o tipo ao lado); com extra,
+                "Telefones" lista o principal e os extras. Quem tem papel
+                `agent` ou acima edita aqui.
+              */}
+              <TelefonesDaFicha
+                contato={contact}
+                podeEditar={Boolean(
+                  activeOrg &&
+                    ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent &&
+                    !contact.is_anonymized &&
+                    user.support?.access_mode !== "support_readonly",
+                )}
+              />
               {/*
                 A data gravada pelo "Editar contato" (e pela proposta aprovada),
                 enxergada aqui — é ela que o cron `contact-birthdays` lê para

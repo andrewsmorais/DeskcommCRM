@@ -16,9 +16,11 @@ import type {
   PatchConversationInput,
 } from "@/lib/schemas";
 import type { Conversation } from "@/lib/types/messaging";
+import { exigirControleDaConversa } from "@/lib/inbox/controle-da-conversa";
 import { normalizarTermoDeBusca } from "@/lib/inbox/termo-de-busca";
 import { ORDEM_DA_ESPERA, ehAFila } from "@/lib/inbox/comando-da-conversa";
-import { aplicarMarcador } from "@/lib/inbox/marcador-da-conversa";
+import { aplicarMarcadores } from "@/lib/inbox/marcador-da-conversa";
+import { aplicarOcultas } from "@/lib/inbox/visibilidade";
 
 /**
  * Prepara o termo digitado para viajar dentro de um `or=` do PostgREST.
@@ -87,11 +89,12 @@ const SELECT_COLS = `
   id, organization_id, contact_id, channel_session_id, channel, status,
   status_changed_at, service_revision, service_closed_at, service_started_at, current_demanda_id, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at, awaiting_since,
   last_outbound_at, last_message_at, last_message_preview,
-  unread_count_for_assignee, is_group, group_chat_id, tags, metadata,
+  unread_count_for_assignee, is_group, is_private, visibilidade, setor_id, group_chat_id, tags, metadata,
   snooze_until, created_at, updated_at,
   bot_silenced_until, last_handoff_at, last_handoff_reason,
   comando_da_conversa,
-  contacts:contact_id (id, display_name, name, phone_number, is_anonymized, tags, is_blocked, avatar_storage_path, force_human),
+  usable_for_rag,
+  contacts:contact_id (id, display_name, name, address_book_name, phone_number, is_anonymized, tags, is_blocked, avatar_storage_path, force_human),
   channel_sessions:channel_session_id (phone_number, display_name, provider, social_platform:metadata->>social_platform)
 `;
 
@@ -196,7 +199,11 @@ export async function listConversationsHandler(
   if (q.exclude_finished) {
     query = query.not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`);
   }
+  if (q.closed_since) query = query.gte("service_closed_at", q.closed_since);
   if (q.channel_session_id) query = query.eq("channel_session_id", q.channel_session_id);
+  // O setor (migration 0496) é igualdade numa coluna, como o número: a contagem
+  // aplica o MESMO par em `filtrosAuxiliaresDaContagem`.
+  if (q.setor_id) query = query.eq("setor_id", q.setor_id);
   // A aba "Grupos" (Task 10). `undefined` (ausente) = sem filtro, a lista
   // mostra tudo, como hoje — checagem explícita contra `undefined`, e não
   // `if (q.is_group)`, porque `"false"` é um valor válido e verdadeiro-truthy
@@ -219,7 +226,10 @@ export async function listConversationsHandler(
   // A régua do marcador mora num lugar só (`lib/inbox/marcador-da-conversa.ts`),
   // porque a segunda régua sempre diverge: foi assim que a contagem das abas
   // passou a pedir uma coluna que não existe (#1223). Aqui ela é só aplicada.
-  if (q.tag) query = aplicarMarcador(query, q.tag);
+  if (q.tag) query = aplicarMarcadores(query, q.tag, q.modo);
+  // Conversa oculta (migration 0510) sai da caixa de entrada; o filtro "Ocultas"
+  // pede só elas. A contagem das abas aplica a MESMA régua.
+  query = aplicarOcultas(query, q.ocultas);
 
   // No BANCO, e não em memória: filtrar depois de paginar devolveria páginas curtas —
   // e, quando a página inteira estivesse lida, uma lista vazia que a tela apresentava
@@ -240,7 +250,40 @@ export async function listConversationsHandler(
         '"assigned_to=me" requer ator humano.',
       );
     }
-    query = query.eq("assigned_to_user_id", ctx.actor.id);
+    // "Minhas" é também o que eu PARTICIPO: o convite é da conversa e a aba Minhas
+    // é onde a convidada tem de achar — medido com navegador na mão no CR de 24/10
+    // (#2848). Sem isto, com `own_and_unassigned` ela nem alcança a aba "Todas" e a
+    // conversa não aparece em lugar nenhum: Fila 0, Minhas 0.
+    //
+    // Sem participações o predicado é o MESMO de antes (`.eq`), byte a byte: o `or`
+    // só nasce quando existe convite de pé, então quem não participa de nada mede o
+    // mesmo de sempre. Quando existe, o `or=` compõe por AND com os demais
+    // (organização, busca, cursor): o PostgREST junta parâmetros repetidos com E.
+    // ⚠️ Se esta pergunta falhar (banco fora, mock de teste sem `.is`), o caminho
+    // é o de SEMPRE (`.eq`): o filtro nunca muda de regra sozinho, só ganha as
+    // conversas de quem participa quando a pergunta responde.
+    let idsParticipadas: string[] = [];
+    try {
+      const participadas = await supabase
+        .from("conversation_participants")
+        .select("conversation_id")
+        .eq("user_id", ctx.actor.id)
+        .is("left_at", null);
+      idsParticipadas = (participadas.data ?? []).map((r) => r.conversation_id);
+    } catch {
+      idsParticipadas = [];
+    }
+    if (idsParticipadas.length > 0) {
+      // ⚠️ participações ativas são convites manuais (poucas por pessoa) — daí
+      // entrarem juntas no `in()`. Se um dia alguém participar de centenas, este
+      // `or=` fica longo; aí o conserto é subquery via RPC — e nunca corte
+      // silencioso: um corte escondido manda a convidada voltar a não achar.
+      query = query.or(
+        `assigned_to_user_id.eq.${ctx.actor.id},id.in.(${idsParticipadas.join(",")})`,
+      );
+    } else {
+      query = query.eq("assigned_to_user_id", ctx.actor.id);
+    }
   } else if (q.assigned_to === "unassigned") {
     query = query.is("assigned_to_user_id", null);
   } else if (q.assigned_to) {
@@ -315,6 +358,8 @@ export async function listConversationsHandler(
     const camposDoContato = [
       `display_name.ilike.*${s}*`,
       `name.ilike.*${s}*`,
+      // O nome da agenda do celular (migration 0546): a lista o mostra, a busca o acha.
+      `address_book_name.ilike.*${s}*`,
       ...(pareceTelefone ? [`phone_number.ilike.*${somenteDigitos}*`] : []),
     ].join(",");
 
@@ -348,9 +393,27 @@ export async function listConversationsHandler(
       // ou o formato do id mudarem.
       .limit(TETO_DE_CONTATOS_NA_BUSCA);
 
-    const ids = idsQueCabemNaURL(
-      (contatos ?? []).map((c) => (c as { id: string }).id),
-    );
+    // Ficha cujo TELEFONE EXTRA casa o número também entra na lista: a busca acima
+    // só olha o principal. A consulta embute a ficha e aplica os mesmos filtros de
+    // organização, anonimizado, pessoal e lápide — e não manda lista de ids na URL.
+    let idsDoExtra: string[] = [];
+    if (pareceTelefone) {
+      const { data: extras } = await supabase
+        .from("contact_phones")
+        .select("contact_id, contacts!inner(id)")
+        .eq("organization_id", ctx.organization_id)
+        .eq("contacts.organization_id", ctx.organization_id)
+        .eq("contacts.is_anonymized", false)
+        .eq("contacts.is_personal", false)
+        .is("contacts.is_merged_into", null)
+        .ilike("phone_number", `*${somenteDigitos}*`)
+        .limit(TETO_DE_CONTATOS_NA_BUSCA);
+      idsDoExtra = ((extras ?? []) as { contact_id: string }[]).map((r) => r.contact_id);
+    }
+
+    const ids = idsQueCabemNaURL([
+      ...new Set([...(contatos ?? []).map((c) => (c as { id: string }).id), ...idsDoExtra]),
+    ]);
     if (ids.length > 0) {
       query = query.or(
         `last_message_preview.ilike.*${s}*,contact_id.in.(${ids.join(",")})`,
@@ -399,7 +462,32 @@ export async function listConversationsHandler(
       ? encodeCursor({ sort: (last[sortCol] as string | null) ?? null, id: last.id })
       : null;
 
+  await anexarNomeDoSetor(supabase, ctx.organization_id, page);
   return { conversations: page, cursor, has_more: hasMore };
+}
+
+/**
+ * O nome do setor de cada conversa da página (O7): a Fila mostra de quem é a
+ * vez. Uma consulta só, e só quando alguma conversa tem setor; erro não derruba
+ * a lista — sem o nome, o selo apenas não aparece.
+ */
+async function anexarNomeDoSetor(supabase: SB, organizationId: string, page: Conversation[]): Promise<void> {
+  const ids = [...new Set(page.map((c) => c.setor_id).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return;
+  try {
+    const { data } = await supabase
+      .from("setores")
+      .select("id, nome")
+      .eq("organization_id", organizationId)
+      .in("id", ids);
+    const nomes = new Map(((data ?? []) as { id: string; nome: string }[]).map((x) => [x.id, x.nome]));
+    for (const c of page) {
+      const nome = c.setor_id ? nomes.get(c.setor_id) : undefined;
+      if (nome) c.setor = { nome };
+    }
+  } catch {
+    // Sem o nome, o selo não aparece; a lista segue.
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -444,6 +532,18 @@ export async function patchConversationHandler(
   input: PatchConversationInput,
 ): Promise<Conversation> {
   const update: Record<string, unknown> = {};
+  // Convite (0544) e setor (0543) ampliam a LEITURA, não a autoridade sobre o
+  // atendimento: mudar o status exige quem já controlava a conversa.
+  const observed = input.status !== undefined
+    ? await getConversationHandler(supabase, ctx, conversationId)
+    : null;
+  // `SELECT_COLS` lê `is_private`; o tipo `Conversation` a declara opcional.
+  if (observed) {
+    await exigirControleDaConversa(supabase, ctx, {
+      assigned_to_user_id: observed.assigned_to_user_id,
+      is_private: observed.is_private ?? null,
+    });
+  }
 
   /**
    * O ATALHO `status='claimed'` PASSA PELA RPC, e não escreve o dono aqui.

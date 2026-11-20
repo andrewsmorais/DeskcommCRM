@@ -1037,7 +1037,7 @@ describe("as três colunas são do sistema", () => {
     ["client_tag_by_system", "update contacts set client_tag_by_system = $2 where id = $1", "removed"],
   ] as const;
 
-  it("I36 · viewer, agent e admin da PRÓPRIA organização: 42501 nas três, e o valor não muda", async () => {
+  it("I36 · viewer não alcança a linha; agent e admin da PRÓPRIA organização: 42501 nas três; o valor não muda", async () => {
     // A CLASSE É PRÉ-EXISTENTE (um viewer já reescreve `tags` e `name`), e esta
     // entrega ACRESCENTA a ela a coluna que decide roteamento e o carimbo de
     // uma-vez-só. Medido antes da guarda, no mesmo banco: `set local role
@@ -1062,7 +1062,11 @@ describe("as três colunas são do sistema", () => {
         ["admin", ADMIN_A],
       ] as const) {
         const r = await tentarComoUsuario(uid, sql, [contato, forjado]);
-        expect(r, `${quem} gravou ${coluna}`).toBe("42501:colunas_de_cliente_sao_do_sistema");
+        // Desde a 0509 o leitor nem alcança a linha: a policy restritiva
+        // `contacts_update_de_atendente` filtra o UPDATE (0 linhas, sem erro)
+        // antes do gatilho. A prova de que nada mudou é a releitura abaixo.
+        const esperado = quem === "viewer" ? "passou" : "42501:colunas_de_cliente_sao_do_sistema";
+        expect(r, `${quem} gravou ${coluna}`).toBe(esperado);
       }
     }
 

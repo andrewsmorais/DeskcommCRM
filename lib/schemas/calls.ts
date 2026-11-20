@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 export const createCallSchema = z.object({
-  toNumber: z.string().min(8),
+  // Só o número (DDI+DDD+número, com ou sem "+"): o valor entra na string de
+  // discagem do Asterisk, e "@", "/" ou "," ali escolhiam outro endpoint.
+  toNumber: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9]{8,15}$/, "Informe só o número, com DDI e DDD."),
   leadId: z.string().uuid().optional(),
   contactId: z.string().uuid().optional(),
   mode: z.enum(["ai", "human"]).default("ai"),

@@ -33,16 +33,21 @@ import {
 } from "@/lib/ai/agents/validation";
 import { publishAgentVersion } from "@/lib/ai/agents/publish";
 import { escolherVersoesDaTela } from "@/lib/ai/agents/versoes-da-tela";
+import {
+  CAMPOS_TECNICOS,
+  podeEditarConfigTecnica,
+  travarConfigTecnica,
+} from "@/lib/ai/agents/config-tecnica";
+import { criarDentroDaCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { VALID_TOOL_IDS } from "@/lib/mcp/tools";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const VERSION_COLUMNS =
-  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin";
+  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, voz_enabled, voz_quando, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin,inbound_debounce_ms,image_vision_enabled";
 
 type ActionResult<T = void> =
-  | { ok: true; data?: T }
-  | { ok: false; error: string; message?: string; details?: unknown };
+  { ok: true; data?: T } | { ok: false; error: string; message?: string; details?: unknown };
 
 async function ensureAdmin() {
   const authUser = await loadAuthUser();
@@ -143,15 +148,34 @@ export async function saveAgentDraftAction(
   // propósito com `agentMcpCreateSchema`, para criar e editar terem a mesma régua.
   // A afirmação de equivalência com o REST era falsa e ficou parada aqui até o
   // achado #532 medir a divergência.
-  const cadastroParsed =
-    cadastro === undefined ? null : agentMcpPatchSchema.safeParse(cadastro);
+  const cadastroParsed = cadastro === undefined ? null : agentMcpPatchSchema.safeParse(cadastro);
   if (cadastroParsed && !cadastroParsed.success) {
     return { ok: false, error: "validation_failed", details: cadastroParsed.error.flatten() };
   }
 
-  const v = parsed.data;
   const requestId = randomUUID();
   const admin = createAdminClient();
+
+  // Cliente não escolhe provedor, modelo, chave nem freios: a versão nova herda
+  // os da última versão do agente (ou o padrão da plataforma). Ver config-tecnica.ts.
+  const podeConfigTecnica = podeEditarConfigTecnica(authUser);
+  let baseTecnica: Record<string, unknown> | null = null;
+  if (!podeConfigTecnica) {
+    const { data: ultima } = await admin
+      .from("ai_agent_versions")
+      .select(CAMPOS_TECNICOS.join(", "))
+      .eq("organization_id", activeOrg.orgId)
+      .eq("agent_id", agentId)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    baseTecnica = (ultima as Record<string, unknown> | null) ?? null;
+  }
+  const v = travarConfigTecnica(parsed.data, {
+    pode: podeConfigTecnica,
+    modo: "insert",
+    base: baseTecnica,
+  });
 
   // Sanity: o agent existe e é da org? não está arquivado?
   const { data: agent } = await admin
@@ -225,7 +249,10 @@ export async function saveAgentDraftAction(
     if (!patchValidated.success) {
       return { ok: false, error: "validation_failed", details: patchValidated.error.flatten() };
     }
-    const update: Record<string, unknown> = { ...patchValidated.data };
+    const update: Record<string, unknown> = travarConfigTecnica(
+      { ...patchValidated.data },
+      { pode: podeConfigTecnica, modo: "patch" },
+    );
     const { data: updated, error } = await admin
       .from("ai_agent_versions")
       .update(update)
@@ -321,6 +348,10 @@ export async function saveAgentDraftAction(
         split_messages: v.split_messages,
         split_max_chars: v.split_max_chars,
         followup: v.followup,
+        voz_enabled: v.voz_enabled,
+        voz_quando: v.voz_quando,
+        inbound_debounce_ms: v.inbound_debounce_ms ?? null,
+        image_vision_enabled: v.image_vision_enabled,
         status: "draft",
         created_by: authUser.id,
       })
@@ -537,6 +568,10 @@ export async function revertToVersionAction(
     knowledge_source_ids: string[];
     split_messages: boolean;
     split_max_chars: number;
+    voz_enabled: boolean;
+    voz_quando: "nunca" | "espelhar" | "sempre" | "quando_pede";
+    inbound_debounce_ms: number | null;
+    image_vision_enabled: boolean | null;
   };
   const src = source as unknown as SourceRow;
 
@@ -586,6 +621,8 @@ export async function revertToVersionAction(
         knowledge_source_ids: src.knowledge_source_ids ?? [],
         split_messages: src.split_messages,
         split_max_chars: src.split_max_chars,
+        inbound_debounce_ms: src.inbound_debounce_ms ?? null,
+        image_vision_enabled: src.image_vision_enabled ?? true,
         status: "draft",
         created_by: authUser.id,
       })
@@ -690,33 +727,51 @@ export async function createMcpAgentAction(
   if (!parsed.success) {
     return { ok: false, error: "validation_failed", details: parsed.error.flatten() };
   }
+  const v = travarConfigTecnica(parsed.data.version, {
+    pode: podeEditarConfigTecnica(authUser),
+    modo: "insert",
+  });
 
   const requestId = randomUUID();
   const admin = createAdminClient();
 
   // Cria agent kind='mcp_agent' + v1 draft. Compensa rollback se versão falhar.
-  const { data: agentRow, error: agentErr } = await admin
-    .from("ai_agents")
-    .insert({
-      organization_id: activeOrg.orgId,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      model: parsed.data.version.model,
-      system_prompt: parsed.data.version.system_prompt,
-      kind: "mcp_agent",
-      priority: parsed.data.priority,
-      is_active: false,
-      is_default: false,
-      created_by: authUser.id,
-    })
-    .select("id")
-    .single();
+  // Contagem da cota e INSERT do agente dentro da MESMA reserva
+  // (`criarDentroDaCotaDeAgentes`): dois cliques simultâneos no limite do
+  // plano não criam os dois.
+  const criado = await criarDentroDaCotaDeAgentes(
+    admin,
+    activeOrg.orgId,
+    { isento: authUser.is_platform_admin || Boolean(authUser.support) },
+    (cota) => ({ recusa: cota }) as const,
+    async () => ({
+      linha: await admin
+        .from("ai_agents")
+        .insert({
+          organization_id: activeOrg.orgId,
+          name: parsed.data.name,
+          description: parsed.data.description ?? null,
+          model: v.model,
+          system_prompt: v.system_prompt,
+          kind: "mcp_agent",
+          priority: parsed.data.priority,
+          is_active: false,
+          is_default: false,
+          created_by: authUser.id,
+        })
+        .select("id")
+        .single(),
+    }),
+  );
+  if ("recusa" in criado) {
+    return { ok: false, error: criado.recusa.code, message: criado.recusa.message };
+  }
+  const { data: agentRow, error: agentErr } = criado.linha;
 
   if (agentErr || !agentRow) {
     return { ok: false, error: "internal_error", message: agentErr?.message };
   }
 
-  const v = parsed.data.version;
   const { error: versionErr } = await admin.from("ai_agent_versions").insert({
     organization_id: activeOrg.orgId,
     agent_id: agentRow.id,
@@ -739,6 +794,10 @@ export async function createMcpAgentAction(
     cases_enabled: v.cases_enabled,
     split_messages: v.split_messages,
     split_max_chars: v.split_max_chars,
+    voz_enabled: v.voz_enabled,
+    voz_quando: v.voz_quando,
+    inbound_debounce_ms: v.inbound_debounce_ms ?? null,
+    image_vision_enabled: v.image_vision_enabled,
     // O corpo ACEITAVA estes cinco e o INSERT os descartava: criar o assistente
     // pela tela com papel Operador, escopo de funil ou material marcado produzia
     // uma versão com tudo no default do banco — desligado e vazio.

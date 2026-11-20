@@ -1,0 +1,189 @@
+import { notFound, redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { ROLE_RANK } from "@/lib/auth/types";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { listSelectableChannels } from "@/lib/channels/selectable";
+import { grafoSchema } from "@/lib/chatbot/passos";
+import { modelosQueOFluxoEnvia, type LinhaDeModeloDoCanal } from "@/lib/followup/modelos-aprovados";
+import { bibliotecaDeMidias } from "@/lib/chatbot/biblioteca-de-midias";
+import { createClient } from "@/lib/supabase/server";
+import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
+import { ChatbotCanvas } from "./_components/ChatbotCanvas";
+
+export const dynamic = "force-dynamic";
+
+type Props = { params: Promise<{ id: string }> };
+
+export const metadata: Metadata = { title: "Chatbot" };
+
+export default async function ChatbotEditorPage({ params }: Props) {
+  const { id } = await params;
+
+  const user = await requireAuth();
+  const activeOrg = await resolveActiveOrg(user);
+  if (!activeOrg) redirect("/app");
+  if (ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) redirect("/403");
+
+  const db = await createClient();
+  const [
+    flowRes,
+    canais,
+    pessoasRes,
+    followupsRes,
+    fluxosRes,
+    tiposRes,
+    funisRes,
+    etapasRes,
+    modelosRes,
+    setoresRes,
+    produtosRes,
+    agentesRes,
+  ] = await Promise.all([
+    db
+      .from("chatbot_flows")
+      .select("id, name, is_active, grafo, rascunho, revisao")
+      .eq("id", id)
+      .eq("organization_id", activeOrg.orgId)
+      .maybeSingle(),
+    listSelectableChannels(db, activeOrg.orgId),
+    db
+      .from("user_organizations")
+      .select("user_id, role")
+      .eq("organization_id", activeOrg.orgId)
+      .is("revoked_at", null),
+    db
+      // TODOS, não só os publicados: o painel mostra rascunho e desligado
+      // apagados, com o motivo, em vez de o follow-up "sumir" da lista.
+      .from("followup_flow_pointers")
+      .select("id, name, surface, status")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db
+      .from("chatbot_flows")
+      .select("id, name, is_active, grafo")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db
+      .from("calendar_event_types")
+      .select("id, name, is_active")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db
+      .from("crm_pipelines")
+      .select("id, name")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position"),
+    db
+      .from("crm_stages")
+      .select("id, name, pipeline_id")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position"),
+    // "Enviar template": a MESMA lista do seletor do follow-up (aprovados e
+    // sem variável — o fluxo não tem de onde tirar valor).
+    db
+      .from("meta_templates")
+      .select("id, name, language, status, parameter_format, components")
+      .eq("organization_id", activeOrg.orgId)
+      .order("name"),
+    db.from("setores").select("id, nome").eq("organization_id", activeOrg.orgId).order("nome"),
+    db
+      .from("catalog_products")
+      .select("id, nome, ativo")
+      .eq("organization_id", activeOrg.orgId)
+      .order("ativo", { ascending: false })
+      .order("nome")
+      .limit(500),
+    // "Transferir p/ agentes de IA": quem pode continuar a conversa.
+    db
+      .from("ai_agents")
+      .select("id, name, published_version_id")
+      .eq("organization_id", activeOrg.orgId)
+      .is("archived_at", null)
+      .order("name"),
+  ]);
+
+  if (!flowRes.data) notFound();
+
+  // A paleta marca os passos do "Chatbot avançado" quando o plano não os inclui
+  // (Essencial). Quem barra de verdade é a rota que grava o desenho.
+  const avancadoLiberado = (await verificarRecursoDoPlano(activeOrg.orgId, "chatbot_avancado")).ok;
+
+  // Fluxo ligado com mudança não publicada: o editor abre o RASCUNHO (o que
+  // roda para os clientes continua sendo `grafo`, até "Publicar").
+  const rascunho = grafoSchema.safeParse(flowRes.data.rascunho);
+  // Desenho gravado fora do formato (ou vazio): abre em branco, sem quebrar a tela.
+  const grafo = rascunho.success ? rascunho : grafoSchema.safeParse(flowRes.data.grafo);
+
+  const pessoas = (pessoasRes.data ?? []).filter((p) => p.role !== "viewer");
+  const nomes = await nomesDosAtendentes(pessoas.map((p) => String(p.user_id)));
+
+  return (
+    <ChatbotCanvas
+      avancadoLiberado={avancadoLiberado}
+      flow={{
+        id: flowRes.data.id,
+        name: flowRes.data.name,
+        is_active: flowRes.data.is_active,
+        grafo: grafo.success ? grafo.data : { nodes: [], edges: [] },
+        temRascunho: rascunho.success,
+        revisao: typeof flowRes.data.revisao === "number" ? flowRes.data.revisao : undefined,
+      }}
+      opcoes={{
+        canais: canais.map((c) => ({
+          id: c.id,
+          nome: c.phone_number ? `${c.display_name} (${c.phone_number})` : c.display_name,
+        })),
+        atendentes: pessoas.map((p) => ({
+          id: String(p.user_id),
+          nome: nomes.get(String(p.user_id)) ?? `${String(p.user_id).slice(0, 8)} · ${p.role}`,
+        })),
+        followups: (followupsRes.data ?? []).map((f) => ({
+          id: String(f.id),
+          nome: String(f.name),
+          situacao: f.status === "active" ? "publicado" : f.status === "disabled" ? "desligado" : "rascunho",
+          roteiro: f.surface === "atendimento",
+        })),
+        fluxoAtual: flowRes.data.id,
+        fluxos: (fluxosRes.data ?? []).map((f) => ({
+          id: String(f.id),
+          nome: String(f.name),
+          ligado: Boolean(f.is_active),
+        })),
+        tiposDeAtendimento: (tiposRes.data ?? []).map((tipo) => ({
+          id: String(tipo.id),
+          nome: String(tipo.name),
+          ativo: Boolean(tipo.is_active),
+        })),
+        funis: (funisRes.data ?? []).map((f) => ({
+          id: String(f.id),
+          nome: String(f.name),
+          etapas: (etapasRes.data ?? [])
+            .filter((e) => e.pipeline_id === f.id)
+            .map((e) => ({ id: String(e.id), nome: String(e.name) })),
+        })),
+        setores: (setoresRes.data ?? []).map((s) => ({ id: String(s.id), nome: String(s.nome) })),
+        modelos: modelosQueOFluxoEnvia((modelosRes.data ?? []) as LinhaDeModeloDoCanal[]).map(
+          (m) => ({ id: m.id, nome: m.name, idioma: m.language, texto: m.texto }),
+        ),
+        agentes: (agentesRes.data ?? []).map((a) => ({
+          id: String(a.id),
+          nome: String(a.name),
+          publicado: a.published_version_id !== null,
+        })),
+        produtos: (produtosRes.data ?? []).map((p) => ({
+          id: String(p.id),
+          nome: String(p.nome),
+          ativo: Boolean(p.ativo),
+        })),
+        midias: bibliotecaDeMidias(
+          (fluxosRes.data ?? []).map((f) => ({ name: String(f.name), grafo: f.grafo })),
+          activeOrg.orgId,
+        ),
+      }}
+    />
+  );
+}

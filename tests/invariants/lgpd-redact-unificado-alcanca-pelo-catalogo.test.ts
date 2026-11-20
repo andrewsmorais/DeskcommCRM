@@ -207,6 +207,11 @@ const DECISOES: Record<string, Decisao> = {
     razao: "0482 (grupos na inbox, #1647): subject é o NOME do grupo e vira null; contact_id aponta para o placeholder do grupo (contacts.kind = 'whatsapp_group'), e número, conversa e liga/desliga ficam. O que o TITULAR escreveu em grupo é redigido pelo gatilho fn_redigir_conversas_ao_anonimizar, em messages.",
   },
   // ── redigir pela virada de is_anonymized (gatilho) ────────────────────────
+  mensagens_agendadas: {
+    decidida: "redigir",
+    caminho: "gatilho",
+    razao: "0511 (mensagens agendadas): texto livre escrito para a pessoa, ainda por sair. fn_mensagens_agendadas_ao_anonimizar apaga as linhas do contato na virada de is_anonymized — nada agendado sai para quem foi anonimizado.",
+  },
   ai_reply_drafts: {
     decidida: "redigir",
     caminho: "gatilho",
@@ -216,6 +221,11 @@ const DECISOES: Record<string, Decisao> = {
     decidida: "redigir",
     caminho: "gatilho",
     razao: "0184: title, description, notes, location_details e cancellation_reason são texto livre que nomeia a pessoa (queixa clínica numa clínica); gatilho da virada, com google/meet no mesmo acorde.",
+  },
+  contact_phones: {
+    decidida: "redigir",
+    caminho: "cascata",
+    razao: "0541 (9043 do produto): os telefones extras e o `lid` do WhatsApp de cada um — apagados em fn_lgpd_cascade_redact_contact, depois do gatilho de grupo que ainda os lê.",
   },
   contact_field_proposals: {
     decidida: "redigir",
@@ -248,6 +258,14 @@ const DECISOES: Record<string, Decisao> = {
     razao: "0174: captured_name/captured_email/captured_phone (o payload cru de captação) zerados por gatilho — a entrada na dívida do invariante irmão é o aviso de que este instrumento não lia gatilho.",
   },
   // ── manter: a linha e o conteúdo ficam, por decisão ───────────────────────
+  automation_rule_contact_claims: {
+    decidida: "manter",
+    razao: "Reserva de 'uma vez por contato' (0524): só ids (organização, regra, contato, evento) e a data. Nenhum texto da pessoa; e manter a reserva é o que impede a automação de rodar de novo para o contato anonimizado.",
+  },
+  automation_rule_runs: {
+    decidida: "manter",
+    razao: "Execução da automação: status e resultado de cada ação (vocabulário e ids), mais o contact_id (0524) que só diz de QUEM foi a execução. O corpo de mensagem mora em messages, que a cascata redige.",
+  },
   ai_agent_runs: {
     decidida: "manter",
     razao: "Resultado da execução do agente: status, código de erro e ids das mensagens trocadas. Nenhum campo guarda nome, telefone ou corpo de mensagem — o texto da pessoa mora em messages/conversations, que a cascata redige.",

@@ -61,6 +61,7 @@ import { ActionNode } from "./nodes/ActionNode";
 import { EndNode } from "./nodes/EndNode";
 import { CollectNode } from "./nodes/CollectNode";
 import { InternalTaskNode } from "./nodes/InternalTaskNode";
+import { CrmUpdateNode } from "./nodes/CrmUpdateNode";
 import { SkillNode } from "./nodes/SkillNode";
 
 const EMPTY_GRAPH: FlowGraph = { nodes: [], edges: [] };
@@ -81,6 +82,7 @@ const nodeTypes: NodeTypes = {
   // rótulo e sem formulário. Completar o nó é esta linha mais o formulário do
   // painel (`forms/InternalTaskForm`).
   internal_task: InternalTaskNode,
+  crm_update: CrmUpdateNode,
   end: EndNode,
   collect: CollectNode,
   skill: SkillNode,

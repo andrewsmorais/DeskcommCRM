@@ -68,6 +68,7 @@ import {
   RETENCAO_ESPELHO_AGENDA_DIAS_PISO,
   RETENCAO_FILA_DIAS_PADRAO,
   RETENCAO_FILA_DIAS_PISO,
+  RETENCAO_MIDIA_DIAS_PISO,
   RETENCAO_OBSERVACOES_DO_JEV_DIAS_PADRAO,
   RETENCAO_OBSERVACOES_DO_JEV_DIAS_PISO,
   RETENCAO_PASSAGEM_DIAS_PADRAO,
@@ -128,6 +129,10 @@ export interface ResultadoDaRetencao {
   avisos_de_caso_apagados: number;
   lotes_avisos_de_caso: number;
   avisos_de_caso_tem_resto: boolean;
+  /** O registro de entrega do aviso de agendamento no WhatsApp do dono (0704). */
+  avisos_de_agendamento_apagados: number;
+  lotes_avisos_de_agendamento: number;
+  avisos_de_agendamento_tem_resto: boolean;
   /** O candidato de prospecção nativa vencido (migration 0408, issue #1313). */
   prospeccao_apagada: number;
   lotes_prospeccao: number;
@@ -145,6 +150,26 @@ export interface ResultadoDaRetencao {
   candidatos_do_golden_apagados: number;
   lotes_candidatos_do_golden: number;
   candidatos_do_golden_tem_resto: boolean;
+  /**
+   * A MÍDIA de mensagem vencida enfileirada para remoção (migration 0552,
+   * issue #1534) — `vencidas + orfas` do `fn_enfileirar_midia_vencida`, a mesma
+   * leitura do cron `media-retention`. Os dois crons chamam a MESMA função: a
+   * delas (05:20) drena `whatsapp-media` por conta própria, esta (04:40) é o
+   * dreno que o autor do #1534 confirmou — cada um para no primeiro lote
+   * incompleto, então a dupla só acelera quem já teria drenado sozinho.
+   */
+  midia_enfileirada: number;
+  /** A linha `deleted` da FILA DE MÍDIA expurgada nesta rodada (0435/#1765). */
+  midia_expurgada: number;
+  lotes_midia: number;
+  midia_tem_resto: boolean;
+  /**
+   * O piso de 30 dias da mídia, em número de relatório. Diferente das irmãs, o
+   * prazo da mídia é POR ORGANIZAÇÃO (`organizations.media_retention_days`) e
+   * mora dentro do `greatest(...)` do corpo da função — o que se reporta aqui é
+   * o degrau abaixo do qual nenhum banco pode ir.
+   */
+  retencao_midia_dias: number;
   retencao_fila_dias: number;
   retencao_auditoria_dias: number;
   retencao_espelho_dias: number;
@@ -169,11 +194,28 @@ export interface PodaDb {
       | "fn_expurgar_conversa_do_caso_vencida"
       | "fn_expurgar_passagens_vencidas"
       | "fn_expurgar_avisos_de_caso_vencidos"
+      | "fn_expurgar_avisos_de_agendamento_vencidos"
       | "fn_expurgar_prospeccao_vencida"
       | "fn_expurgar_observacoes_do_jev"
       | "fn_expurgar_candidatos_do_golden",
     args: { p_retencao_dias: number; p_limite: number },
   ): Promise<{ data: number | null; error: { message: string } | null }>;
+  /**
+   * A DÉCIMA segunda poda (migration 0552, issue #1534): a retenção de mídia.
+   *
+   * Método PRÓPRIO, e não mais uma entrada na união do `rpc` — mesma exceção do
+   * rascunho e pela razão inversa: `fn_enfileirar_midia_vencida` recebe UM
+   * argumento (`p_limite`) e devolve JSONB (`{vencidas, orfas, expurgadas}`),
+   * enquanto o `rpc` das irmãs recebe `p_retencao_dias` + `p_limite` e devolve
+   * número. Mandar `p_retencao_dias` para ela é PGRST202 (função não existe
+   * para essa assinatura) e ler o JSONB como número é NaN calado no relatório.
+   *
+   * O prazo NÃO vem daqui: ele é por organização (`media_retention_days`) e
+   * mora dentro do `greatest(...)` do corpo da função, com o piso de 30 dias.
+   */
+  enfileirarMidia(
+    lote: number,
+  ): Promise<{ data: RetornoDaFilaDeMidia | null; error: { message: string } | null }>;
   /**
    * A DÉCIMA poda é a única que não é `security definer`: a tabela 0419 nunca
    * teve função de expurgo, então o corte (`expires_at` mais velho que o prazo)
@@ -197,6 +239,7 @@ async function drenar(
     | "fn_expurgar_conversa_do_caso_vencida"
     | "fn_expurgar_passagens_vencidas"
     | "fn_expurgar_avisos_de_caso_vencidos"
+    | "fn_expurgar_avisos_de_agendamento_vencidos"
     | "fn_expurgar_prospeccao_vencida"
     | "fn_expurgar_observacoes_do_jev"
     | "fn_expurgar_candidatos_do_golden",
@@ -250,6 +293,58 @@ async function drenarRascunhos(
     if (n < TAMANHO_DO_LOTE) return { apagadas, lotes, temResto: false };
   }
   return { apagadas, lotes, temResto: true };
+}
+
+/**
+ * O retorno JSONB do `fn_enfileirar_midia_vencida` (0432/0552).
+ *
+ * Três chaves, e a leitura delas é o relatório da rodada: `vencidas` (mensagem
+ * vencida), `orfas` (arquivo sem ponteiro) e `expurgadas` (linha `deleted` da
+ * fila, 0435/#1765). Todas opcionais porque uma função antiga no banco devolve
+ * só as duas primeiras — mesmo `?? 0` do cron `media-retention`.
+ */
+export interface RetornoDaFilaDeMidia {
+  vencidas?: number;
+  orfas?: number;
+  expurgadas?: number;
+}
+
+/**
+ * A décima segunda poda (migration 0552, issue #1534): a retenção de mídia.
+ *
+ * Mesmo laço de `drenar` — par no lote incompleto, teto por invocação,
+ * `temResto` quando o teto fecha — e a MESMA regra de erro: sobe. As duas
+ * diferenças são de formato, não de regra: o argumento é SÓ o lote (o prazo é
+ * por organização e mora no `greatest(...)` do corpo da função) e a contagem
+ * vem em JSONB.
+ *
+ * O par é a SOMA de `vencidas` com `orfas`, porque as duas põem arquivo na mesma
+ * fila e o relatório pergunta "quanto saiu do caminho do banco"; `expurgadas` é
+ * contada à parte porque ela apaga LINHA DE FILA, não mídia — quem só expurgou
+ * audita (é mutação), mas não enfileirou nada para remoção.
+ */
+async function drenarMidia(
+  db: PodaDb,
+): Promise<{ enfileirada: number; expurgada: number; lotes: number; temResto: boolean }> {
+  let enfileirada = 0;
+  let expurgada = 0;
+  let lotes = 0;
+  for (let i = 0; i < MAX_LOTES; i += 1) {
+    const { data, error } = await db.enfileirarMidia(TAMANHO_DO_LOTE);
+    if (error) throw new Error(`fn_enfileirar_midia_vencida: ${error.message}`);
+    const r = (typeof data === "object" && data !== null ? data : {}) as RetornoDaFilaDeMidia;
+    const vencidas = r.vencidas ?? 0;
+    const orfas = r.orfas ?? 0;
+    expurgada += r.expurgadas ?? 0;
+    enfileirada += vencidas + orfas;
+    lotes += 1;
+    // Par em qualquer uma das duas categorias, como no cron `media-retention`:
+    // `vencidas` esgotou mas `orfas` ainda tem o teto = ainda há o que drenar.
+    if (vencidas < TAMANHO_DO_LOTE && orfas < TAMANHO_DO_LOTE) {
+      return { enfileirada, expurgada, lotes, temResto: false };
+    }
+  }
+  return { enfileirada, expurgada, lotes, temResto: true };
 }
 
 /**
@@ -354,6 +449,10 @@ export async function podarHistorico(
   // poda aqui é volume de operação — e é a poda de horizonte mais curto das
   // sete, porque a única pergunta que a linha responde é de semanas.
   const avisosDeCaso = await drenar(db, "fn_expurgar_avisos_de_caso_vencidos", avisoDeCaso.dias);
+  // A do aviso de agendamento (0704 do original) é a mesma pergunta de semanas
+  // sobre o mesmo canal, e por isso segue o MESMO knob e o mesmo piso do aviso de
+  // caso: dois knobs para "o aviso saiu?" seriam dois números para o operador errar.
+  const avisosDeAgendamento = await drenar(db, "fn_expurgar_avisos_de_agendamento_vencidos", avisoDeCaso.dias);
   // Oitava poda: o candidato de prospecção nativa vencido (migration 0408,
   // issue #1313). Padrão 365 / piso 90 — decisão do dono, alinhada ao
   // horizonte da conversa do caso e da captação. O piso mora no CORPO da
@@ -375,6 +474,12 @@ export async function podarHistorico(
   // Padrão 90 / piso 30, a janela em que o near-miss ainda é curável — o piso mora no
   // CORPO da função, como nas irmãs. A linha é rótulo, sem texto de cliente.
   const candidatosDrenados = await drenar(db, "fn_expurgar_candidatos_do_golden", candidatosDoGolden.dias);
+  // Décima segunda poda (migration 0552, issue #1534): a retenção de MÍDIA que a
+  // tela prometia e que nada aplicava. O prazo não é knob de ambiente — é
+  // `organizations.media_retention_days`, com o piso de 30 dias no `greatest(...)`
+  // do corpo da função —, então o que este laço decide é só QUANTO drenar por
+  // rodada: lotes de 1000, teto de 20, parando no primeiro incompleto.
+  const midiaDrenada = await drenarMidia(db);
 
   return {
     jobs_apagados: jobs.apagadas,
@@ -384,6 +489,7 @@ export async function podarHistorico(
     conversa_do_caso_apagada: conversas.apagadas,
     passagens_apagadas: passagens.apagadas,
     avisos_de_caso_apagados: avisosDeCaso.apagadas,
+    avisos_de_agendamento_apagados: avisosDeAgendamento.apagadas,
     prospeccao_apagada: prospeccaoDrenada.apagadas,
     observacoes_do_jev_apagadas: observacoesDrenadas.apagadas,
     candidatos_do_golden_apagados: candidatosDrenados.apagadas,
@@ -393,6 +499,7 @@ export async function podarHistorico(
     lotes_conversa_do_caso: conversas.lotes,
     lotes_passagens: passagens.lotes,
     lotes_avisos_de_caso: avisosDeCaso.lotes,
+    lotes_avisos_de_agendamento: avisosDeAgendamento.lotes,
     lotes_prospeccao: prospeccaoDrenada.lotes,
     lotes_observacoes_do_jev: observacoesDrenadas.lotes,
     lotes_candidatos_do_golden: candidatosDrenados.lotes,
@@ -402,12 +509,17 @@ export async function podarHistorico(
     conversa_do_caso_tem_resto: conversas.temResto,
     passagens_tem_resto: passagens.temResto,
     avisos_de_caso_tem_resto: avisosDeCaso.temResto,
+    avisos_de_agendamento_tem_resto: avisosDeAgendamento.temResto,
     prospeccao_tem_resto: prospeccaoDrenada.temResto,
     observacoes_do_jev_tem_resto: observacoesDrenadas.temResto,
     rascunhos_apagados: rascunhosDrenados.apagadas,
     lotes_rascunhos: rascunhosDrenados.lotes,
     rascunhos_tem_resto: rascunhosDrenados.temResto,
     candidatos_do_golden_tem_resto: candidatosDrenados.temResto,
+    midia_enfileirada: midiaDrenada.enfileirada,
+    midia_expurgada: midiaDrenada.expurgada,
+    lotes_midia: midiaDrenada.lotes,
+    midia_tem_resto: midiaDrenada.temResto,
     retencao_fila_dias: fila.dias,
     retencao_auditoria_dias: auditoria.dias,
     retencao_espelho_dias: espelho.dias,
@@ -418,6 +530,7 @@ export async function podarHistorico(
     retencao_observacoes_do_jev_dias: observacoesDoJev.dias,
     retencao_rascunho_dias: rascunho.dias,
     retencao_candidatos_do_golden_dias: candidatosDoGolden.dias,
+    retencao_midia_dias: RETENCAO_MIDIA_DIAS_PISO,
     avisos: [
       fila.aviso,
       auditoria.aviso,
@@ -462,6 +575,8 @@ export function houveEfeito(resultado: ResultadoDaRetencao): boolean {
     // apagaria linhas e não deixaria registro — e o CLAUDE.md
     // manda auditar QUANDO HÁ EFEITO, nunca parar de auditar.
     resultado.avisos_de_caso_apagados > 0 ||
+    // A do aviso de agendamento, pela mesma razão.
+    resultado.avisos_de_agendamento_apagados > 0 ||
     // A oitava, pela MESMA razão das sete anteriores: uma rodada que só podou
     // candidato de prospecção vencido apagaria linhas e não deixaria registro.
     // Esta é a poda de dado de PESSOA que nunca falou com a empresa (0408) —
@@ -478,7 +593,15 @@ export function houveEfeito(resultado: ResultadoDaRetencao): boolean {
     // A décima primeira, pela mesma razão das dez: uma rodada que só apagou
     // candidato ao golden set vencido apagaria linha sem deixar registro —
     // encolhimento silencioso.
-    resultado.candidatos_do_golden_apagados > 0
+    resultado.candidatos_do_golden_apagados > 0 ||
+    // A décima segunda, pela mesma razão das onze anteriores: a retenção de
+    // mídia (#1534) põe arquivo na fila e anula coluna de mensagem — drenar sem
+    // trilha seria apagar mídia de cliente em silêncio. `midia_expurgada` entra
+    // na mesma conta pelo motivo do #1765: expurgar LINHA DE FILA também é
+    // mutação, e uma rodada que só fez isso não pode ser indistinguível de uma
+    // que não fez nada.
+    resultado.midia_enfileirada > 0 ||
+    resultado.midia_expurgada > 0
   );
 }
 
@@ -522,6 +645,16 @@ async function handle(req: NextRequest): Promise<Response> {
           .order("id")
           .limit(lote);
         return { data: Array.isArray(data) ? data.length : null, error };
+      },
+      // A décima segunda poda (migration 0552, #1534): a retenção de mídia. O
+      // retorno é JSONB (`{vencidas, orfas, expurgadas}`), por isso um método
+      // próprio em vez de mais uma entrada na união do `rpc` — ver a JSDoc de
+      // `PodaDb.enfileirarMidia`.
+      async enfileirarMidia(lote) {
+        const { data, error } = await admin.rpc("fn_enfileirar_midia_vencida" as never, {
+          p_limite: lote,
+        } as never);
+        return { data: (data ?? null) as RetornoDaFilaDeMidia | null, error };
       },
     };
     resultado = await podarHistorico(db, {

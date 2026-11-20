@@ -111,8 +111,12 @@ franquia comercial nova de IA, carteira de créditos ou cobrança por consumo.
 
 ### Pendências dos planos
 
-1. Definir e implementar upgrade/downgrade de contrato vigente, incluindo data de
-   vigência e regra financeira. Hoje o checkout impede uma segunda assinatura.
+1. ~~Definir e implementar upgrade/downgrade de contrato vigente~~ — feito em
+   11/11/2026 (migration 0508, `lib/billing/troca-de-plano.ts`, rota
+   `POST/DELETE /api/v1/billing/trocar-plano`, webhook da página de vendas):
+   subir paga a diferença proporcional e vale na confirmação do pagamento; descer
+   vale no fim do período pago; no teste, na hora. Escala e troca de ciclo seguem
+   pelo suporte.
 2. Provar e reforçar cotas contra acesso direto ao Supabase. Os controles comerciais
    implementados ficam na aplicação e não substituem esse trabalho no banco.
 3. A reserva tem prazo e não equivale a uma restrição transacional definitiva de cota.

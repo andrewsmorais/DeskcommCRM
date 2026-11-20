@@ -22,10 +22,17 @@
  *   - Dry-run path bypasses concurrency unique guard, channel dispatch, outbound row.
  *   - Plaintext API keys are never logged.
  */
+import { ferramentasDoPlano } from "@/lib/billing/ferramentas-do-plano";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import { generateText, stepCountIs, type LanguageModel, type StopCondition, type ToolSet } from "ai";
+import {
+  generateText,
+  stepCountIs,
+  type LanguageModel,
+  type StopCondition,
+  type ToolSet,
+} from "ai";
 
 // Fonte única do endpoint — a mesma constante que o registry de produção usa.
 // Repetir a URL aqui criaria dois lugares para consertar quando ela mudar.
@@ -40,6 +47,7 @@ import { fetchParaDestinoDaOrganizacao } from "@/lib/automation/destinos-interno
 import { decidirElegibilidadeDaConversaViaSupabase } from "@/lib/ai/elegibilidade/consulta-supabase";
 import { ttlDaAutorizacaoMs } from "@/lib/ai/elegibilidade/gate";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { enderecoDaUltimaRecebida } from "@/lib/channels/endereco-da-ultima-recebida";
 import { audit } from "@/lib/audit";
 import type { McpAuthResult } from "@/lib/mcp/auth";
 import type { McpContext } from "@/lib/mcp/types";
@@ -160,9 +168,11 @@ function buildSentinelRegex(keywords: string[]): RegExp | null {
  * lá não existe faria o ensaio passar e a mensagem real falhar.
  */
 export function chaveDePlataforma(provider: string): string | null {
-  const nome = { anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY", openrouter: "OPENROUTER_API_KEY" }[
-    provider
-  ];
+  const nome = {
+    anthropic: "ANTHROPIC_API_KEY",
+    openai: "OPENAI_API_KEY",
+    openrouter: "OPENROUTER_API_KEY",
+  }[provider];
   if (!nome) return null;
   const v = (process.env[nome] ?? "").trim();
   return v === "" ? null : v;
@@ -213,13 +223,19 @@ export function buildModel(
       }
       // Endereço escolhido pela empresa: mesma régua de destino do turno do
       // agente (`providers.ts`), senão o ensaio seria a porta para a rede interna.
-      return createOpenAI({ apiKey, baseURL: baseUrl, fetch: fetchParaDestinoDaOrganizacao() }).chat(modelId);
+      return createOpenAI({
+        apiKey,
+        baseURL: baseUrl,
+        fetch: fetchParaDestinoDaOrganizacao(),
+      }).chat(modelId);
     default:
       throw new Error(`unsupported_provider: ${provider}`);
   }
 }
 
-function totalUsage(steps: ReadonlyArray<{ usage?: { inputTokens?: number; outputTokens?: number } }>) {
+function totalUsage(
+  steps: ReadonlyArray<{ usage?: { inputTokens?: number; outputTokens?: number } }>,
+) {
   let inputTokens = 0;
   let outputTokens = 0;
   for (const s of steps) {
@@ -277,16 +293,23 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     organizationId: run.organization_id,
     resourceType: "ai_agent_run",
     resourceId: run.id,
-    metadata: { agent_id: run.agent_id, agent_version_id: run.agent_version_id, is_dry_run: run.is_dry_run },
+    metadata: {
+      agent_id: run.agent_id,
+      agent_version_id: run.agent_version_id,
+      is_dry_run: run.is_dry_run,
+    },
   });
-  await admin.rpc("emit_event" as never, {
-    p_event_type: "ai_agent.run_started",
-    p_entity_kind: "ai_agent_run",
-    p_entity_id: run.id,
-    p_payload: { run_id: run.id, agent_id: run.agent_id, is_dry_run: run.is_dry_run },
-    p_metadata: { source: "agent-runtime" },
-    p_organization_id: run.organization_id,
-  } as never);
+  await admin.rpc(
+    "emit_event" as never,
+    {
+      p_event_type: "ai_agent.run_started",
+      p_entity_kind: "ai_agent_run",
+      p_entity_id: run.id,
+      p_payload: { run_id: run.id, agent_id: run.agent_id, is_dry_run: run.is_dry_run },
+      p_metadata: { source: "agent-runtime" },
+      p_organization_id: run.organization_id,
+    } as never,
+  );
 
   let ephemeralTokenId: string | null = null;
 
@@ -382,28 +405,43 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       const { data: convRaw } = await admin
         .from("conversations")
         .select(
-          `id, group_chat_id, is_group, contacts:contact_id(phone_number, wa_identity, wa_lid), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS})`,
+          `id, contact_id, group_chat_id, is_group, contacts:contact_id(phone_number, wa_identity, wa_lid), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS})`,
         )
         .eq("id", run.conversation_id)
         .eq("organization_id", run.organization_id)
         .maybeSingle();
       const conv = convRaw as unknown as {
         id: string;
+        contact_id: string | null;
         group_chat_id: string | null;
         is_group: boolean;
-        contacts: { phone_number: string | null; wa_identity: string | null; wa_lid: string | null } | null;
+        contacts: {
+          phone_number: string | null;
+          wa_identity: string | null;
+          wa_lid: string | null;
+        } | null;
         channel_sessions: ChannelSessionRef | null;
       } | null;
       if (conv) {
         // Mesmo seam do handler de envio: quem sabe de que coluna sai o ref da
         // sessão, e como o telefone vira endereço, é `lib/channels/`.
         waSessionName = conv.channel_sessions ? resolveSessionRef(conv.channel_sessions) : null;
+        // Ficha com telefone extra: a resposta volta pelo número que a pessoa
+        // escreveu. A porta de canal decide quem tem isso.
+        const ultimoRecebidoChatId = await enderecoDaUltimaRecebida(admin, {
+          provider: conv.channel_sessions?.provider,
+          isGroup: conv.is_group,
+          organizationId: run.organization_id,
+          conversationId: conv.id,
+          contactId: conv.contact_id,
+        });
         chatId = getAdapter(conv.channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER).resolveRecipient({
           isGroup: conv.is_group,
           groupChatId: conv.group_chat_id,
           phoneNumber: conv.contacts?.phone_number,
           waIdentity: conv.contacts?.wa_identity,
           waLid: conv.contacts?.wa_lid,
+          ultimoRecebidoChatId,
         });
       }
 
@@ -420,7 +458,12 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
           ttlMs: ttlDaAutorizacaoMs(process.env),
         });
         if (elegib !== null && !elegib.permite) {
-          return await failRun(run, "nao_elegivel_para_ia", `elegibilidade: ${elegib.motivo}`, startedAt);
+          return await failRun(
+            run,
+            "nao_elegivel_para_ia",
+            `elegibilidade: ${elegib.motivo}`,
+            startedAt,
+          );
         }
       } catch (err) {
         return await failRun(
@@ -502,15 +545,20 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       apiTokenId: ephemeral.id,
       requestId: run.id,
       supabase: admin,
+      // O contato da conversa do run, lido do banco — nunca dos argumentos.
+      ...(run.contact_id ? { turnContactId: run.contact_id } : {}),
     };
     const handoffSignal: RuntimeHandoffSignal = { triggered: false };
+    // "Agente que organiza o CRM sozinho" é do Impulso em diante.
+    const doPlano = await ferramentasDoPlano(run.organization_id, version.tool_ids ?? []);
     const tools = pickToolsFromMcp({
       supabase: admin,
       ctx,
       auth,
-      toolIds: version.tool_ids ?? [],
+      toolIds: doPlano.toolIds,
       handoffToolEnabled: version.handoff_tool_enabled,
-      proposalAiDraftEnabled: (version as { proposal_ai_draft_enabled?: boolean }).proposal_ai_draft_enabled ?? true,
+      proposalAiDraftEnabled:
+        (version as { proposal_ai_draft_enabled?: boolean }).proposal_ai_draft_enabled ?? true,
       // `?? []` — o clone sem a coluna 0125 nasce FECHADO.
       pipelineIds: (version as { pipeline_ids?: string[] }).pipeline_ids ?? [],
       modulosLigados: await modulosLigados(admin),
@@ -539,7 +587,9 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
         abortReason = "handoff_tool";
         return true;
       }
-      const usage = totalUsage(steps as Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>);
+      const usage = totalUsage(
+        steps as Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>,
+      );
       const totalTokens = usage.inputTokens + usage.outputTokens;
       if (totalTokens > version.token_budget) {
         abortReason = "token_budget_exceeded";
@@ -573,7 +623,9 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     });
 
     // 12) Aggregate metrics.
-    const usage = totalUsage(result.steps as Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>);
+    const usage = totalUsage(
+      result.steps as Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>,
+    );
     const cost = await computeCostCents({
       provider: version.provider,
       model: version.model,
@@ -749,12 +801,7 @@ async function failRun(
   };
 }
 
-function failFast(
-  run: RunRow,
-  code: string,
-  message: string,
-  startedAt: number,
-): RunAgentResult {
+function failFast(run: RunRow, code: string, message: string, startedAt: number): RunAgentResult {
   // Used when we couldn't even promote to running — no row mutation here.
   return {
     run_id: run.id,

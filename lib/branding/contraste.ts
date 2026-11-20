@@ -65,7 +65,7 @@ export function razaoDeContraste(a: string, b: string): number {
  * Pisos por papel. Não são preferência: `texto` é WCAG 1.4.3 (Contrast Minimum) e
  * `componente` é 1.4.11 (Non-text Contrast), que rege borda, ícone e anel de foco.
  */
-export const PISOS = { texto: 4.5, componente: 1.5 } as const;
+export const PISOS = { texto: 4.5, componente: 3 } as const;
 export type TipoDePapel = keyof typeof PISOS;
 
 /**

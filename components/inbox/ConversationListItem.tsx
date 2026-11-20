@@ -5,8 +5,9 @@ import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import type { Locale } from "date-fns";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { Robot } from "@/lib/ui/icons";
+import { Check, Robot, Sparkle } from "@/lib/ui/icons";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
+import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ChipDeEtiqueta } from "@/components/tags/ChipDeEtiqueta";
@@ -14,7 +15,7 @@ import { OwnerBadge } from "@/components/kanban/OwnerBadge";
 import { comandoDaConversa, esperaDaConversa } from "@/lib/inbox/comando-da-conversa";
 import { cn } from "@/lib/utils";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
-import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { rotuloParaAEquipe } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
@@ -56,6 +57,19 @@ interface Props {
    * afirme nada".
    */
   automaticoDaOrg?: boolean;
+  /** Marcada para a ação em lote (vindo do produto original). */
+  selecionado?: boolean;
+  /** Sem ele não há caixa de marcação (quem não pode agir em lote). */
+  onAlternarSelecao?: (id: string) => void;
+  /**
+   * Marca (ou desmarca) ESTA conversa como exemplo para o agente aprender.
+   * Ausente = a linha é a de sempre, sem controle e sem selo. A chamada à rota
+   * mora na lista (uma mutação por lista, não por linha): a linha é renderizada
+   * sem `QueryClientProvider` em vários testes.
+   */
+  onAlternarExemplo?: (id: string, enabled: boolean) => void;
+  /** Há uma menção a você numa nota desta conversa, ainda não aberta. */
+  mencionado?: boolean;
 }
 
 /**
@@ -129,11 +143,15 @@ export function ConversationListItem({
   mostrarAtendente,
   mostrarAutomatico = true,
   automaticoDaOrg,
+  selecionado = false,
+  onAlternarSelecao,
+  onAlternarExemplo,
+  mencionado = false,
 }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
   const c = conversation.contacts ?? null;
-  const displayName = rotuloDoContato(c, t);
+  const displayName = rotuloParaAEquipe(c, t);
   const phoneFallback = c?.phone_number ? phoneForDisplay(c.phone_number) : "??";
   const tags = c?.tags ?? [];
   const visibleTags = tags.slice(0, 2);
@@ -192,9 +210,22 @@ export function ConversationListItem({
   // dois canais é o que decide o tom da resposta e qual número a pessoa vê
   // respondendo. Cai no nome do canal quando não há número (canal recém-criado).
   const canal = conversation.channel_sessions ?? null;
-  const rotuloCanal = canal?.phone_number ?? canal?.display_name ?? null;
+  // Mesmo texto do cabeçalho e da tela de canais: o NOME vence o número
+  // (trazido do produto original, #2383).
+  const rotuloCanal = rotuloDoCanalDaConversa(canal, t);
+
+  // O setor da conversa (O7): na Fila, é o que diz de quem é a vez. O nome vem
+  // embutido na própria lista (`setor:setores!conversations_setor_fk`).
+  const nomeDoSetor = conversation.setor_id ? (conversation.setor?.nome ?? null) : null;
+
+  // A conversa marcada como exemplo para o agente (coluna `usable_for_rag`).
+  // Dois rótulos literais em `t()` separados: a cerca de espanhol cobra chave a chave.
+  const exemploMarcado = Boolean(conversation.usable_for_rag);
+  const rotuloExemplo = exemploMarcado ? t("Deixar de usar como exemplo") : t("Usar como exemplo para a IA");
 
   const temSelos =
+    nomeDoSetor != null ||
+    exemploMarcado ||
     visibleTags.length > 0 ||
     (mostrarAtendente && comando.quem === "humano") ||
     (mostrarCanal && rotuloCanal != null) ||
@@ -202,14 +233,42 @@ export function ConversationListItem({
     Boolean(c?.is_anonymized);
 
   return (
+    <div
+      className={cn(
+        "relative flex w-full items-start border-b border-border/70",
+        selecionado && "bg-accent-soft",
+      )}
+    >
+      {/* A CAIXA DE SELEÇÃO do lote fica FORA do botão da linha: marcar e
+          abrir a conversa são gestos diferentes. */}
+      {onAlternarSelecao && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selecionado}
+          aria-label={t("Selecionar conversa")}
+          title={t("Selecionar conversa")}
+          data-testid={`selecao-em-lote-${conversation.id}`}
+          onClick={() => onAlternarSelecao(conversation.id)}
+          className={cn(
+            "mt-3 ml-2 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent",
+            selecionado
+              ? "border-accent bg-accent text-accent-foreground"
+              : "border-muted-foreground bg-background hover:bg-surface-elevated",
+          )}
+        >
+          {selecionado && <Check size={12} weight="bold" aria-hidden />}
+        </button>
+      )}
     <button
       type="button"
       data-conversation-id={conversation.id}
       onClick={() => onSelect(conversation.id)}
       className={cn(
-        "group relative flex w-full items-start gap-3 border-b border-border/70 px-3 py-2.5 text-left transition-colors hover:bg-surface-elevated",
+        "group relative flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-elevated",
         "focus-visible:outline-hidden focus-visible:bg-surface-elevated",
-        isSelected && "bg-accent-50 hover:bg-accent-50",
+        isSelected && !selecionado && "bg-accent-50 hover:bg-accent-50",
       )}
       aria-current={isSelected ? "true" : undefined}
     >
@@ -281,9 +340,21 @@ export function ConversationListItem({
                 {t("Grupo")}
               </Badge>
             )}
+            {/* O SELO "MENCIONADO" (vindo do produto original): o sino diz que
+                houve menção; a lista diz ONDE. Some no clique que abre a conversa. */}
+            {mencionado && (
+              <Badge
+                variant="default"
+                data-testid="selo-mencionado"
+                title={t("Você foi mencionado")}
+                className="h-4 shrink-0 gap-1 px-1.5 text-[10px] font-normal"
+              >
+                {t("Mencionado")}
+              </Badge>
+            )}
           </span>
           <span
-            className="shrink-0 text-[11px] tabular-nums text-text-subtle"
+            className="shrink-0 text-[11px] tabular-nums text-text-muted"
             // O mesmo lugar da tela mostra duas coisas diferentes conforme a aba:
             // na Fila é "desde quando o cliente ESPERA" (a mensagem mais antiga sem
             // resposta — #990), nas outras é "há quanto tempo a conversa mexeu". O
@@ -315,6 +386,27 @@ export function ConversationListItem({
 
         {temSelos && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            {nomeDoSetor && (
+              <Badge
+                variant="outline"
+                className="h-4 px-1.5 text-[10px] font-normal"
+                title={`${t("Setor")}: ${nomeDoSetor}`}
+                data-testid="selo-setor-na-lista"
+              >
+                {nomeDoSetor}
+              </Badge>
+            )}
+            {/* O selo do exemplo vem ANTES das etiquetas: a faixa corta as que sobram em "+N". */}
+            {exemploMarcado && (
+              <Badge
+                variant="outline"
+                data-testid="selo-exemplo-ia"
+                className="h-4 gap-1 px-1.5 text-[10px] font-normal text-accent"
+              >
+                <Sparkle size={10} weight="fill" aria-hidden />
+                {t("Exemplo para a IA")}
+              </Badge>
+            )}
             {visibleTags.map((t) => (
               <ChipDeEtiqueta key={t} tag={t} className="h-4 px-1.5 text-[10px]" />
             ))}
@@ -347,5 +439,27 @@ export function ConversationListItem({
         )}
       </div>
     </button>
+      {/* O controle do exemplo fica FORA do botão da linha (botão dentro de botão é HTML
+          inválido) e sempre visível: no celular não há hover. */}
+      {onAlternarExemplo && (
+        <button
+          type="button"
+          data-testid={`exemplo-ia-${conversation.id}`}
+          aria-pressed={exemploMarcado}
+          aria-label={rotuloExemplo}
+          title={rotuloExemplo}
+          onClick={() => onAlternarExemplo(conversation.id, !exemploMarcado)}
+          className={cn(
+            "mr-1 mt-2.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm transition-colors",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent",
+            exemploMarcado
+              ? "text-accent hover:bg-accent-soft"
+              : "text-text-subtle hover:bg-surface-elevated hover:text-text",
+          )}
+        >
+          <Sparkle size={14} weight={exemploMarcado ? "fill" : "regular"} aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }

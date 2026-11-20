@@ -10,9 +10,21 @@ vi.mock("@/lib/notifications/vapid", () => ({
   vapidPronto: () => state.vapidPronto,
 }));
 
-const enviarPushDaOrgMock = vi.fn(async (_organizationId: string, _payload: PushPayload) => ({ sent: 1, gone: 0 }));
+const enviarPushDaOrgMock = vi.fn(async (_organizationId: string, _payload: PushPayload) => ({
+  sent: 1,
+  gone: 0,
+}));
+const enviarPushDaConversaMock = vi.fn(
+  async (_organizationId: string, _conversationId: string, _payload: PushPayload) => ({
+    sent: 1,
+    gone: 0,
+  }),
+);
 const enviarPushAoUsuarioMock = vi.fn(
-  async (_organizationId: string, _userId: string | null, _payload: PushPayload) => ({ sent: 0, gone: 0 }),
+  async (_organizationId: string, _userId: string | null, _payload: PushPayload) => ({
+    sent: 0,
+    gone: 0,
+  }),
 );
 vi.mock("./web_push", () => ({
   // Referências indiretas de propósito: o factory do `vi.mock` é hoisted
@@ -21,7 +33,10 @@ vi.mock("./web_push", () => ({
   // "Cannot access before initialization". Fechos lazy (chamados só quando o
   // handler de fato invoca) resolvem — mesmo padrão de
   // `tests/unit/media-persist-worker.test.ts`.
-  enviarPushDaOrg: (organizationId: string, payload: PushPayload) => enviarPushDaOrgMock(organizationId, payload),
+  enviarPushDaOrg: (organizationId: string, payload: PushPayload) =>
+    enviarPushDaOrgMock(organizationId, payload),
+  enviarPushDaConversa: (organizationId: string, conversationId: string, payload: PushPayload) =>
+    enviarPushDaConversaMock(organizationId, conversationId, payload),
   enviarPushAoUsuario: (organizationId: string, userId: string | null, payload: PushPayload) =>
     enviarPushAoUsuarioMock(organizationId, userId, payload),
 }));
@@ -43,7 +58,13 @@ function grupoRow(payload: Record<string, unknown> = {}) {
     event_type: "message.group_received",
     entity_kind: "message",
     entity_id: "m-grupo",
-    payload: { conversation_id: "conv-1", contact_id: "contato-placeholder-grupo", body_preview: "bom dia, grupo", type: "text", ...payload },
+    payload: {
+      conversation_id: "conv-1",
+      contact_id: "contato-placeholder-grupo",
+      body_preview: "bom dia, grupo",
+      type: "text",
+      ...payload,
+    },
     metadata: {},
     consumed_by: [],
     attempts: 0,
@@ -54,6 +75,7 @@ describe("webPushInboundHandler", () => {
   beforeEach(() => {
     state.vapidPronto = false;
     enviarPushDaOrgMock.mockClear();
+    enviarPushDaConversaMock.mockClear();
     enviarPushAoUsuarioMock.mockClear();
     createAdminClientMock.mockClear();
   });
@@ -79,21 +101,25 @@ describe("webPushInboundHandler", () => {
       state.vapidPronto = true;
     });
 
-    it("título é a cópia de grupo, href aponta pra conversa, envia pela ORG (não por usuário)", async () => {
+    it("título é a cópia de grupo, href aponta pra conversa, envia a quem vê a conversa", async () => {
       const result = await webPushInboundHandler.handle(grupoRow());
 
       expect(result.status).toBe("ok");
-      expect(enviarPushDaOrgMock).toHaveBeenCalledTimes(1);
-      const [orgId, payload] = enviarPushDaOrgMock.mock.calls[0]!;
+      // Nem a organização inteira (grupo privado é do responsável e da gestão)
+      // nem um usuário só: quem pode ver a conversa (web_push.ts).
+      expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+      expect(enviarPushDaConversaMock).toHaveBeenCalledTimes(1);
+      const [orgId, conversa, payload] = enviarPushDaConversaMock.mock.calls[0]!;
       expect(orgId).toBe("org1");
+      expect(conversa).toBe("conv-1");
       expect(payload).toMatchObject({
         title: "Nova mensagem no grupo",
         href: "/app/inbox?id=conv-1",
       });
       // Nunca o desfecho do 1:1 ("Nova mensagem" quando não há nome de contato).
       expect(payload.title).not.toBe("Nova mensagem");
-      // Recipiente é a ORG inteira — nunca `enviarPushAoUsuario` (que é o
-      // caminho de lead.assigned/user.mentioned, dirigido a UM usuário).
+      // Nunca `enviarPushAoUsuario` (o caminho de lead.assigned/user.mentioned,
+      // dirigido a UM usuário).
       expect(enviarPushAoUsuarioMock).not.toHaveBeenCalled();
     });
 
@@ -102,10 +128,68 @@ describe("webPushInboundHandler", () => {
       expect(createAdminClientMock).not.toHaveBeenCalled();
     });
 
-    it("sem conversation_id: href cai para /app/inbox (mesma forma do 1:1 sem conversa)", async () => {
-      await webPushInboundHandler.handle(grupoRow({ conversation_id: undefined }));
-      const [, payload] = enviarPushDaOrgMock.mock.calls[0]!;
-      expect(payload).toMatchObject({ title: "Nova mensagem no grupo", href: "/app/inbox" });
+    it("sem conversation_id: não há como saber quem vê, então ninguém recebe", async () => {
+      const r = await webPushInboundHandler.handle(grupoRow({ conversation_id: undefined }));
+      expect(r).toMatchObject({ status: "skipped", detail: "sem_conversa" });
+      expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+      expect(enviarPushDaConversaMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("1:1 em conversa privada (migration 0495)", () => {
+  // Cliente admin falso: a conversa responde com a privacidade pedida; o
+  // contato não é consultado porque a linha não traz contact_id.
+  const adminCom = (conv: { is_private: boolean; assigned_to_user_id: string | null }) => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: conv, error: null }) }) }),
+      }),
+    }),
+  });
+  const linha = {
+    id: "e-privada",
+    organization_id: "org1",
+    event_type: "message.received",
+    entity_kind: "message",
+    entity_id: "m1",
+    payload: { conversation_id: "conv-privada", body_preview: "segredo", type: "text" },
+    metadata: {},
+    consumed_by: [],
+    attempts: 0,
+  };
+
+  beforeEach(() => {
+    state.vapidPronto = true;
+    enviarPushDaOrgMock.mockClear();
+    enviarPushDaConversaMock.mockClear();
+    enviarPushAoUsuarioMock.mockClear();
+  });
+
+  it("só o responsável recebe — a organização inteira não", async () => {
+    createAdminClientMock.mockImplementation(
+      () => adminCom({ is_private: true, assigned_to_user_id: "dono" }) as unknown,
+    );
+    await webPushInboundHandler.handle(linha as never);
+    expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+    expect(enviarPushAoUsuarioMock).toHaveBeenCalledWith("org1", "dono", expect.anything());
+  });
+
+  it("privada sem responsável: ninguém recebe o trecho da mensagem", async () => {
+    createAdminClientMock.mockImplementation(
+      () => adminCom({ is_private: true, assigned_to_user_id: null }) as unknown,
+    );
+    await webPushInboundHandler.handle(linha as never);
+    expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+    expect(enviarPushAoUsuarioMock).not.toHaveBeenCalled();
+  });
+
+  it("livre: vai a quem pode ver a conversa, não à organização inteira", async () => {
+    createAdminClientMock.mockImplementation(
+      () => adminCom({ is_private: false, assigned_to_user_id: "dono" }) as unknown,
+    );
+    await webPushInboundHandler.handle(linha as never);
+    expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+    expect(enviarPushDaConversaMock).toHaveBeenCalledTimes(1);
   });
 });

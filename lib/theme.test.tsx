@@ -44,8 +44,9 @@
  * Voltar `useState<Theme>(() => readStoredTheme())` /
  * `useState<ResolvedTheme>(() => getSystemTheme())` (o defeito de volta, com
  * o conserto no lugar): as duas asserções de igualdade ficam vermelhas —
- * `doPrimeiraRenderCliente` passa a dizer "Tema: dark" enquanto `doServidor`
- * continua dizendo "Tema: system".
+ * `doPrimeiraRenderCliente` passa a dizer "Ativar tema claro" enquanto
+ * `doServidor` continua dizendo "Ativar tema escuro" (antes do botão de dois
+ * estados, "Tema: dark" contra "Tema: system").
  */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -118,16 +119,18 @@ describe("o tema não diverge entre o SSR e a primeira renderização do cliente
     const doServidor = renderizarComoServidor();
     const doCliente = renderizarComoPrimeiraPassadaDoCliente();
 
-    // Os dois precisam dizer "system" — é o valor que `readStoredTheme()`
-    // devolve sem `window`, e é o que a hidratação tem de bater ANTES do
-    // efeito que sincroniza com o localStorage rodar.
-    expect(doServidor).toContain("Tema: system");
+    // O botão é de DOIS estados e o rótulo diz a AÇÃO, derivada do tema
+    // efetivo (era "Tema: <preferência>", com três estados). Sem `window` o
+    // tema é "system" resolvido como claro, então a ação é "Ativar tema
+    // escuro" — e é isso que a hidratação tem de bater ANTES do efeito que
+    // sincroniza com o localStorage rodar.
+    expect(doServidor).toContain("Ativar tema escuro");
     expect(
       doCliente,
       "A primeira renderização do cliente leu o localStorage direto no " +
-        "inicializador do useState, produzindo 'Tema: dark' — diferente do " +
-        "que o servidor mandou ('Tema: system'). É o hydration mismatch.",
-    ).toContain("Tema: system");
+        "inicializador do useState, produzindo 'Ativar tema claro' — diferente " +
+        "do que o servidor mandou ('Ativar tema escuro'). É o hydration mismatch.",
+    ).toContain("Ativar tema escuro");
     expect(doCliente).toBe(doServidor);
   });
 
@@ -151,6 +154,7 @@ describe("o tema não diverge entre o SSR e a primeira renderização do cliente
     act(() => {
       createRoot(container).render(ARVORE);
     });
-    expect(container.innerHTML).toContain("Tema: dark");
+    // Tema salvo escuro → a ação oferecida é voltar ao claro.
+    expect(container.innerHTML).toContain("Ativar tema claro");
   });
 });

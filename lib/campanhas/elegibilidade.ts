@@ -24,6 +24,7 @@
  * registrada que `lib/automation/guarda-do-contato.ts` já respeita no resto do
  * produto. A campanha não cria régua concorrente: lê as que existem.
  */
+import { recusaRegistrada } from "@/lib/lgpd/recusa-registrada";
 import type { MotivoDeExclusao } from "./tipos";
 
 /** O que se sabe do destinatário na hora de decidir. Nada além disto importa. */
@@ -34,6 +35,10 @@ export interface ContatoParaDecidir {
   anonimizado: boolean;
   /** `consent.marketing.declined_at` — recusa REGISTRADA, diferente de ausência. */
   recusouMarketing: boolean;
+  /** `contacts.is_personal` (migration 0540): ficha de vida pessoal, fora de envio automático. */
+  pessoal?: boolean;
+  /** `contacts.ai_opt_out` (migration 0540): "sempre humano" — nenhum envio automático. */
+  sempreHumano?: boolean;
 }
 
 /** O telefone que o canal aceita: E.164 com `+`, o mesmo CHECK de `contacts.phone_number`. */
@@ -50,6 +55,8 @@ const E164 = /^\+\d{8,15}$/;
 export function motivoParaExcluir(c: ContatoParaDecidir): MotivoDeExclusao | null {
   if (c.bloqueado) return "opt_out";
   if (c.anonimizado) return "anonimizado";
+  if (c.pessoal) return "contato_pessoal";
+  if (c.sempreHumano) return "contato_sempre_humano";
   if (c.recusouMarketing) return "recusou_marketing";
   const telefone = c.telefone?.trim() ?? "";
   if (telefone === "") return "sem_telefone";
@@ -166,10 +173,8 @@ export function contarExclusoes(
 
 /** Lê `contacts.consent` sem confiar no shape — é jsonb livre. */
 export function recusouMarketing(consent: unknown): boolean {
-  if (!consent || typeof consent !== "object") return false;
-  const marketing = (consent as Record<string, unknown>).marketing;
-  if (!marketing || typeof marketing !== "object") return false;
-  return !!(marketing as Record<string, unknown>).declined_at;
+  // A régua única da casa: os dois formatos de recusa (auditoria 18/11, achado 12).
+  return recusaRegistrada(consent, "marketing");
 }
 
 /**

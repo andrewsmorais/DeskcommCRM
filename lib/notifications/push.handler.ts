@@ -2,7 +2,7 @@ import type { EventHandler, EventRow, HandlerResult } from "@/lib/event-log/disp
 import { marcaDaSaida } from "@/lib/branding/saida";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { montarPayloadDeInbound, truncar } from "./push_payload";
-import { enviarPushAoUsuario, enviarPushDaOrg } from "./web_push";
+import { enviarPushAoUsuario, enviarPushDaConversa, enviarPushDaOrg } from "./web_push";
 import { vapidPronto } from "./vapid";
 import { pushDoAvisoDaCentral } from "./push-dos-avisos";
 import type { PushPayload } from "./push_payload";
@@ -14,7 +14,8 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
   const conversationId =
     (typeof row.payload.conversation_id === "string" ? row.payload.conversation_id : null) ?? null;
   const previewRaw = row.payload.body_preview;
-  const preview = typeof previewRaw === "string" && previewRaw.trim() ? previewRaw : "Nova mensagem";
+  const preview =
+    typeof previewRaw === "string" && previewRaw.trim() ? previewRaw : "Nova mensagem";
   const type = typeof row.payload.type === "string" ? row.payload.type : "text";
   const body = type === "text" ? preview : "Mídia";
 
@@ -64,7 +65,48 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
     contactName,
     icon,
   });
-  const { sent } = await enviarPushDaOrg(row.organization_id, payload);
+  // Conversa privada (migration 0495): o aviso leva o nome do contato e o
+  // trecho da mensagem, então só vai para quem pode vê-la — o responsável.
+  // Sem responsável, ninguém recebe (os gestores a veem na Inbox).
+  if (conversationId) {
+    const { data: conv } = await createAdminClient()
+      .from("conversations")
+      .select("is_private, assigned_to_user_id")
+      .eq("id", conversationId)
+      .eq("organization_id", row.organization_id)
+      .maybeSingle();
+    const privada = conv as { is_private?: boolean; assigned_to_user_id?: string | null } | null;
+    if (privada?.is_private) {
+      if (!privada.assigned_to_user_id)
+        return {
+          consumer_key: WEB_PUSH_INBOUND_KEY,
+          status: "ok",
+          detail: "privada_sem_responsavel",
+        };
+      const { sent } = await enviarPushAoUsuario(
+        row.organization_id,
+        privada.assigned_to_user_id,
+        payload,
+      );
+      return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `privada:sent:${sent}` };
+    }
+  }
+  return enviarAQuemVe(row, conversationId, payload);
+}
+
+/**
+ * O aviso de uma conversa vai só a quem pode vê-la na Inbox — a mesma regra
+ * de `fn_can_view_conversation` (`podeVerConversa`, em web_push.ts). Sem
+ * conversa não há como saber quem vê: ninguém recebe.
+ */
+async function enviarAQuemVe(
+  row: EventRow,
+  conversationId: string | null,
+  payload: PushPayload,
+): Promise<HandlerResult> {
+  if (!conversationId)
+    return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_conversa" };
+  const { sent } = await enviarPushDaConversa(row.organization_id, conversationId, payload);
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
 }
 
@@ -80,7 +122,8 @@ async function handleGroupInbound(row: EventRow): Promise<HandlerResult> {
   const conversationId =
     (typeof row.payload.conversation_id === "string" ? row.payload.conversation_id : null) ?? null;
   const previewRaw = row.payload.body_preview;
-  const preview = typeof previewRaw === "string" && previewRaw.trim() ? previewRaw : "Nova mensagem";
+  const preview =
+    typeof previewRaw === "string" && previewRaw.trim() ? previewRaw : "Nova mensagem";
   const type = typeof row.payload.type === "string" ? row.payload.type : "text";
   const body = type === "text" ? preview : "Mídia";
 
@@ -90,23 +133,43 @@ async function handleGroupInbound(row: EventRow): Promise<HandlerResult> {
     tag: conversationId ? `msg:${conversationId}` : "msg",
     href: conversationId ? `/app/inbox?id=${conversationId}` : "/app/inbox",
   };
-  const { sent } = await enviarPushDaOrg(row.organization_id, payload);
-  return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
+  // Grupo privado é do responsável e da gestão, como o 1:1 privado.
+  return enviarAQuemVe(row, conversationId, payload);
 }
 
 /** Os avisos da Central que pedem gente — ver `./push-dos-avisos.ts`. */
 async function handleAvisoQuePedeGente(row: EventRow): Promise<HandlerResult> {
   const id = typeof row.payload.item_id === "string" ? row.payload.item_id : row.entity_id;
   if (!id) return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_alvo" };
-  const payload = await pushDoAvisoDaCentral(createAdminClient(), row.organization_id, id);
+  const admin = createAdminClient();
+  const payload = await pushDoAvisoDaCentral(admin, row.organization_id, id);
   if (payload === null) {
-    return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "aviso_fora_do_celular" };
+    return {
+      consumer_key: WEB_PUSH_INBOUND_KEY,
+      status: "skipped",
+      detail: "aviso_fora_do_celular",
+    };
+  }
+  // Aviso sobre uma conversa segue a visibilidade dela; os outros vão a todo
+  // membro ativo.
+  const { data: ref } = await admin
+    .from("agent_inbox_items")
+    .select("ref_kind, ref_id")
+    .eq("organization_id", row.organization_id)
+    .eq("id", id)
+    .maybeSingle();
+  const alvo = ref as { ref_kind?: string | null; ref_id?: string | null } | null;
+  if (alvo?.ref_kind === "conversation" && alvo.ref_id) {
+    return enviarAQuemVe(row, alvo.ref_id, payload);
   }
   const { sent } = await enviarPushDaOrg(row.organization_id, payload);
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
 }
 
-async function leadBits(organizationId: string, leadId: string): Promise<{
+async function leadBits(
+  organizationId: string,
+  leadId: string,
+): Promise<{
   title: string;
   ownerUserId: string | null;
   pipelineId: string | null;
@@ -148,6 +211,10 @@ async function enviarParaUsuario(
 
 export const webPushInboundHandler: EventHandler = {
   key: WEB_PUSH_INBOUND_KEY,
+  // Cada envio tem PUSH_TIMEOUT_MS de socket ocioso; este prazo segura o
+  // endpoint que pinga um byte por vez e nunca fica ocioso. O dreno é de todas
+  // as organizações, e o endpoint é escolhido por qualquer membro.
+  deadlineMs: 30_000,
   events: [
     "message.received",
     "message.group_received",
@@ -171,7 +238,9 @@ export const webPushInboundHandler: EventHandler = {
       const conversationId =
         typeof row.payload.conversation_id === "string" ? row.payload.conversation_id : null;
       const preview =
-        typeof row.payload.body_preview === "string" ? row.payload.body_preview : "Você foi mencionado";
+        typeof row.payload.body_preview === "string"
+          ? row.payload.body_preview
+          : "Você foi mencionado";
       return enviarParaUsuario(row.organization_id, toUserId, {
         title: "Você foi mencionado",
         body: truncar(preview),
@@ -190,7 +259,8 @@ export const webPushInboundHandler: EventHandler = {
     const href = hrefDoLead(lead.pipelineId);
 
     if (row.event_type === "lead.assigned") {
-      const toUserId = typeof row.payload.to_user_id === "string" ? row.payload.to_user_id : lead.ownerUserId;
+      const toUserId =
+        typeof row.payload.to_user_id === "string" ? row.payload.to_user_id : lead.ownerUserId;
       return enviarParaUsuario(row.organization_id, toUserId, {
         title: "Lead atribuído a você",
         body: truncar(lead.title),

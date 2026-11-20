@@ -299,6 +299,7 @@ function CamadaDeMarcacao({
 function BlocoDeAgendamento({
   agendamento,
   pessoa,
+  convidados = [],
   onAbrir,
   coluna,
   colunas,
@@ -306,6 +307,8 @@ function BlocoDeAgendamento({
 }: {
   agendamento: Agendamento;
   pessoa: Pessoa | undefined;
+  /** Quem mais foi convidado, já resolvido pelo pai. Id de quem saiu da equipe não entra. */
+  convidados?: Pessoa[];
   onAbrir?: (id: string) => void;
   coluna: number;
   colunas: number;
@@ -374,6 +377,12 @@ function BlocoDeAgendamento({
       aria-label={`${agendamento.titulo}, ${format(comeca, "HH:mm")} ${t("às")} ${format(termina, "HH:mm")}${
         agendamento.quemSeraAtendido ? `, ${t("com")} ${agendamento.quemSeraAtendido}` : ""
       }${pessoa ? `, ${t("atendido por")} ${pessoa.nome}` : ""}${
+        // A equipe entra no rótulo SEMPRE, inclusive no bloco curto em que a
+        // linha visível não cabe.
+        convidados.length > 0
+          ? `, ${t("com a equipe")} ${convidados.map((p) => p.nome).join(", ")}`
+          : ""
+      }${
         doGoogle ? `, ${t("ocupado na agenda do Google")}` : ""
       }`}
       className={cn(
@@ -434,6 +443,16 @@ function BlocoDeAgendamento({
         <span className="ml-1 truncate text-[10px] leading-3 tabular-nums text-text-muted">
           {format(comeca, "HH:mm")}
           {agendamento.quemSeraAtendido ? ` · ${agendamento.quemSeraAtendido}` : ""}
+        </span>
+      )}
+      {convidados.length > 0 && duracao >= 60 && (
+        /* 60min = 48px: cabe a terceira linha. Abaixo disso o card cortaria o
+           nome ao meio; o rótulo acessível leva a lista inteira. */
+        <span
+          data-testid={`convidados-do-compromisso-${agendamento.id}`}
+          className="ml-1 truncate text-[10px] leading-3 text-text-muted"
+        >
+          {t("Com a equipe:")} {convidados.map((p) => p.nome).join(", ")}
         </span>
       )}
     </button>
@@ -623,6 +642,9 @@ function ColunaDeDia({
             key={agendamento.id}
             agendamento={agendamento}
             pessoa={pessoas.find((p) => p.id === agendamento.responsavelId)}
+            convidados={(agendamento.convidadosDaEquipe ?? [])
+              .map((id) => pessoas.find((p) => p.id === id))
+              .filter((p): p is Pessoa => p !== undefined)}
             onAbrir={onAbrir}
             coluna={coluna}
             colunas={colunas}

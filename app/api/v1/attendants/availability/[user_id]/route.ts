@@ -73,6 +73,11 @@ export async function PATCH(
     throw err;
   }
 
+  // A regra de reatribuição tira o atendente das próprias conversas: decisão
+  // da gestão (como na Umbler, na lista de Atendentes), não do próprio.
+  if (input.reatribuicao !== undefined && !isManager)
+    return fail("forbidden_role", t("Só um gerente ou administrador muda a reatribuição."), 403, { requestId });
+
   const supabase = await createClient();
 
   // Manager alterando outro: alvo tem que ser membro da org (evita linha órfã;
@@ -98,6 +103,7 @@ export async function PATCH(
   if (input.is_available !== undefined) patch.is_available = input.is_available;
   if (input.capacity !== undefined) patch.capacity = input.capacity;
   if (input.schedule !== undefined) patch.schedule = input.schedule;
+  if (input.reatribuicao !== undefined) patch.reatribuicao = input.reatribuicao;
   // ⚠️ AQUI ESCREVIA-SE `last_heartbeat_at = now`, e a coluna ficou.
   //
   // Ela se chama "último sinal de vida" e registrava, na verdade, o CLIQUE na
@@ -130,6 +136,7 @@ export async function PATCH(
       changed_by_self: isSelf,
       fields_changed: Object.keys(input),
       is_available: input.is_available ?? null,
+      reatribuicao: input.reatribuicao ?? null,
     },
   });
 

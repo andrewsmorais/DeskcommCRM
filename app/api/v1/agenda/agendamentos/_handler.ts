@@ -30,6 +30,7 @@ import {
   type TipoDoAtendimento,
 } from "@/lib/agenda/aviso-do-compromisso";
 import { coletaOQueOcupa, horariosLivresDaOrg } from "@/lib/agenda/consulta";
+import { normalizarConvidadosDaEquipe, separarConvidadosDaEquipe } from "@/lib/agenda/convidados-da-equipe";
 import { colide } from "@/lib/agenda/horarios-livres";
 import {
   atividadeDaTransicao,
@@ -57,6 +58,46 @@ import { logger } from "@/lib/logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type SB = SupabaseClient;
+
+/**
+ * OS CONVIDADOS DA EQUIPE, CONFERIDOS ANTES DE GRAVAR (migration 0561).
+ *
+ * A coluna é `uuid[]` e array não aceita FK. O banco também recusa (gatilho
+ * `fn_appointment_team_guests_scope`), mas com um erro genérico: aqui a recusa
+ * sai com 422 NOMEANDO quem ficou de fora, para a tela dizer o que aconteceu.
+ *
+ * `revoked_at is null` é a mesma régua do seletor de pessoas da agenda — quem
+ * saiu da equipe não vira convidado por um id antigo salvo na tela de alguém.
+ */
+async function convidadosDaEquipeConferidos(
+  supabase: SB,
+  ctx: { organization_id: string; requestId: string },
+  ids: readonly string[] | null | undefined,
+): Promise<string[]> {
+  const pedidos = normalizarConvidadosDaEquipe(ids);
+  if (!pedidos.length) return [];
+  const { data, error } = await supabase
+    .from("user_organizations")
+    .select("user_id")
+    .eq("organization_id", ctx.organization_id)
+    .in("user_id", pedidos)
+    .is("revoked_at", null);
+  if (error) throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
+  const { aceitos, recusados } = separarConvidadosDaEquipe(
+    pedidos,
+    new Set(((data ?? []) as Array<{ user_id: string }>).map((m) => String(m.user_id).toLowerCase())),
+  );
+  if (recusados.length) {
+    throw new ApiError(
+      422,
+      "convidado_fora_da_organizacao",
+      undefined,
+      ctx.requestId,
+      "Uma ou mais pessoas escolhidas não fazem mais parte da equipe. Tire-as da lista de convidados para salvar o compromisso.",
+    );
+  }
+  return aceitos;
+}
 
 /** A recusa da coleta vira código de wire — um mapa, não `if` espalhado. */
 const CODIGO_DA_RECUSA = {
@@ -97,6 +138,14 @@ export interface MarcarInput {
    * é o worker de push.
    */
   guest_email?: string;
+  /**
+   * Convidados da EQUIPE (migration 0561) — ids de membros ATIVOS desta
+   * organização. Vão além do responsável (`owner_user_id`) e do e-mail digitado:
+   * quem entra aqui vê o compromisso na PRÓPRIA agenda, no Google e no CRM, mas
+   * NÃO vira responsável. `[]` desconvida a equipe; ausente não mexe. Id de fora
+   * da organização é RECUSA com 422, não descarte silencioso.
+   */
+  team_guest_user_ids?: string[];
 }
 
 export interface AlterarInput {
@@ -109,6 +158,8 @@ export interface AlterarInput {
   notes?: string;
   /** Igual ao de `MarcarInput`: `""` desconvida, ausente não mexe. */
   guest_email?: string;
+  /** Igual ao de `MarcarInput`: `[]` desconvida a equipe, ausente não mexe. */
+  team_guest_user_ids?: string[];
 }
 
 export interface CancelarInput {
@@ -238,6 +289,27 @@ async function exigeDonoDoCompromisso(
   const ligada = await colegasPodemMexerNaAgenda(supabase, ctx);
   if (!recusaMudancaNaAgendaAlheia(ctx.actor, ligada, ehDono)) return;
   throw new ApiError(403, "appointment_do_colega", undefined, ctx.requestId, RECUSA_DO_COLEGA);
+}
+
+/**
+ * A IA num turno de conversa só mexe no compromisso de QUEM está falando.
+ *
+ * O `appointment_id` vem do modelo, e a listagem da agenda devolvia os ids de
+ * todo cliente: o contato A, conversando, levava a IA a cancelar, remarcar ou
+ * confirmar o compromisso do contato B — com a identidade da organização, numa
+ * ação que A não tem como fazer por conta própria. O contato do turno vem do
+ * runtime (`McpContext.turnContactId`), nunca dos argumentos da tool.
+ */
+function exigeContatoDoTurno(ctx: HandlerCtx, atual: Record<string, unknown>): void {
+  if (ctx.actor.type !== "ai_agent" || !ctx.turnContactId) return;
+  if (atual.contact_id === ctx.turnContactId) return;
+  throw new ApiError(
+    403,
+    "appointment_de_outro_contato",
+    undefined,
+    ctx.requestId,
+    "Este compromisso é de outro cliente; não é possível alterá-lo nesta conversa.",
+  );
 }
 
 const ENDPOINT_IDEMPOTENCIA_AGENDA = "/api/v1/agenda/agendamentos";
@@ -434,6 +506,11 @@ async function executarCriacaoDeAgendamento(
         authorized_by: { kind: ctx.actor.type, id: ctx.actor.id },
       }
     : { state: "none" };
+  const convidadosDaEquipe = await convidadosDaEquipeConferidos(
+    supabase,
+    ctx,
+    input.team_guest_user_ids,
+  );
   const { data: criado, error: erroInsert } = await supabase
     .from("calendar_appointments")
     .insert({
@@ -461,6 +538,8 @@ async function executarCriacaoDeAgendamento(
       // tela), e string vazia gravada seria um convidado sem e-mail — que faz o
       // Google recusar o EVENTO INTEIRO, não só o convidado.
       guest_email: input.guest_email || null,
+      // Sempre um array: a coluna é `not null default '{}'`.
+      team_guest_user_ids: convidadosDaEquipe,
       created_by_kind: autorParaCriacao(ctx.actor),
       created_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
       source: ctx.actor.type === "user" ? "ui" : "mcp",
@@ -526,6 +605,7 @@ export async function alterarAgendamentoHandler(
     "time_zone",
   ]);
 
+  exigeContatoDoTurno(ctx, atual);
   await exigeDonoDoCompromisso(supabase, ctx, atual);
 
   if (input.revision !== undefined && input.revision !== Number(atual.revision))
@@ -566,6 +646,15 @@ export async function alterarAgendamentoHandler(
   // gerada `needs_google_push` (migration 0225), que compara a revisão
   // publicável com o último aceite; notes e metadata não criam intenção.
   if (input.guest_email !== undefined) mudanca.guest_email = input.guest_email || null;
+  // Mesma régua da criação: id fora da organização é RECUSA, e `[]` desconvida
+  // a equipe (o "tirar todo mundo" é uma edição legítima, não um campo vazio).
+  if (input.team_guest_user_ids !== undefined) {
+    mudanca.team_guest_user_ids = await convidadosDaEquipeConferidos(
+      supabase,
+      ctx,
+      input.team_guest_user_ids,
+    );
+  }
   let transicao: Transicao | null = null;
 
   if (input.starts_at) {
@@ -741,6 +830,7 @@ export async function cancelarAgendamentoHandler(
     "time_zone",
   ]);
 
+  exigeContatoDoTurno(ctx, atual);
   await exigeDonoDoCompromisso(supabase, ctx, atual);
 
   // Idempotente: cancelar o que já está cancelado devolve o estado, não erro —
@@ -1149,6 +1239,8 @@ async function fecharOLaco(
         compromisso,
         tipo,
         leadIds,
+        // Quem fez ESTA mudança — a mesma régua da coluna `created_by_kind`.
+        autor: autorParaCriacao(ctx.actor),
       }),
       // `request_id` sem o prefixo `rule:` de propósito: ele correlaciona com o
       // audit log e NÃO aciona o anti-loop do motor, que só barra o que uma

@@ -29,6 +29,11 @@ vi.mock("@/hooks/inbox/useAssignableMembers", () => ({
 vi.mock("@/hooks/inbox/useTransferConversation", () => ({
   useTransferConversation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
+// Setores (migration 0496): sem setor nenhum a tela é a de antes.
+vi.mock("@/hooks/inbox/useSetores", () => ({
+  useSetores: () => ({ data: [] }),
+  useMudarSetorDaConversa: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock("@/hooks/auth/AuthProvider", () => ({ useAuth: () => ({ user: { id: "eu" } }) }));
 
 // O Select do Radix não abre em jsdom (pointer capture). O teste mira a regra —

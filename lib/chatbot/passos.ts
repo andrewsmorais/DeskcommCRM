@@ -1,0 +1,1796 @@
+/**
+ * Catálogo dos passos do Chatbot Builder — a lista ÚNICA que a tela (menu do
+ * "+", nó no quadro, painel de configuração) e o motor (lib/chatbot/motor.ts)
+ * leem. Passo que não está aqui não existe: nem aparece no menu, nem roda.
+ *
+ * O chatbot não usa IA em ponto nenhum: é fluxo puro, sem custo de token. Até
+ * 03/11/2026 ele também não ENTREGAVA a conversa a um agente de IA (decisão do
+ * dono do produto, 22/10/2026); nessa data o dono pediu o "Transferir p/
+ * agentes de IA" da Umbler. O passo só devolve a conversa ao atendimento
+ * automático — quem gasta token dali em diante é o agente, com o orçamento dele.
+ *
+ * Inspirado no editor da Umbler Talk (grupos Início, Condição, Ação,
+ * Finalização, Utilitários). Fase 1: os passos abaixo. Os demais da Umbler
+ * entram por fase, sempre com motor junto.
+ */
+import { z } from "zod";
+
+import { descreverRegra } from "./regras";
+
+export const GRUPOS_DE_PASSO = [
+  { id: "inicio", nome: "Início" },
+  { id: "condicao", nome: "Condição" },
+  { id: "acao", nome: "Ação" },
+  { id: "finalizacao", nome: "Finalização" },
+  { id: "integracao", nome: "Integrações" },
+  { id: "utilitarios", nome: "Utilitários" },
+  /** No fim do menu: o card e um atalho por follow-up da empresa (todos os planos). */
+  { id: "followups", nome: "Follow-ups" },
+] as const;
+export type GrupoDePasso = (typeof GRUPOS_DE_PASSO)[number]["id"];
+
+const HORA = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use o formato 08:30.");
+
+/** Campos do contato que o passo "Campo do contato" grava e "Definir condição" lê. */
+export const CAMPOS_DO_CONTATO = ["nome", "email", "aniversario", "personalizado"] as const;
+export type CampoDoContato = (typeof CAMPOS_DO_CONTATO)[number];
+
+const CHAVE = z
+  .string()
+  .trim()
+  .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.");
+
+/**
+ * Uma regra de "Definir condição" / "Multi-condicional". O que ela olha:
+ *   - `etiqueta`      — o contato tem (ou não) a etiqueta `valor`;
+ *   - `variavel`      — o que foi guardado em "Pedir para digitar" (`chave`);
+ *   - `campo_contato` — nome, e-mail, aniversário ou campo personalizado (`chave`);
+ *   - `mensagem`      — a última mensagem do contato.
+ */
+export const regraSchema = z.object({
+  fonte: z.enum(["etiqueta", "variavel", "campo_contato", "mensagem"]).default("etiqueta"),
+  /** Nome da variável, ou o campo do contato (nome/email/aniversario/<chave personalizada>). */
+  chave: z.string().trim().max(40).default(""),
+  operador: z
+    .enum([
+      "tem",
+      "nao_tem",
+      "igual",
+      "diferente",
+      "contem",
+      "preenchido",
+      "vazio",
+      "maior_ou_igual",
+      "menor_ou_igual",
+    ])
+    .default("tem"),
+  valor: z.string().trim().max(200).default(""),
+  /** Nome da saída no quadro (só no Multi-condicional). */
+  rotulo: z.string().trim().max(40).default(""),
+});
+export type Regra = z.infer<typeof regraSchema>;
+
+/**
+ * "Fluxo de espera" (na Umbler, o bot que roda quando o atendente demora): nos
+ * passos de transferir, se ninguém da equipe responder em `espera_minutos`, o
+ * chatbot manda `espera_mensagem` — até `espera_vezes` vezes, uma a cada
+ * intervalo. Para assim que uma PESSOA responder na conversa. 0 = desligado.
+ */
+const ESPERA_DO_ATENDENTE = {
+  espera_minutos: z.number().int().min(0).max(240).default(0),
+  espera_mensagem: z.string().trim().max(1000).default(""),
+  espera_vezes: z.number().int().min(1).max(3).default(1),
+};
+
+/** Tipos de arquivo que o passo "Enviar mídia" manda (os mesmos da conversa). */
+export const TIPOS_DE_MIDIA = ["image", "video", "audio", "document"] as const;
+export type TipoDeMidia = (typeof TIPOS_DE_MIDIA)[number];
+
+/** O que fazer se o contato mandar mensagem enquanto o fluxo espera o relógio. */
+const SE_RESPONDER = z.enum(["seguir", "esperar"]).default("seguir");
+
+/** Como o passo "Valor" compara. Texto ignora maiúsculas e acentos; maior/menor é número ou data. */
+export const OPERADORES_DE_VALOR = [
+  "igual",
+  "diferente",
+  "contem",
+  "nao_contem",
+  "comeca_com",
+  "termina_com",
+  "maior",
+  "maior_ou_igual",
+  "menor",
+  "menor_ou_igual",
+  "preenchido",
+  "vazio",
+] as const;
+export type OperadorDeValor = (typeof OPERADORES_DE_VALOR)[number];
+
+/**
+ * "Cliente não respondeu": a pergunta espera no máximo `prazo_minutos` e então
+ * segue pela saída "Não respondeu a tempo" — no mesmo relógio persistente do
+ * "Aguardar" (`event_log`), nunca timer em memória. 0 = espera sem prazo,
+ * como antes. Até 7 dias.
+ */
+export const PRAZOS_DE_RESPOSTA = [0, 5, 15, 30, 60, 120, 360, 720, 1440, 2880, 10080] as const;
+const PRAZO_DA_RESPOSTA = {
+  prazo_minutos: z.number().int().min(0).max(10080).default(0),
+};
+
+/** O que o "Pedir para digitar" aceita como resposta. */
+export const FORMATOS_DE_RESPOSTA = [
+  "qualquer",
+  "email",
+  "telefone",
+  "cpf",
+  "cnpj",
+  "numero",
+  "data",
+  "hora",
+] as const;
+export type FormatoDeResposta = (typeof FORMATOS_DE_RESPOSTA)[number];
+
+/** O que uma opção do "Pedir para digitar" aceita: um formato pronto ou uma regra própria. */
+export const FORMATOS_DA_OPCAO = [...FORMATOS_DE_RESPOSTA, "regex"] as const;
+export type FormatoDaOpcao = (typeof FORMATOS_DA_OPCAO)[number];
+
+export const opcaoDeRespostaSchema = z.object({
+  nome: z.string().trim().min(1).max(60).default("Opção"),
+  formato: z.enum(FORMATOS_DA_OPCAO).default("qualquer"),
+  /** Só no formato "regex" (conferida por `lib/chatbot/regex-segura.ts`). */
+  regex: z.string().max(200).default(""),
+});
+export type OpcaoDeResposta = z.infer<typeof opcaoDeRespostaSchema>;
+
+/** Quem recebe a conversa no "Transferir p/ atendente". */
+export const MODOS_DE_ATENDENTE = [
+  "especifico",
+  "rodizio",
+  "menos_conversas",
+  "anterior",
+  /** Quem atendeu ESTA conversa por último (a Umbler: "anterior na mesma conversa"). */
+  "anterior_mesma_conversa",
+  /** O atendente que está numa variável do fluxo (id ou e-mail de quem é da equipe). */
+  "variavel",
+  /** Tira o atendente da conversa e o fluxo SEGUE (não é transferência). */
+  "remover",
+] as const;
+export type ModoDeAtendente = (typeof MODOS_DE_ATENDENTE)[number];
+
+/** O que cada pergunta do "Enviar formulário" aceita como resposta. */
+export const TIPOS_DE_RESPOSTA = [
+  "texto",
+  "email",
+  "numero",
+  "data",
+  "telefone",
+  "cpf",
+  "cnpj",
+  "hora",
+] as const;
+export type TipoDeResposta = (typeof TIPOS_DE_RESPOSTA)[number];
+
+/** Onde a resposta de uma pergunta do formulário pode ser gravada no contato ("" = em lugar nenhum). */
+export const CAMPOS_DO_FORMULARIO = ["", "nome", "email", "aniversario"] as const;
+
+export const perguntaDoFormularioSchema = z.object({
+  pergunta: z.string().trim().max(1000).default(""),
+  variavel: CHAVE.default("resposta"),
+  tipo: z.enum(TIPOS_DE_RESPOSTA).default("texto"),
+  gravar_em: z.enum(CAMPOS_DO_FORMULARIO).default(""),
+});
+export type PerguntaDoFormulario = z.infer<typeof perguntaDoFormularioSchema>;
+
+/** Agendar e Reagendar usam a mesma configuração (e o mesmo caminho no motor). */
+const CONFIG_DA_AGENDA = z.object({
+    event_type_id: z.string().uuid().nullable().default(null),
+    /** null = o responsável padrão do tipo de atendimento. */
+    owner_user_id: z.string().uuid().nullable().default(null),
+    pergunta: z.string().trim().max(1000).default("Escolha um horário:"),
+    quantidade: z.number().int().min(2).max(10).default(5),
+    dias_a_frente: z.number().int().min(1).max(30).default(7),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não entendi. Responda com o número de um dos horários."),
+    tentativas: z.number().int().min(1).max(5).default(2),
+    /** Conta a partir da lista de horários enviada; vale de novo a cada pedido de novo. */
+    ...PRAZO_DA_RESPOSTA,
+    confirmacao: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Pronto! Seu horário ficou marcado para {{horario}}. Até lá!"),
+    /** Atendimento que a equipe aprova antes: o horário fica reservado, não confirmado. */
+    confirmacao_pendente: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Separei {{horario}} para você. A equipe confirma em breve."),
+  });
+
+/** Métodos do passo WebHook. GET e DELETE não levam corpo. */
+export const METODOS_DO_WEBHOOK = ["POST", "GET", "PUT", "PATCH", "DELETE"] as const;
+
+/** Os cabeçalhos em que a chave cifrada do passo WebHook pode viajar. */
+export const CABECALHOS_DA_CHAVE = ["Authorization", "access_token", "x-api-token"] as const;
+
+/** Quem aparece como quem fechou a conversa no passo "Finalizar conversa". */
+export const QUEM_FECHA = ["chatbot", "responsavel"] as const;
+export type QuemFecha = (typeof QUEM_FECHA)[number];
+export const NOMES_DE_QUEM_FECHA: Record<QuemFecha, string> = {
+  chatbot: "O chatbot",
+  responsavel: "O atendente responsável pela conversa",
+};
+
+export const configDoPasso = {
+  /**
+   * Começa quando uma AUTOMAÇÃO manda (ação "Iniciar chatbot"): compra aprovada
+   * na Kiwify, negócio que mudou de etapa, etiqueta nova. Não responde a
+   * mensagem nenhuma — quem escolhe o contato é a regra. Um fluxo só com este
+   * início pode ficar ligado junto com o fluxo de atendimento.
+   */
+  inicio_automacao: z.object({}),
+  /**
+   * Começa quando um ATENDENTE aciona o fluxo numa conversa (botão na Inbox):
+   * pesquisa de satisfação no fim, menu de pagamento, coleta de dados. Como o
+   * de automação, não responde a mensagem nenhuma por conta própria — pode
+   * ficar ligado junto com o fluxo de atendimento.
+   */
+  inicio_manual: z.object({
+    /**
+     * "Não listado" da Umbler: o chatbot some do botão do robô na conversa, mas
+     * continua valendo no Fechar (chatbot de encerramento), no Agendar e nas
+     * automações.
+     */
+    nao_listado: z.boolean().default(false),
+    /**
+     * Perguntas feitas ao ATENDENTE ao iniciar (ex.: "Número do pedido"): cada
+     * resposta vira uma variável do fluxo, usável como {{nome}}.
+     */
+    perguntas: z
+      .array(
+        z.object({
+          variavel: z
+            .string()
+            .trim()
+            .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _."),
+          rotulo: z.string().trim().min(1).max(80),
+        }),
+      )
+      .max(5)
+      .default([]),
+  }),
+  inicio_canal: z.object({
+    /** null = qualquer número de WhatsApp da empresa. */
+    channel_session_id: z.string().uuid().nullable().default(null),
+    /** Começa em toda conversa nova, ou só quando a mensagem contém uma palavra. */
+    gatilho: z.enum(["toda_conversa_nova", "palavra_chave"]).default("toda_conversa_nova"),
+    palavras: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    /**
+     * Etiqueta de origem: se a mensagem que abriu a conversa tiver a frase
+     * (a mensagem pronta de um anúncio, de um link do site…), o contato ganha
+     * a etiqueta. Assim dá para saber de onde veio e separar o caminho depois
+     * com "Etiquetas". Maiúsculas e acentos não importam.
+     */
+    origens: z
+      .array(
+        z.object({
+          frase: z.string().trim().min(1).max(120),
+          etiqueta: z.string().trim().min(1).max(60),
+        }),
+      )
+      .max(20)
+      .default([]),
+  }),
+  enviar_mensagem: z.object({
+    texto: z.string().trim().max(4000).default(""),
+    /**
+     * "Botão de link" da Umbler: um rótulo e um endereço. No número por QR code
+     * o WhatsApp não mostra botão, então vai como texto embaixo da mensagem
+     * ("Rótulo: endereço") — o mesmo que a Umbler faz. Os dois vazios = sem botão.
+     */
+    botao_texto: z.string().trim().max(40).default(""),
+    /** Aceita {{variavel}}. */
+    botao_url: z.string().trim().max(2000).default(""),
+    /**
+     * "Seguir outro caminho se a mensagem não sair" da Umbler: ligado, o passo
+     * ganha a saída "Não saiu" e o fluxo ESPERA o envio para decidir por onde
+     * segue. Desligado (padrão), a mensagem sai junto com as outras do turno.
+     */
+    caminho_se_falhar: z.boolean().default(false),
+  }),
+  pedir_escolher: z.object({
+    pergunta: z.string().trim().max(2000).default(""),
+    opcoes: z
+      .array(z.string().trim().min(1).max(80))
+      .min(1)
+      .max(10)
+      .default(["Opção 1", "Opção 2"]),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não entendi. Responda com o número de uma das opções."),
+    tentativas: z.number().int().min(1).max(5).default(3),
+    /**
+     * Guarda o TEXTO da opção escolhida, para usar depois como {{nome}} — no
+     * WebHook, no "Valor", numa mensagem. Vazio = não guarda (como antes).
+     * Antes a escolha só decidia o caminho e se perdia (auditoria de 03/11).
+     */
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .or(z.literal(""))
+      .default(""),
+    ...PRAZO_DA_RESPOSTA,
+  }),
+  pedir_digitar: z.object({
+    pergunta: z.string().trim().max(2000).default(""),
+    /** Onde a resposta fica guardada, para usar depois como {{nome}}. */
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .default("resposta"),
+    /**
+     * O que a resposta precisa ser ("Detecção de valores" da Umbler). Fora do
+     * formato, o chatbot pede de novo até `tentativas` vezes e então segue por
+     * "Não respondeu certo". "qualquer" aceita tudo, como antes dos formatos.
+     */
+    formato: z.enum(FORMATOS_DE_RESPOSTA).default("qualquer"),
+    /** Vazio = a mensagem padrão do formato. */
+    mensagem_invalida: z.string().trim().max(500).default(""),
+    tentativas: z.number().int().min(1).max(5).default(3),
+    /**
+     * Sem fazer a pergunta, usa a mensagem que o contato acabou de mandar — se
+     * ela ainda for a última da conversa e estiver no formato. Senão, pergunta.
+     */
+    usar_mensagem_anterior: z.boolean().default(false),
+    /**
+     * VÁRIAS RESPOSTAS ACEITAS (como a Umbler): cada opção tem um nome, um
+     * formato pronto ou uma regra própria, e uma saída só sua. A resposta segue
+     * pela PRIMEIRA opção que bate, na ordem da lista. Vazia = o modo de sempre,
+     * com o `formato` único acima.
+     */
+    opcoes: z.array(opcaoDeRespostaSchema).max(10).default([]),
+    ...PRAZO_DA_RESPOSTA,
+  }),
+  mensagem_contem: z.object({
+    palavras: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
+  }),
+  horarios: z.object({
+    faixas: z
+      .array(z.object({ inicio: HORA, fim: HORA }))
+      .min(1)
+      .max(6)
+      .default([{ inicio: "08:00", fim: "18:00" }]),
+    /** Feriado = o dia todo "Fora do horário" (lib/chatbot/feriados.ts). */
+    feriados_nacionais: z.boolean().default(false),
+    /** Carnaval e Corpus Christi (ponto facultativo, não feriado nacional). */
+    pontos_facultativos: z.boolean().default(false),
+    /** Da empresa: "25/12" vale todo ano; "15/03/2026" só naquele dia. */
+    feriados: z
+      .array(z.string().regex(/^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])(\/\d{4})?$/))
+      .max(60)
+      .default([]),
+  }),
+  dias_semana: z.object({
+    /** 0 = domingo … 6 = sábado. */
+    dias: z.array(z.number().int().min(0).max(6)).max(7).default([1, 2, 3, 4, 5]),
+  }),
+  /**
+   * A conversa vai para a fila de atendimento humano e a Distribuição de
+   * atendimento escolhe quem pega. Com `setor_id` ("Transferir para setor" da
+   * Umbler, migration 0496), só membros daquele setor recebem; null = equipe toda.
+   */
+  transferir_equipe: z.object({
+    setor_id: z.string().uuid().nullable().default(null),
+    /**
+     * "Setor da conversa anterior" da Umbler: usa o setor em que a conversa já
+     * estava (do atendimento anterior). Sem setor, vai para a equipe toda.
+     */
+    setor_da_conversa: z.boolean().default(false),
+    /** Só para o resumo no quadro; quem decide é o id. */
+    nome_do_setor: z.string().max(60).default(""),
+    mensagem: z.string().trim().max(1000).default(""),
+    /**
+     * "Caminho alternativo se falhar" da Umbler: ligado, o passo ganha a saída
+     * "Não transferiu" (o setor foi apagado, ou a conversa nunca esteve num
+     * setor) em vez de cair na equipe toda com uma nota.
+     */
+    caminho_se_falhar: z.boolean().default(false),
+    ...ESPERA_DO_ATENDENTE,
+  }),
+  /**
+   * Os 4 modos da Umbler: um atendente fixo, rodízio, quem tem menos conversas
+   * abertas, ou quem atendeu o contato antes. Fluxo salvo antes dos modos não
+   * tem `modo` e segue como "específico".
+   */
+  transferir_atendente: z.object({
+    modo: z.enum(MODOS_DE_ATENDENTE).default("especifico"),
+    user_id: z.string().uuid().nullable().default(null),
+    /** Só no modo "variavel": a variável com o id ou o e-mail do atendente. */
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .or(z.literal(""))
+      .default(""),
+    /** Rodízio e menos conversas: só entre estes. Vazio = quem pode receber a conversa. */
+    atendentes: z.array(z.string().uuid()).max(50).default([]),
+    mensagem: z.string().trim().max(1000).default(""),
+    ...ESPERA_DO_ATENDENTE,
+  }),
+  editar_etiquetas: z.object({
+    /**
+     * Onde mexer, como na Umbler: nas etiquetas do CONTATO (seguem com ele em
+     * toda conversa) ou nas da CONVERSA (só deste atendimento). Fluxo salvo
+     * antes de existir a escolha não tem `alvo` e segue no contato.
+     */
+    alvo: z.enum(["contato", "conversa"]).default("contato"),
+    adicionar: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    remover: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+  }),
+  finalizar_conversa: z.object({
+    mensagem: z.string().trim().max(1000).default(""),
+    /**
+     * Quem fica registrado como quem fechou: o próprio chatbot (padrão) ou o
+     * atendente responsável pela conversa. Sem responsável, vale o chatbot.
+     */
+    quem_fecha: z.enum(QUEM_FECHA).default("chatbot"),
+  }),
+  /** Nota interna na conversa (`conversation_notes`): a equipe vê, o contato não. */
+  criar_nota: z.object({
+    texto: z.string().trim().max(2000).default(""),
+  }),
+  campo_contato: z.object({
+    campo: z.enum(CAMPOS_DO_CONTATO).default("nome"),
+    /** Só para `personalizado`: a chave em `contacts.custom_fields`. */
+    chave: CHAVE.or(z.literal("")).default(""),
+    /** Aceita {{variavel}} — o caso comum é gravar o que o contato digitou. */
+    valor: z.string().trim().max(500).default(""),
+  }),
+  definir_condicao: z.object({
+    regra: regraSchema.default(regraSchema.parse({})),
+  }),
+  /**
+   * "Campo do contato" na CONDIÇÃO (o card da Umbler): é a mesma regra do
+   * "Definir condição", presa ao campo do contato. O motor força
+   * `fonte = "campo_contato"`, então um desenho editado à mão não troca de fonte.
+   */
+  condicao_campo_contato: z.object({
+    regra: regraSchema.default(
+      regraSchema.parse({ fonte: "campo_contato", chave: "nome", operador: "preenchido" }),
+    ),
+  }),
+  multi_condicional: z.object({
+    regras: z
+      .array(regraSchema)
+      .min(1)
+      .max(8)
+      .default([regraSchema.parse({}), regraSchema.parse({})]),
+  }),
+  /** Nota de satisfação: 1 a 5 ou 0 a 10. Fica guardada em {{avaliacao}}. */
+  pedir_avaliacao: z.object({
+    pergunta: z
+      .string()
+      .trim()
+      .max(2000)
+      .default("De 1 a 5, que nota você dá para o nosso atendimento?"),
+    escala: z.enum(["1_5", "0_10"]).default("1_5"),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não entendi. Responda só com o número da nota."),
+    tentativas: z.number().int().min(1).max(5).default(2),
+  }),
+  /** Comentário livre. Fica guardado em {{feedback}} e junto da nota. */
+  pedir_feedback: z.object({
+    pergunta: z
+      .string()
+      .trim()
+      .max(2000)
+      .default("Quer deixar um comentário sobre o atendimento?"),
+  }),
+  aguardar_intervalo: z.object({
+    quantidade: z.number().int().min(1).max(999).default(5),
+    unidade: z.enum(["segundos", "minutos", "horas", "dias"]).default("minutos"),
+    se_responder: SE_RESPONDER,
+  }),
+  aguardar_ate: z.object({
+    /**
+     * "dias": o próximo `hora` num dos `dias` da semana (como sempre foi).
+     * "data": um dia certo — fixo (`data`) ou o de uma resposta (`variavel`,
+     * em dd/mm/aaaa, AAAA-MM-DD ou o instante do Agendar horário) — com
+     * `deslocamento_dias` (-1 = véspera). É o "agendar envio" e o lembrete.
+     */
+    quando: z.enum(["dias", "data", "agenda"]).default("dias"),
+    /**
+     * Modo "agenda": expressão de cinco campos (minuto hora dia-do-mês mês
+     * dia-da-semana), lida por `lib/chatbot/agenda.ts`. Ex.: "0 9 1,15 * *".
+     */
+    agenda: z.string().trim().max(80).default(""),
+    hora: HORA.default("09:00"),
+    /** 0 = domingo … 6 = sábado. */
+    dias: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([0, 1, 2, 3, 4, 5, 6]),
+    /**
+     * "Dia útil" da Umbler: no modo "dias", pula feriado nacional (além dos dias
+     * da semana desmarcados). Marque só seg–sex para o dia útil completo.
+     */
+    pular_feriados: z.boolean().default(false),
+    fonte_da_data: z.enum(["fixa", "resposta"]).default("fixa"),
+    data: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .or(z.literal(""))
+      .default(""),
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z_][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .or(z.literal(""))
+      .default(""),
+    deslocamento_dias: z.number().int().min(-30).max(30).default(0),
+    se_responder: SE_RESPONDER,
+  }),
+  /**
+   * "Salvar em variável": guarda um valor nas respostas do fluxo, para usar
+   * depois como {{variavel}} numa mensagem, no "Valor" ou no WebHook. Aceita
+   * {{outra_variavel}} no valor. Vale até o fim da conversa com o chatbot e
+   * viaja para o fluxo chamado em "Acionar outro fluxo", como as respostas.
+   */
+  guardar_valor: z.object({
+    /** Sem "_" no começo: esses nomes são do motor (posição do formulário, horários…). */
+    variavel: z
+      .string()
+      .trim()
+      .regex(/^[a-z][a-z0-9_]{0,39}$/, "Use letras minúsculas, números e _.")
+      .default("valor"),
+    valor: z.string().trim().max(1000).default(""),
+  }),
+  /**
+   * Põe o contato num dos follow-ups publicados do CRM (os mesmos que o agente
+   * de IA arma), pelo mesmo caminho da tela e das automações
+   * (`enrollFollowupFlow`). Roteiro de atendimento não entra: ele começa na
+   * conversa, não por inscrição.
+   */
+  iniciar_followup: z.object({
+    pointer_id: z.string().uuid().nullable().default(null),
+    /** Só para o card mostrar qual é; quem decide é o `pointer_id`. */
+    nome_do_followup: z.string().trim().max(200).default(""),
+  }),
+  /**
+   * Teste A/B: cada contato segue por UMA das saídas, sorteada pelo peso
+   * (pesos 70 e 30 = 70% e 30% dos contatos).
+   */
+  distribuir_fluxo: z.object({
+    saidas: z
+      .array(
+        z.object({
+          rotulo: z.string().trim().max(40).default(""),
+          peso: z.number().int().min(1).max(100).default(50),
+        }),
+      )
+      .min(2)
+      .max(6)
+      .default([
+        { rotulo: "A", peso: 50 },
+        { rotulo: "B", peso: 50 },
+      ]),
+  }),
+  /** O contato mandou mensagem nas últimas N horas? (a janela de 24h do WhatsApp) */
+  contato_ativo: z.object({
+    horas: z.number().int().min(1).max(720).default(24),
+  }),
+  /** Atalho de "Definir condição" só para etiquetas: tem alguma (ou todas) destas? */
+  tem_etiqueta: z.object({
+    etiquetas: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    modo: z.enum(["alguma", "todas"]).default("alguma"),
+  }),
+  /** É o primeiro atendimento do contato (nenhuma mensagem antes deste atendimento)? */
+  primeira_conversa: z.object({}),
+  /** A conversa é por um destes números de WhatsApp? */
+  canal_da_conversa: z.object({
+    canais: z.array(z.string().uuid()).max(20).default([]),
+  }),
+  /** Quem está com a conversa: um destes atendentes? (lista vazia = qualquer atendente) */
+  atendente_da_conversa: z.object({
+    atendentes: z.array(z.string().uuid()).max(50).default([]),
+  }),
+  /** Alguém da equipe pode assumir agora (disponível, com folga, no horário)? */
+  presenca_do_atendente: z.object({}),
+  /** O agente de IA, ou outro chatbot, está atendendo esta conversa agora? */
+  bot_paralelo: z.object({}),
+  /** A conversa está num destes setores (migration 0496)? */
+  setor_da_conversa: z.object({
+    setores: z.array(z.string().uuid()).max(30).default([]),
+  }),
+  /** O contato está esperando resposta (a última mensagem é dele)? */
+  status_da_conversa: z.object({}),
+  /**
+   * Bloqueia o contato (como o "parar de receber": nem chatbot, nem IA, nem
+   * campanha escrevem mais) e finaliza a conversa. A mensagem, se houver, sai
+   * ANTES — depois de bloqueado, o envio é recusado.
+   */
+  bloquear_contato: z.object({
+    mensagem: z.string().trim().max(1000).default(""),
+  }),
+  /**
+   * "Excluir contato" respeitando a LGPD: abre o pedido de exclusão dos dados,
+   * que um admin aprova em Configurações › LGPD (o mesmo caminho de todo
+   * pedido). O chatbot nunca apaga dado sozinho: uma frase mal entendida não
+   * pode destruir o histórico de um cliente.
+   */
+  excluir_contato: z.object({
+    mensagem: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Recebemos seu pedido. Seus dados serão excluídos em até 15 dias úteis."),
+  }),
+  /** Abre um aviso na Central de avisos, com link para a conversa. */
+  notificar_atendente: z.object({
+    mensagem: z.string().trim().max(500).default(""),
+    /**
+     * Quem avisar (a Umbler: "atendentes específicos"). Vazio = a equipe, pela
+     * Central de avisos, como sempre foi. Com nomes, o aviso vai ao celular de
+     * cada um e fica como nota na conversa.
+     */
+    atendentes: z.array(z.string().uuid()).max(50).default([]),
+    /** Só quem está "Disponível" agora. Se ninguém estiver, vai para a Central. */
+    so_disponiveis: z.boolean().default(false),
+  }),
+  /**
+   * Chama um endereço de fora (n8n, Make, o sistema do cliente) e guarda
+   * partes da resposta em variáveis. Segredo e autorização ficam CIFRADOS no
+   * desenho (`*_enc`): o texto puro só passa pela rota que salva, que o cifra
+   * (lib/chatbot/segredos.ts). Quem chama é lib/chatbot/webhook.ts.
+   */
+  webhook: z.object({
+    /** Aceita {{variavel}} (vai codificada para URL). */
+    url: z.string().trim().max(2000).default(""),
+    metodo: z.enum(METODOS_DO_WEBHOOK).default("POST"),
+    /**
+     * Cabeçalhos próprios (11/11/2026, como a requisição HTTP da Umbler). O valor
+     * aceita {{variavel}}. NÃO é lugar de senha: o desenho é lido por todo
+     * membro — chave vai no "Cabeçalho Authorization", que é cifrado. Os nomes
+     * que o produto controla (Host, Authorization, Cookie, X-Webhook-…) são
+     * recusados.
+     */
+    cabecalhos: z
+      .array(
+        z.object({
+          nome: z.string().trim().regex(/^[A-Za-z0-9-]{1,60}$/, "Use letras, números e -."),
+          valor: z.string().max(500),
+        }),
+      )
+      .max(10)
+      .default([]),
+    /**
+     * O que vai no corpo de POST, PUT e PATCH: "padrao" = a projeção fixa (ids,
+     * contato, última mensagem, respostas); "personalizado" = o JSON escrito em
+     * `corpo`, com {{variavel}} trocada pelo valor (escapado para JSON).
+     */
+    corpo_modo: z.enum(["padrao", "personalizado"]).default("padrao"),
+    corpo: z.string().max(8000).default(""),
+    campos: z
+      .array(
+        z.object({
+          /** Caminho no JSON da resposta: `status`, `pedido.status`, `itens.0.nome`. */
+          caminho: z.string().trim().min(1).max(120),
+          variavel: CHAVE,
+        }),
+      )
+      .max(10)
+      .default([]),
+    segredo_enc: z.string().max(4000).nullable().default(null),
+    autorizacao_enc: z.string().max(4000).nullable().default(null),
+    /**
+     * Em qual cabeçalho a chave cifrada viaja. A maioria das APIs usa
+     * `Authorization`; o Asaas usa `access_token` e o Pipedrive `x-api-token`.
+     * Lista fechada: o nome do cabeçalho nunca é texto livre.
+     */
+    autorizacao_cabecalho: z.enum(CABECALHOS_DA_CHAVE).default("Authorization"),
+  }),
+  bloco_de_notas: z.object({
+    texto: z.string().max(4000).default(""),
+  }),
+  /**
+   * Foto, vídeo, áudio ou documento. O arquivo fica no Storage da organização
+   * (`whatsapp-media/<org>/chatbot/<fluxo>/…`, subido pela tela) e, no envio, é
+   * COPIADO para a pasta da conversa — o mesmo caminho das fotos do catálogo:
+   * a conversa mostra o arquivo e a LGPD o apaga junto com ela.
+   */
+  enviar_midia: z.object({
+    storage_path: z.string().max(500).nullable().default(null),
+    tipo: z.enum(TIPOS_DE_MIDIA).nullable().default(null),
+    mime: z.string().max(160).default(""),
+    nome_arquivo: z.string().max(200).default(""),
+    /** Texto que vai junto (legenda). Aceita {{variavel}}. */
+    legenda: z.string().trim().max(1024).default(""),
+  }),
+  /**
+   * Oferece os próximos horários livres de um tipo de atendimento da Agenda e
+   * marca o que o contato escolher — a mesma consulta e a mesma marcação que o
+   * agente de IA usa (`lib/agenda/consulta.ts` + `marcarAgendamentoHandler`).
+   */
+  agendar_horario: CONFIG_DA_AGENDA,
+  /**
+   * "Reagendar": acha o próximo compromisso do contato na Agenda, oferece os
+   * horários livres do MESMO tipo de atendimento e muda o compromisso para o
+   * horário escolhido (`alterarAgendamentoHandler`, que confere de novo se está
+   * livre). Sem compromisso futuro, segue por "Sem agendamento".
+   */
+  reagendar_horario: CONFIG_DA_AGENDA.extend({
+    pergunta: z.string().trim().max(1000).default("Para qual horário você quer mudar?"),
+    confirmacao: z
+      .string()
+      .trim()
+      .max(1000)
+      .default("Pronto! Seu horário mudou para {{horario}}."),
+  }),
+  /**
+   * Cancela o próximo compromisso do contato na Agenda (`cancelarAgendamentoHandler`,
+   * o mesmo da tela). Guarda o horário cancelado em {{agendamento}}.
+   */
+  cancelar_agendamento: z.object({
+    motivo: z.string().trim().max(200).default("Cancelado pelo contato no WhatsApp"),
+  }),
+  /** O contato tem negócio aberto num funil (e numa das etapas marcadas)? */
+  etapa_do_funil: z.object({
+    pipeline_id: z.string().uuid().nullable().default(null),
+    /** Vazio = qualquer etapa do funil. */
+    etapas: z.array(z.string().uuid()).max(30).default([]),
+    /** Só para o resumo no quadro. */
+    nome_do_funil: z.string().max(120).default(""),
+  }),
+  /**
+   * Localização como mensagem: nome, endereço e o link do mapa. O pino nativo
+   * do WhatsApp não sai — o envio do CRM não fala esse formato —, e o link do
+   * mapa abre no celular do mesmo jeito, em qualquer canal.
+   */
+  enviar_localizacao: z.object({
+    nome: z.string().trim().max(120).default(""),
+    endereco: z.string().trim().max(300).default(""),
+    latitude: z.number().min(-90).max(90).nullable().default(null),
+    longitude: z.number().min(-180).max(180).nullable().default(null),
+    mensagem: z.string().trim().max(500).default(""),
+  }),
+  /** Cartão de contato (o mesmo da Inbox): o cliente salva com um toque. */
+  enviar_contato: z.object({
+    nome: z.string().trim().max(120).default(""),
+    telefone: z.string().trim().max(30).default(""),
+  }),
+  /**
+   * Um produto do Catálogo, lido na hora do envio (nome, preço e descrição
+   * atuais) com a primeira foto. Produto desativado ou apagado não sai, e a
+   * equipe lê uma nota.
+   */
+  enviar_produto: z.object({
+    produto_id: z.string().uuid().nullable().default(null),
+    nome_do_produto: z.string().max(200).default(""),
+    mensagem: z.string().trim().max(500).default(""),
+  }),
+  /**
+   * Põe o contato no funil: se ele já tem negócio aberto naquele funil, o
+   * negócio vai para a etapa escolhida; se não tem, nasce nela. Pelos mesmos
+   * handlers da tela (audita, emite `lead.created` / `lead.stage_changed`).
+   */
+  negocio_funil: z.object({
+    pipeline_id: z.string().uuid().nullable().default(null),
+    stage_id: z.string().uuid().nullable().default(null),
+    /** Título do negócio novo. Vazio = o nome do contato. Aceita {{variavel}}. */
+    titulo: z.string().trim().max(200).default(""),
+    /** Só para o resumo no quadro ("Vendas › Interessado"); quem decide são os ids. */
+    nome_do_destino: z.string().max(240).default(""),
+  }),
+  /**
+   * Encerra este fluxo e começa outro (ou este mesmo, do início — o "voltar
+   * ao menu"), levando as respostas já guardadas. O fluxo chamado precisa
+   * estar ligado.
+   */
+  acionar_fluxo: z.object({
+    flow_id: z.string().uuid().nullable().default(null),
+    /** Só para o resumo no quadro; quem decide é o id. */
+    nome_do_fluxo: z.string().max(120).default(""),
+    /**
+     * "Bot paralelo" da Umbler: o outro fluxo começa SEM encerrar este, que
+     * segue para o próximo passo. Desligado (padrão), este termina aqui.
+     */
+    paralelo: z.boolean().default(false),
+  }),
+  /**
+   * "Valor" da Umbler: compara uma resposta guardada, um campo do contato ou a
+   * última mensagem com um valor que pode ter {{variavel}} — ex.:
+   * {{total}} maior que 100, ou {{email_digitado}} igual a {{email_do_cadastro}}.
+   */
+  valor: z.object({
+    fonte: z.enum(["variavel", "campo_contato", "mensagem"]).default("variavel"),
+    /** Nome da variável, ou o campo do contato (nome/email/aniversario/<chave personalizada>). */
+    chave: z.string().trim().max(40).default(""),
+    operador: z.enum(OPERADORES_DE_VALOR).default("igual"),
+    /** Aceita {{variavel}}. */
+    valor: z.string().trim().max(200).default(""),
+  }),
+  /**
+   * Devolve a conversa ao atendimento automático: o agente de IA do número (ou o
+   * roteador) responde dali em diante — pelo MESMO caminho do botão "Devolver
+   * ao agente" da Inbox (`devolverAtendimentoAoAgente`). Sem agente no ar no
+   * número, segue pela saída "Sem agente de IA". A mensagem, se houver, só sai
+   * depois de a entrega dar certo.
+   */
+  transferir_ia: z.object({
+    mensagem: z.string().trim().max(1000).default(""),
+    /**
+     * Qual agente continua a conversa (11/11/2026, como na Umbler Talk). `null` =
+     * o agente do número ou o roteador, como antes. O escolhido vale até o fim
+     * do atendimento (`agenteEscolhidoPeloChatbot`).
+     */
+    agent_id: z.string().uuid().nullable().default(null),
+  }),
+  /**
+   * Oferta com validade: até `valida_ate` (dia, no fuso da empresa) sai a
+   * mensagem; depois, nada sai e o fluxo segue por "Oferta vencida".
+   * {{validade}} = a data em dd/mm/aaaa.
+   */
+  enviar_oferta: z.object({
+    texto: z.string().trim().max(2000).default(""),
+    valida_ate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .or(z.literal(""))
+      .default(""),
+    mostrar_validade: z.boolean().default(true),
+  }),
+  /**
+   * O link de pagamento de quem vende (Mercado Pago, Asaas, PagSeguro, Pix…),
+   * numa mensagem arrumada. O chatbot NÃO gera cobrança nem confere se foi
+   * pago: a organização não tem conta de pagamento ligada ao CRM. O link e o
+   * Pix aceitam {{variavel}} — o caso comum é o {{link_checkout}} de uma
+   * automação de venda, ou um campo guardado pelo WebHook.
+   */
+  enviar_pagamento: z.object({
+    descricao: z.string().trim().max(200).default(""),
+    /** Texto livre ("R$ 99,90", "3x de R$ 40") — aceita {{variavel}}. */
+    valor: z.string().trim().max(60).default(""),
+    link: z.string().trim().max(2000).default(""),
+    pix: z.string().trim().max(600).default(""),
+    mensagem: z.string().trim().max(1000).default(""),
+  }),
+  /**
+   * Modelo aprovado pela Meta (`meta_templates`), sem variáveis — o mesmo que o
+   * follow-up manda. Só existe em número oficial (API da Meta); em número por
+   * QR Code o passo segue por "Não enviado".
+   */
+  enviar_template: z.object({
+    template_id: z.string().uuid().nullable().default(null),
+    /** Só para o resumo no quadro; quem decide é o id. */
+    nome_do_modelo: z.string().max(600).default(""),
+  }),
+  /**
+   * Um formulário pela conversa: as perguntas saem uma de cada vez, cada
+   * resposta é conferida pelo tipo (e-mail, número, data…) e guardada em
+   * {{variavel}} — e, se pedido, no cadastro do contato. O formulário nativo do
+   * WhatsApp (WhatsApp Flows) só existe na API oficial e precisa ser publicado
+   * na Meta; este funciona em qualquer número.
+   */
+  enviar_formulario: z.object({
+    introducao: z.string().trim().max(1000).default(""),
+    /** Vale para CADA pergunta: o relógio recomeça quando a próxima sai. */
+    ...PRAZO_DA_RESPOSTA,
+    perguntas: z
+      .array(perguntaDoFormularioSchema)
+      .min(1)
+      .max(10)
+      .default([
+        perguntaDoFormularioSchema.parse({ pergunta: "Qual é o seu nome?", variavel: "nome" }),
+        perguntaDoFormularioSchema.parse({
+          pergunta: "Qual é o seu e-mail?",
+          variavel: "email",
+          tipo: "email",
+        }),
+      ]),
+    mensagem_invalida: z
+      .string()
+      .trim()
+      .max(500)
+      .default("Não consegui entender essa resposta. Pode mandar de novo?"),
+    tentativas: z.number().int().min(1).max(5).default(3),
+    conclusao: z.string().trim().max(1000).default(""),
+  }),
+  /**
+   * "Fluxo de espera" da Umbler: liga ou desliga as mensagens de espera desta
+   * conversa (as que "Transferir para a equipe" e "Transferir p/ atendente"
+   * mandam enquanto ninguém da equipe responde). Desligar para as que estão
+   * armadas; ligar rearma as da última transferência, se ainda faltarem vezes.
+   */
+  fluxo_de_espera: z.object({
+    acao: z.enum(["desligar", "ligar"]).default("desligar"),
+  }),
+  /**
+   * "Privar ou liberar" da Umbler: conversa privada só é vista pelo atendente
+   * responsável, por gerente/admin e pelo super-admin (`conversations.is_private`,
+   * migration 0495 — quem garante é a RLS). Liberar volta à regra da organização.
+   */
+  privar_liberar: z.object({
+    acao: z.enum(["privar", "liberar"]).default("privar"),
+  }),
+  /**
+   * "Visibilidade da conversa" da Umbler (migration 0510): a conversa oculta
+   * sai da caixa de entrada sem ser fechada e fica no filtro "Ocultas";
+   * "até a próxima mensagem do contato" volta sozinha quando ele escreve.
+   * Régua em `lib/inbox/visibilidade.ts`.
+   */
+  visibilidade_conversa: z.object({
+    visibilidade: z.enum(["visivel", "oculta", "oculta_ate_mensagem"]).default("oculta"),
+  }),
+} as const;
+
+export type TipoDePasso = keyof typeof configDoPasso;
+export type ConfigDe<T extends TipoDePasso> = z.infer<(typeof configDoPasso)[T]>;
+
+export type MetaDoPasso = {
+  tipo: TipoDePasso;
+  grupo: GrupoDePasso;
+  nome: string;
+  descricao: string;
+  /** Nome do ícone em lucide-react. A tela resolve; o motor ignora. */
+  icone: string;
+  /** Cor do ícone (classe Tailwind). */
+  cor: string;
+  /** Recebe ligação de outro passo? (Início e Bloco de notas não.) */
+  temEntrada: boolean;
+};
+
+export const PASSOS: readonly MetaDoPasso[] = [
+  {
+    tipo: "inicio_canal",
+    grupo: "inicio",
+    nome: "Iniciar por um canal",
+    descricao: "Inicia quando o contato entra através de um canal.",
+    icone: "MessageCircle",
+    cor: "text-green-500",
+    temEntrada: false,
+  },
+  {
+    tipo: "inicio_automacao",
+    grupo: "inicio",
+    nome: "Iniciar por automação",
+    descricao: "Começa quando uma automação manda — ex.: compra aprovada na Kiwify, na Cakto ou na Hotmart.",
+    icone: "Zap",
+    cor: "text-amber-500",
+    temEntrada: false,
+  },
+  {
+    tipo: "inicio_manual",
+    grupo: "inicio",
+    nome: "Iniciar manualmente",
+    descricao: "Começa quando um atendente aciona o fluxo numa conversa.",
+    icone: "Hand",
+    cor: "text-sky-500",
+    temEntrada: false,
+  },
+  {
+    tipo: "horarios",
+    grupo: "condicao",
+    nome: "Horários",
+    descricao: "Defina ações a partir de intervalos de horários.",
+    icone: "Clock",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "dias_semana",
+    grupo: "condicao",
+    nome: "Dias da semana",
+    descricao: "Defina ações a partir de cada dia da semana.",
+    icone: "CalendarDays",
+    cor: "text-violet-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "mensagem_contem",
+    grupo: "condicao",
+    nome: "Mensagem contém",
+    descricao: "Verifica palavras-chave da última mensagem do contato.",
+    icone: "Search",
+    cor: "text-red-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "definir_condicao",
+    grupo: "condicao",
+    nome: "Definir condição",
+    descricao: "Siga por um caminho ou outro conforme uma regra (etiqueta, resposta ou campo).",
+    icone: "Split",
+    cor: "text-sky-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "condicao_campo_contato",
+    grupo: "condicao",
+    nome: "Campo do contato",
+    descricao: "Siga por um caminho conforme um campo do contato (nome, e-mail, aniversário ou personalizado).",
+    icone: "UserPen",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "multi_condicional",
+    grupo: "condicao",
+    nome: "Multi-condicional",
+    descricao: "Várias regras, uma saída para cada. Vale a primeira que bater.",
+    icone: "Network",
+    cor: "text-sky-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "distribuir_fluxo",
+    grupo: "condicao",
+    nome: "Distribuir fluxo",
+    descricao: "Divida os contatos entre caminhos, pelo peso de cada um (teste A/B).",
+    icone: "Shuffle",
+    cor: "text-violet-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "contato_ativo",
+    grupo: "condicao",
+    nome: "O contato está ativo?",
+    descricao: "Verifica se o contato mandou mensagem nas últimas 24 horas.",
+    icone: "UserCheck",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "tem_etiqueta",
+    grupo: "condicao",
+    nome: "Etiquetas",
+    descricao: "Siga por um caminho se o contato ou a conversa tiver uma etiqueta.",
+    icone: "Tag",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "primeira_conversa",
+    grupo: "condicao",
+    nome: "Primeira conversa?",
+    descricao: "Verifica se é o primeiro atendimento do contato.",
+    icone: "Sparkles",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "canal_da_conversa",
+    grupo: "condicao",
+    nome: "Canal da conversa",
+    descricao: "Verifica por qual número de WhatsApp a conversa está acontecendo.",
+    icone: "MessageCircle",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "atendente_da_conversa",
+    grupo: "condicao",
+    nome: "Atendente da conversa",
+    descricao: "Verifica quem é o atendente responsável pela conversa.",
+    icone: "Headset",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "presenca_do_atendente",
+    grupo: "condicao",
+    nome: "Presença do atendente",
+    descricao: "Verifica se alguém da equipe está disponível para atender agora.",
+    icone: "Activity",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "setor_da_conversa",
+    grupo: "condicao",
+    nome: "Setor da conversa",
+    descricao: "Verifica o setor atual da conversa.",
+    icone: "Users",
+    cor: "text-red-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "etapa_do_funil",
+    grupo: "condicao",
+    nome: "Etapa do funil",
+    descricao: "Siga um caminho se o contato tem negócio aberto num funil (ou numa etapa dele).",
+    icone: "Kanban",
+    cor: "text-violet-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "bot_paralelo",
+    grupo: "condicao",
+    nome: "Bot paralelo em execução",
+    descricao: "Verifica se o agente de IA ou outro chatbot está atendendo esta conversa.",
+    icone: "GitBranch",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "status_da_conversa",
+    grupo: "condicao",
+    nome: "Status da conversa",
+    descricao: "Verifica se o contato está esperando resposta.",
+    icone: "Hourglass",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "valor",
+    grupo: "condicao",
+    nome: "Valor",
+    descricao: "Compara um valor de variável ou campo com uma expressão.",
+    icone: "Variable",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "guardar_valor",
+    grupo: "acao",
+    nome: "Guardar em variável",
+    descricao: "Guarde um valor para usar depois no fluxo como {{variavel}}.",
+    icone: "PencilLine",
+    cor: "text-orange-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_mensagem",
+    grupo: "acao",
+    nome: "Enviar mensagem",
+    descricao: "Envie uma mensagem diretamente para o contato.",
+    icone: "MessageSquareText",
+    cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_midia",
+    grupo: "acao",
+    nome: "Enviar mídia",
+    descricao: "Envie uma foto, vídeo, áudio ou PDF para o contato.",
+    icone: "Paperclip",
+    cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_produto",
+    grupo: "acao",
+    nome: "Enviar produto",
+    descricao: "Envie um produto do Catálogo com foto, preço e descrição atualizados.",
+    icone: "ShoppingBag",
+    cor: "text-emerald-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_localizacao",
+    grupo: "acao",
+    nome: "Enviar localização",
+    descricao: "Envie o endereço com o link do mapa.",
+    icone: "MapPin",
+    cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_contato",
+    grupo: "acao",
+    nome: "Enviar contato",
+    descricao: "Envie um cartão de contato que o cliente salva com um toque.",
+    icone: "Contact",
+    cor: "text-green-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_oferta",
+    grupo: "acao",
+    nome: "Enviar oferta",
+    descricao: "Envie uma promoção com data de validade; depois dela, o fluxo segue por outro caminho.",
+    icone: "BadgePercent",
+    cor: "text-amber-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_pagamento",
+    grupo: "acao",
+    nome: "Enviar link de pagamento",
+    descricao: "Envie o link de pagamento (e o Pix, se quiser) numa mensagem arrumada.",
+    icone: "CreditCard",
+    cor: "text-emerald-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_template",
+    grupo: "acao",
+    nome: "Enviar template",
+    descricao: "Envie um modelo aprovado pelo WhatsApp (só em número oficial da Meta).",
+    icone: "FileText",
+    cor: "text-blue-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "pedir_escolher",
+    grupo: "acao",
+    nome: "Pedir para escolher",
+    descricao: "Ofereça opções para o contato escolher.",
+    icone: "ListChecks",
+    cor: "text-teal-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "pedir_digitar",
+    grupo: "acao",
+    nome: "Pedir para digitar",
+    descricao: "Faça uma pergunta e guarde a resposta, conferindo o formato se quiser (e-mail, telefone, CPF…).",
+    icone: "TextCursorInput",
+    cor: "text-slate-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "enviar_formulario",
+    grupo: "acao",
+    nome: "Enviar formulário",
+    descricao: "Faça várias perguntas em sequência e guarde as respostas no fluxo.",
+    icone: "ClipboardList",
+    cor: "text-blue-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "agendar_horario",
+    grupo: "acao",
+    nome: "Agendar horário",
+    descricao: "Ofereça os horários livres da Agenda e marque o que o contato escolher.",
+    icone: "CalendarCheck",
+    cor: "text-emerald-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "reagendar_horario",
+    grupo: "acao",
+    nome: "Reagendar horário",
+    descricao: "Mude o próximo compromisso do contato para outro horário livre.",
+    icone: "CalendarClock",
+    cor: "text-blue-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "cancelar_agendamento",
+    grupo: "acao",
+    nome: "Cancelar agendamento",
+    descricao: "Cancele o próximo compromisso do contato na Agenda.",
+    icone: "CalendarX",
+    cor: "text-red-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "negocio_funil",
+    grupo: "acao",
+    nome: "Negócio no funil",
+    descricao: "Crie o negócio do contato numa etapa do funil, ou mova o que ele já tem.",
+    icone: "Kanban",
+    cor: "text-indigo-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "acionar_fluxo",
+    grupo: "acao",
+    nome: "Acionar outro fluxo",
+    descricao: "Encerre este fluxo e comece outro chatbot (ou volte ao início deste).",
+    icone: "Workflow",
+    cor: "text-violet-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "transferir_equipe",
+    grupo: "acao",
+    nome: "Transferir para a equipe",
+    descricao:
+      "Passe a conversa para a fila de atendentes, da equipe toda ou de um setor: ela fica como Aguardando até alguém pegar.",
+    icone: "Users",
+    cor: "text-red-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "transferir_atendente",
+    grupo: "acao",
+    nome: "Transferir p/ atendente",
+    descricao: "Transfira a conversa para uma pessoa da equipe: fixa, em rodízio, a menos ocupada ou quem atendeu antes.",
+    icone: "Headset",
+    cor: "text-red-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "transferir_ia",
+    grupo: "acao",
+    nome: "Transferir p/ agentes de IA",
+    descricao: "Devolva a conversa ao agente de IA que atende este número.",
+    icone: "Sparkles",
+    cor: "text-red-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "editar_etiquetas",
+    grupo: "acao",
+    nome: "Editar etiquetas",
+    descricao: "Adicione ou remova etiquetas do contato ou da conversa.",
+    icone: "Tag",
+    cor: "text-slate-300",
+    temEntrada: true,
+  },
+  {
+    tipo: "campo_contato",
+    grupo: "acao",
+    nome: "Campo do contato",
+    descricao: "Grave nome, e-mail, aniversário ou um campo personalizado no contato.",
+    icone: "UserPen",
+    cor: "text-indigo-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "criar_nota",
+    grupo: "acao",
+    nome: "Criar uma nota",
+    descricao: "Deixe uma nota interna na conversa. A equipe vê, o contato não.",
+    icone: "NotebookPen",
+    cor: "text-amber-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "pedir_avaliacao",
+    grupo: "acao",
+    nome: "Pedir para avaliar",
+    descricao: "Peça uma nota para o atendimento (1 a 5 ou 0 a 10).",
+    icone: "Star",
+    cor: "text-yellow-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "pedir_feedback",
+    grupo: "acao",
+    nome: "Pedir feedback escrito",
+    descricao: "Peça um comentário sobre o atendimento. Fica junto da nota.",
+    icone: "MessageSquareQuote",
+    cor: "text-yellow-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "iniciar_followup",
+    grupo: "followups",
+    nome: "Iniciar follow-up",
+    descricao: "Ponha o contato num dos follow-ups do CRM (os mesmos que o agente de IA usa).",
+    icone: "Repeat",
+    cor: "text-emerald-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "notificar_atendente",
+    grupo: "acao",
+    nome: "Notificar atendente",
+    descricao: "Abra um aviso na Central de avisos, com link para a conversa.",
+    icone: "BellRing",
+    cor: "text-orange-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "visibilidade_conversa",
+    grupo: "acao",
+    nome: "Visibilidade da conversa",
+    descricao: "Oculte a conversa da caixa de entrada (sem fechar) ou mostre de novo.",
+    icone: "Eye",
+    cor: "text-red-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "privar_liberar",
+    grupo: "acao",
+    nome: "Privar ou liberar",
+    descricao: "Torne o atendimento privado (só o responsável e os gestores veem) ou livre de novo.",
+    icone: "Lock",
+    cor: "text-red-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "fluxo_de_espera",
+    grupo: "acao",
+    nome: "Fluxo de espera",
+    descricao: "Ligue ou desligue as mensagens de espera desta conversa.",
+    icone: "Hourglass",
+    cor: "text-blue-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "aguardar_intervalo",
+    grupo: "acao",
+    nome: "Aguardar intervalo",
+    descricao: "Espere um tempo (segundos, minutos, horas ou dias) antes de seguir.",
+    icone: "Hourglass",
+    cor: "text-purple-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "aguardar_ate",
+    grupo: "acao",
+    nome: "Aguardar até",
+    descricao: "Pause o fluxo até um horário ou uma data (ex.: amanhã às 9h, ou a véspera da consulta) e siga dali.",
+    icone: "AlarmClock",
+    cor: "text-purple-400",
+    temEntrada: true,
+  },
+  {
+    tipo: "bloquear_contato",
+    grupo: "acao",
+    nome: "Bloquear contato",
+    descricao: "Bloqueia o contato e finaliza a conversa: ninguém mais escreve para ele.",
+    icone: "Ban",
+    cor: "text-amber-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "excluir_contato",
+    grupo: "acao",
+    nome: "Excluir contato",
+    descricao: "Abre o pedido de exclusão dos dados do contato (LGPD) para um admin aprovar.",
+    icone: "UserX",
+    cor: "text-amber-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "finalizar_conversa",
+    grupo: "finalizacao",
+    nome: "Finalizar conversa",
+    descricao: "Finaliza a conversa automaticamente.",
+    icone: "Check",
+    cor: "text-red-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "webhook",
+    grupo: "integracao",
+    nome: "WebHook",
+    descricao: "Chame um sistema de fora (n8n, Make, sua loja) e use a resposta no fluxo.",
+    icone: "Webhook",
+    cor: "text-pink-500",
+    temEntrada: true,
+  },
+  {
+    tipo: "bloco_de_notas",
+    grupo: "utilitarios",
+    nome: "Bloco de notas",
+    descricao: "Faça anotações para documentar seu fluxo.",
+    icone: "StickyNote",
+    cor: "text-yellow-500",
+    temEntrada: false,
+  },
+];
+
+export function metaDoPasso(tipo: string): MetaDoPasso | null {
+  return PASSOS.find((p) => p.tipo === tipo) ?? null;
+}
+
+export function ehTipoDePasso(tipo: string): tipo is TipoDePasso {
+  return Object.hasOwn(configDoPasso, tipo);
+}
+
+/**
+ * Config do passo, com padrões preenchidos.
+ *
+ * Antes, um campo só fora do limite (uma opção de 81 letras, a 21ª
+ * palavra-chave, um horário apagado) fazia a config INTEIRA voltar ao padrão em
+ * silêncio: o menu virava "Opção 1 / Opção 2" para o cliente, e o "Iniciar por
+ * um canal" com 21 palavras virava "toda conversa nova" de qualquer número.
+ * Agora o que passou do limite é APARADO (texto cortado no máximo, lista
+ * cortada no máximo) e o resto é mantido; só o que nem assim se lê volta ao
+ * padrão. O validador (`problemasDoGrafo`) aponta o campo e impede ligar.
+ */
+export function lerConfig<T extends TipoDePasso>(tipo: T, dados: unknown): ConfigDe<T> {
+  const lida = lerConfigOuNada(tipo, dados);
+  if (lida) return lida;
+  const schema = configDoPasso[tipo] as unknown as z.ZodType<ConfigDe<T>>;
+  return schema.parse({});
+}
+
+/**
+ * A mesma leitura, mas SEM cair no padrão: `null` quando a config não se lê
+ * nem aparada. Para quem não pode transformar defeito em comportamento — o
+ * início de um fluxo, cujo padrão ("toda conversa nova") pega tudo.
+ */
+export function lerConfigOuNada<T extends TipoDePasso>(tipo: T, dados: unknown): ConfigDe<T> | null {
+  const schema = configDoPasso[tipo] as unknown as z.ZodType<ConfigDe<T>>;
+  const r = schema.safeParse(dados ?? {});
+  if (r.success) return r.data;
+  const aparada = schema.safeParse(apararExcessos(dados ?? {}, r.error.issues));
+  return aparada.success ? aparada.data : null;
+}
+
+/** O problema da config tal como está gravada, para o validador; `null` se ela se lê inteira. */
+export function problemaDaConfig(
+  tipo: TipoDePasso,
+  dados: unknown,
+): { campo: string; limite: number | null } | null {
+  const schema = configDoPasso[tipo] as unknown as z.ZodType<unknown>;
+  const r = schema.safeParse(dados ?? {});
+  if (r.success) return null;
+  const issue = r.error.issues[0]!;
+  const campo = issue.path.filter((p) => typeof p === "string").join(".") || "configuração";
+  const limite =
+    issue.code === "too_big" && typeof (issue as { maximum?: unknown }).maximum !== "bigint"
+      ? Number((issue as { maximum?: number }).maximum)
+      : null;
+  return { campo, limite };
+}
+
+/** Corta, numa cópia, cada texto e cada lista que passou do máximo do schema. */
+function apararExcessos(dados: unknown, issues: z.ZodError["issues"]): unknown {
+  let copia: unknown;
+  try {
+    copia = structuredClone(dados);
+  } catch {
+    return dados;
+  }
+  for (const issue of issues) {
+    if (issue.code !== "too_big" || issue.path.length === 0) continue;
+    const maximo = Number((issue as { maximum?: number | bigint }).maximum);
+    if (!Number.isFinite(maximo)) continue;
+    let alvo: unknown = copia;
+    for (const passo of issue.path.slice(0, -1)) {
+      alvo = alvo && typeof alvo === "object" ? (alvo as Record<PropertyKey, unknown>)[passo as PropertyKey] : undefined;
+    }
+    if (!alvo || typeof alvo !== "object") continue;
+    const chave = issue.path[issue.path.length - 1] as PropertyKey;
+    const valor = (alvo as Record<PropertyKey, unknown>)[chave];
+    if (typeof valor === "string" || Array.isArray(valor))
+      (alvo as Record<PropertyKey, unknown>)[chave] = valor.slice(0, maximo);
+  }
+  return copia;
+}
+
+/**
+ * Saídas de cada passo (os "pontinhos" de baixo no quadro). O id é o
+ * `sourceHandle` gravado na ligação; o motor segue a ligação cujo handle bate.
+ */
+const SAIDA_SEM_RESPOSTA = { id: "sem_resposta", rotulo: "Não respondeu a tempo" };
+
+export function saidasDoPasso(tipo: TipoDePasso, dados: unknown): { id: string; rotulo: string }[] {
+  switch (tipo) {
+    case "pedir_escolher": {
+      const c = lerConfig("pedir_escolher", dados);
+      return [
+        ...c.opcoes.map((o, i) => ({ id: `opcao-${i}`, rotulo: `${i + 1}. ${o}` })),
+        { id: "invalida", rotulo: "Não respondeu certo" },
+        ...(c.prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
+      ];
+    }
+    case "mensagem_contem":
+      return [
+        { id: "sim", rotulo: "Contém" },
+        { id: "nao", rotulo: "Não contém" },
+      ];
+    case "horarios":
+      return [
+        { id: "dentro", rotulo: "Dentro do horário" },
+        { id: "fora", rotulo: "Fora do horário" },
+      ];
+    case "dias_semana":
+      return [
+        { id: "sim", rotulo: "Nos dias marcados" },
+        { id: "nao", rotulo: "Nos outros dias" },
+      ];
+    case "definir_condicao":
+    case "condicao_campo_contato":
+      return [
+        { id: "sim", rotulo: "Regra atendida" },
+        { id: "nao", rotulo: "Regra não atendida" },
+      ];
+    case "multi_condicional": {
+      const c = lerConfig("multi_condicional", dados);
+      return [
+        ...c.regras.map((r, i) => ({ id: `regra-${i}`, rotulo: r.rotulo || descreverRegra(r) })),
+        { id: "nenhuma", rotulo: "Nenhuma regra" },
+      ];
+    }
+    case "campo_contato":
+      return [
+        { id: "proximo", rotulo: "Gravado" },
+        { id: "invalido", rotulo: "Valor inválido" },
+      ];
+    case "pedir_avaliacao":
+      return [
+        { id: "proximo", rotulo: "Avaliou" },
+        { id: "invalida", rotulo: "Não avaliou" },
+      ];
+    case "webhook":
+      return [
+        { id: "proximo", rotulo: "Deu certo" },
+        { id: "falha", rotulo: "Falhou" },
+      ];
+    case "distribuir_fluxo": {
+      const c = lerConfig("distribuir_fluxo", dados);
+      const total = c.saidas.reduce((t, x) => t + x.peso, 0) || 1;
+      return c.saidas.map((x, i) => ({
+        id: `saida-${i}`,
+        rotulo: `${x.rotulo || String.fromCharCode(65 + i)} · ${Math.round((x.peso / total) * 100)}%`,
+      }));
+    }
+    case "contato_ativo":
+      return [
+        { id: "sim", rotulo: "Ativo" },
+        { id: "nao", rotulo: "Inativo" },
+      ];
+    case "tem_etiqueta":
+      return [
+        { id: "sim", rotulo: "Tem" },
+        { id: "nao", rotulo: "Não tem" },
+      ];
+    case "primeira_conversa":
+      return [
+        { id: "sim", rotulo: "Primeira vez" },
+        { id: "nao", rotulo: "Já conversou antes" },
+      ];
+    case "canal_da_conversa":
+      return [
+        { id: "sim", rotulo: "Um dos números" },
+        { id: "nao", rotulo: "Outro número" },
+      ];
+    case "atendente_da_conversa":
+      return [
+        { id: "sim", rotulo: "É um deles" },
+        { id: "nao", rotulo: "Outro ou ninguém" },
+      ];
+    case "presenca_do_atendente":
+      return [
+        { id: "sim", rotulo: "Alguém disponível" },
+        { id: "nao", rotulo: "Ninguém disponível" },
+      ];
+    case "setor_da_conversa":
+      return [
+        { id: "sim", rotulo: "Um dos setores" },
+        { id: "nao", rotulo: "Outro ou nenhum" },
+      ];
+    case "bot_paralelo":
+      return [
+        { id: "sim", rotulo: "Tem outro bot" },
+        { id: "nao", rotulo: "Só este" },
+      ];
+    case "status_da_conversa":
+      return [
+        { id: "sim", rotulo: "Esperando resposta" },
+        { id: "nao", rotulo: "Já respondido" },
+      ];
+    case "valor":
+      return [
+        { id: "sim", rotulo: "Verdadeiro" },
+        { id: "nao", rotulo: "Falso" },
+      ];
+    case "transferir_ia":
+      return [{ id: "falha", rotulo: "Sem agente de IA" }];
+    case "enviar_template":
+      return [
+        { id: "proximo", rotulo: "Enviado" },
+        { id: "falha", rotulo: "Não enviado" },
+      ];
+    case "enviar_mensagem":
+      return lerConfig("enviar_mensagem", dados).caminho_se_falhar
+        ? [
+            { id: "proximo", rotulo: "Enviada" },
+            { id: "falha", rotulo: "Não saiu" },
+          ]
+        : [{ id: "proximo", rotulo: "" }];
+    case "enviar_pagamento":
+      return [
+        { id: "proximo", rotulo: "Enviado" },
+        { id: "falha", rotulo: "Sem link" },
+      ];
+    case "enviar_oferta":
+      return [
+        { id: "proximo", rotulo: "Enviada" },
+        { id: "vencida", rotulo: "Oferta vencida" },
+      ];
+    case "aguardar_ate":
+      return lerConfig("aguardar_ate", dados).quando === "data"
+        ? [
+            { id: "proximo", rotulo: "Chegou a data" },
+            { id: "vencida", rotulo: "Sem data válida" },
+          ]
+        : [{ id: "proximo", rotulo: "" }];
+    case "enviar_formulario":
+      return [
+        { id: "proximo", rotulo: "Respondeu tudo" },
+        { id: "invalida", rotulo: "Não respondeu certo" },
+        ...(lerConfig("enviar_formulario", dados).prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
+      ];
+    case "pedir_digitar": {
+      const c = lerConfig("pedir_digitar", dados);
+      const prazo = c.prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : [];
+      // Várias respostas aceitas: uma saída por opção, na ordem, e o erro.
+      if (c.opcoes.length > 0)
+        return [
+          ...c.opcoes.map((o, i) => ({ id: `opcao-${i}`, rotulo: o.nome })),
+          { id: "invalida", rotulo: "Nenhuma opção" },
+          ...prazo,
+        ];
+      if (c.formato === "qualquer")
+        return [{ id: "proximo", rotulo: prazo.length ? "Respondeu" : "" }, ...prazo];
+      return [
+        { id: "proximo", rotulo: "Respondeu certo" },
+        { id: "invalida", rotulo: "Não respondeu certo" },
+        ...prazo,
+      ];
+    }
+    case "agendar_horario":
+      return [
+        { id: "proximo", rotulo: "Marcou" },
+        { id: "sem_horario", rotulo: "Sem horário livre" },
+        { id: "invalida", rotulo: "Não escolheu" },
+        ...(lerConfig("agendar_horario", dados).prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
+      ];
+    case "reagendar_horario":
+      return [
+        { id: "proximo", rotulo: "Remarcou" },
+        { id: "sem_agendamento", rotulo: "Sem agendamento" },
+        { id: "sem_horario", rotulo: "Sem horário livre" },
+        { id: "invalida", rotulo: "Não escolheu" },
+        ...(lerConfig("reagendar_horario", dados).prazo_minutos > 0 ? [SAIDA_SEM_RESPOSTA] : []),
+      ];
+    case "cancelar_agendamento":
+      return [
+        { id: "proximo", rotulo: "Cancelado" },
+        { id: "sem_agendamento", rotulo: "Sem agendamento" },
+        { id: "falha", rotulo: "Não cancelou" },
+      ];
+    case "etapa_do_funil":
+      return [
+        { id: "sim", rotulo: "Está" },
+        { id: "nao", rotulo: "Não está" },
+      ];
+    case "transferir_atendente":
+      // "Remover" não transfere: tira o atendente e o fluxo segue.
+      return lerConfig("transferir_atendente", dados).modo === "remover" ? [{ id: "proximo", rotulo: "" }] : [];
+    case "transferir_equipe":
+      return lerConfig("transferir_equipe", dados).caminho_se_falhar
+        ? [{ id: "falha", rotulo: "Não transferiu" }]
+        : [];
+    case "finalizar_conversa":
+    case "acionar_fluxo":
+      // Em paralelo este fluxo continua: o passo tem saída.
+      return lerConfig("acionar_fluxo", dados).paralelo ? [{ id: "proximo", rotulo: "" }] : [];
+    case "bloquear_contato":
+    case "bloco_de_notas":
+      return [];
+    default:
+      return [{ id: "proximo", rotulo: "" }];
+  }
+}
+
+/** Forma do desenho salvo em `chatbot_flows.grafo`. */
+export const grafoSchema = z.object({
+  nodes: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        type: z.string().min(1).max(40),
+        position: z.object({ x: z.number(), y: z.number() }),
+        data: z.record(z.string(), z.unknown()).default({}),
+      }),
+    )
+    .max(200),
+  edges: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(128),
+        source: z.string().min(1).max(64),
+        target: z.string().min(1).max(64),
+        sourceHandle: z.string().max(40).nullable().optional(),
+      }),
+    )
+    .max(400),
+});
+export type Grafo = z.infer<typeof grafoSchema>;

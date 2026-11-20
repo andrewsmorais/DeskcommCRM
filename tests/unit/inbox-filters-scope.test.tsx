@@ -47,6 +47,11 @@ vi.mock("@/hooks/contacts/useContactTagVocabulary", () => ({
 vi.mock("@/hooks/inbox/useConversationCounts", () => ({
   useConversationCounts: () => ({ data: { unassigned: 3, mine: 2, all: 5 } }),
 }));
+// Setores (migration 0496): sem setor nenhum a tela é a de antes.
+vi.mock("@/hooks/inbox/useSetores", () => ({
+  useSetores: () => ({ data: [] }),
+  useMudarSetorDaConversa: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 
 const VALUE: InboxFiltersValue = { tab: "unassigned", search: "", onlyUnread: false };
 

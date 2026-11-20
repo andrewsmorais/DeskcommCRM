@@ -62,6 +62,7 @@ const TABELAS_NA_CASCATA = [
   "agent_cases", //        0280 — title/summary/blocker/context_snapshot
   "agent_inbox_items", //  0280 — o aviso da Central que embute o texto do caso
   "contacts", //           0019 — a linha do titular
+  "contact_phones", //     0541 — os telefones extras da ficha (com o `lid`); a linha sai inteira
   "conversations", //      0019 — metadata e prévia da última mensagem
   "crm_lead_activities", //0071 — payload, metadata e `reason` escrito por LLM
   "crm_leads", //          0019 — título, descrição, campos personalizados, tags

@@ -91,19 +91,10 @@ interface Excecao {
  * caminho certo (conferir com `fn_user_org_ids`) não servir.
  */
 const SEM_CONFERENCIA_PERMITIDO: readonly Excecao[] = [
-  {
-    fn: "fn_support_write_allowed(p_org uuid)",
-    razao:
-      "Ela não CONCEDE nada — só pode tirar. É usada exclusivamente como policy " +
-      "RESTRITIVA (`create policy ... as restrictive`, baseline ~18471), que no Postgres " +
-      "soma-se por AND às permissivas: devolver `true` deixa a decisão inteira com a " +
-      "policy de tenant, que continua exigindo pertencimento. Conferir membership aqui " +
-      "não fecharia porta nenhuma, e trocaria o assunto da função: ela responde 'a sessão " +
-      "de SUPORTE em curso permite escrever nesta organização?', e para isso já filtra por " +
-      "auth.uid() através de fn_support_context(). O `true` quando a org do argumento " +
-      "difere da org da sessão é deliberado — fora da org sob suporte, esta restrição não " +
-      "tem o que dizer.",
-  },
+  // `fn_support_write_allowed(p_org uuid)` saiu desta lista na 0501: o corpo
+  // passou a consultar `user_organizations` de quem chama (o ramo de plataforma
+  // só escreve fora das próprias organizações com escopo 'full'), e a varredura
+  // agora a enxerga como função que confere pertencimento.
   {
     fn: "fn_colegas_podem_mexer_na_agenda(p_org uuid)",
     razao:

@@ -19,7 +19,20 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useContactTagVocabulary } from "@/hooks/contacts/useContactTagVocabulary";
 import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags";
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
-import type { Role, VisibilityMode } from "@/lib/auth/types";
+import { useSetores } from "@/hooks/inbox/useSetores";
+import { roleAtLeast, type Role, type VisibilityMode } from "@/lib/auth/types";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SeletorDeAtendente } from "@/components/inbox/SeletorDeAtendente";
 
 export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "archived" | "ai";
 
@@ -56,9 +69,21 @@ export interface InboxFiltersValue {
   search: string;
   onlyUnread: boolean;
   channel_session_id?: string;
-  tag?: string;
+  /** Só as conversas do setor (migration 0496). */
+  setor_id?: string;
+  /** Uma etiqueta ou VÁRIAS (vindo do produto original). */
+  tag?: string | readonly string[];
+  /** OU entre as etiquetas; ausente = E (todas). */
+  tagMode?: "ou";
+  /**
+   * Só as conversas deste atendente (id do usuário). Filtro de GERENTE para
+   * cima; ausente = todas. Na aba Minhas não vale.
+   */
+  assigned_to?: string;
   /** A aba "Grupos" (Task 10): manda `is_group=true` na listagem. */
   onlyGroups?: boolean;
+  /** Só as conversas ocultas (migration 0510): manda `ocultas=so`. */
+  onlyOcultas?: boolean;
 }
 
 interface Props {
@@ -158,8 +183,19 @@ export function InboxFilters({ value, onChange }: Props) {
   const { data: counts } = useConversationCounts(activeOrg?.orgId ?? null, {
     unread: value.onlyUnread,
     tag: value.tag,
+    modo: value.tagMode,
+    assigned_to: value.tab !== "mine" ? value.assigned_to : undefined,
     channel_session_id: value.channel_session_id,
+    setor_id: value.setor_id,
+    ocultas: value.onlyOcultas ? "so" : undefined,
   });
+  // O seletor de setor só aparece quando a empresa tem setores (ou quando o
+  // filtro ligado aponta para um setor que acabou de ser excluído — senão a
+  // lista ficaria filtrada sem nada na tela dizendo por quê).
+  const { data: setores } = useSetores(!!orgId);
+  const setorForaDaLista =
+    value.setor_id != null && setores != null && !setores.some((s) => s.id === value.setor_id);
+  const mostrarSeletorDeSetor = (setores?.length ?? 0) > 0 || setorForaDaLista;
 
   const tabs = activeOrg
     ? visibleInboxTabs(activeOrg.role, activeOrg.visibility_mode)
@@ -234,11 +270,27 @@ export function InboxFilters({ value, onChange }: Props) {
   // vocabulário vazio, e é justamente ela que precisa do seletor de volta para
   // desfazer o filtro que continua valendo.
   const vocabularioConhecido = tagVocabulary != null || ultimoVocabulario.length > 0;
+  // A(s) etiqueta(s) escolhida(s), sempre como lista.
+  const etiquetas: readonly string[] =
+    typeof value.tag === "string" ? [value.tag] : (value.tag ?? []);
   const tagForaDoVocabulario =
-    value.tag != null &&
+    etiquetas.length > 0 &&
     vocabularioConhecido &&
-    !vocabularioDoSeletor.includes(value.tag);
+    etiquetas.some((e) => !vocabularioDoSeletor.includes(e));
   const mostrarSeletorDeTag = vocabularioDoSeletor.length > 0 || tagForaDoVocabulario;
+  // O atendente: só de gerente para cima (o atendente comum já vê só o escopo
+  // dele, que a RLS impõe), e não na aba Minhas.
+  const podeFiltrarPorAtendente = roleAtLeast(activeOrg?.role, "manager");
+  const mostrarSeletorDeAtendente = podeFiltrarPorAtendente && value.tab !== "mine";
+  const alternaEtiqueta = (tag: string) => {
+    const proximas = etiquetas.includes(tag) ? etiquetas.filter((e) => e !== tag) : [...etiquetas, tag];
+    onChange({
+      ...value,
+      tag: proximas.length === 0 ? undefined : proximas.length === 1 ? proximas[0] : proximas,
+      // O E/OU só faz sentido com duas ou mais.
+      tagMode: proximas.length > 1 ? value.tagMode : undefined,
+    });
+  };
 
   // O timer lê o valor MAIS RECENTE, não o do render em que foi agendado.
   //
@@ -335,10 +387,55 @@ export function InboxFilters({ value, onChange }: Props) {
           >
             {t("Grupos")}
           </button>
+          {/* Ocultas (migration 0510): a conversa oculta sai da caixa de
+              entrada e só aparece aqui. Mesmo padrão dos filtros ao lado. */}
+          <button
+            type="button"
+            aria-pressed={value.onlyOcultas ?? false}
+            data-testid="filtro-ocultas"
+            onClick={() => onChange({ ...value, onlyOcultas: !value.onlyOcultas })}
+            className={cn(
+              "h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              value.onlyOcultas
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border bg-transparent text-text-muted hover:bg-surface-elevated",
+            )}
+          >
+            {t("Ocultas")}
+          </button>
         </div>
 
-        {(showChannelSwitch || mostrarSeletorDeTag) && (
+        {(showChannelSwitch || mostrarSeletorDeTag || mostrarSeletorDeSetor || mostrarSeletorDeAtendente) && (
           <div className="flex gap-2">
+            {mostrarSeletorDeSetor && (
+              <Select
+                value={value.setor_id ?? "all"}
+                onValueChange={(v) => onChange({ ...value, setor_id: v === "all" ? undefined : v })}
+              >
+                <SelectTrigger
+                  className={cn(
+                    "h-8 min-w-0 flex-1 rounded-full border-transparent bg-surface-elevated px-3 text-xs shadow-none",
+                    value.setor_id != null && "border-accent bg-accent-soft text-accent",
+                  )}
+                  aria-label={t("Filtrar por setor")}
+                  data-testid="filtro-setor"
+                >
+                  <SelectValue placeholder={t("Todos os setores")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("Todos os setores")}</SelectItem>
+                  {setorForaDaLista && value.setor_id != null && (
+                    <SelectItem value={value.setor_id}>{t("Setor removido")}</SelectItem>
+                  )}
+                  {setores?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {showChannelSwitch && (
               <Select
                 value={value.channel_session_id ?? "all"}
@@ -370,52 +467,78 @@ export function InboxFilters({ value, onChange }: Props) {
             )}
 
             {mostrarSeletorDeTag && (
-              <Select
-                value={value.tag ?? "all"}
-                onValueChange={(v) => onChange({ ...value, tag: v === "all" ? undefined : v })}
-              >
-                <SelectTrigger
-                  className={cn(
-                    "h-8 min-w-0 flex-1 rounded-full border-transparent bg-surface-elevated px-3 text-xs shadow-none",
-                    value.tag != null && "border-accent bg-accent-soft text-accent",
-                  )}
-                  aria-label={t("Filtrar por tag")}
-                >
-                  {/* O gatilho mostra o CHIP da etiqueta filtrada, e não o texto
-                      cru: é a mesma cor que a lista mostra ao lado, e é o que
-                      faz o filtro ativo se reconhecer de relance — mesma razão
-                      do `border-accent` acima. Sem filtro, o texto continua
-                      sendo o de sempre (`Todas as tags`). */}
-                  <SelectValue placeholder={t("Todas as tags")}>
-                    {value.tag ? (
-                      <ChipDeEtiqueta tag={value.tag} className="h-5 px-1.5 text-[11px]" />
+              // VÁRIAS etiquetas, com E/OU (vindo do produto original). O menu
+              // não fecha a cada marcação: escolher três é um gesto só.
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t("Filtrar por tag")}
+                    className={cn(
+                      "flex h-8 min-w-0 flex-1 items-center gap-1 rounded-full border border-transparent bg-surface-elevated px-3 text-left text-xs",
+                      etiquetas.length > 0 && "border-accent bg-accent-soft text-accent",
+                    )}
+                  >
+                    {etiquetas.length > 0 ? (
+                      <span className="inline-flex min-w-0 items-center gap-1">
+                        <ChipDeEtiqueta tag={etiquetas[0]!} className="h-5 px-1.5 text-[11px]" />
+                        {etiquetas.length > 1 && (
+                          <span className="tabular-nums text-[11px]">+{etiquetas.length - 1}</span>
+                        )}
+                      </span>
                     ) : (
                       t("Todas as tags")
                     )}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("Todas as tags")}</SelectItem>
-                  {/* A órfã entra na lista: sem ela o Select mostraria o
-                      placeholder no lugar do valor JÁ selecionado, e o operador
-                      veria "Todas as tags" com um filtro ativo. */}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  <DropdownMenuLabel>{t("Todas as tags")}</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => onChange({ ...value, tag: undefined, tagMode: undefined })}
+                  >
+                    {t("Todas as tags")}
+                  </DropdownMenuItem>
+                  {etiquetas.length > 1 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuRadioGroup
+                        value={value.tagMode === "ou" ? "ou" : "e"}
+                        onValueChange={(modo) =>
+                          onChange({ ...value, tagMode: modo === "ou" ? "ou" : undefined })
+                        }
+                      >
+                        <DropdownMenuRadioItem value="e">{t("Todas (E)")}</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="ou">{t("Qualquer uma (OU)")}</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  {/* As órfãs entram na lista: sem elas não haveria como tirá-las. */}
                   {[
                     ...vocabularioDoSeletor,
-                    ...(tagForaDoVocabulario && value.tag ? [value.tag] : []),
+                    ...etiquetas.filter((e) => !vocabularioDoSeletor.includes(e)),
                   ].map((tag) => (
-                    <SelectItem key={tag} value={tag}>
-                      {/* Ponto, não chip: a opção é uma linha de 280 px que já
-                          divide espaço com o filtro de número. O nome continua
-                          sendo o que se lê; a cor só acelera o reconhecimento
-                          de quem já conhece o vocabulário da operação. */}
+                    <DropdownMenuCheckboxItem
+                      key={tag}
+                      checked={etiquetas.includes(tag)}
+                      onCheckedChange={() => alternaEtiqueta(tag)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
                       <span className="inline-flex items-center gap-2">
                         <PontoDaEtiqueta tag={tag} />
                         {tag}
                       </span>
-                    </SelectItem>
+                    </DropdownMenuCheckboxItem>
                   ))}
-                </SelectContent>
-              </Select>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {mostrarSeletorDeAtendente && (
+              <SeletorDeAtendente
+                value={value.assigned_to}
+                onChange={(atendente) => onChange({ ...value, assigned_to: atendente })}
+              />
             )}
           </div>
         )}

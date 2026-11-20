@@ -3,15 +3,26 @@ import { type NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { env } from "@/lib/env";
 import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/credentials";
 import { normalizarChaveDeOrcamento } from "@/lib/agent-engine/edge/llm/orcamento";
-import { LlmBudgetExceededError, LlmProviderUnknownError, LlmModelNotEnabledError } from "@/lib/agent-engine/edge/llm/run-model-call";
+import {
+  LlmBudgetExceededError,
+  LlmProviderUnknownError,
+  LlmModelNotEnabledError,
+} from "@/lib/agent-engine/edge/llm/run-model-call";
 import { getSkillsPool } from "@/lib/ai/skills/db";
-import { montarDocumentoDaProposta, type PropostaParaDocumento } from "@/lib/propostas/documento/documento-da-proposta";
+import {
+  montarDocumentoDaProposta,
+  type PropostaParaDocumento,
+} from "@/lib/propostas/documento/documento-da-proposta";
 import type { ContatoParaDocumento } from "@/lib/propostas/documento/montar-dados";
-import { montarTranscricao, sugerirValoresDaConversa } from "@/lib/propostas/preencher-com-conversa";
+import {
+  montarTranscricao,
+  sugerirValoresDaConversa,
+} from "@/lib/propostas/preencher-com-conversa";
 import { orcamentoDeIaDisponivel } from "@/lib/propostas/orcamento-de-ia-disponivel";
 import { sePropostasDesligadas } from "@/lib/propostas/porta";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -31,6 +42,9 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
   if (!authz.ok) return authz.response;
   const desligada = await sePropostasDesligadas(authz.org.orgId, requestId);
   if (desligada) return desligada;
+  // Chama o modelo da chave da plataforma: sem assinatura ativa, não chama.
+  const semAssinatura = await exigirAssinaturaAtiva(authz.org.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { id } = await ctx.params;
   const admin = createAdminClient();
@@ -42,16 +56,35 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
     .eq("id", id)
     .maybeSingle();
   if (!proposta) return fail("not_found", t("Proposta não encontrada."), 404, { requestId });
-  const p = proposta as PropostaParaDocumento & { status: string; conversation_id: string | null; contact_id: string | null };
+  const p = proposta as PropostaParaDocumento & {
+    status: string;
+    conversation_id: string | null;
+    contact_id: string | null;
+  };
   if (p.status !== "rascunho") {
-    return fail("proposal_context_stale", t("Só é possível preencher o documento de uma proposta em rascunho."), 409, { requestId });
+    return fail(
+      "proposal_context_stale",
+      t("Só é possível preencher o documento de uma proposta em rascunho."),
+      409,
+      { requestId },
+    );
   }
 
   const { data: contato } = p.contact_id
-    ? await admin.from("contacts").select("name, display_name").eq("organization_id", authz.org.orgId).eq("id", p.contact_id).maybeSingle()
+    ? await admin
+        .from("contacts")
+        .select("name, display_name")
+        .eq("organization_id", authz.org.orgId)
+        .eq("id", p.contact_id)
+        .maybeSingle()
     : { data: null };
 
-  const documento = await montarDocumentoDaProposta(admin, authz.org.orgId, p, contato as ContatoParaDocumento | null);
+  const documento = await montarDocumentoDaProposta(
+    admin,
+    authz.org.orgId,
+    p,
+    contato as ContatoParaDocumento | null,
+  );
   const camposDeBriefing = (documento?.camposFaltando ?? []).filter((c) => c.onde === "briefing");
 
   // Nada para sugerir: nem consulta mensagens, nem chama a IA (economiza
@@ -68,7 +101,9 @@ export async function POST(_req: NextRequest, ctx: Ctx): Promise<Response> {
     .in("direction", ["inbound", "outbound"])
     .order("sent_at", { ascending: false })
     .limit(LIMITE_DE_MENSAGENS);
-  const transcricao = montarTranscricao(((mensagens ?? []) as Array<{ direction: string; body: string | null }>).slice().reverse());
+  const transcricao = montarTranscricao(
+    ((mensagens ?? []) as Array<{ direction: string; body: string | null }>).slice().reverse(),
+  );
 
   try {
     const sugestoes = await sugerirValoresDaConversa({

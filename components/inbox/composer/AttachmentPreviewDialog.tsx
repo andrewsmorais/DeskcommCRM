@@ -13,13 +13,30 @@ interface Props {
   sending: boolean;
   onCancel: () => void;
   onSend: (caption: string) => void;
+  /** Legenda que já vem escrita (o texto da resposta rápida com imagem). */
+  legendaInicial?: string | null;
+  /** "1 de 3" quando a resposta rápida leva vários arquivos. */
+  progresso?: string | null;
+  /**
+   * O anexo vai para a NOTA INTERNA (migration 0547), não para o cliente. A
+   * prévia diz isso — quem anexa precisa saber para onde o arquivo vai.
+   */
+  notaInterna?: boolean;
 }
 
 /** Preview antes do envio (padrão WhatsApp): thumb ou card + legenda. */
-export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Props) {
+export function AttachmentPreviewDialog({
+  file,
+  sending,
+  onCancel,
+  onSend,
+  legendaInicial = null,
+  progresso = null,
+  notaInterna = false,
+}: Props) {
   const t = useT();
-  const [caption, setCaption] = useState("");
-  useEffect(() => setCaption(""), [file]);
+  const [caption, setCaption] = useState(legendaInicial ?? "");
+  useEffect(() => setCaption(legendaInicial ?? ""), [file, legendaInicial]);
 
   const objectUrl = useMemo(() => (file && /^(image|video)\//.test(file.type) ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => {
@@ -34,7 +51,10 @@ export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Pro
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("Enviar anexo")}</DialogTitle>
+          <DialogTitle>
+            {notaInterna ? t("Anexar à nota interna") : t("Enviar anexo")}
+            {progresso ? <span className="ml-2 text-sm font-normal text-muted-foreground">{progresso}</span> : null}
+          </DialogTitle>
         </DialogHeader>
         <div className="flex items-center justify-center rounded-lg bg-muted/40 p-3">
           {isImage && objectUrl && (
@@ -51,10 +71,15 @@ export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Pro
             </div>
           )}
         </div>
+        {notaInterna && (
+          <p className="text-xs text-muted-foreground" data-testid="previa-nota-interna">
+            {t("Só a equipe vê. O arquivo não vai para o cliente.")}
+          </p>
+        )}
         <Input
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          placeholder={t("Legenda (opcional)")}
+          placeholder={notaInterna ? t("Texto da nota (opcional)") : t("Legenda (opcional)")}
           aria-label={t("Legenda")}
           onKeyDown={(e) => e.key === "Enter" && !sending && onSend(caption.trim())}
         />

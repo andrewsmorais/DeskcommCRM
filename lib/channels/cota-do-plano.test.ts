@@ -1,9 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { canUse, getOrganizationBilling, type OrganizationBilling } from "@/lib/billing";
 import { comReservaDeCota, ErroDaReservaDeCota } from "@/lib/billing/reserva";
 import { comCotaDeCanal } from "./cota-do-plano";
+
+// Estes casos medem a camada comercial LIGADA (EXIGIR_ASSINATURA=true, como no
+// ChatAI Online). Desligada é o padrão — ver lib/billing/exigencia.ts.
+beforeEach(() => {
+  vi.stubEnv("EXIGIR_ASSINATURA", "true");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 
 vi.mock("@/lib/billing", () => ({ canUse: vi.fn(), getOrganizationBilling: vi.fn() }));
 vi.mock("@/lib/billing/reserva", () => ({

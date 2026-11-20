@@ -6,6 +6,7 @@ import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { tickProspecting } from "@/lib/prospecting/worker";
 import { logger } from "@/lib/logger";
+import { disparoEmMassaLigado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -13,6 +14,9 @@ async function handle(req: NextRequest) {
   const requestId = randomUUID();
   if (!autorizaCron(req))
     return fail("forbidden", "Credencial de execução inválida.", 403, { requestId });
+  // Prospecção fria é disparo em massa: com o módulo desligado, a rodada não
+  // envia nada (`lib/instalacao/disparo-em-massa.ts`). Sem efeito, sem auditoria.
+  if (!(await disparoEmMassaLigado())) return ok({ desligado: true }, { requestId });
   try {
     return ok(await tickProspecting(getRequestPool(), createAdminClient()), { requestId });
   } catch (err) {

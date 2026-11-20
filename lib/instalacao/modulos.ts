@@ -40,7 +40,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "@/lib/logger";
 
 /**
- * `banco_externo`, `fluxos_atendimento`, `propostas` e `crm_b2b` ligam/desligam por uma linha em `platform_config`
+ * `banco_externo`, `fluxos_atendimento`, `propostas`, `crm_b2b`, `disparo_em_massa`, `cold_call` e `conferir_whatsapp` ligam/desligam por uma linha em `platform_config`
  * (ver o resto deste arquivo). `honorarios` é um MÓDULO DE TABELA (ADR-0002): a fonte da
  * verdade é `modulos_instalados`, escrita só por `fn_modulo_instalar` (`lib/modulos/service.ts`),
  * nunca por esta tela. Os dois mecanismos convivem na mesma lista porque é isso que
@@ -52,6 +52,9 @@ export const MODULOS_OPCIONAIS = [
   "fluxos_atendimento",
   "propostas",
   "crm_b2b",
+  "disparo_em_massa",
+  "cold_call",
+  "conferir_whatsapp",
   "honorarios",
 ] as const;
 export type ModuloOpcional = (typeof MODULOS_OPCIONAIS)[number];
@@ -72,6 +75,9 @@ export const MODULOS_OPCIONAIS_POR_FLAG = [
   "fluxos_atendimento",
   "propostas",
   "crm_b2b",
+  "disparo_em_massa",
+  "cold_call",
+  "conferir_whatsapp",
 ] as const satisfies readonly ModuloOpcional[];
 
 /** A linha de cada módulo por FLAG em `platform_config`. O formato é o da CHECK da 0341.
@@ -91,6 +97,16 @@ export const CHAVE_DO_MODULO: Record<(typeof MODULOS_OPCIONAIS_POR_FLAG)[number]
   // metade B2B do #1621. A maior parte de quem usa vende para pessoas; quem
   // vende para empresas liga. Desligado, as telas e as rotas somem (404).
   crm_b2b: "MODULO_CRM_B2B",
+  // ChatAI Online (22/10/2026): campanhas e prospecção fria — tudo que manda
+  // mensagem para quem não chamou. Número conectado por QR code cai com isso,
+  // então entra desligado. Ver `lib/instalacao/disparo-em-massa.ts`.
+  disparo_em_massa: "MODULO_DISPARO_EM_MASSA",
+  // Fila de ligações sobre um funil próprio (vindo do produto original, #3933).
+  // Desligado por padrão: sem linha = desligado.
+  cold_call: "MODULO_COLD_CALL",
+  // Conferir se o telefone achado na prospecção tem WhatsApp (vindo do produto
+  // original). A pergunta sai do número da empresa: desligado por padrão.
+  conferir_whatsapp: "MODULO_CONFERIR_WHATSAPP",
 };
 
 const LIGADO = "ligado";

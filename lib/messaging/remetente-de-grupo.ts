@@ -29,7 +29,10 @@ export function lerRemetenteDeGrupo(metadata: unknown): RemetenteDeGrupo | null 
   return r.success ? r.data : null;
 }
 
-export function rotuloDoRemetente(r: RemetenteDeGrupo): string {
+/** O rótulo só precisa de nome e telefone: o `lid` é interno do WhatsApp. */
+export type RemetenteRotulavel = Pick<RemetenteDeGrupo, "name" | "phone"> | RemetenteDeGrupo;
+
+export function rotuloDoRemetente(r: RemetenteRotulavel): string {
   if (r.name && r.phone) return `${r.name} · ${r.phone}`;
   return r.name ?? r.phone ?? "Participante";
 }

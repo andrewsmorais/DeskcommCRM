@@ -39,7 +39,9 @@
  * dentro, com log, e o seguinte roda mesmo assim.
  */
 import { audit } from "@/lib/audit";
+import { encerraDemanda } from "@/lib/leads/encerramento";
 import { garantirLeadDaConversa } from "@/lib/leads/nascimento-do-lead";
+import type { CanonicalLostReason } from "@/lib/schemas/leads";
 import {
   ehAPrimeiraMensagemDoContato,
   estamparOrigemDaPagina,
@@ -50,10 +52,25 @@ import { PADRAO_DO_REF } from "@/lib/plataformas-de-anuncio/captura-de-clique";
 import { casarClickRef } from "@/lib/plataformas-de-anuncio/meta/captura-de-clique";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ehPedidoDeOptOut } from "@/lib/opt-out/deteccao";
+import { classificarSemInteresse } from "@/lib/opt-out/sem-interesse";
+import { registrarSemInteresse } from "@/lib/lgpd/registrar-sem-interesse";
+import { campanhaDeProspeccaoDaConversa } from "@/lib/lgpd/sem-interesse";
+import {
+  criarTarefaDeRetomada,
+  dentroDaJanelaDaProspeccao,
+  lerJanelaDaProspeccao,
+} from "@/lib/prospecting/resposta-da-prospeccao";
+import { encerrarFollowupsDaProspeccao } from "@/lib/followup/encerrar-pela-recusa";
+import { portaDaAplicacao } from "@/lib/db";
 import { ehContatoDoNumeroInterno } from "@/lib/escalacao/numero-interno-de-aviso";
 import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { casarCampanha, lerCampanhas } from "@/lib/ai/elegibilidade/campanha";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { EventRow } from "@/lib/event-log/dispatcher";
+import { applyReactivityEvent, createSupabaseReactivityClient } from "@/lib/followup/reactivity";
+import { aplicarRespostaNaCampanha } from "@/lib/campanhas/resposta";
+import { marcarConversaComMensagem } from "@/lib/channels/marcar-conversa";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -143,6 +160,10 @@ export async function aplicarEfeitosPosEntrada(
   }
 
   await aplicarOptOut(admin, entrada);
+  // "Não tenho interesse" na conversa de PROSPECÇÃO vira recusa de marketing.
+  // Depois do PARAR (que, quando casa, já cobre tudo) e ANTES do lead: o passo
+  // seguinte recusa recriar o card da prospecção que este passo acabou de encerrar.
+  await aplicarSemInteresseDaProspeccao(admin, entrada);
   await guardarOrigemDaPagina(admin, entrada);
   await abrirDemanda(admin, entrada);
   await avaliarCampanha(admin, entrada);
@@ -221,6 +242,132 @@ async function avaliarCampanha(admin: Admin, entrada: EntradaDeMensagem): Promis
   }
 }
 
+const ATOR_DO_OPT_OUT = { type: "webhook_source", id: "canal-inbound" } as const;
+
+/**
+ * 1b · "Não tenho interesse" numa conversa de PROSPECÇÃO (decisão D3).
+ *
+ * Grava a recusa de marketing (`lib/lgpd/registrar-sem-interesse.ts`) e encerra o
+ * negócio da prospecção. Só na conversa que a prospecção abriu
+ * (`conversations.metadata.prospecting_campaign_id`, gravado em
+ * `lib/prospecting/store.ts`): num atendimento comum a mesma frase é cliente
+ * escolhendo entre ofertas, e nada é gravado.
+ *
+ * E só DENTRO DA JANELA (doc 360 · 1A, `lib/prospecting/resposta-da-prospeccao.ts`):
+ * negócio da prospecção aberto, ou última abordagem há no máximo 30 dias. A marca da
+ * conversa nunca sai, e sem a janela o cliente antigo que diz "não tenho interesse"
+ * sobre outra coisa ganhava recusa permanente.
+ *
+ * O ADIAMENTO ("não tenho interesse agora, me chama mês que vem", doc 360 · 2A) não é
+ * recusa: nada vai para Perdido, o contato segue nas campanhas, e o vendedor ganha uma
+ * tarefa para retomar. O follow-up AUTOMÁTICO da prospecção morre pelo mesmo caminho da
+ * recusa (`encerrarFollowupsDaProspeccao`): quem pediu "me chama mês que vem" não recebe
+ * mais toques, e a retomada é do vendedor. O follow-up de atendimento fica.
+ *
+ * Não é o PARAR e não mexe em `is_blocked`: quem casa o PARAR já foi tratado no
+ * passo 1, e aqui sai sem fazer nada. A consulta da conversa só roda quando a frase
+ * casa — a mensagem comum não paga leitura a mais.
+ *
+ * NUNCA lança: a mensagem já está gravada.
+ */
+async function aplicarSemInteresseDaProspeccao(admin: Admin, entrada: EntradaDeMensagem): Promise<void> {
+  if (ehPedidoDeOptOut(entrada.texto)) return;
+  const resposta = classificarSemInteresse(entrada.texto);
+  if (!resposta) return;
+  try {
+    const { data, error } = await admin
+      .from("conversations")
+      .select("metadata, assigned_to_user_id")
+      .eq("organization_id", entrada.organizationId)
+      .eq("id", entrada.conversationId)
+      .maybeSingle();
+    if (error) {
+      logger.warn("pos-entrada: conversa não lida para o 'sem interesse' (nada gravado)", {
+        organization_id: entrada.organizationId,
+        conversation_id: entrada.conversationId,
+        detail: error.message.slice(0, 160),
+      });
+      return;
+    }
+    const conversa = data as { metadata?: unknown; assigned_to_user_id?: string | null } | null;
+    const campanhaId = campanhaDeProspeccaoDaConversa(conversa?.metadata);
+    if (!campanhaId) return;
+
+    const janela = await lerJanelaDaProspeccao(
+      admin as unknown as SupabaseClient,
+      entrada.organizationId,
+      entrada.contactId,
+    );
+    if (!janela) {
+      logger.warn("pos-entrada: janela da prospecção não lida para o 'sem interesse' (nada gravado)", {
+        organization_id: entrada.organizationId,
+        conversation_id: entrada.conversationId,
+      });
+      return;
+    }
+    if (!dentroDaJanelaDaProspeccao(janela, Date.now())) {
+      logger.info("pos-entrada: 'sem interesse' fora da janela da prospecção (nada gravado)", {
+        organization_id: entrada.organizationId,
+        conversation_id: entrada.conversationId,
+        resposta,
+      });
+      return;
+    }
+
+    if (resposta === "adiamento") {
+      const tarefa = await criarTarefaDeRetomada(portaDaAplicacao(), admin as unknown as SupabaseClient, {
+        organizationId: entrada.organizationId,
+        contactId: entrada.contactId,
+        texto: entrada.texto ?? "",
+        negocio: janela.negocioAberto,
+        atendenteDaConversa: conversa?.assigned_to_user_id ?? null,
+        requestId: entrada.requestId ?? `adiamento:${entrada.conversationId}`,
+      });
+      const followupsEncerrados = await encerrarFollowupsDaProspeccao(admin as unknown as SupabaseClient, {
+        organizationId: entrada.organizationId,
+        contactId: entrada.contactId,
+        conversationId: entrada.conversationId,
+      });
+      const campos = {
+        organization_id: entrada.organizationId,
+        conversation_id: entrada.conversationId,
+        followups_encerrados: followupsEncerrados,
+        ...(tarefa.criada ? { task_id: tarefa.tarefaId } : { motivo: tarefa.motivo }),
+      };
+      if (!tarefa.criada && tarefa.motivo === "falha")
+        logger.error("pos-entrada: adiamento na prospecção sem tarefa de retomada", { ...campos, detail: tarefa.erro });
+      else logger.info("pos-entrada: adiamento na conversa de prospecção — tarefa de retomada", campos);
+      return;
+    }
+
+    const r = await registrarSemInteresse(admin as unknown as SupabaseClient, {
+      organizationId: entrada.organizationId,
+      contactId: entrada.contactId,
+      origem: "conversa_de_prospeccao",
+      actor: ATOR_DO_OPT_OUT,
+      requestId: entrada.requestId ?? `sem-interesse:${entrada.conversationId}`,
+      conversationId: entrada.conversationId,
+      campanhaId,
+    });
+    logger.info("pos-entrada: 'sem interesse' na conversa de prospecção", {
+      organization_id: entrada.organizationId,
+      conversation_id: entrada.conversationId,
+      origem: entrada.origem,
+      gravado: r.gravado,
+      ...(r.gravado ? {} : { motivo: r.motivo }),
+      ...("negociosFechados" in r
+        ? { negocios_fechados: r.negociosFechados, followups_encerrados: r.followupsEncerrados }
+        : {}),
+    });
+  } catch (err) {
+    logger.error("pos-entrada: 'sem interesse' NAO gravado — o contato segue elegível a ofertas", {
+      organization_id: entrada.organizationId,
+      conversation_id: entrada.conversationId,
+      detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
+    });
+  }
+}
+
 /**
  * 1 · Quem pediu para sair, sai.
  *
@@ -264,6 +411,81 @@ async function aplicarOptOut(admin: Admin, entrada: EntradaDeMensagem): Promise<
       organization_id: entrada.organizationId,
       contact_id: entrada.contactId,
       origem: entrada.origem,
+      detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
+    });
+    // Sem o bloqueio gravado não há o que fechar: fechar o negócio de quem o
+    // sistema não conseguiu proteger esconderia o problema no funil.
+    return;
+  }
+
+  await fecharNegociosAbertosDeQuemPediuParar(admin, entrada);
+}
+
+/**
+ * Motivo canônico de perda (migration 0522): "Pediu para não receber
+ * mensagens". Pedir silêncio não é cancelar.
+ */
+const MOTIVO_DA_PERDA_POR_OPT_OUT = "opted_out_of_messages" satisfies CanonicalLostReason;
+
+/**
+ * Quem pediu para parar não é mais uma oportunidade (vindo do produto
+ * original): cada negócio aberto dele vira "Perdido — Pediu para não receber
+ * mensagens". Roda DEPOIS do bloqueio gravado e ANTES do nascimento do lead.
+ * Usa `encerraDemanda` — a mesma regra do botão "perdido" e da IA —, que é
+ * idempotente, filtra `organization_id`, grava a timeline e a auditoria.
+ *
+ * NUNCA lança: a mensagem já entrou e o bloqueio já foi gravado.
+ */
+async function fecharNegociosAbertosDeQuemPediuParar(
+  admin: Admin,
+  entrada: EntradaDeMensagem,
+): Promise<void> {
+  try {
+    const { data, error } = await admin
+      .from("crm_leads")
+      .select("id")
+      .eq("organization_id", entrada.organizationId)
+      .eq("contact_id", entrada.contactId)
+      .eq("status", "open");
+    if (error) {
+      logger.warn("pos-entrada: negócios do contato que pediu para parar não lidos", {
+        organization_id: entrada.organizationId,
+        contact_id: entrada.contactId,
+        detail: error.message.slice(0, 160),
+      });
+      return;
+    }
+    for (const lead of (data ?? []) as Array<{ id: string }>) {
+      try {
+        await encerraDemanda(
+          admin,
+          {
+            organization_id: entrada.organizationId,
+            // A mensagem chegou pelo canal e o produto agiu — não uma pessoa.
+            actor: { type: "webhook_source", id: "canal-inbound" },
+            requestId: entrada.requestId ?? `opt-out:${entrada.conversationId}`,
+          },
+          {
+            leadId: lead.id,
+            desfecho: "lost",
+            motivo: MOTIVO_DA_PERDA_POR_OPT_OUT,
+            razaoNaTimeline: "O cliente pediu para não receber mais mensagens",
+            payloadNaTimeline: { conversation_id: entrada.conversationId },
+          },
+        );
+      } catch (err) {
+        logger.warn("pos-entrada: negócio de quem pediu para parar não foi fechado", {
+          organization_id: entrada.organizationId,
+          contact_id: entrada.contactId,
+          lead_id: lead.id,
+          detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
+        });
+      }
+    }
+  } catch (err) {
+    logger.warn("pos-entrada: fechamento dos negócios de quem pediu para parar falhou", {
+      organization_id: entrada.organizationId,
+      contact_id: entrada.contactId,
       detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
     });
   }
@@ -433,6 +655,143 @@ async function guardarOrigemDaPagina(admin: Admin, entrada: EntradaDeMensagem): 
     logger.error("pos-entrada: origem da página falhou (a mensagem entra assim mesmo)", {
       contactId: entrada.contactId,
       error: erro instanceof Error ? erro.message.slice(0, 160) : String(erro).slice(0, 160),
+    });
+  }
+}
+
+/**
+ * A mensagem recuperada de uma queda (Spec 32 §3, trazida do produto original): a
+ * entrada de `EntradaDeMensagem` com o que o efeito de "o cliente respondeu" precisa
+ * de mais. A hora é a REAL da mensagem, nunca `now()`: a recuperação chega depois, e a
+ * campanha e a reatividade comparam essa hora com a janela e com o último turno.
+ */
+export type EntradaDaRecuperacao = EntradaDeMensagem & {
+  /** ISO da hora em que o cliente mandou a mensagem (vinda do acervo). */
+  enviadaEm: string;
+  /** A prévia que a conversa mostra na caixa (mesma regra do ao vivo). */
+  previa: string;
+  /** Quem chama já tratou o pedido de PARE: repetir duplicaria a auditoria. */
+  optOutJaTratado?: boolean;
+};
+
+/**
+ * Só os efeitos de "o cliente respondeu" da mensagem recuperada.
+ *
+ * NUNCA chama despacho do agente, demanda nova, guarda de origem nem drenagem de
+ * eventos: a mensagem é do passado, e acordar a IA ou abrir card por ela responderia
+ * a alguém que já foi atendido. Também não emite `message.received`: o efeito de
+ * follow-up roda com uma linha EM MEMÓRIA, que não entra no `event_log`.
+ *
+ * Cada efeito falha para dentro, com log: um que falha não impede os outros nem para
+ * a rodada.
+ */
+export async function aplicarEfeitosDaRecuperacao(
+  admin: Admin,
+  entrada: EntradaDaRecuperacao,
+): Promise<void> {
+  try {
+    if (await ehContatoDoNumeroInterno(admin, entrada.organizationId, entrada.contactId)) {
+      return;
+    }
+    if (!entrada.optOutJaTratado) {
+      await passoDaRecuperacao("opt-out", () => aplicarOptOut(admin, entrada), entrada);
+    }
+    await passoDaRecuperacao(
+      "sem-interesse",
+      () => aplicarSemInteresseDaProspeccao(admin, entrada),
+      entrada,
+    );
+    await passoDaRecuperacao("campanha", () => avaliarCampanha(admin, entrada), entrada);
+    await passoDaRecuperacao(
+      "follow-up",
+      async () => {
+        const evento: EventRow = {
+          id: entrada.requestId ?? `recuperacao:${entrada.conversationId}:${entrada.enviadaEm}`,
+          organization_id: entrada.organizationId,
+          event_type: "message.received",
+          entity_kind: "message",
+          entity_id: null,
+          payload: {
+            message_id: null,
+            conversation_id: entrada.conversationId,
+            contact_id: entrada.contactId,
+            direction: "inbound",
+            channel_session_id: entrada.channelSessionId,
+            body_preview: entrada.texto ? entrada.texto.slice(0, 280) : null,
+            sent_at: entrada.enviadaEm,
+          },
+          metadata: { source: entrada.origem },
+          consumed_by: [],
+          attempts: 0,
+          created_at: entrada.enviadaEm,
+        };
+        // A mensagem é de antes da volta: pode PARAR o fluxo que pede cancelamento na
+        // resposta, mas nunca acordar a espera nem mandar o próximo passo agora.
+        await applyReactivityEvent(
+          createSupabaseReactivityClient(admin as unknown as SupabaseClient),
+          () => new Date(),
+          evento,
+          { semAcordar: true },
+        );
+      },
+      entrada,
+    );
+    await passoDaRecuperacao(
+      "resposta-de-campanha",
+      () =>
+        aplicarRespostaNaCampanha(admin as unknown as SupabaseClient, {
+          organizationId: entrada.organizationId,
+          contactId: entrada.contactId,
+          recebidoEm: new Date(entrada.enviadaEm),
+        }),
+      entrada,
+    );
+    await passoDaRecuperacao(
+      "conversa",
+      async () => {
+        // O carimbo da conversa só anda para a FRENTE: o que chegou ao vivo depois da
+        // volta já marcou uma hora mais nova, e a RPC grava o que recebe.
+        const { data } = await admin
+          .from("conversations")
+          .select("last_message_at")
+          .eq("organization_id", entrada.organizationId)
+          .eq("id", entrada.conversationId)
+          .maybeSingle();
+        const ultima = (data as { last_message_at?: string | null } | null)?.last_message_at;
+        if (ultima && Date.parse(ultima) >= Date.parse(entrada.enviadaEm)) return;
+        await marcarConversaComMensagem(admin as unknown as SupabaseClient, {
+          organizationId: entrada.organizationId,
+          conversationId: entrada.conversationId,
+          direction: "inbound",
+          preview: entrada.previa,
+          at: entrada.enviadaEm,
+          canal: "waha",
+        });
+      },
+      entrada,
+    );
+  } catch (err) {
+    logger.warn("pos-entrada: efeitos da recuperação falharam (a mensagem já está gravada)", {
+      organization_id: entrada.organizationId,
+      conversation_id: entrada.conversationId,
+      detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
+    });
+  }
+}
+
+/** Um efeito da recuperação: se falhar, registra e deixa os outros rodarem. */
+async function passoDaRecuperacao(
+  nome: string,
+  efeito: () => Promise<unknown>,
+  entrada: EntradaDeMensagem,
+): Promise<void> {
+  try {
+    await efeito();
+  } catch (err) {
+    logger.warn(`pos-entrada: efeito da recuperação falhou (${nome}); os demais seguem`, {
+      organization_id: entrada.organizationId,
+      conversation_id: entrada.conversationId,
+      detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
     });
   }
 }

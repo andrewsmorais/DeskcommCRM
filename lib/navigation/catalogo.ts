@@ -144,17 +144,34 @@ export const NAV_CATALOG = [
     group: "crm",
     minRole: "admin",
     section: "O dia a dia da venda",
+    // Prospecção fria manda a primeira mensagem para quem nunca falou com a
+    // empresa: é disparo em massa, desligado por padrão (ChatAI Online).
+    modulo: "disparo_em_massa",
   },
   // ---- Atendimento — onde o operador passa o dia ----
   {
     href: "/app/inbox",
-    label: "Inbox",
+    label: "Conversas",
     description: "As conversas de WhatsApp, com você e a IA atendendo lado a lado.",
     icon: "Inbox",
     group: "atendimento",
     sidebar: true,
     // Quantas conversas a IA passou para a equipe e esperam uma pessoa (aba Fila).
     contador: "fila",
+  },
+  {
+    // Chat interno da equipe (paridade com a Umbler Talk, migration 0515):
+    // sala Geral e conversas diretas entre as pessoas da empresa.
+    href: "/app/chat-da-equipe",
+    label: "Chat da equipe",
+    description: "Converse com a sua equipe sem sair do CRM: sala Geral e mensagens diretas.",
+    icon: "ChatsCircle",
+    group: "atendimento",
+    // FORA do menu lateral de propósito: ele está no teto da dobra (15 itens a
+    // 1280x900, `tests/unit/interface-por-empresa.test.ts`). A porta é o botão
+    // do topo (`components/shell/BotaoDoChatDaEquipe.tsx`), com o número de
+    // não lidas, mais o hub de Atendimento e a busca.
+    sidebar: false,
   },
   {
     href: "/app/radar",
@@ -229,6 +246,8 @@ export const NAV_CATALOG = [
     // SÓ NO HUB, como as demais telas de preparação: o quinto item do sidebar do
     // CRM já fez o menu rolar 13px em 900px (e2e `navegacao.spec.ts`), e a
     // campanha é montada de vez em quando, não aberta todo dia.
+    // Módulo opcional, desligado por padrão (`lib/instalacao/disparo-em-massa.ts`).
+    modulo: "disparo_em_massa",
   },
   {
     href: "/app/contacts",
@@ -311,6 +330,18 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
   {
+    // Fila de ligações sobre um funil próprio. A régua está em lib/cold-call/regras.ts.
+    href: "/app/cold-call",
+    label: "Cold Call",
+    description: "Ligue para uma lista de leads, um por vez, com roteiro e resultado de cada ligação.",
+    icon: "Phone",
+    group: "crm",
+    section: "O dia a dia da venda",
+    minRole: "agent",
+    // Módulo opcional da instalação, desligado por padrão.
+    modulo: "cold_call",
+  },
+  {
     // ⚠️ Esta tela nasceu porque a FERRAMENTA já existia sem ela. O agente de IA
     // vinha com "procurar produto na loja" ligada por padrão, lendo uma tabela
     // que ninguém nunca preencheu — e o efeito não era silêncio: era o agente
@@ -380,6 +411,22 @@ export const NAV_CATALOG = [
     // tem hub, e se chega às telas dele por "Configurações". Eu tinha posto
     // `sidebar: true` e a cerca reprovou dizendo "a tela existe e não tem porta
     // na navegação" — a porta existia, era outra.
+  },
+  {
+    // O aviso de agendamento no WhatsApp do dono (migration 0704). Fica junto
+    // dos tipos de agendamento porque é configuração da agenda do NEGÓCIO, não
+    // do dia de quem atende. "Aviso de agendamento", nunca "Aviso no WhatsApp":
+    // esse já é o nome do aviso de CASO, e dois destinos com o mesmo rótulo na
+    // busca não dizem qual é qual.
+    href: "/app/agenda/avisos",
+    label: "Aviso de agendamento",
+    description: "Receber no WhatsApp cada horário marcado, remarcado ou cancelado, e o resumo das 7h.",
+    icon: "PaperPlaneTilt",
+    group: "organizacao",
+    section: "Sua empresa",
+    // `admin`: escolhe um número conectado e manda nome de cliente para um
+    // celular — o mesmo gate da rota e da RLS de `config_aviso_de_agendamento`.
+    minRole: "admin",
   },
   {
     href: "/app/settings/tenant/proposals",
@@ -667,6 +714,22 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
 
+  // ---- Chatbots — fluxos visuais sem custo de IA ----
+  {
+    // O canvas de chatbot (estilo Umbler Talk): triagem automática antes do
+    // agente de IA. Não gasta token — é árvore de decisão visual.
+    // Fica em "ia" porque é automação de atendimento, mas em seção própria
+    // para não confundir com o agente RAG que consome créditos.
+    href: "/app/ai/chatbots",
+    label: "Chatbots",
+    description: "Fluxos automáticos sem custo de IA — triagem, FAQ e desvios antes do agente.",
+    icon: "FlowArrow",
+    group: "ia",
+    section: "Automatizar sem IA",
+    minRole: "manager",
+    sidebar: true,
+  },
+
   // ---- Canais — por onde as mensagens entram e saem ----
   {
     href: "/app/connections",
@@ -777,6 +840,19 @@ export const NAV_CATALOG = [
     sidebar: true,
   },
   {
+    // Painel de atendimento (vindo do produto original; paridade com a Umbler):
+    // quem espera resposta, quem está em atendimento e quem foi atendido hoje.
+    // Aqui sempre ligado — no produto original é módulo opcional. SEM
+    // `sidebar`: o menu lateral está no teto da dobra (15 itens a 1280x900,
+    // tests/unit/interface-por-empresa.test.ts); a porta é o hub de Análise.
+    href: "/app/painel",
+    label: "Painel de atendimento",
+    description: "Quem espera resposta, quem está em atendimento e quem foi atendido hoje, por número.",
+    icon: "ListChecks",
+    group: "analise",
+    section: "Os números do período",
+  },
+  {
     // Logo abaixo de Desempenho porque responde a metade da MESMA pergunta: lá
     // está o que aconteceu depois que a pessoa chegou; aqui, quanto custou
     // trazê-la. Ler as duas juntas é o que fecha a conta do custo por cliente.
@@ -790,7 +866,11 @@ export const NAV_CATALOG = [
     // pessoa — orçamento e criativo são da empresa inteira. Mesmo grau dos
     // outros dois vizinhos do grupo.
     minRole: "manager",
-    sidebar: true,
+    // Fora do menu lateral desde 22/10/2026: o Chatbot Builder entrou no grupo
+    // de IA e o menu tem teto de 15 itens (dobra a 1280x900, medido em
+    // tests/unit/interface-por-empresa.test.ts). Na oferta do ChatAI Online o
+    // Meta Ads ainda é "Em breve"; segue alcançável pelo hub de Análise.
+    sidebar: false,
   },
   {
     // Irmã de "Desempenho", não a mesma coisa: lá é DESFECHO (funil agora,
@@ -853,6 +933,14 @@ export const NAV_CATALOG = [
     section: "Sua conta",
   },
   {
+    href: "/app/settings/aplicativo",
+    label: "App no celular",
+    description: "Instale o sistema na tela de início do celular e receba os avisos.",
+    icon: "DeviceMobile",
+    group: "organizacao",
+    section: "Sua conta",
+  },
+  {
     href: "/app/team",
     label: "Equipe",
     description: "Quem trabalha aqui, com qual papel e quanta conversa cada um aguenta.",
@@ -868,6 +956,42 @@ export const NAV_CATALOG = [
     label: "Distribuição de atendimento",
     description: "Quem recebe cada cliente novo, e o que cada atendente enxerga.",
     icon: "UsersThree",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "manager",
+  },
+  {
+    // Configurações › Conversas (paridade com a Umbler Talk): assinatura dos
+    // atendentes e o que o botão Fechar faz. Mesma vizinhança e papel da
+    // Distribuição de atendimento.
+    href: "/app/settings/conversas",
+    label: "Configurações de conversas",
+    description: "Assinatura dos atendentes e o que acontece ao fechar uma conversa.",
+    icon: "Inbox",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "manager",
+  },
+  {
+    // Configurações › Variáveis da empresa (paridade com a Umbler Talk):
+    // {{empresa.chave}} nos chatbots e nas respostas rápidas.
+    href: "/app/settings/variaveis",
+    label: "Variáveis da empresa",
+    description: "Endereço, Pix, horário e links guardados uma vez e usados em todas as mensagens.",
+    icon: "Buildings",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "manager",
+  },
+  {
+    // Setores de atendimento (migration 0496): grupos de atendentes. A conversa
+    // posta num setor só é distribuída a membros dele. Mesmo papel e mesma
+    // vizinhança da Distribuição de atendimento, que é a regra que o setor afina.
+    href: "/app/settings/setores",
+    label: "Setores",
+    description:
+      "Divida a equipe em setores, como Vendas e Suporte, e mande cada conversa ao setor certo.",
+    icon: "Users",
     group: "organizacao",
     section: "Sua empresa",
     minRole: "manager",

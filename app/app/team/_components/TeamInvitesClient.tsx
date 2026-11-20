@@ -218,9 +218,7 @@ export function TeamInvitesClient({ canManage }: Props) {
             <DialogTitle>{t("Revogar convite")}</DialogTitle>
             <DialogDescription>
               {revokeDialog?.email}{" "}
-              {t(
-                "não poderá mais usar este convite para entrar. Você pode enviar um novo depois.",
-              )}
+              {t("não poderá mais usar este convite para entrar. Você pode enviar um novo depois.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

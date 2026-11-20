@@ -35,7 +35,11 @@ const querySchema = z.object({
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
 
-  const authz = await requireRole("manager", { requestId, resource: "metrics" });
+  const authz = await requireRole("manager", {
+    requestId,
+    resource: "metrics",
+    plano: "relatorios_completos",
+  });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { org: activeOrg } = authz;

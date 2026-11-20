@@ -21,7 +21,12 @@ import {
   type ResultadoClassificacaoInicial,
 } from "@/lib/leads/classificacao-inicial";
 import type { CreateLeadInput } from "@/lib/schemas";
-import { mapInboundPayload, verifyInboundSignature, type FieldMap } from "@/lib/webhooks/inbound";
+import {
+  cabecalhosParaOArquivo,
+  mapInboundPayload,
+  verifyInboundSignature,
+  type FieldMap,
+} from "@/lib/webhooks/inbound";
 import { encontrarContatoPorTelefoneComNome } from "@/lib/channels/contato-por-telefone";
 import {
   buildContactConsentGrant,
@@ -42,7 +47,19 @@ import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { ApiError } from "@/lib/api/types";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { kickLocalPipeline } from "@/lib/dev/kick-local-pipeline";
-import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import {
+  avisoDaPlataformaAutentico,
+  etapaDoEvento,
+  mapearAvisoDeVenda,
+  type AvisoDeVenda,
+} from "@/lib/webhooks/plataformas-de-venda";
+import {
+  avisoDaLojaAutentico,
+  ehPingDaWooCommerce,
+  mapearAvisoDaLoja,
+} from "@/lib/webhooks/lojas";
+import { atualizarNegocioDaVenda, etapasDoFunil } from "@/lib/webhooks/negocio-da-venda";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -110,9 +127,6 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     return fail("not_found", "unknown webhook token", 404, { requestId });
   }
 
-  const recusado = await exigirRecursoDoPlano(source.organization_id, "webhooks", { requestId });
-  if (recusado) return recusado;
-
   const rawBody = await req.text();
   const contentType = req.headers.get("content-type") ?? "";
   const isForm = contentType.includes("application/x-www-form-urlencoded");
@@ -125,6 +139,37 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     } catch {
       return fail("invalid_request", "invalid_json", 400, { requestId });
     }
+  }
+
+  // O PLANO decide pelo que o aviso É (decisão do dono, 20/11/2026): aviso de
+  // loja ou de plataforma de venda vale em todos os planos (`lojas`);
+  // formulário, Zapier e o resto da Captação são do Impulso (`webhooks`).
+  // Antes de qualquer gravação: recusado aqui, nada fica no banco.
+  const ehAvisoDeVenda =
+    mapearAvisoDaLoja(payload, req.headers, req.nextUrl.searchParams.get("plataforma")) !== null ||
+    mapearAvisoDeVenda(payload) !== null;
+  if (!ehPingDaWooCommerce(payload)) {
+    const acessoDoPlano = await verificarRecursoDoPlano(
+      source.organization_id,
+      ehAvisoDeVenda ? "lojas" : "webhooks",
+    );
+    if (!acessoDoPlano.ok) {
+      return fail(
+        acessoDoPlano.code,
+        !ehAvisoDeVenda && acessoDoPlano.code === "billing_feature"
+          ? "No seu plano, a Captação recebe os avisos de lojas e plataformas de venda (Shopify, Yampi, WooCommerce, CartPanda, Wix, Kiwify, Hotmart, Cakto). Formulários, Zapier e outros sistemas são do plano Impulso."
+          : acessoDoPlano.message,
+        acessoDoPlano.status,
+        { requestId },
+      );
+    }
+  }
+
+  // A WooCommerce manda `webhook_id=123` ao SALVAR o webhook, para conferir o
+  // endereço. Não é pedido: responde 200 e não grava nada (senão a tela da
+  // loja mostra erro e a captação registra uma recusa sem sentido).
+  if (ehPingDaWooCommerce(payload)) {
+    return ok({ ok: true, ping: true }, { requestId });
   }
 
   // A ORIGEM, lida uma vez e usada em todos os desfechos abaixo — inclusive nos
@@ -143,7 +188,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     sourceName: (source.name as string) ?? "Fonte sem nome",
   };
 
-  const sigHeader = req.headers.get("x-ChatAI Online-signature");
+  const sigHeader = req.headers.get("x-chatai-signature");
   // secret cifrado at-rest (migration 0041). Decrypt falhou (chave da GUC
   // ausente/trocada)? Precedente WAHA: pula a validação em vez de derrubar a
   // captação — secret aqui é defesa opcional, não gate de disponibilidade.
@@ -153,8 +198,20 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     sourceSecret = await decryptWebhookSecret(admin, source.secret_encrypted as unknown as string);
     if (sourceSecret === null) hmacSkipped = true;
   }
+  // Kiwify, Cakto e Hotmart se provam do jeito delas (segredo no corpo / HMAC na
+  // URL / token no cabeçalho),
+  // com o MESMO segredo cadastrado na fonte.
   const validSignature = sourceSecret
-    ? verifyInboundSignature(rawBody, sigHeader, sourceSecret)
+    ? verifyInboundSignature(rawBody, sigHeader, sourceSecret) ||
+      avisoDaPlataformaAutentico(
+        rawBody,
+        payload,
+        req.nextUrl.searchParams.get("signature"),
+        sourceSecret,
+        req.headers.get("x-hotmart-hottok"),
+      ) ||
+      // Shopify, WooCommerce e Yampi: HMAC-SHA256 em base64 no cabeçalho delas.
+      avisoDaLojaAutentico(rawBody, req.headers, sourceSecret)
     : null;
   if (sourceSecret && !validSignature) {
     await audit({
@@ -173,20 +230,22 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     return fail("unauthenticated", "invalid_signature", 401, { requestId });
   }
 
-  const headersJson: Record<string, string> = {};
-  req.headers.forEach((value, key) => {
-    const k = key.toLowerCase();
-    if (k.startsWith("authorization") || k === "cookie") return;
-    headersJson[key] = value;
-  });
+  // O cabeçalho que prova a origem (o hottok da Hotmart é o próprio segredo da
+  // fonte) não fica no arquivo, que todo membro lê (lib/webhooks/inbound.ts).
+  const headersJson = cabecalhosParaOArquivo(req.headers, sourceSecret);
   await admin.from("webhook_events_log").insert({
     organization_id: source.organization_id,
     provider: "generic",
     webhook_path_token: token,
     http_method: "POST",
     headers: headersJson,
-    raw_body: rawBody,
-    payload_parsed: payload,
+    // O `secret` que a Cakto manda no corpo é o segredo da fonte: não fica no log.
+    raw_body:
+      typeof payload.secret === "string"
+        ? JSON.stringify({ ...payload, secret: "[removido]" })
+        : rawBody,
+    payload_parsed:
+      typeof payload.secret === "string" ? { ...payload, secret: "[removido]" } : payload,
     signature_header: sigHeader ?? null,
     // hmacSkipped (decrypt indisponível) conta como "não validado mas aceito",
     // igual ao webhook WAHA — o feed da UI não pinta de vermelho.
@@ -212,6 +271,16 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const rdStationMapped: RdStationMapped | null =
     respondiMapped === null && isRdStationPayload(payload) ? mapRdStationPayload(payload) : null;
 
+  // Kiwify / Cakto: comprador aninhado e um EVENTO de venda. O mesmo pedido é
+  // um negócio só, que anda de etapa a cada aviso (lib/webhooks/plataformas-de-venda.ts).
+  // As lojas (Shopify, WooCommerce, Yampi, CartPanda) e o formato ChatAI vêm
+  // antes: o cabeçalho delas é o que separa uma da outra (lib/webhooks/lojas.ts).
+  const vendaMapped: AvisoDeVenda | null =
+    respondiMapped === null && rdStationMapped === null
+      ? (mapearAvisoDaLoja(payload, req.headers, req.nextUrl.searchParams.get("plataforma")) ??
+        mapearAvisoDeVenda(payload))
+      : null;
+
   // Idempotência (spec §5): `external_id` é campo reservado do envio — quem
   // integra via sistema (Zapier/n8n/loja) manda o ID único do disparo e o
   // reenvio automático (retry por timeout) NUNCA duplica o lead. O índice
@@ -236,6 +305,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
         // tipo de coisa que só aparece quando alguém manda um corpo fabricado.
         (respondiMapped?.externalId?.slice(0, 255) ??
         rdStationMapped?.externalId?.slice(0, 255) ??
+        vendaMapped?.externalId?.slice(0, 255) ??
         null);
 
   const respondWithLead = (leadId: string): NextResponse => {
@@ -283,6 +353,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
   const mapped =
     respondiMapped ??
     rdStationMapped ??
+    vendaMapped ??
     mapInboundPayload(externalId ? payloadForMapping : payload, fieldMap);
   if (!mapped.phone) {
     const rawPhone = findRawPhoneIfUnnormalized(payload, fieldMap);
@@ -298,7 +369,69 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     utm: mapped.source_metadata,
   };
 
-  const deduped = await findLeadByExternalId();
+  let deduped = await findLeadByExternalId();
+
+  // A compra herda o negócio do carrinho abandonado da mesma pessoa e produto:
+  // a chave do negócio passa a ser a do pedido, e daqui em diante é ele que anda.
+  if (!deduped && vendaMapped?.chaveDoCarrinho && externalId) {
+    const { data: carrinho } = await admin
+      .from("crm_leads")
+      .select("id, contact_id")
+      .eq("organization_id", source.organization_id)
+      .eq("source", "webhook")
+      .eq("external_id", vendaMapped.chaveDoCarrinho)
+      .maybeSingle();
+    if (carrinho) {
+      await admin
+        .from("crm_leads")
+        .update({ external_id: externalId })
+        .eq("organization_id", source.organization_id)
+        .eq("id", carrinho.id);
+      deduped = {
+        id: carrinho.id as string,
+        contactId: (carrinho.contact_id as string | null) ?? null,
+      };
+    }
+  }
+
+  if (deduped && vendaMapped) {
+    // Aviso novo de um pedido que já tem negócio: o negócio anda de etapa
+    // (e a automação de "lead mudou de etapa" manda o chatbot).
+    const { movido } = await atualizarNegocioDaVenda(
+      admin,
+      { organizationId: source.organization_id, webhookSourceId: source.id, requestId },
+      deduped.id,
+      vendaMapped,
+      await etapasDoFunil(
+        admin,
+        source.organization_id,
+        source.default_pipeline_id as string | null,
+      ),
+    );
+    await registrarCaptacao(admin, {
+      ...fonteDaCaptacao,
+      ...origemDaCaptacao,
+      ...dadosDaCaptacao,
+      leadId: deduped.id,
+      contactId: deduped.contactId,
+      outcome: "duplicado",
+    });
+    void audit({
+      action: "webhook.lead_received",
+      organizationId: source.organization_id,
+      resourceType: "crm_lead",
+      resourceId: deduped.id,
+      requestId,
+      metadata: {
+        webhook_source_id: source.id,
+        plataforma: vendaMapped.plataforma,
+        evento: vendaMapped.evento,
+        movido,
+      },
+    });
+    return respondWithLead(deduped.id);
+  }
+
   if (deduped) {
     // Mesmo envio repetido: 200 com o lead existente, nada é recriado — a
     // ferramenta que reenviou recebe sucesso e para de tentar.
@@ -530,10 +663,24 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<NextRespons
     external_id?: string;
   } = {
     pipeline_id: source.default_pipeline_id,
-    stage_id: source.default_stage_id,
+    // Pedido novo da Kiwify/Cakto nasce na etapa do evento ("Pago",
+    // "Carrinho abandonado"), quando o funil tem uma etapa com esse nome.
+    stage_id: vendaMapped
+      ? (etapaDoEvento(
+          vendaMapped.evento,
+          await etapasDoFunil(
+            admin,
+            source.organization_id,
+            source.default_pipeline_id as string | null,
+          ),
+        ) ?? source.default_stage_id)
+      : source.default_stage_id,
     title: respondiMapped
       ? respondiLeadTitle(respondiMapped)
-      : (mapped.name ?? mapped.phone ?? mapped.email ?? "Lead sem nome"),
+      : vendaMapped?.custom_fields.produto
+        ? `${mapped.name ?? mapped.phone ?? mapped.email ?? "Comprador"} · ${vendaMapped.custom_fields.produto}`
+        : (mapped.name ?? mapped.phone ?? mapped.email ?? "Lead sem nome"),
+    ...(vendaMapped?.valorEmCentavos != null ? { value_cents: vendaMapped.valorEmCentavos } : {}),
     contact_id: contactId,
     tags: [],
     source: "webhook",

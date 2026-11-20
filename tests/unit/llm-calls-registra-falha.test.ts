@@ -16,9 +16,21 @@
  * a classificação distingue os três problemas que exigem conversas diferentes
  * com quem instalou (chave, saldo, indisponibilidade).
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runModelCall } from "@/lib/agent-engine/edge/llm/run-model-call";
+
+// NA CHAVE DA INSTALAÇÃO QUEM ESCOLHE O MODELO É A PLATAFORMA
+// (`run-model-call.ts`, `configTecnicaDaPlataforma`). Este arquivo usa o padrão
+// da organização como linha de base, então a plataforma é declarada igual a ele
+// — o que se mede aqui é outra coisa.
+beforeEach(() => {
+  vi.stubEnv("PLATAFORMA_IA_PROVEDOR", "anthropic");
+  vi.stubEnv("PLATAFORMA_IA_MODELO", "claude-padrao");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 

@@ -41,6 +41,12 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+// A trava de plano (`lib/billing/grafo.ts`) lê a assinatura no banco REAL,
+// por fora das dependências injetadas — num teste unitário isso é um tempo
+// esgotado de rede, não uma resposta. A regra dela é medida em
+// `lib/billing/grafo.test.ts` e `lib/billing/acesso.test.ts`; aqui ela libera.
+vi.mock("@/lib/billing/grafo", () => ({ verificarGrafoDoPlano: vi.fn(async () => ({ ok: true })) }));
+
 import type { JobRow } from "@/lib/agent-engine/queue/queue";
 import { runFollowupTick, type AdminClient, type FollowupJobRequest } from "@/lib/followup/engine";
 import type { FlowGraph } from "@/lib/followup/graph-schema";

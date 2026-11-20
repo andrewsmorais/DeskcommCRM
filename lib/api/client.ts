@@ -1,6 +1,7 @@
 import type { ZodSchema } from "zod";
 
 import { ApiError, type ApiErrorBody } from "@/lib/api/types";
+import { statusValeRepetir, statusValeRepetirEscrita } from "@/lib/api/retentativa";
 import { randomId } from "@/lib/random-id";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -67,7 +68,10 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MUTATION_TIMEOUT_MS = 30_000;
 
 const MAX_ATTEMPTS = 3;
-const RETRYABLE_STATUSES = new Set([429, 503]);
+/**
+ * Os status que valem outra tentativa moram em `lib/api/retentativa.ts` — a
+ * MESMA régua que a tela usa para dizer o que aconteceu.
+ */
 const MUTATING_METHODS = new Set<HttpMethod>(["POST", "PATCH", "PUT", "DELETE"]);
 
 /**
@@ -295,8 +299,14 @@ async function request<T>(
         return parsed;
       }
 
-      // Retry on 429/503
-      if (RETRYABLE_STATUSES.has(res.status) && attempt < MAX_ATTEMPTS) {
+      // Repetição por STATUS: 429/502/503/504 em LEITURA; só 429/503 em ESCRITA.
+      // 429 e 503 são respostas — o servidor disse que não processou. 502 e 504
+      // vêm de um intermediário: o pedido PODE ter sido processado, e repetir
+      // uma escrita ali duplicaria a mensagem. Repetir um GET é sempre seguro.
+      const valeRepetir = MUTATING_METHODS.has(method)
+        ? statusValeRepetirEscrita(res.status)
+        : statusValeRepetir(res.status);
+      if (valeRepetir && attempt < MAX_ATTEMPTS) {
         const retryAfter = parseRetryAfterSeconds(res.headers.get("Retry-After"));
         const delay = retryAfter !== null ? retryAfter * 1000 : backoffMs(attempt);
         await sleep(delay, opts.signal);

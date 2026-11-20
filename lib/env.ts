@@ -28,9 +28,7 @@ const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
  * pra permitir setup parcial (ex: dev sem WAHA quando trabalhando só na UI).
  */
 const required = (name: string) =>
-  isProd
-    ? z.string().min(1, `${name} é obrigatória em produção`)
-    : z.string().default("");
+  isProd ? z.string().min(1, `${name} é obrigatória em produção`) : z.string().default("");
 
 const requiredAlways = (name: string) => z.string().min(1, `${name} é obrigatória`);
 
@@ -96,6 +94,14 @@ const schema = z.object({
   INTERNAL_SECRET: required("INTERNAL_SECRET"),
   /** Optional dedicated secret for cron endpoints (S-06.07 onwards). */
   INTERNAL_CRON_SECRET: z.string().optional().default(""),
+  /**
+   * Raiz OPCIONAL da chave que assina link de exportação e `state`/vínculo de
+   * OAuth. Vazia (ou com menos de 32 caracteres), a raiz é a
+   * `SUPABASE_SERVICE_ROLE_KEY` — e por isso nenhuma instalação precisa editar o
+   * `.env` para atualizar. NUNCA um dos Bearers de cron acima: quem lê é
+   * `lib/auth/chave-de-assinatura.ts`, e o porquê está lá.
+   */
+  LINK_SIGNING_SECRET: z.string().optional().default(""),
   /**
    * Segredo do DONO DA INSTALAÇÃO para `POST /api/v1/tenants/provision` (um
    * sistema externo cria organizações). Vazio por padrão = a rota não existe
@@ -195,6 +201,13 @@ const schema = z.object({
   // Vazio = a instalação não oferece a chamada de voz. É essa string vazia que
   // `instalacaoOfereceVoz()` lê para dizer à tela que nenhum clique resolve.
   WACALLS_API_BASE_URL: z.string().optional().default(""),
+  // Motor de busca próprio da prospecção (provedor `local-http`). NUNCA
+  // `required()`: vazio = a instalação não oferece esse motor, e a organização
+  // que escolher `local-http` cai no erro FECHADO ("Informe a URL do engine de
+  // busca local."). A URL é da INSTALAÇÃO, nunca da organização — é isso que
+  // faz a liberação de destino interno valer. Quem lê é
+  // `lib/prospecting/provedor-local-http.ts`.
+  PROSPECTING_LOCAL_HTTP_URL: z.string().optional().default(""),
   // O upstream autenticado NÃO tem modo aberto: sem este Bearer, a API só é
   // alcançável pelo cookie de login do navegador, e um processo
   // server-to-server não tem cookie. URL sem token dá um cliente que constrói e
@@ -375,6 +388,17 @@ const schema = z.object({
    * para quem não suspendeu a conta dele e não tem como resolvê-la.
    */
   SUPPORT_EMAIL: z.string().optional().default(""),
+  /**
+   * WhatsApp de suporte mostrado ao cliente final (e-mail do Escala), só
+   * dígitos com DDI e DDD. Mesma regra do SUPPORT_EMAIL: vazio = não aparece.
+   */
+  SUPPORT_WHATSAPP: z.string().optional().default(""),
+  /**
+   * Chave da Anthropic do assistente de ajuda (o chat do botão Ajuda). Separada
+   * da chave dos agentes para o custo do suporte aparecer à parte. Vazia = o
+   * painel de ajuda mostra só os contatos.
+   */
+  AJUDA_ANTHROPIC_API_KEY: z.string().optional().default(""),
 
   // EPIC-11 Impersonate cookie HMAC secret. Optional at boot (route returns
   // 503 at runtime if missing/short); required in prod for the feature to
@@ -492,15 +516,34 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
 
+  // Onboarding do WhatsApp (oferta ChatAI Online, 22/10/2026). O passo do telefone
+  // abre JÁ gerando o código por celular, como a entrada da Umbler; a API oficial
+  // e o provedor parceiro ficam atrás de "Escolher outra forma". `false` devolve a
+  // pergunta de três formas como primeira tela.
+  ONBOARDING_WHATSAPP_QR_DIRETO: z
+    .enum(["true", "false"])
+    .optional()
+    .default("true")
+    .transform((v) => v === "true"),
+  // Vídeo curto que explica a conexão, mostrado acima do código. Vazio = sem vídeo.
+  // Aceita arquivo (.mp4/.webm) ou endereço de embed (YouTube/Vimeo) em https.
+  ONBOARDING_WHATSAPP_VIDEO_URL: z.string().optional().default(""),
+
+  // IA da plataforma (ChatAI Online). Todo agente de cliente usa este provedor e
+  // este modelo, com a chave da instalação — o cliente não vê nem escolhe. Só o
+  // super-admin muda por agente. Ver lib/ai/agents/config-tecnica.ts.
+  PLATAFORMA_IA_PROVEDOR: z.string().optional().default("openai"),
+  PLATAFORMA_IA_MODELO: z.string().optional().default("gpt-5.4-nano"),
+  // Liga a camada comercial: sem assinatura ativa o CRM fecha e o agente para,
+  // e valem cota de agentes, recursos e limites por plano (lib/billing/exigencia.ts).
+  // Desligada por padrão; o ChatAI Online liga com `true`.
+  EXIGIR_ASSINATURA: z.enum(["true", "false"]).optional().default("false"),
+  // Onde o cliente escolhe e paga o plano (página de vendas com o checkout).
+  PAGINA_DE_PLANOS_URL: z.string().optional().default("https://chataionline.io/#precos"),
+
   // App URLs
-  NEXT_PUBLIC_APP_URL: z
-    .string()
-    .url()
-    .default("http://localhost:3000"),
-  NEXT_PUBLIC_ADMIN_URL: z
-    .string()
-    .url()
-    .default("http://localhost:3000"),
+  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+  NEXT_PUBLIC_ADMIN_URL: z.string().url().default("http://localhost:3000"),
   /**
    * URL pública opcional para os webhooks da Meta (WhatsApp Cloud API / canais oficiais).
    * Quando definida, é usada no lugar de NEXT_PUBLIC_APP_URL para compor a URL de callback
@@ -564,7 +607,9 @@ const schema = z.object({
 
   /**
    * Par VAPID do Web Push. Opcionais: sem elas a bandeja só funciona com a aba
-   * viva (Notification API + SW local). Gerar: `npx web-push generate-vapid-keys`.
+   * viva (Notification API + SW local). O kit gera o par sozinho no install e na
+   * atualização; fora dele, `npx web-push generate-vapid-keys`. Nunca troque um par
+   * existente: trocar desliga os avisos de todo aparelho já inscrito.
    */
   VAPID_PUBLIC_KEY: z.string().optional().default(""),
   VAPID_PRIVATE_KEY: z.string().optional().default(""),

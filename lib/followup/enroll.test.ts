@@ -5,6 +5,16 @@ import { enrollFollowupFlow } from "./enroll";
 import { flowGraphSchema } from "./graph-schema";
 
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
+// O plano: liberado por padrão (como numa instalação que não vende planos);
+// o "Essencial" é simulado nos casos da trava de origem.
+const plano = vi.hoisted(() => ({ incluiFollowup: true }));
+vi.mock("@/lib/billing/acesso", () => ({
+  verificarRecursoDoPlano: vi.fn(async () =>
+    plano.incluiFollowup
+      ? { ok: true }
+      : { ok: false, code: "billing_feature", status: 403, message: "Follow-up automático é do Impulso." },
+  ),
+}));
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const POINTER = "33333333-3333-4333-8333-333333333333";
@@ -124,3 +134,44 @@ describe("enrollFollowupFlow", () => {
     if (!result.ok) expect(result.code).toBe("flow_not_enrollable");
   });
 });
+
+describe("plano sem Follow-up automático: só o chatbot inscreve", () => {
+  const pointer = { id: POINTER, organization_id: ORG, status: "active", active_version_id: VERSION };
+  const pedir = (origem?: "chatbot" | "agente" | "automacao" | "tela") =>
+    enrollFollowupFlow(fakeDb(pointer) as never, {
+      organizationId: ORG,
+      pointerId: POINTER,
+      contactId: CONTACT,
+      actorUserId: null,
+      requestId: "r-plano",
+      ...(origem ? { origem } : {}),
+    });
+
+  it("o chatbot inscreve", async () => {
+    plano.incluiFollowup = false;
+    try {
+      expect((await pedir("chatbot")).ok).toBe(true);
+    } finally {
+      plano.incluiFollowup = true;
+    }
+  });
+
+  it.each(["agente", "automacao", "tela", undefined] as const)(
+    "%s é recusado com o motivo, como era antes no Essencial",
+    async (origem) => {
+      plano.incluiFollowup = false;
+      try {
+        const r = await pedir(origem);
+        expect(r).toMatchObject({ ok: false, code: "billing_feature", status: 403 });
+        expect(r.ok === false && r.message).toMatch(/começa só pelo chatbot/);
+      } finally {
+        plano.incluiFollowup = true;
+      }
+    },
+  );
+
+  it("com o plano que inclui follow-up, todas as origens inscrevem", async () => {
+    expect((await pedir("agente")).ok).toBe(true);
+  });
+});
+

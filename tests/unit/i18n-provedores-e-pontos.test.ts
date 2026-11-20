@@ -47,8 +47,17 @@ describe("espanhol dos textos que vêm de lista, não de literal", () => {
     expect(semEspanhol(textos)).toEqual([]);
   });
 
-  it("toda tarefa do Jev — o nome, o que muda quando ela decide e o que o diálogo avisa antes", () => {
-    const textos = TAREFAS_DO_JEV.flatMap((x) => [x.rotulo, x.oQueFaz, x.aoDecidir, x.aoDecidirNoPonto, x.aoConfirmarDecidir]);
+  it("toda tarefa do Jev — o nome, o que muda quando ela decide (ou por que só observa), o que o diálogo avisa antes e o que o cartão conta", () => {
+    const textos = TAREFAS_DO_JEV.flatMap((x) => [
+      x.rotulo,
+      x.oQueFaz,
+      // A que só observa não tem frase de decidir: tem o porquê, no cartão e na recusa da rota.
+      ...(x.soObserva !== undefined ? [x.soObserva] : [x.aoDecidir, x.aoConfirmarDecidir]),
+      // Só com ponto: `jevNoPonto`, no cartão do ponto.
+      ...(x.aoDecidirNoPonto !== undefined ? [x.aoDecidirNoPonto] : []),
+      // A frase da concordância, ou — em cascata — a dos pedidos percebidos.
+      ...(x.concordancia !== undefined ? [x.concordancia.antes, x.concordancia.depois] : [x.percebidos.nenhuma, x.percebidos.uma, x.percebidos.varias]),
+    ]);
     expect(textos.length, "a varredura não enxergou as tarefas").toBeGreaterThan(8);
     expect(semEspanhol(textos)).toEqual([]);
   });

@@ -23,6 +23,11 @@ interface Props {
   canWrite: boolean;
   /** Recorte por superfície. Ausente = todos (comportamento atual). */
   surface?: FollowupFlowSurface;
+  /**
+   * Plano sem "Follow-up automático": o follow-up é só pelo chatbot, e os
+   * modelos prontos (com IA e gatilhos) não cabem nele.
+   */
+  soPeloChatbot?: boolean;
 }
 
 function formatUpdatedAt(iso: string, idioma: string): string {
@@ -33,7 +38,7 @@ function formatUpdatedAt(iso: string, idioma: string): string {
   });
 }
 
-export function FlowsList({ initialData, canWrite, surface }: Props) {
+export function FlowsList({ initialData, canWrite, surface, soPeloChatbot = false }: Props) {
   const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data } = useFollowupFlows({ initialData, ...(surface ? { surface } : {}) });
@@ -51,7 +56,7 @@ export function FlowsList({ initialData, canWrite, surface }: Props) {
   // ou prazo de graça — mandá-lo para uma tela em branco é o caminho mais curto
   // para a clínica nunca ter follow-up nenhum. Desenhar do zero continua a um
   // clique, para quem já sabe o que quer.
-  const modelosButton = (
+  const modelosButton = soPeloChatbot ? null : (
     <Button onClick={() => setModelosOpen(true)} className="w-full sm:w-auto">
       <Sparkle size={14} aria-hidden className="mr-2" /> {t("Começar de um modelo")}
     </Button>
@@ -71,7 +76,7 @@ export function FlowsList({ initialData, canWrite, surface }: Props) {
   const dialogos = canWrite && (
     <>
       <NewFlowDialog open={dialogOpen} onOpenChange={setDialogOpen} surface={surface} />
-      {!deAtendimento && (
+      {!deAtendimento && !soPeloChatbot && (
         <ModelosDialog
           open={modelosOpen}
           onOpenChange={setModelosOpen}

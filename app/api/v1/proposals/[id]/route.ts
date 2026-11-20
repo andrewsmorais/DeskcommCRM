@@ -10,6 +10,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 import { resolverItensDaProposta } from "@/lib/propostas/itens";
 import { propostaItemSchema } from "@/lib/schemas/propostas";
 import { resolverAvisoDeRevisaoSeProntaOuEncerrada } from "@/lib/propostas/aviso-de-revisao";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { sePropostasDesligadas } from "@/lib/propostas/porta";
 
@@ -179,7 +180,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx): Promise<Response> {
     if (insertError) return fail("internal_error", t("Falha ao gravar os itens."), 500, { requestId });
   }
 
-  void resolverAvisoDeRevisaoSeProntaOuEncerrada(supabase, authz.org.orgId, id);
+  // Os avisos da Central são escritos só pelo servidor (0509); a org vem do requireRole.
+  void resolverAvisoDeRevisaoSeProntaOuEncerrada(createAdminClient(), authz.org.orgId, id);
 
   void audit({
     action: "proposal.edited",
@@ -237,7 +239,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx): Promise<Response> {
     );
   }
 
-  void resolverAvisoDeRevisaoSeProntaOuEncerrada(supabase, authz.org.orgId, id, { forcar: true });
+  void resolverAvisoDeRevisaoSeProntaOuEncerrada(createAdminClient(), authz.org.orgId, id, { forcar: true });
 
   void audit({
     action: "proposal.discarded",

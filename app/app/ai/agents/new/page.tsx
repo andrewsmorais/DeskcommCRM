@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { configTecnicaDaPlataforma, podeEditarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { listSelectableChannels } from "@/lib/channels/selectable";
 import { createClient } from "@/lib/supabase/server";
@@ -102,6 +103,11 @@ export default async function NewAgentPage() {
         materiais={materiais}
         cobertura={cobertura}
         organizationTimezone={fusoUtilizavel(activeOrg.timezone)}
+        mostrarConfigTecnica={podeEditarConfigTecnica(user)}
+        padraoDaPlataforma={{
+          provider: configTecnicaDaPlataforma().provider,
+          model: configTecnicaDaPlataforma().model,
+        }}
       />
     </div>
   );

@@ -79,6 +79,10 @@ const ERRO_EM_PORTUGUES: Record<string, string> = {
   unauthenticated: "Sua sessão expirou. Entre de novo para salvar.",
   forbidden_tenant: "Não consegui identificar sua empresa. Recarregue a página.",
   forbidden_role: "Só quem administra esta empresa pode mudar a marca.",
+  // Antes vinha como `forbidden_role`, e o administrador lia que não administrava
+  // a própria empresa quando o motivo era o plano.
+  recurso_fora_do_plano:
+    "A marca própria faz parte de um plano acima do seu. Confira Configurações › Plano e cobrança.",
   // A sessão está com um fator cadastrado mas não confirmado AGORA. Sem esta
   // linha o toast mostraria o código cru — a action passou a cobrar o segundo
   // fator, e o gate de MFA das telas não alcança Server Action.

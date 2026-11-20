@@ -21,6 +21,9 @@ export const NODE_TYPES = [
   // que advocacia, saúde e serviços regulados precisam — o sistema lembra a
   // equipe, a mensagem sai de uma pessoa.
   'internal_task',
+  // Atualizar o card: move o negócio de etapa e/ou põe e tira etiquetas. Como o
+  // lembrete interno, NÃO fala com o cliente.
+  'crm_update',
   'end',
 ] as const;
 export type NodeType = (typeof NODE_TYPES)[number];
@@ -86,6 +89,17 @@ export const edgeBranchIdSchema = z
   });
 
 /**
+ * O horário em que uma espera fixa pode terminar (`wait.ate_o_horario`).
+ * Frouxo de propósito: o painel grava a cada clique, e quem exige um horário
+ * que dá para obedecer é o publish (`horario_da_espera_invalido`).
+ */
+export const horarioDaEsperaSchema = z.strictObject({
+  start: z.string().max(5),
+  end: z.string().max(5),
+  weekdays: z.array(z.number().int().min(0).max(6)).max(7),
+});
+
+/**
  * Wait node configuration schema.
  * Supports two modes:
  * - fixed: absolute wait duration in milliseconds (5 min to 90 days)
@@ -115,6 +129,12 @@ export const waitConfigSchema = z
        * do alcance da reatividade e libera o slot único anti-spam.
        */
       immune_to_reply: z.boolean().optional(),
+      /**
+       * A espera só TERMINA dentro deste horário (dias + horas, no fuso da
+       * organização). Ver `espera-no-horario.ts`. Opcional: grafos publicados
+       * seguem válidos byte a byte.
+       */
+      ate_o_horario: horarioDaEsperaSchema.optional(),
     }),
     z.strictObject({
       mode: z.literal('smart'),
@@ -231,6 +251,12 @@ export const aiClassifyConfigSchema = z
   );
 
 /**
+ * Quantas redações EXTRAS um passo de texto aceita (além do `body`). A tela usa
+ * o mesmo número para parar de oferecer "adicionar".
+ */
+export const MAX_VARIACOES_DO_PASSO = 5;
+
+/**
  * Action node configuration schema.
  * - text: send this body as-is (no model)
  * - ai_message: generate a message using AI with a prompt hint
@@ -240,6 +266,18 @@ export const actionConfigSchema = z.discriminatedUnion('mode', [
   z.strictObject({
     mode: z.literal('text'),
     body: z.string().min(1).max(4000),
+    /**
+     * OUTRAS REDAÇÕES DO MESMO PASSO. O `body` continua sendo a primeira; o
+     * motor alterna entre `[body, ...variacoes]` a cada envio
+     * (`lib/followup/variacoes-do-passo.ts`). Opcional: passo de texto único —
+     * o de hoje — continua válido byte a byte, sem migration.
+     */
+    variacoes: z.array(z.string().trim().min(1).max(4000)).max(MAX_VARIACOES_DO_PASSO).optional(),
+    /**
+     * MÍDIA OPCIONAL por URL (vindo do produto original). Presente, o `body` vira
+     * a LEGENDA. Opcional: grafos publicados seguem válidos byte a byte.
+     */
+    media_url: z.string().url().max(2000).optional(),
   }),
   z.strictObject({
     mode: z.literal('ai_message'),
@@ -270,6 +308,19 @@ export const internalTaskConfigSchema = z.strictObject({
     z.strictObject({ usuario_id: z.string().uuid() }),
   ]),
   prioridade: z.enum(PRIORIDADES_DA_TAREFA),
+});
+
+/**
+ * Nó `crm_update` ("Atualizar o card"): move o negócio do contato para uma
+ * etapa e/ou grava e tira etiquetas nele. Pelo menos uma das três coisas — a conferência de publicar cobra isso (rascunho vazio é permitido).
+ * `pipeline_id` só serve à tela (escolher funil antes da etapa); quem manda é
+ * `etapa_id`.
+ */
+export const crmUpdateConfigSchema = z.strictObject({
+  pipeline_id: z.string().uuid().optional(),
+  etapa_id: z.string().uuid().optional(),
+  adicionar_etiquetas: z.array(z.string().trim().min(1).max(60)).max(10).default([]),
+  remover_etiquetas: z.array(z.string().trim().min(1).max(60)).max(10).default([]),
 });
 
 /**
@@ -516,6 +567,17 @@ export const flowNodeSchema = z.discriminatedUnion('type', [
       y: z.number(),
     }),
     config: internalTaskConfigSchema,
+  }),
+  // CRM update node: moves the card and/or edits its tags, never messages
+  z.strictObject({
+    id: z.string().min(1),
+    type: z.literal('crm_update'),
+    label: z.string().min(1).max(60),
+    position: z.strictObject({
+      x: z.number(),
+      y: z.number(),
+    }),
+    config: crmUpdateConfigSchema,
   }),
   // End node: terminal state
   z.strictObject({

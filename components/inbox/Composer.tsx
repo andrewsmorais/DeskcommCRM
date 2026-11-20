@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type DragEvent,
   type KeyboardEvent,
 } from "react";
 import { PaperPlaneTilt } from "@/lib/ui/icons";
@@ -17,14 +18,24 @@ import { ContactPickerDialog } from "@/components/inbox/composer/ContactPickerDi
 import { AudioRecorder } from "@/components/inbox/composer/AudioRecorder";
 import { ReplyReviewPanel } from "@/components/inbox/composer/ReplyReviewPanel";
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
+import { AgendarButton } from "@/components/inbox/composer/AgendarButton";
+import { AssinarButton } from "@/components/inbox/composer/AssinarButton";
+import { FigurinhasButton } from "@/components/inbox/composer/FigurinhasButton";
+import { useAssinarLembrado } from "@/hooks/inbox/usePreferenciasDeConversa";
 import { resolveSlash, TemplateMenu } from "@/components/inbox/composer/TemplateMenu";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
-import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
+import { useGruposDeRespostas, useMessageTemplates } from "@/hooks/inbox/useMessageTemplates";
+import { BarraDeRecursos } from "@/components/inbox/composer/BarraDeRecursos";
+import { type Recurso } from "@/lib/inbox/recursos";
+import { lerRespostaRapidaGravada } from "@/lib/inbox/resposta-rapida";
+import { ehMidiaDeAudio, mimeDaMidia, type MidiaDeTemplate } from "@/lib/templates/midias";
+import { toast } from "sonner";
 import { X } from "lucide-react";
 import { useSendMessage } from "@/hooks/inbox/useSendMessage";
 import { useUploadMedia } from "@/hooks/inbox/useUploadMedia";
 import { imagemDoClipboard } from "@/lib/inbox/clipboard-image";
 import { interpolateTemplate } from "@/lib/inbox/template-vars";
+import { useVariaveisDaEmpresaPrefixadas } from "@/hooks/inbox/useVariaveisDaEmpresa";
 import {
   type AvisoDeRascunho,
   type MotivoDeRecusa,
@@ -66,6 +77,11 @@ interface Props {
   onDraftChange?: (text: string, mode: "reply" | "note") => void;
   active?: boolean;
   disabled?: boolean;
+  /**
+   * A empresa ligou "bloquear até assumir" e a conversa não é sua (vindo do
+   * produto original): a caixa trava até clicar em Assumir no cabeçalho.
+   */
+  aguardandoAssumir?: boolean;
   /** Set true when contact is blocked / anonymized — explanation shown. */
   blockedReason?: string | null;
   /**
@@ -107,6 +123,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     active = true,
     onDraftChange,
     disabled,
+    aguardandoAssumir = false,
     blockedReason,
     janelaFechada,
     contactName,
@@ -118,11 +135,44 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   ref,
 ) {
   const t = useT();
+  const variaveisDaEmpresa = useVariaveisDaEmpresaPrefixadas();
   const [text, setText] = useState(initialDraft);
   // O aviso some no primeiro ENVIO: depois do clique o rascunho foi usado, e
   // deixar a faixa prometendo texto que já saiu seria mentira de tela.
   const [rascunhoUsado, setRascunhoUsado] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // A FILA de anexos: um arquivo escolhido pelo "+", ou os arquivos de uma
+  // resposta rápida (imagens e áudio, na ordem gravada). O diálogo mostra o
+  // primeiro; enviado, o próximo aparece. Nada sai sem o atendente ver.
+  const [fila, setFila] = useState<File[]>([]);
+  /** O que cada arquivo da fila já subiu ao Storage — para o retry não subir de novo. */
+  const subidos = useRef(new WeakMap<File, Awaited<ReturnType<ReturnType<typeof useUploadMedia>["mutateAsync"]>>>());
+  const [totalDaFila, setTotalDaFila] = useState(0);
+  const [legendaInicial, setLegendaInicial] = useState<string | null>(null);
+  const pendingFile = fila[0] ?? null;
+  /**
+   * UMA porta para os três gestos — o "+" (agora com vários arquivos), a imagem
+   * colada e o arquivo arrastado. Todos caem na mesma fila: a prévia mostra um
+   * por vez ("1 de 3"), com a legenda no primeiro, e nada sai sem o atendente ver.
+   */
+  // Para onde vai a fila: a MENSAGEM ao cliente ou a NOTA INTERNA (migration
+  // 0547). É o modo em que os arquivos foram ESCOLHIDOS que decide — trocar de
+  // aba com a prévia aberta não muda o destino do que já está na fila.
+  const [filaEmNota, setFilaEmNota] = useState(false);
+  const escolherArquivos = (files: File[]) => {
+    setFila(files);
+    setTotalDaFila(files.length);
+    setLegendaInicial(null);
+    setFilaEmNota(mode === "note");
+  };
+  const setPendingFile = (f: File | null) => escolherArquivos(f ? [f] : []);
+  /**
+   * O realce do arraste (trazido do produto original, #3708). `dragenter` e
+   * `dragleave` disparam também ao passar sobre os FILHOS (campo, botões); com
+   * um booleano solto o realce piscaria. O contador mantém aceso enquanto o
+   * ponteiro estiver dentro.
+   */
+  const [arrastandoArquivo, setArrastandoArquivo] = useState(false);
+  const arrasteEmCurso = useRef(0);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [mode, setMode] = useState<"reply" | "note">(initialMode);
@@ -131,9 +181,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }, [text, mode, onDraftChange]);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const send = useSendMessage();
+  const [assinar, setAssinar] = useAssinarLembrado();
   const upload = useUploadMedia();
   const createNote = useCreateNote();
   const templates = useMessageTemplates();
+  const grupos = useGruposDeRespostas();
   const slash = resolveSlash(text);
   const menuOpen = mode === "reply" && slash.open && !menuDismissed;
 
@@ -143,11 +195,20 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
 
   // send/createNote fora do disable: o texto some na hora do envio; travar o campo
   // até a API voltar impedia digitar a próxima mensagem com o campo ainda cheio.
-  const isDisabled = disabled || !!blockedReason || upload.isPending;
+  const isDisabled = disabled || !!blockedReason || upload.isPending || aguardandoAssumir;
   // A janela só alcança o que SAI. Em modo nota o composer segue liberado: a
   // nota interna nunca chega ao cliente, e é onde o atendente registra por que
   // a conversa esfriou — barrá-la tira exatamente o que ainda dá para fazer.
   const respostaBarrada = isDisabled || (mode === "reply" && !!janelaFechada);
+
+  /**
+   * O que o arraste aceita — a MESMA guarda do "+" e do Ctrl+V: caixa liberada
+   * para resposta e nenhuma prévia aberta (um segundo anexo trocaria em silêncio
+   * o que o atendente já escolheu). Um drop com regra própria furaria o
+   * "bloquear até assumir": botão desabilitado não impede soltar arquivo.
+   */
+  const aceitaArquivoArrastado =
+    (mode === "note" ? !isDisabled : !respostaBarrada) && fila.length === 0;
 
   function autoresize() {
     const ta = taRef.current;
@@ -156,12 +217,30 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
   }
 
+  /**
+   * Devolve o foco ao campo depois do envio (trazido do produto original,
+   * #4148). Quem tirava o foco era o CLIQUE no "Enviar": o botão recebe o foco,
+   * e o mesmo render que limpa o campo troca esse botão pelo gravador. O foco
+   * cai no `body` e a segunda mensagem só sai depois de clicar na caixa. Só
+   * devolve quando o foco ficou órfão ou ninguém o tomou, e nunca a campo travado.
+   */
+  function devolverFocoAoCampo() {
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta || ta.disabled) return;
+      const ativo = document.activeElement;
+      if (ativo && ativo !== document.body && ativo !== ta) return;
+      ta.focus();
+      autoresize();
+    });
+  }
+
   function handleSubmit() {
     const body = text.trim();
     if (!body || (mode === "note" ? isDisabled : respostaBarrada)) return;
 
     setText("");
-    requestAnimationFrame(() => autoresize());
+    devolverFocoAoCampo();
 
     const restoreOnError = () => {
       // Se a pessoa já começou a próxima resposta, preserve os dois textos.
@@ -178,6 +257,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         conversation_id: conversationId,
         body,
         type: "text",
+        assinar,
         ...(respondendo ? { reply_to_message_id: respondendo.id } : {}),
       },
       {
@@ -216,17 +296,70 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       });
   }
 
-  function applyTemplate(t: MessageTemplate) {
-    const filled = interpolateTemplate(t.body, { name: contactName ?? null });
-    setText(filled);
-    setMenuDismissed(true);
+  function escreverNoCampo(texto: string, focar = true) {
+    setText(texto);
     const ta = taRef.current;
     if (!ta) return;
     requestAnimationFrame(() => {
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = filled.length;
+      if (focar) ta.focus();
+      ta.selectionStart = ta.selectionEnd = texto.length;
       autoresize();
     });
+  }
+
+  /** Os BYTES de uma mídia da resposta rápida, pela própria origem (sem CORS do bucket). */
+  async function arquivoDaMidia(templateId: string, midia: MidiaDeTemplate, indice: number): Promise<File> {
+    const res = await fetch(`/api/v1/message-templates/${templateId}/midias/${indice}`);
+    if (!res.ok) throw new Error("midia_indisponivel");
+    const blob = await res.blob();
+    const nome = midia.storage_path.split("/").pop() ?? `arquivo-${indice + 1}`;
+    // O tipo sai do CAMINHO (que a rota de upload escolheu pelos bytes).
+    return new File([blob], nome, { type: mimeDaMidia(midia.storage_path) });
+  }
+
+  /**
+   * Escolhe a resposta rápida — pelo "/" ou pelo botão da barra, um caminho só.
+   *
+   * Só texto: o texto vai para o campo, como sempre. Com imagem ou áudio, os
+   * arquivos entram na fila de anexos (com prévia) e o texto vira a legenda da
+   * primeira imagem. Áudio não leva legenda no WhatsApp: sem imagem, o texto
+   * fica no campo para sair como mensagem. NADA é enviado aqui.
+   */
+  async function applyTemplate(template: Recurso) {
+    const leitura = lerRespostaRapidaGravada(template);
+    setMenuDismissed(true);
+    if (!leitura.ok) {
+      toast.error(t(leitura.motivo));
+      return;
+    }
+    const texto = interpolateTemplate(template.body, { name: contactName ?? null }, variaveisDaEmpresa);
+    const midias = template.midias ?? [];
+    if (!midias.length || respostaBarrada) {
+      escreverNoCampo(texto);
+      return;
+    }
+    try {
+      const arquivos = await Promise.all(midias.map((m, i) => arquivoDaMidia(template.id, m, i)));
+      const levaLegenda = midias.some((m) => !ehMidiaDeAudio(m));
+      // A imagem que leva a legenda vai primeiro na fila: é ela que o diálogo
+      // abre com o texto já escrito.
+      const ordenados = levaLegenda
+        ? [...arquivos.filter((a) => !a.type.startsWith("audio/")), ...arquivos.filter((a) => a.type.startsWith("audio/"))]
+        : arquivos;
+      setFila(ordenados);
+      setTotalDaFila(ordenados.length);
+      if (levaLegenda) {
+        setLegendaInicial(texto || null);
+        setText("");
+      } else {
+        setLegendaInicial(null);
+        escreverNoCampo(texto, false);
+      }
+    } catch {
+      // Sem os bytes não há prévia nem envio: o texto vai para o campo, com o aviso.
+      toast.error(t("Não foi possível carregar a mídia da resposta rápida. O texto foi para o campo."));
+      escreverNoCampo(texto);
+    }
   }
 
   /**
@@ -241,11 +374,49 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
    * Ctrl+V precisa continuar sendo o Ctrl+V de sempre.
    */
   function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
-    if (mode !== "reply" || respostaBarrada || pendingFile) return;
+    // Na nota interna a imagem colada vira anexo da nota (migration 0547).
+    if ((mode === "note" ? isDisabled : respostaBarrada) || pendingFile) return;
     const imagem = imagemDoClipboard(e.clipboardData, new Date());
     if (!imagem) return; // colagem de texto segue o caminho normal do browser
     e.preventDefault();
     setPendingFile(imagem);
+  }
+
+  function trazArquivo(e: DragEvent<HTMLElement>): boolean {
+    return Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  }
+
+  /** O `preventDefault` impede o navegador de ABRIR o arquivo no lugar da conversa — vale mesmo com a caixa travada. */
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    if (!trazArquivo(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = aceitaArquivoArrastado ? "copy" : "none";
+  }
+
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (!trazArquivo(e) || !aceitaArquivoArrastado) return;
+    e.preventDefault();
+    arrasteEmCurso.current += 1;
+    setArrastandoArquivo(true);
+  }
+
+  /** Sem checar o tipo de propósito: alguns navegadores dão `types` vazio na saída. */
+  function onDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    arrasteEmCurso.current = Math.max(0, arrasteEmCurso.current - 1);
+    if (arrasteEmCurso.current === 0) setArrastandoArquivo(false);
+  }
+
+  /** Soltou: o arquivo cai na MESMA fila do "+", que abre a prévia. Nada sai daqui. */
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    if (!trazArquivo(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    arrasteEmCurso.current = 0;
+    setArrastandoArquivo(false);
+    if (!aceitaArquivoArrastado) return;
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length) escolherArquivos(files);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -271,11 +442,26 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   return (
     <>
       <div
+        data-testid="composer"
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
         className={cn(
           "relative border-t border-border bg-background px-3 py-2",
           mode === "note" && "border-warning/40 bg-warning-bg",
         )}
       >
+        {/* O realce do arraste: a única confirmação de que o espaço aceita
+            arquivo. `pointer-events-none` para não roubar os eventos dos filhos. */}
+        {arrastandoArquivo && (
+          <div
+            data-testid="arraste-de-arquivo"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-sm border-2 border-dashed border-primary bg-primary/10 px-3 text-center text-xs font-medium text-primary"
+          >
+            {t("Solte o arquivo para anexar")}
+          </div>
+        )}
         {mode === "reply" && (
           <ReplyReviewPanel conversationId={conversationId} disabled={isDisabled} />
         )}
@@ -283,7 +469,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           open={menuOpen}
           query={slash.query}
           templates={templates.data ?? []}
-          onPick={applyTemplate}
+          grupos={grupos.data ?? []}
+          onPick={(tpl) => void applyTemplate(tpl)}
           onClose={() => setMenuDismissed(true)}
         />
         {/* O AVISO DO RASCUNHO SUGERIDO (issue #1611) — acima dos modos, sempre
@@ -306,6 +493,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
                 avisoDeRascunhoIndisponivel(rascunho.leitura.motivo, t)
               )}
             </p>
+          </div>
+        )}
+        {/* O AVISO DO BLOQUEIO ATÉ ASSUMIR: o motivo fica junto da caixa
+            travada; a saída é o "Assumir" do cabeçalho. */}
+        {aguardandoAssumir && (
+          <div
+            data-testid="aviso-assumir"
+            className="mb-1.5 flex items-start gap-2 rounded-md border-l-2 border-primary bg-muted/60 px-2 py-1.5 text-xs"
+          >
+            <p className="min-w-0 flex-1 text-muted-foreground">{t("Assuma esta conversa para responder.")}</p>
           </div>
         )}
         <div className="mb-1.5 flex gap-1">
@@ -364,14 +561,44 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             </button>
           </div>
         )}
+        {/* A BARRA DE RESPOSTAS RÁPIDAS — um botão por resposta. O clique NÃO
+            envia: entrega ao MESMO applyTemplate do "/". */}
+        {mode === "reply" && (
+          <BarraDeRecursos
+            recursos={templates.data ?? []}
+            grupos={grupos.data ?? []}
+            disabled={respostaBarrada || !!text.trim()}
+            dica={
+              text.trim()
+                ? t("A resposta rápida substitui o texto do campo. Envie ou apague o rascunho antes.")
+                : undefined
+            }
+            onEscolher={(r) => void applyTemplate(r)}
+          />
+        )}
         <div className="flex items-end gap-2">
+          {/* Na nota interna o "+" anexa à NOTA (migration 0547) — sem "Contato",
+              que é cartão para o cliente. */}
+          <AttachMenu
+            disabled={mode === "note" ? isDisabled : respostaBarrada}
+            onPick={escolherArquivos}
+            onPickContact={mode === "reply" ? () => setContactPickerOpen(true) : undefined}
+          />
+          {/* Agendar mensagem, nota ou chatbot (migration 0511). Bloqueio do
+              contato barra; janela de 24h fechada não barra (a nota e o
+              chatbot podem ser agendados, e a janela pode reabrir). */}
+          <AgendarButton
+            conversationId={conversationId}
+            disabled={Boolean(disabled || blockedReason)}
+            textoAtual={text}
+          />
+          {/* Assinatura do atendente (Configurações › Conversas). Só na
+              resposta: nota interna não vai para o cliente. */}
           {mode === "reply" && (
-            <AttachMenu
-              disabled={respostaBarrada}
-              onPick={setPendingFile}
-              onPickContact={() => setContactPickerOpen(true)}
-            />
+            <AssinarButton ligado={assinar} onChange={setAssinar} disabled={respostaBarrada} />
           )}
+          {/* Figurinhas salvas da empresa (migration 0516). Só na resposta. */}
+          {mode === "reply" && <FigurinhasButton conversationId={conversationId} disabled={respostaBarrada} />}
           <EmojiButton
             disabled={isDisabled}
             onPick={(emoji) => {
@@ -447,22 +674,69 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       </div>
       <AttachmentPreviewDialog
         file={pendingFile}
-        sending={upload.isPending || send.isPending}
+        legendaInicial={totalDaFila > 0 && fila.length === totalDaFila ? legendaInicial : null}
+        progresso={
+          totalDaFila > 1 ? `${totalDaFila - fila.length + 1} ${t("de")} ${totalDaFila}` : null
+        }
+        sending={upload.isPending || send.isPending || createNote.isPending}
+        notaInterna={filaEmNota}
         onCancel={() => setPendingFile(null)}
         onSend={async (caption) => {
           if (!pendingFile) return;
           try {
-            const uploaded = await upload.mutateAsync({ conversationId, file: pendingFile });
+            // O arquivo que JÁ subiu não sobe de novo: se o envio falhou (a rede
+            // caiu na volta), o retry usa o MESMO caminho no Storage, e com o
+            // mesmo conteúdo o envio repete a mesma chave de idempotência — o
+            // servidor devolve o recibo do primeiro em vez de mandar a foto
+            // duas vezes ao cliente.
+            const arquivo = pendingFile;
+            const uploaded =
+              subidos.current.get(arquivo) ??
+              (await upload.mutateAsync({
+                conversationId,
+                file: arquivo,
+                destino: filaEmNota ? "nota" : "mensagem",
+              }));
+            subidos.current.set(arquivo, uploaded);
+            if (filaEmNota) {
+              // A NOTA INTERNA com anexo: o texto da prévia é o corpo da nota,
+              // e nada passa pelo envio ao cliente.
+              createNote.mutate(
+                {
+                  conversation_id: conversationId,
+                  body: caption ?? "",
+                  anexo: {
+                    storage_path: uploaded.storage_path,
+                    media_mime: uploaded.media_mime,
+                    media_size_bytes: uploaded.media_size_bytes,
+                  },
+                },
+                {
+                  onSuccess: () => {
+                    subidos.current.delete(arquivo);
+                    setFila((atual) => atual.slice(1));
+                  },
+                },
+              );
+              return;
+            }
             send.mutate(
               {
                 conversation_id: conversationId,
                 type: uploaded.kind,
                 body: caption || undefined,
+                assinar,
                 media_storage_path: uploaded.storage_path,
                 media_mime: uploaded.media_mime,
                 media_size_bytes: uploaded.media_size_bytes,
               },
-              { onSuccess: () => setPendingFile(null) },
+              // Enviado este, o próximo da fila aparece (a legenda era só do primeiro).
+              {
+                onSuccess: () => {
+                  subidos.current.delete(arquivo);
+                  setFila((atual) => atual.slice(1));
+                },
+              },
             );
           } catch {
             // toast já disparado pelo onError de useUploadMedia; dialog fica aberto p/ retry

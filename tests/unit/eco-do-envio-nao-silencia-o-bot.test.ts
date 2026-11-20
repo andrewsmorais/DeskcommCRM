@@ -343,6 +343,20 @@ describe("eco do envio da automação — reconhecido como nosso (#652)", () => 
     ).toBeNull();
   });
 
+  it("CONTROLE (#3165): linha já confirmada com o id de OUTRA mensagem não serve de álibi", async () => {
+    // A guarda passou a ler também as linhas `sent` (o carimbo pode cair no
+    // meio da ingestão). Só vale o id DESTA mensagem: um envio nosso já
+    // confirmado, com o mesmo texto e outro id, não pode esconder a digitação
+    // do celular.
+    const { admin, conversa } = banco([
+      emVoo({ external_id: "3EB0OUTRAMENSAGEMQUALQUER", status: "sent" }),
+    ]);
+
+    await dispatchWahaEvent(admin as never, SESSION as never, envelope(eco(TEXTO)), "req-3165");
+
+    expect(conversa.bot_silenced_until).not.toBeNull();
+  });
+
   it("o envio da automação já CONFIRMADO não vira uma segunda linha na conversa", async () => {
     // O eco depois do ack: a linha do envio já tem `external_id`, o dedup por id
     // casa e nada é inserido. É o caso normal (o eco chega segundos depois do

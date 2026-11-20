@@ -34,7 +34,7 @@ type EventLike = {
   };
   user?: unknown;
   transaction?: string;
-  contexts?: { trace?: { data?: Record<string, unknown> } };
+  contexts?: { trace?: { data?: Record<string, unknown> } } & Record<string, unknown>;
   message?: string;
   exception?: { values?: Array<{ value?: string }> };
 };
@@ -125,7 +125,7 @@ function apagarCpfETelefone(trecho: string): string {
  * `docs/doctrine/restricao-de-canal.md`).
  */
 const CREDENTIAL_PATH =
-  /(\/api\/v1\/webhooks\/[^/?#\s]+\/|\/team\/accept-invite\/)[^/?#\s]+/g;
+  /(\/api\/v1\/webhooks\/[^/?#\s]+\/|\/team\/accept-invite\/|\/api\/v1\/exportacao\/)[^/?#\s]+/g;
 
 /**
  * Redige credencial de path e valor de query string, preservando as CHAVES da query.
@@ -198,6 +198,25 @@ function scrubHeaders(headers: unknown): void {
   const record = headers as Record<string, string>;
   for (const key of Object.keys(record)) {
     if (isSensitiveHeader(key)) delete record[key];
+    // O VALOR também: o `referer` carrega o caminho da página, e o caminho pode
+    // ser o do convite ou da exportação (auditoria rodada 2, medido pelo SDK).
+    else if (typeof record[key] === "string") record[key] = scrubUrl(record[key]);
+  }
+}
+
+/**
+ * Todo texto dentro dos `contexts` passa pelo `scrubUrl`, não só `trace.data`:
+ * o `onRequestError` do Next grava o caminho CRU em `contexts.nextjs.request_path`
+ * (com o token do webhook e a assinatura da query).
+ */
+function scrubContexts(contexts: Record<string, unknown> | undefined): void {
+  if (!contexts) return;
+  for (const [nome, ctx] of Object.entries(contexts)) {
+    if (nome === "trace" || !ctx || typeof ctx !== "object") continue;
+    const record = ctx as Record<string, unknown>;
+    for (const [chave, valor] of Object.entries(record)) {
+      if (typeof valor === "string") record[chave] = scrubUrl(valor);
+    }
   }
 }
 
@@ -229,6 +248,7 @@ function scrubEventUrls<T extends EventLike>(event: T): T {
     event.transaction = scrubUrl(event.transaction);
   }
   scrubAttributes(event.contexts?.trace?.data);
+  scrubContexts(event.contexts);
   return event;
 }
 
@@ -271,9 +291,16 @@ export const sentryScrubHooks = {
     if (typeof breadcrumb.message === "string") {
       breadcrumb.message = scrubUrl(breadcrumb.message);
     }
-    const url = breadcrumb.data?.url;
-    if (typeof url === "string" && breadcrumb.data) {
-      breadcrumb.data.url = scrubUrl(url);
+    const data = breadcrumb.data;
+    if (data) {
+      // `url` (fetch/xhr), `from`/`to` (navegação): todos carregam caminho.
+      for (const chave of ["url", "from", "to"]) {
+        const valor = data[chave];
+        if (typeof valor === "string") data[chave] = scrubUrl(valor);
+      }
+      // `arguments` do console sai inteiro: é o objeto que o código logou, com o
+      // que tiver dentro (nome, e-mail, texto). A `message` já leva a frase limpa.
+      delete data.arguments;
     }
     return breadcrumb;
   },

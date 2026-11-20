@@ -181,6 +181,9 @@ describe("ExtensionsManager", () => {
     expect(configHeaders.get("X-Expected-Organization-Id")).toBe(ORG_A);
     expect(await screen.findByText("Configuração salva.")).toBeVisible();
     expect(toast.success).not.toHaveBeenCalledWith("Configuração salva.");
+    // O tema da extensão é pintado pelo layout do servidor: sem o refresh, a cor só
+    // mudava depois de recarregar a página.
+    expect(router.refresh).toHaveBeenCalledTimes(1);
   });
 
   it.each([

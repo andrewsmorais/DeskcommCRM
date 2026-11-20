@@ -8,9 +8,11 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  */
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ApiError } from "@/lib/api/types";
 import { ok, fail, noContent } from "@/lib/api/wrappers";
+import { recusaSeFichaMarcada } from "@/lib/contacts/marca-exige-gerente";
 import { requireRole } from "@/lib/auth/require-role";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -22,12 +24,78 @@ import { deleteContactHandler, getContactHandler, patchContactHandler } from "..
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Os telefones da ficha além do principal (Spec 31, B1), e o tipo e o WhatsApp
+ * do principal, que o handler da ficha não seleciona. O filtro de organização é
+ * EXPLÍCITO nas duas leituras: o cliente de sessão tem RLS, mas a regra do
+ * repositório é não depender só dela. `wa_lid` fica de fora de propósito: é o
+ * identificador do WhatsApp daquele número, e a API não precisa dele.
+ */
+async function telefonesDaFicha(
+  supabase: SupabaseClient,
+  organizationId: string,
+  contactId: string,
+  requestId: string,
+): Promise<{
+  phone_type: string | null;
+  phone_whatsapp: string | null;
+  phone_label: string | null;
+  additional_phones: Array<{
+    id: string;
+    phone_number: string;
+    type: string;
+    whatsapp: string;
+    label: string | null;
+    origin: string;
+    created_at: string;
+  }>;
+}> {
+  const { data: principal, error: errPrincipal } = await supabase
+    .from("contacts")
+    .select("phone_type, phone_whatsapp, phone_label")
+    .eq("organization_id", organizationId)
+    .eq("id", contactId)
+    .maybeSingle();
+  const { data: extras, error: errExtras } = await supabase
+    .from("contact_phones")
+    .select("id, phone_number, tipo, whatsapp, rotulo, origem, created_at")
+    .eq("organization_id", organizationId)
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: true });
+  const erro = errPrincipal ?? errExtras;
+  if (erro) throw new ApiError(500, "internal_error", undefined, requestId, erro.message);
+  return {
+    phone_type: principal?.phone_type ?? null,
+    phone_whatsapp: principal?.phone_whatsapp ?? null,
+    phone_label: principal?.phone_label ?? null,
+    additional_phones: (extras ?? []).map((e) => ({
+      // O id é o endereço das rotas de editar, remover e tornar principal.
+      id: e.id,
+      phone_number: e.phone_number,
+      type: e.tipo,
+      whatsapp: e.whatsapp,
+      label: e.rotulo,
+      origin: e.origem,
+      created_at: e.created_at,
+    })),
+  };
+}
+
+/**
+ * Id que não é UUID não é contato nenhum: 404 na porta, antes do banco. Sem
+ * isto o Postgres recusava o texto ("invalid input syntax for type uuid") e a
+ * rota respondia 500 — achado do schemathesis (14/11/2026).
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const naoEContato = (requestId: string) => fail("not_found", "Contact not found.", 404, { requestId });
+
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const requestId = randomUUID();
   const { id } = await ctx.params;
+  if (!UUID.test(id)) return naoEContato(requestId);
 
   const supabase = await createClient();
   const {
@@ -58,7 +126,8 @@ export async function GET(
       },
       { contactId: id, decryptPurpose },
     );
-    return ok(result, { requestId });
+    const telefones = await telefonesDaFicha(supabase, activeOrg.orgId, id, requestId);
+    return ok({ ...result, ...telefones }, { requestId });
   } catch (err) {
     if (err instanceof ApiError) {
       return fail(err.code, err.message, err.status, { requestId });
@@ -76,6 +145,7 @@ export async function PATCH(
 
   const requestId = randomUUID();
   const { id } = await ctx.params;
+  if (!UUID.test(id)) return naoEContato(requestId);
 
   const supabase = await createClient();
   // spec 13 §4: escrita é agent+ (viewer é read-only).
@@ -99,6 +169,18 @@ export async function PATCH(
       });
     }
     throw err;
+  }
+
+  // Tirar ou trocar o telefone de ficha "pessoal"/"sempre humano" é de gerente.
+  if (input.phone_number !== undefined) {
+    const recusa = await recusaSeFichaMarcada({
+      supabase,
+      organizationId: activeOrg.orgId,
+      contactId: id,
+      papel: activeOrg.role,
+      requestId,
+    });
+    if (recusa) return recusa;
   }
 
   try {
@@ -131,6 +213,7 @@ export async function DELETE(
 
   const requestId = randomUUID();
   const { id } = await ctx.params;
+  if (!UUID.test(id)) return naoEContato(requestId);
 
   const authz = await requireRole("agent", { requestId, resource: "contacts" });
   if (!authz.ok) return authz.response;
@@ -138,6 +221,16 @@ export async function DELETE(
   const activeOrg = authz.org;
 
   const supabase = await createClient();
+
+  // Ficha "pessoal"/"sempre humano": só gerente apaga, e ANTES de levar o histórico.
+  const recusa = await recusaSeFichaMarcada({
+    supabase,
+    organizationId: activeOrg.orgId,
+    contactId: id,
+    papel: activeOrg.role,
+    requestId,
+  });
+  if (recusa) return recusa;
 
   try {
     await deleteContactHandler(

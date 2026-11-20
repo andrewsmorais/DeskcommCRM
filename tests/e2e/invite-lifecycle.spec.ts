@@ -371,6 +371,7 @@ test.describe("ciclo de vida do convite (ponta a ponta + adversarial)", () => {
 
     await page.goto(`/signup?invite=${encodeURIComponent(valid)}`);
     await expect(page.getByLabel("Nome da empresa")).toHaveCount(0);
+    await expect(page.getByLabel("Seu nome")).toBeVisible();
     const email = page.getByLabel("Email");
     await expect(email).toHaveValue(inv.invitee_email);
     await expect(email).toHaveAttribute("readonly", /.*/);
@@ -391,7 +392,7 @@ test.describe("ciclo de vida do convite (ponta a ponta + adversarial)", () => {
     // DOIS elementos e o strict mode reprova — sobre uma tela que está correta.
     await expect(page.getByRole("alert").first()).toContainText(/expirou|não é mais válido/i);
     // E cai no signup COMUM só depois do aviso — nunca em silêncio.
-    await expect(page.getByLabel("Nome da empresa")).toBeVisible();
+    await expect(page.getByLabel("Seu nome")).toBeVisible();
   });
 
   /**

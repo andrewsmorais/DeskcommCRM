@@ -4,7 +4,9 @@ import { fontesDoAppDaMeta } from "@/lib/channels/meta/app";
 import { metaPodeReceber } from "@/lib/channels/meta/webhook";
 import { nomeCurtoDaSessao } from "@/lib/channels/nome-da-sessao";
 import { getWahaClient } from "@/lib/waha/client";
+import { env } from "@/lib/env";
 import { ConnectWhatsappClient } from "./_client";
+import { VideoDaConexao, urlDeVideoSegura } from "./_video";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +43,9 @@ export default async function ConnectWhatsappPage() {
       <p className="text-sm text-muted-foreground">
         {traduzir("Novos canais começam em modo de teste. Após concluir a configuração, abra Conexões para autorizar seus números de teste ou liberar o público.", idioma)}
       </p>
+      <VideoDaConexao url={urlDeVideoSegura(env.ONBOARDING_WHATSAPP_VIDEO_URL)} />
       <ConnectWhatsappClient
+        qrDireto={env.ONBOARDING_WHATSAPP_QR_DIRETO}
         wahaConfigured={wahaConfigured}
         sessionName={nomeCurtoDaSessao(activeOrg.orgId)}
         oficialPodeReceber={oficialPodeReceber}

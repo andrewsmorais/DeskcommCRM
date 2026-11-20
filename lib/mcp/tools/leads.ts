@@ -13,6 +13,7 @@
  */
 import { z } from "zod";
 
+import { conferirCamposPersonalizados } from "../conferencia-de-campos";
 import {
   listLeadsHandler,
   getLeadHandler,
@@ -279,6 +280,13 @@ export const crmUpdateLead: McpToolDefinition<typeof updateInputShape> = {
   handler: async (input, ctx) => {
     const { lead_id, ...rest } = input;
     const parsed = updateLeadSchema.parse(rest);
+    // #2234 — a IA só grava o que o CLIENTE disse. A conferência vale só para a
+    // origem do agente de IA (tela, API de terceiros e automação passam por
+    // aqui sem nenhuma leitura): o degrau 1 confere número, data, e-mail e
+    // dinheiro em código, o degrau 2 pergunta ao Jev o que sobrou, e o que o
+    // cliente não disse volta como ERRO DE ENSINO para o modelo, com os outros
+    // campos da mesma chamada seguindo gravando (`lib/mcp/conferencia-de-campos`).
+    const conferencia = await conferirCamposPersonalizados(ctx, { leadId: lead_id }, parsed.custom_fields);
     const lead = await updateLeadHandler(
       ctx.supabase,
       {
@@ -287,9 +295,19 @@ export const crmUpdateLead: McpToolDefinition<typeof updateInputShape> = {
         requestId: ctx.requestId,
       },
       lead_id,
-      parsed,
+      conferencia.custom_fields === undefined
+        ? parsed
+        : { ...parsed, custom_fields: conferencia.custom_fields },
     );
-    return { lead };
+    return {
+      lead,
+      ...(conferencia.recusados.length > 0
+        ? {
+            campos_nao_gravados: conferencia.recusados,
+            erro_de_ensino: conferencia.recusados.map((r) => r.mensagem).join(" "),
+          }
+        : {}),
+    };
   },
 };
 

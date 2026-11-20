@@ -114,6 +114,7 @@ beforeAll(() => {
       v_empresa uuid;
       v_pessoa uuid;
       v_lote uuid;
+      v_setor uuid;
     begin
       foreach v_org in array array['${ORG_A}'::uuid, '${ORG_B}'::uuid] loop
         select id into v_sess from public.channel_sessions where organization_id = v_org limit 1;
@@ -311,6 +312,15 @@ beforeAll(() => {
           insert into public.contact_field_proposals
             (organization_id, contact_id, campo, valor_proposto, expires_at)
             values (v_org, v_contact, 'email', 'rls-invariant@exemplo.test', now() + interval '7 days');
+        end if;
+
+        -- contact_phones (migration 0541): o segundo telefone da ficha. Número
+        -- diferente por organização (a regra "um número, uma ficha" é por
+        -- organização, então o mesmo número nas duas também passaria).
+        if not exists (select 1 from public.contact_phones where organization_id = v_org) then
+          insert into public.contact_phones (organization_id, contact_id, phone_number)
+            values (v_org, v_contact,
+                    '+55119' || lpad((abs(hashtext(v_org::text)) % 100000000)::text, 8, '0'));
         end if;
 
         if not exists (select 1 from public.catalog_products where organization_id = v_org) then
@@ -559,6 +569,18 @@ beforeAll(() => {
         insert into public.import_rows (organization_id, batch_id, row_number, raw_data)
           values (v_org, v_lote, 2, '{"nome": "RLS invariant"}'::jsonb)
           on conflict (batch_id, row_number) do nothing;
+        -- migration 0496 — setor e o seu membro. Vazar entrega ao vizinho como a
+        -- organização divide a equipe e quem atende cada área.
+        select id into v_setor from public.setores
+          where organization_id = v_org and nome = 'RLS invariant setor';
+        if v_setor is null then
+          insert into public.setores (organization_id, nome)
+            values (v_org, 'RLS invariant setor') returning id into v_setor;
+        end if;
+        insert into public.setor_membros (organization_id, setor_id, user_id)
+          values (v_org, v_setor,
+                  case when v_org = '${ORG_A}'::uuid then '${USER_A}'::uuid else '${USER_B}'::uuid end)
+          on conflict (setor_id, user_id) do nothing;
       end loop;
     end
     $seed$;
@@ -590,6 +612,9 @@ export const TABLES = [
   "knowledge_searches",
   // migration 0123 (spec 17 §4b) — guarda e-mail/telefone ditos na conversa.
   "contact_field_proposals",
+  // migration 0541 — o segundo telefone da ficha. Leitura por organização; a
+  // escrita exige `agent`, o papel semeado aqui.
+  "contact_phones",
   // migration 0142 — a escolha de camadas de segurança da organização. Entrou aqui
   // depois de uma auditoria medir que ela NÃO tinha prova comportamental nenhuma:
   // o teste de schema dela conecta como `postgres` (rolbypassrls = t), e com a policy
@@ -618,11 +643,11 @@ export const TABLES = [
   "crm_proposal_items",
   // 0227 — texto de sugestões: org + visibilidade da conversa por authenticated.
   "ai_reply_drafts",
-  // migration 0349 — credenciais do trunk SIP por organizacao. Leitura e
-  // qualquer membro da org (a tela de originar chamada precisa saber SE
-  // existe trunk configurado); a ESCRITA exige admin (mesmo nivel de
-  // ai_provider_credentials) e NAO e medida aqui.
-  "voip_trunk_settings",
+  // ⚠️ `voip_trunk_settings` (migration 0349) SAIU desta lista na 0509: a
+  // leitura passou a exigir `manager` (toda tela e rota que a lê já exigia), e
+  // o usuário semeado aqui é `agent` — o controle positivo falharia por ACERTO.
+  // A prova das duas direções mais o gate de papel vive em
+  // `tests/invariants/endurecimento-rodada-2.test.ts`.
   // phone_numbers (SIP module, #677): numeros (DID) que recebem ligacao.
   // Leitura/escrita org-scoped (sem segundo eixo medido aqui -- ver a nota
   // de DIVIDA_RBAC_CONHECIDA em rbac-config-ia-canais.test.ts).
@@ -724,6 +749,11 @@ export const TABLES = [
   "company_people",
   "import_batches",
   "import_rows",
+  // migration 0496 — setores e os membros de cada um. Leitura org-flat (o
+  // atendente precisa ver os setores para transferir); a escrita por papel
+  // (manager) é medida em tests/invariants/setores.test.ts.
+  "setores",
+  "setor_membros",
 ] as const;
 
 describe("RLS tenant isolation (fn_user_org_ids pattern)", () => {
@@ -746,18 +776,28 @@ describe("RLS tenant isolation (fn_user_org_ids pattern)", () => {
   }
 
   it("ai_reply_drafts: org B lê sua sugestão e não lê a de A (direção inversa)", () => {
-    expect(countAs(USER_B,
-      `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_B}';`,
-    )).toBeGreaterThanOrEqual(1);
-    expect(countAs(USER_B,
-      `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_A}';`,
-    )).toBe(0);
+    expect(
+      countAs(
+        USER_B,
+        `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_B}';`,
+      ),
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      countAs(
+        USER_B,
+        `select count(*) from public.ai_reply_drafts where organization_id = '${ORG_A}';`,
+      ),
+    ).toBe(0);
   });
 
   it("ai_reply_drafts: os dois tenants têm linhas antes de testar as cercas", () => {
-    expect(Number(sql(
-      `select count(distinct organization_id) from public.ai_reply_drafts where organization_id in ('${ORG_A}','${ORG_B}');`,
-    ))).toBe(2);
+    expect(
+      Number(
+        sql(
+          `select count(distinct organization_id) from public.ai_reply_drafts where organization_id in ('${ORG_A}','${ORG_B}');`,
+        ),
+      ),
+    ).toBe(2);
   });
 
   it("superuser sees both orgs (seed sanity: cross-tenant rows really exist)", () => {

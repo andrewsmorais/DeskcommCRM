@@ -24,18 +24,17 @@ import { hashNormalized, normalizeCopy, type RecentCopy } from './engine';
 function parseSpinningKnobs(value: unknown): SpinningKnobs | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const o = value as Record<string, unknown>;
-  const num = (v: unknown, fallback: number): number =>
-    typeof v === 'number' && Number.isFinite(v) ? v : fallback;
-  const patterns =
-    Array.isArray(o.allowlistPatterns) && o.allowlistPatterns.every((p) => typeof p === 'string')
-      ? (o.allowlistPatterns as string[])
-      : SPINNING_DEFAULTS.allowlistPatterns;
+  const num = (v: unknown, fallback: number, min: number, max: number): number =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
   return {
-    windowSize: num(o.windowSize, SPINNING_DEFAULTS.windowSize),
-    similarityThreshold: num(o.similarityThreshold, SPINNING_DEFAULTS.similarityThreshold),
-    repetitionThreshold: num(o.repetitionThreshold, SPINNING_DEFAULTS.repetitionThreshold),
-    allowlistMaxLength: num(o.allowlistMaxLength, SPINNING_DEFAULTS.allowlistMaxLength),
-    allowlistPatterns: patterns,
+    windowSize: num(o.windowSize, SPINNING_DEFAULTS.windowSize, 1, 200),
+    similarityThreshold: num(o.similarityThreshold, SPINNING_DEFAULTS.similarityThreshold, 0.5, 1),
+    repetitionThreshold: num(o.repetitionThreshold, SPINNING_DEFAULTS.repetitionThreshold, 1, 50),
+    allowlistMaxLength: num(o.allowlistMaxLength, SPINNING_DEFAULTS.allowlistMaxLength, 0, 200),
+    // Regex é CÓDIGO, nunca valor de linha: um padrão gravado no banco virava
+    // `new RegExp` executado no worker de todas as empresas (auditoria rodada 2,
+    // backtracking catastrófico). Os padrões são sempre os que o produto traz.
+    allowlistPatterns: SPINNING_DEFAULTS.allowlistPatterns,
   };
 }
 

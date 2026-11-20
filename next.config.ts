@@ -73,6 +73,14 @@ const nextConfig: NextConfig = {
       "./node_modules/.pnpm/@napi-rs+canvas-*/node_modules/@napi-rs/*/*.node",
       // pdfjs-dist em si (ver comentário acima).
       "./node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/**",
+      // pdfkit (dependência do @react-pdf/renderer): o build ESM registra as
+      // fontes padrão com `createRequire(import.meta.url)("#standard-fonts/…")`.
+      // O tracer segue o `import` estático (os `.mjs`) e não esse `require` de
+      // runtime (os `.cjs`), então o standalone sobe sem eles e todo PDF com
+      // Helvetica/Times/Courier morre em `MODULE_NOT_FOUND …/pdfkit/js/
+      // standard-fonts/Helvetica.cjs` (exportar conversa, prévia e envio de
+      // proposta). Medido: 14 `.cjs` + 1 chunk ausentes; com eles o PDF sai.
+      "./node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/js/standard-fonts/**",
     ],
   },
   reactStrictMode: true,
@@ -106,6 +114,21 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
+          // Política de conteúdo MÍNIMA, apontada pelo ZAP (10038 — CSP ausente).
+          // Só as três diretivas que não dependem de endereço de instalação: a
+          // imagem é única para todas as VPS (Supabase, Storage e logos mudam por
+          // cliente), então `script-src`/`connect-src` aqui quebrariam alguém. Elas:
+          //   object-src 'none' — nada de <object>/<embed> (plugin, Flash, PDF
+          //     embutido como vetor de script);
+          //   base-uri 'self' — um <base> injetado não desvia links e scripts
+          //     relativos para outro site;
+          //   frame-ancestors 'none' — o mesmo que o X-Frame-Options acima, na
+          //     forma que os navegadores novos leem primeiro (clickjacking).
+          // Vigiado em tests/seguranca/seguranca.spec.ts.
+          {
+            key: "Content-Security-Policy",
+            value: "object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+          },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           // microphone=(self): o gravador de voz do composer (PTT estilo WhatsApp)
           // usa getUserMedia({audio}); microphone=() bloquearia em TODA origem,

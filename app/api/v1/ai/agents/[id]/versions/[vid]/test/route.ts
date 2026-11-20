@@ -31,8 +31,13 @@ import { type NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { testRunSchema } from "@/lib/ai/agents/validation";
+import {
+  LIMITE_DO_HISTORICO_EM_CARACTERES,
+  LIMITE_DO_HISTORICO_EM_MENSAGENS,
+  testRunSchema,
+} from "@/lib/ai/agents/validation";
 import { avaliarRespostaDeTeste } from "@/lib/ai/agents/avaliar-resposta-de-teste";
 import { testAgentVersion } from "@/lib/agent-engine/agent/sandbox";
 import { requestTurnDeps } from "@/lib/agent-engine/agent/request-deps";
@@ -103,11 +108,41 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { user: authUser, org: activeOrg } = authz;
 
+  // "Testar agente" roda o motor de verdade, na chave da plataforma: sem
+  // assinatura ativa, não abre run nem chama o modelo.
+  const semAssinatura = await exigirAssinaturaAtiva(activeOrg.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
+
   let raw: unknown;
   try {
     raw = await req.json();
   } catch {
     return fail("invalid_request", t("Body JSON inválido."), 400, { requestId });
+  }
+  // O histórico do Testar como conversa é recusado ANTES de qualquer trabalho,
+  // com frase legível: sem teto, cada turno reenviaria a conversa inteira.
+  const historicoPedido = (raw as { history?: unknown } | null)?.history;
+  if (Array.isArray(historicoPedido)) {
+    const caracteres = historicoPedido.reduce<number>((total, m) => {
+      const corpo =
+        m && typeof m === "object" && "body" in m && typeof m.body === "string"
+          ? m.body.trim().length
+          : 0;
+      return total + corpo;
+    }, 0);
+    if (
+      historicoPedido.length > LIMITE_DO_HISTORICO_EM_MENSAGENS ||
+      caracteres > LIMITE_DO_HISTORICO_EM_CARACTERES
+    ) {
+      return fail(
+        "invalid_request",
+        t(
+          "O histórico da conversa passou do limite: até 30 mensagens e 20.000 caracteres. Recomece a conversa para seguir.",
+        ),
+        400,
+        { requestId },
+      );
+    }
   }
   const parsed = testRunSchema.safeParse(raw);
   if (!parsed.success) {
@@ -164,6 +199,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       versionId: vid,
       runId: runRow.id,
       sampleMessage: parsed.data.sample_message,
+      history: parsed.data.history,
       sampleContact: parsed.data.sample_contact,
       channelId: version.channel_session_id,
     });

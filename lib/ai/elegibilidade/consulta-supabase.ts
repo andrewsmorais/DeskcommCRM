@@ -34,10 +34,15 @@ interface ConversaEmbed {
   assignee_kind: string | null;
   contacts: {
     force_human: boolean | null;
+    ai_opt_out?: boolean | null;
+    is_personal?: boolean | null;
     ai_authorized_at: string | null;
     phone_number: string | null;
+    /** `contacts.tags` — a régua de contato interno (#2353). */
+    tags: string[] | null;
   } | null;
   channel_sessions: { metadata: Record<string, unknown> | null } | null;
+  organizations: { settings?: unknown } | null;
 }
 
 /**
@@ -51,7 +56,7 @@ export async function decidirElegibilidadeDaConversaViaSupabase(
   const { data, error } = await admin
     .from("conversations")
     .select(
-      "bot_silenced_until, assignee_kind, contacts:contact_id(force_human, ai_authorized_at, phone_number), channel_sessions:channel_session_id(metadata)",
+      "bot_silenced_until, assignee_kind, organizations:organization_id(settings), contacts:contact_id(force_human, ai_opt_out, is_personal, ai_authorized_at, phone_number, tags), channel_sessions:channel_session_id(metadata)",
     )
     .eq("organization_id", input.organizationId)
     .eq("id", input.conversationId)
@@ -69,7 +74,13 @@ export async function decidirElegibilidadeDaConversaViaSupabase(
       aiGateMode: row.channel_sessions?.metadata?.["ai_gate_mode"] ?? null,
       aiTestPhoneNumbers: row.channel_sessions?.metadata?.["ai_test_phone_numbers"] ?? null,
       contactPhoneNumber: row.contacts?.phone_number ?? null,
-      forceHuman: row.contacts?.force_human ?? false,
+      // As marcas permanentes (0540) barram a IA como a trava de handoff.
+      forceHuman:
+        (row.contacts?.force_human ?? false) ||
+        row.contacts?.ai_opt_out === true ||
+        row.contacts?.is_personal === true,
+      contactTags: row.contacts?.tags ?? null,
+      orgSettings: row.organizations?.settings,
       assigneeKind: row.assignee_kind,
       botSilencedUntil: row.bot_silenced_until,
       aiAuthorizedAt: row.contacts?.ai_authorized_at ?? null,

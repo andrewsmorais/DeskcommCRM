@@ -10,8 +10,11 @@ import {
   PROVEDORES_COM_CHAVE,
   type ProvedorComChave,
 } from "@/lib/ai/pontos/provedores";
+import { PROVEDORES_DE_SERVICO } from "@/lib/ai/pontos/provedores-de-servico";
+import type { ServiceProvider } from "@/hooks/ai/useCredentials";
 import { credentialStatus, useCredentialsList, type CredentialRow } from "@/hooks/ai/useCredentials";
 import { credencialEmUsoPeloJev } from "@/lib/ai/decisao/credencial";
+import type { OrigemDoJev } from "@/lib/ai/decisao/origem";
 import { avisoAoExcluirAChaveDoJev } from "@/lib/ai/decisao/textos";
 import { useT } from "@/hooks/i18n/useT";
 import { CredentialCard } from "./CredentialCard";
@@ -25,7 +28,7 @@ interface Props {
    * O Jev LIGADO: as tarefas dele e se há IA principal para medir sem ele
    * (`page.tsx`). Qual chave ele usa sai da lista viva, aqui — ver `doJev`.
    */
-  jev?: { tarefas: readonly string[]; temIaPrincipal: boolean } | null;
+  jev?: { tarefas: readonly string[]; temIaPrincipal: boolean; origem?: OrigemDoJev } | null;
   /**
    * A instalação trouxe chave de IA no `.env` (a do provedor ou a do gateway)?
    * É o caso mais comum do kit, e essa chave não é linha desta lista.
@@ -37,10 +40,14 @@ interface Props {
 // alguém precise lembrar de acrescentá-lo em três lugares. A UNIÃO, porque a
 // chave do Jev (que só decide) também mora aqui.
 const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(
-  PROVEDORES_COM_CHAVE.map((p) => [p.id, p.rotulo]),
+  [...PROVEDORES_COM_CHAVE, ...PROVEDORES_DE_SERVICO].map((p) => [p.id, p.rotulo]),
 );
 
-const PROVIDER_ORDER: ProvedorComChave[] = PROVEDORES_COM_CHAVE.map((p) => p.id);
+// O serviço de voz entra na MESMA ordem, depois dos provedores de chat.
+const PROVIDER_ORDER: (ProvedorComChave | ServiceProvider)[] = [
+  ...PROVEDORES_COM_CHAVE.map((p) => p.id),
+  ...PROVEDORES_DE_SERVICO.map((p) => p.id),
+];
 
 export function CredentialsList({
   initialData,
@@ -58,8 +65,8 @@ export function CredentialsList({
   // Construído a partir da lista única: escrito à mão, o dia em que um
   // provedor novo entra é o dia em que as credenciais dele somem da tela sem
   // ninguém ver (aconteceu com a OpenRouter).
-  const grouped: Partial<Record<ProvedorComChave, CredentialRow[]>> = Object.fromEntries(
-    PROVEDORES_COM_CHAVE.map((p) => [p.id, [] as CredentialRow[]]),
+  const grouped: Partial<Record<ProvedorComChave | ServiceProvider, CredentialRow[]>> = Object.fromEntries(
+    PROVIDER_ORDER.map((id) => [id, [] as CredentialRow[]]),
   );
   for (const c of credentials) {
     grouped[c.provider]?.push(c);
@@ -68,12 +75,12 @@ export function CredentialsList({
   // A chave que o Jev usa, pela mesma regra que a escolhe para a rede, sobre a
   // lista que a tela relê: trocar a chave tira a linha "Usada em" enquanto a
   // nova é testada (ela não sai para a rede) e a devolve quando passa.
-  const doJev = jev ? credencialEmUsoPeloJev(credentials) : null;
+  const doJev = jev ? credencialEmUsoPeloJev(credentials, jev.origem) : null;
   const avisoAoExcluirOJev =
     !doJev || !jev
       ? undefined
       : avisoAoExcluirAChaveDoJev({
-          temOutraChave: credencialEmUsoPeloJev(credentials.filter((c) => c.id !== doJev.id)) !== null,
+          temOutraChave: credencialEmUsoPeloJev(credentials.filter((c) => c.id !== doJev.id), jev.origem) !== null,
           tarefas: jev.tarefas,
           temIaPrincipal: jev.temIaPrincipal,
         });

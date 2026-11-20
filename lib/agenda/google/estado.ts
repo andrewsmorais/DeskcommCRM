@@ -14,7 +14,7 @@
  * ─── Duas diferenças deliberadas em relação ao precedente ─────────────────
  *
  * 1. **O segredo é injetado, não lido do ambiente.** A versão da Nuvemshop cai
- *    numa chave aleatória por processo quando `INTERNAL_SECRET` está curto.
+ *    numa chave aleatória por processo quando a chave de assinatura falta.
  *    Numa VPS com mais de uma réplica isso significa que o `state` emitido por
  *    um processo não valida no outro — e o sintoma é "conectei e deu erro" de
  *    forma intermitente, sem nada no log que aponte a causa. Aqui a falta de
@@ -55,7 +55,7 @@ function conferirSegredo(segredo: string): string {
   const s = segredo?.trim() ?? "";
   if (s.length < TAMANHO_MINIMO_DO_SEGREDO) {
     throw new Error(
-      "INTERNAL_SECRET ausente ou curto demais: sem ele o retorno do Google não tem como ser verificado",
+      "chave de assinatura ausente ou segredo curto demais (a raiz é LINK_SIGNING_SECRET ou SUPABASE_SERVICE_ROLE_KEY): sem ela o retorno do Google não tem como ser verificado",
     );
   }
   return s;
@@ -69,12 +69,16 @@ export function emitirEstado(
   const organizationId = dados.organizationId?.trim() ?? "";
   const userId = dados.userId?.trim() ?? "";
   if (!organizationId || !userId) {
-    throw new Error("state precisa de organizationId e userId: a agenda conectada é de uma pessoa, não da conta");
+    throw new Error(
+      "state precisa de organizationId e userId: a agenda conectada é de uma pessoa, não da conta",
+    );
   }
   // O ponto é o separador da carga. Um id que o contenha partiria o campo em
   // dois e a verificação leria lixo como se fosse identidade.
   if (organizationId.includes(".") || userId.includes(".")) {
-    throw new Error("organizationId/userId com ponto: o separador da carga do state não sobreviveria");
+    throw new Error(
+      "organizationId/userId com ponto: o separador da carga do state não sobreviveria",
+    );
   }
 
   const nonce = opcoes.nonce?.trim() || randomBytes(16).toString("hex");

@@ -1,6 +1,26 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { PLANOS_COMERCIAIS, planoComercial } from "@/lib/billing/catalogo";
+import {
+  escalaComProposta,
+  extrasLidos,
+  limitesEfetivos,
+  planoComercial,
+  type ExtraCobradoAParte,
+  type LimiteDoPlano,
+} from "@/lib/billing/catalogo";
+import { planoEmVigor } from "@/lib/billing/troca-de-plano";
+
+/** Troca de plano pedida pelo cliente e ainda não aplicada (0508). */
+export interface TrocaDePlano {
+  plano: string;
+  tipo: "upgrade" | "downgrade";
+  efetiva_em: string | null;
+  valor_cents: number | null;
+  link: string | null;
+  pedida_em: string | null;
+  /** Upgrade: a cobrança avulsa da diferença no Asaas. */
+  pagamento_id: string | null;
+}
 
 export interface OrganizationBilling {
   subscription_id?: string;
@@ -8,17 +28,22 @@ export interface OrganizationBilling {
   organization_id: string;
   plan_name: string;
   plan_slug: string;
-  limits: {
-    whatsapp?: number;
-    pipelines?: number;
-    sectors?: number;
-  };
+  limits: Partial<Record<LimiteDoPlano | "sectors", number>>;
   status: string;
   current_period_end: string | null;
   asaas_subscription_id: string | null;
   is_active: boolean;
   seats: number;
   billing_cycle: string;
+  current_period_start?: string | null;
+  canceled_at?: string | null;
+  /** O plano gravado na assinatura (pode diferir de `plan_slug` num downgrade já vencido). */
+  plan_type?: string | null;
+  troca?: TrocaDePlano | null;
+  /** Escala com números acima do pacote base, combinados com o dono (0492). */
+  escala_com_proposta?: boolean;
+  /** Extras cobrados à parte que o dono da plataforma ligou (migration 0562). */
+  extras?: ExtraCobradoAParte[];
 }
 
 export type BillingReadResult =
@@ -43,7 +68,7 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
     const { data: assinatura, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_end, asaas_subscription_id, seats, billing_cycle",
+        "id, updated_at, organization_id, plan_id, plan_type, status, current_period_start, current_period_end, canceled_at, asaas_subscription_id, seats, billing_cycle, limites_personalizados, troca_plano, troca_tipo, troca_efetiva_em, troca_valor_cents, troca_link, troca_pedida_em, troca_pagamento_id, extras",
       )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false, nullsFirst: false })
@@ -55,7 +80,10 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
     if (!assinatura) return { ok: true, billing: null };
 
     let plano: { name: string; slug: string; limits: OrganizationBilling["limits"] } | null = null;
-    if (assinatura.plan_id) {
+    // Downgrade agendado vale no fim do período, mesmo antes de o webhook da
+    // renovação consolidar a troca na assinatura (lib/billing/troca-de-plano.ts).
+    const emVigor = planoEmVigor(assinatura);
+    if (assinatura.plan_id && emVigor === assinatura.plan_type) {
       const res = await supabase
         .from("plans")
         .select("name, slug, limits")
@@ -64,12 +92,12 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
       if (res.error) return leituraIndisponivel("consulta_indisponivel");
       plano = res.data;
     }
-    if (!plano && assinatura.plan_type) {
+    if (!plano && emVigor) {
       // Catálogo global; não é tabela tenant-aware. Nenhum preço é duplicado aqui.
       const res = await supabase
         .from("plans")
         .select("name, slug, limits")
-        .eq("slug", assinatura.plan_type)
+        .eq("slug", emVigor)
         .maybeSingle();
       if (res.error) return leituraIndisponivel("consulta_indisponivel");
       plano = res.data;
@@ -110,8 +138,13 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
         plan_slug: plano.slug,
         limits: {
           ...plano.limits,
-          whatsapp: PLANOS_COMERCIAIS[slug].whatsapp,
-          pipelines: PLANOS_COMERCIAIS[slug].pipelines,
+          // A promessa da página mora no catálogo, não no JSON da tabela `plans`.
+          ...limitesComDescidaPendente(
+            limitesEfetivos(slug, assinatura.limites_personalizados),
+            assinatura.troca_tipo === "downgrade" && emVigor !== assinatura.troca_plano
+              ? planoComercial(assinatura.troca_plano ?? "")
+              : null,
+          ),
         },
         status: assinatura.status,
         current_period_end: assinatura.current_period_end,
@@ -119,6 +152,25 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
         is_active: isActive,
         seats: assinatura.seats,
         billing_cycle: assinatura.billing_cycle || "monthly",
+        current_period_start: assinatura.current_period_start ?? null,
+        canceled_at: assinatura.canceled_at ?? null,
+        plan_type: assinatura.plan_type ?? null,
+        troca:
+          assinatura.troca_plano &&
+          (assinatura.troca_tipo === "upgrade" || assinatura.troca_tipo === "downgrade") &&
+          emVigor !== assinatura.troca_plano
+            ? {
+                plano: assinatura.troca_plano,
+                tipo: assinatura.troca_tipo,
+                efetiva_em: assinatura.troca_efetiva_em ?? null,
+                valor_cents: assinatura.troca_valor_cents ?? null,
+                link: assinatura.troca_link ?? null,
+                pedida_em: assinatura.troca_pedida_em ?? null,
+                pagamento_id: assinatura.troca_pagamento_id ?? null,
+              }
+            : null,
+        escala_com_proposta: slug === "escala" && escalaComProposta(assinatura.limites_personalizados),
+        extras: extrasLidos(assinatura.extras),
       },
     };
   } catch {
@@ -126,9 +178,25 @@ export async function getOrganizationBilling(orgId: string): Promise<BillingRead
   }
 }
 
+/**
+ * Com uma DESCIDA agendada, criar passa a respeitar o plano menor já: o pedido
+ * só sai com a conta dentro dele (`lib/billing/uso-do-plano.ts`), e sem isto
+ * daria para voltar a crescer até a data e descer com tudo de pé.
+ */
+function limitesComDescidaPendente(
+  efetivos: Record<LimiteDoPlano, number>,
+  destino: ReturnType<typeof planoComercial>,
+): Record<LimiteDoPlano, number> {
+  if (!destino) return efetivos;
+  const menor = limitesEfetivos(destino, null);
+  const r = { ...efetivos };
+  for (const k of Object.keys(r) as LimiteDoPlano[]) r[k] = Math.min(r[k], menor[k]);
+  return r;
+}
+
 export function canUse(
   billing: OrganizationBilling | null,
-  recurso: "whatsapp" | "pipelines" | "sectors",
+  recurso: LimiteDoPlano | "sectors",
   quantidadeAtual: number,
 ): { ok: boolean; limite: number } {
   if (

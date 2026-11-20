@@ -206,7 +206,12 @@ describe("extractPdfText — estratégia `processo-a-parte`", () => {
     // dos dois lados.
     const script = `
       const fs = require("node:fs");
-      import("@/lib/ai/rag/extractors/pdf").then(async (m) => {
+      import("@/lib/ai/rag/extractors/pdf").then(async (mod) => {
+        // O --eval do tsx roda em CommonJS: o import() de um módulo TS chega com
+        // os nomes dentro de "default" (medido no tsx 4.23.15 que o lockfile
+        // fixa). O worker de produção carrega o extrator por import estático e
+        // não passa por isto.
+        const m = mod.extractPdfText ? mod : mod.default;
         const texto = await m.extractPdfText(fs.readFileSync("tests/fixtures/sample-multipagina.pdf"));
         process.stdout.write(JSON.stringify({
           estrategia: m.estrategiaPadrao(),

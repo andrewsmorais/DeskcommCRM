@@ -35,7 +35,11 @@ export function InterfaceDaEmpresaForm({ initial, role }: Props) {
         toast.success(t("Menu lateral da empresa salvo."));
         return;
       }
-      toast.error(t("Não foi possível salvar o menu da empresa."));
+      toast.error(
+        resultado.error === "mfa_required"
+          ? t("Confirme o código do seu aplicativo de duas etapas e tente de novo.")
+          : t("Não foi possível salvar o menu da empresa."),
+      );
     });
   }
 

@@ -21,6 +21,8 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mcpAgentDraftRecords } from "@/lib/ai/agents/create-draft";
+import { podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
+import { criarDentroDaCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { mensagemDoEscopo, validarEscopoDaVersao } from "@/lib/ai/agents/escopo";
 import { agentCreateSchema } from "@/lib/ai/guardrails-schema";
 import { agentMcpCreateSchema } from "@/lib/ai/agents/validation";
@@ -48,7 +50,7 @@ const AGENT_COLUMNS_COM_VERSAO =
   ", versao_publicada:ai_agent_versions!ai_agents_published_version_id_fkey(provider, model)";
 
 const VERSION_COLUMNS =
-  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin";
+  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, voz_enabled, voz_quando, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin,inbound_debounce_ms,image_vision_enabled";
 
 // ---------------------------------------------------------------------------
 // GET — list
@@ -108,8 +110,75 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const admin = createAdminClient();
 
-  if (wantsMcp) {
-    const parsed = agentMcpCreateSchema.safeParse(rawBody);
+  // Quantos agentes o plano permite (lib/billing/cota-de-agentes.ts). Contagem
+  // e criação dentro da MESMA reserva: dois pedidos simultâneos no limite não
+  // criam os dois.
+  return criarDentroDaCotaDeAgentes(
+    admin,
+    activeOrg.orgId,
+    { isento: authUser.is_platform_admin || Boolean(authUser.support) },
+    (cota) => fail(cota.code, t(cota.message), cota.status, { requestId }),
+    () => criarAgente(),
+  );
+
+  async function criarAgente(): Promise<Response> {
+    if (wantsMcp) {
+      const parsed = agentMcpCreateSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        return fail("validation_failed", t("Campos inválidos."), 422, {
+          requestId,
+          details: parsed.error.flatten(),
+        });
+      }
+      const input = {
+        ...parsed.data,
+        version: travarConfigTecnica(parsed.data.version, {
+          pode: podeEditarConfigTecnica(authUser),
+          modo: "insert",
+        }),
+      };
+
+      // Validate scope before the first write; a rejected form leaves no orphan.
+      const escopo = await validarEscopoDaVersao(admin, activeOrg.orgId, input.version);
+      if (!escopo.ok)
+        return fail("validation_failed", mensagemDoEscopo(escopo), 422, { requestId });
+      const records = mcpAgentDraftRecords({ orgId: activeOrg.orgId, userId: authUser.id }, input);
+      const { data: agentRow, error: agentError } = await admin
+        .from("ai_agents")
+        .insert(records.agent)
+        .select(AGENT_COLUMNS)
+        .single();
+      if (agentError || !agentRow)
+        return fail("internal_error", "Erro ao criar agente.", 500, { requestId });
+      const { data: versionRow, error: versionError } = await admin
+        .from("ai_agent_versions")
+        .insert(records.version)
+        .select(VERSION_COLUMNS)
+        .single();
+      if (versionError || !versionRow) {
+        await admin
+          .from("ai_agents")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("organization_id", activeOrg.orgId)
+          .eq("id", agentRow.id);
+        return fail("internal_error", t("Erro ao criar versão inicial."), 500, { requestId });
+      }
+
+      void audit({
+        action: "ai_agent.created",
+        actorUserId: authUser.id,
+        organizationId: activeOrg.orgId,
+        resourceType: "ai_agent",
+        resourceId: agentRow.id,
+        requestId,
+        metadata: { kind: "mcp_agent", first_version_id: versionRow.id, priority: input.priority },
+      });
+
+      return ok({ agent: agentRow, version: versionRow }, { status: 201, requestId });
+    }
+
+    // Legacy path — kind='rag_bot' (default DB constraint).
+    const parsed = agentCreateSchema.safeParse(rawBody);
     if (!parsed.success) {
       return fail("validation_failed", t("Campos inválidos."), 422, {
         requestId,
@@ -118,71 +187,24 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
     const input = parsed.data;
 
-    // Validate scope before the first write; a rejected form leaves no orphan.
-    const escopo = await validarEscopoDaVersao(admin, activeOrg.orgId, input.version);
-    if (!escopo.ok) return fail("validation_failed", mensagemDoEscopo(escopo), 422, { requestId });
-    const records = mcpAgentDraftRecords({ orgId: activeOrg.orgId, userId: authUser.id }, input);
-    const { data: agentRow, error: agentError } = await admin
+    const { data, error } = await admin
       .from("ai_agents")
-      .insert(records.agent)
+      .insert({
+        organization_id: activeOrg.orgId,
+        name: input.name,
+        description: input.description ?? null,
+        model: input.model ?? "anthropic/claude-sonnet-5",
+        system_prompt: input.system_prompt,
+        is_active: true,
+        is_default: false,
+        created_by: authUser.id,
+      })
       .select(AGENT_COLUMNS)
       .single();
-    if (agentError || !agentRow)
+
+    if (error || !data) {
       return fail("internal_error", "Erro ao criar agente.", 500, { requestId });
-    const { data: versionRow, error: versionError } = await admin
-      .from("ai_agent_versions")
-      .insert(records.version)
-      .select(VERSION_COLUMNS)
-      .single();
-    if (versionError || !versionRow) {
-      await admin
-        .from("ai_agents")
-        .update({ archived_at: new Date().toISOString() })
-        .eq("organization_id", activeOrg.orgId)
-        .eq("id", agentRow.id);
-      return fail("internal_error", t("Erro ao criar versão inicial."), 500, { requestId });
     }
-
-    void audit({
-      action: "ai_agent.created",
-      actorUserId: authUser.id,
-      organizationId: activeOrg.orgId,
-      resourceType: "ai_agent",
-      resourceId: agentRow.id,
-      requestId,
-      metadata: { kind: "mcp_agent", first_version_id: versionRow.id, priority: input.priority },
-    });
-
-    return ok({ agent: agentRow, version: versionRow }, { status: 201, requestId });
+    return ok(data, { status: 201, requestId });
   }
-
-  // Legacy path — kind='rag_bot' (default DB constraint).
-  const parsed = agentCreateSchema.safeParse(rawBody);
-  if (!parsed.success) {
-    return fail("validation_failed", t("Campos inválidos."), 422, {
-      requestId,
-      details: parsed.error.flatten(),
-    });
-  }
-  const input = parsed.data;
-
-  const { data, error } = await admin
-    .from("ai_agents")
-    .insert({
-      organization_id: activeOrg.orgId,
-      name: input.name,
-      description: input.description ?? null,
-      model: input.model ?? "anthropic/claude-sonnet-5",
-      system_prompt: input.system_prompt,
-      is_active: true,
-      is_default: false,
-      created_by: authUser.id,
-    })
-    .select(AGENT_COLUMNS)
-    .single();
-
-  if (error || !data) {
-    return fail("internal_error", "Erro ao criar agente.", 500, { requestId });
-  }
-  return ok(data, { status: 201, requestId });
 }

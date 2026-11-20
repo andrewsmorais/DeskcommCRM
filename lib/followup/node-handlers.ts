@@ -7,6 +7,7 @@ import type { ServiceBoundary } from "@/lib/atendimento/fronteira";
 import { NO_REPLY_BRANCH_ID, REPEAT_BODY_BRANCH_ID, REPEAT_DONE_BRANCH_ID, nodeBranches } from "./graph-schema";
 import type { FlowEdge, FlowNode, ReplySaveTo } from "./graph-schema";
 import { parseReplyCount } from "./parse-count";
+import { janelaDaEspera, primeiroInstanteNoHorario } from "./espera-no-horario";
 import { clampEspera, esperaPlanejadaDe, type EsperaAdaptativa } from "./timing-plan";
 import { fraseDeConfirmacao } from "./vocabulario";
 
@@ -76,6 +77,12 @@ export interface EnrollmentRow {
 
 /** Minimal typed facts a `condition` node can check — loaded by the engine, never guessed. */
 export interface LeadFacts {
+  /**
+   * Fuso da ORGANIZAÇÃO, para a espera com horário (`ate_o_horario`,
+   * `espera-no-horario.ts`). Ausente cai no padrão do produto; o motor só o
+   * resolve quando o grafo tem espera com horário.
+   */
+  fuso?: string | null;
   lead_stage: string | null;
   tags: string[];
   steps_taken: number;
@@ -578,6 +585,10 @@ export function processNode(input: {
         if (!edge) return { kind: "fail", error: `wait node "${node.id}" has no outbound edge after elapsing` };
         return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
       }
+      // Espera com horário (`ate_o_horario`): segura o toque PROATIVO, não a
+      // resposta a quem acabou de escrever (o `wokeEarly` acima corta a espera).
+      const janelaDoNo =
+        node.config.mode === "fixed" ? janelaDaEspera(node.config.ate_o_horario, lead.fuso) : null;
       if (!waitElapsed) {
         // Adaptativo: o instante vem do plano decidido no acionamento. Sem plano
         // legível para ESTE nó (enrollment anterior à feature, fluxo v1, jsonb
@@ -603,9 +614,21 @@ export function processNode(input: {
         const imune = node.config.mode === "fixed" && node.config.immune_to_reply === true;
         return {
           kind: "wait",
-          next_eval_at: new Date(clock().getTime() + durationMs),
+          // O fim que cai de noite ou num dia fechado vai para a próxima abertura
+          // JÁ AQUI: a fila mostra o instante verdadeiro do próximo passo.
+          next_eval_at: primeiroInstanteNoHorario(new Date(clock().getTime() + durationMs), janelaDoNo),
           ...(imune ? { wake_status: "dormente" as const } : {}),
         };
+      }
+      // E é conferido de novo na SAÍDA: retomar uma pausa ou adiar pode cair
+      // fora do horário. Fora dele, a espera continua até a abertura.
+      {
+        const agora = clock();
+        const abertura = primeiroInstanteNoHorario(agora, janelaDoNo);
+        if (abertura.getTime() > agora.getTime()) {
+          const imune = node.config.mode === "fixed" && node.config.immune_to_reply === true;
+          return { kind: "wait", next_eval_at: abertura, ...(imune ? { wake_status: "dormente" as const } : {}) };
+        }
       }
       const edge = selectEdge(edges, node.id, { type: "always" });
       if (!edge) return { kind: "fail", error: `wait node "${node.id}" has no outbound edge after elapsing` };
@@ -839,6 +862,14 @@ export function processNode(input: {
       // para sair.
       const edge = selectEdge(edges, node.id, { type: "always" });
       if (!edge) return { kind: "fail", error: `internal_task node "${node.id}" has no outbound edge` };
+      return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
+    }
+
+    case "crm_update": {
+      // Como o `internal_task`: o nó só avança; quem escreve no card é o engine
+      // ao aplicar o `advance` (`atualizarCard`), guardado pelo idempotency_key.
+      const edge = selectEdge(edges, node.id, { type: "always" });
+      if (!edge) return { kind: "fail", error: `crm_update node "${node.id}" has no outbound edge` };
       return { kind: "advance", next_node_id: edge.target, next_eval_at: clock() };
     }
 

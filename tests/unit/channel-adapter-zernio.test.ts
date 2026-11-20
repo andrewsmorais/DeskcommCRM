@@ -22,6 +22,19 @@ vi.stubGlobal("fetch", fetchMock);
 
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({}) }));
 
+// O guard de destino resolve o DNS antes do fetch. Sem isto, o caso da URL
+// pública dependia de internet na máquina que roda o teste (falhava offline com
+// `unsafe_url:dns_failed`). Um IP público fixo mantém o guard de verdade
+// exercitado: os casos de IP privado continuam barrando como antes.
+vi.mock("node:dns/promises", async (orig) => {
+  const real = await orig<typeof import("node:dns/promises")>();
+  const lookup = async (host: string, opts?: unknown) =>
+    host === "zernio.com" || host === "coletor.example"
+      ? [{ address: "104.18.0.1", family: 4 }]
+      : real.lookup(host, opts as never);
+  return { ...real, lookup, default: { ...real, lookup } };
+});
+
 const credsRef: { current: unknown } = { current: null };
 vi.mock("@/lib/channels/zernio/credentials", () => ({
   resolveZernioCreds: async () => credsRef.current,
@@ -55,7 +68,10 @@ function respondeOk(status = 200) {
 
 const ultimaChamada = () => ({
   url: String(fetchMock.mock.calls.at(-1)?.[0] ?? ""),
-  init: (fetchMock.mock.calls.at(-1)?.[1] ?? {}) as { headers?: Record<string, string>; body?: string },
+  init: (fetchMock.mock.calls.at(-1)?.[1] ?? {}) as {
+    headers?: Record<string, string>;
+    body?: string;
+  },
 });
 const corpo = () => JSON.parse(ultimaChamada().init.body ?? "{}") as Record<string, unknown>;
 
@@ -257,6 +273,20 @@ describe("send — mídia", () => {
     expect(corpo()).toMatchObject({ attachmentType: "audio", voiceNote: true });
   });
 
+  it("áudio com legenda NÃO manda message — a bolha de voz não leva legenda (#3266)", async () => {
+    respondeOk();
+    await zernioAdapter.send({
+      organizationId: ORG,
+      sessionRef: CREDS.accountId,
+      to: "5959",
+      providerConversationId: THREAD,
+      kind: "audio",
+      media: { ...media, mime: "audio/ogg", filename: "a.ogg", caption: "olha" },
+    });
+    expect(corpo()).toMatchObject({ attachmentType: "audio", voiceNote: true });
+    expect(corpo()).not.toHaveProperty("message");
+  });
+
   it("documento cai em file, não em image", async () => {
     respondeOk();
     await zernioAdapter.send({
@@ -368,18 +398,75 @@ describe("fetchInboundMedia não busca onde o payload mandar", () => {
     // quebraria a feature em silêncio.
     credsRef.current = CREDS;
     fetchMock.mockClear();
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      arrayBuffer: async () => new ArrayBuffer(4),
-      headers: new Headers({ "content-type": "image/png" }),
-    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array(4), { headers: { "content-type": "image/png" } }),
+    );
     const r = await zernioAdapter.fetchInboundMedia!({
       organizationId: ORG,
       sessionRef: CREDS.accountId,
       url: "https://zernio.com/api/v1/media/abc123",
     });
     expect(r.mime).toBe("image/png");
+    expect(r.buffer.byteLength).toBe(4);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A URL do próprio provedor é autenticada: a chave vai.
+    const init = fetchMock.mock.calls[0]![1] as RequestInit & { headers?: Record<string, string> };
+    expect(init.headers?.Authorization).toBe(`Bearer ${CREDS.apiKey}`);
+  });
+});
+
+/**
+ * O guard de destino diz que o host é PÚBLICO, não que é o PROVEDOR. A URL do
+ * anexo mora em `messages.media_url`, que um membro consegue regravar; o fetch
+ * levava a chave do canal para o host que estivesse ali, seguia o 3xx dele
+ * para dentro da rede e guardava o corpo inteiro, de qualquer tamanho.
+ */
+describe("fetchInboundMedia: a chave é do provedor, e o download tem freio", () => {
+  const baixar = (url: string) =>
+    zernioAdapter.fetchInboundMedia!({ organizationId: ORG, sessionRef: CREDS.accountId, url });
+  const initDaChamada = () =>
+    (fetchMock.mock.calls.at(-1)?.[1] ?? {}) as RequestInit & { headers?: Record<string, string> };
+
+  it("host público que não é o provedor baixa SEM a credencial", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(new Uint8Array(3)));
+    await baixar("https://coletor.example/k");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(initDaChamada().headers ?? {})).not.toContain(CREDS.apiKey);
+  });
+
+  it("não segue redirect e tem prazo", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(new Uint8Array(3)));
+    await baixar("https://zernio.com/api/v1/media/abc123");
+    expect(initDaChamada().redirect).toBe("error");
+    expect(initDaChamada().signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("corpo acima do teto do bucket é recusado enquanto chega, não guardado", async () => {
+    const pedaco = new Uint8Array(8 * 1024 * 1024);
+    let enviados = 0;
+    const corpoSemFim = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        enviados += 1;
+        if (enviados > 8) controller.close();
+        else controller.enqueue(pedaco);
+      },
+    });
+    fetchMock.mockResolvedValueOnce(new Response(corpoSemFim));
+    // Desfecho como texto: se o download passar, o Vitest tentaria imprimir o
+    // buffer de 64 MB na mensagem de falha.
+    const desfecho = await baixar("https://zernio.com/api/v1/media/grande").then(
+      (r) => `baixou ${r.buffer.byteLength} bytes`,
+      (e: Error) => e.message,
+    );
+    expect(desfecho).toMatch(/exceeds 52428800 bytes/);
+  });
+
+  it("content-length acima do teto é recusado sem ler o corpo", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array(1), { headers: { "content-length": String(60 * 1024 * 1024) } }),
+    );
+    await expect(baixar("https://zernio.com/api/v1/media/grande")).rejects.toThrow(
+      /exceeds 52428800 bytes/,
+    );
   });
 });

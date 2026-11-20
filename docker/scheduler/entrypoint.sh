@@ -63,11 +63,25 @@ CRONS="
 * * * * *|45|api/v1/cron/event-log-drain
 * * * * *|25|api/v1/cron/routing-worker
 * * * * *|25|api/v1/cron/recover-stuck-messages
+*/5 * * * *|25|api/v1/cron/recover-stuck-calls
+# O nome salvo na agenda do celular (migration 0546): 5 contatos por rodada.
+*/10 * * * *|60|api/v1/cron/contact-names
+# Importação do histórico do WhatsApp e recuperação das conversas da queda: uma
+# rodada por minuto, com o curl acima do prazo da chamada (45 s,
+# lib/channels/historico/prazo.ts) com folga para o banco.
+* * * * *|60|api/v1/cron/historico-import
 * * * * *|25|api/v1/cron/proposta-travada
 * * * * *|45|api/v1/cron/webhook-replay
 */5 * * * *|25|api/v1/cron/storage-redaction?limit=50
 */5 * * * *|25|api/v1/cron/snooze-watcher
 */5 * * * *|60|api/v1/cron/handoff-devolucao
+*/5 * * * *|60|api/v1/cron/conversa-sem-resposta
+# A descida de plano agendada pelo cliente vale no dia: a assinatura passa a
+# dizer o plano novo e o e-mail de "plano reduzido" sai, mesmo sem a renovação paga.
+*/10 * * * *|60|api/v1/cron/troca-de-plano-vencida
+# Carrinho abandonado da Nuvemshop: a loja não avisa, o CRM lê pela API. O
+# carrinho precisa estar parado há 30 min, então 15 min de cadência basta.
+*/15 * * * *|120|api/v1/cron/nuvemshop-checkouts
 # A CAMPANHA. Minuto a minuto, e a rodada manda no máximo uma mensagem por
 # número: é o cron que dá a cadência base, e o ritmo da campanha e do canal
 # (channel_knobs + pacing_ledger) só sabem torná-la mais lenta.
@@ -101,6 +115,11 @@ CRONS="
 # no dia errado metade do mundo e de madrugada boa parte do resto. Barato: quem
 # não configurou a automação não chega a ser varrido.
 7 * * * *|60|api/v1/cron/contact-birthdays
+# O RESUMO DAS 7H DO AVISO DE AGENDAMENTO (0704). De dez em dez minutos pelo
+# mesmo motivo do aniversário — a hora é a do relógio de CADA organização —, e
+# mais curto porque a janela é 7h–10h: se o número estiver parado às 7h, o
+# resumo sai assim que ele voltar. Quem não ligou o aviso não chega a ser varrido.
+*/10 * * * *|60|api/v1/cron/agenda-resumo-do-dia
 # A DATA DO FUNIL (#989). Mesma cadência e mesmo motivo do aniversário: de hora
 # em hora, e quem decide o momento é o relógio de parede de CADA organização —
 # a rodada só age naquela que marca a hora da varredura. Minuto diferente do
@@ -119,6 +138,13 @@ CRONS="
 30 3 * * *|120|api/v1/cron/kb-conversations-batch
 15 4 * * *|60|api/v1/cron/sync-model-catalog
 40 4 * * *|120|api/v1/cron/data-retention
+# Avisos de exportação de dados: 12:30 UTC = 9h30 em Brasília. Diário, em horário em
+# que o administrador está lendo e-mail — o aviso de “último dia” não pode chegar de madrugada.
+30 12 * * *|120|api/v1/cron/exportacao-avisos
+# Exclusão (anonimização) dos dados depois do prazo de exportação: 13:30 UTC = 10h30
+# em Brasília, UMA HORA DEPOIS dos avisos — se o e-mail da instalação acabou de ser
+# ligado, o aviso do dia sai antes e a trava “só quem foi avisado” já o enxerga.
+30 13 * * *|120|api/v1/cron/exportacao-exclusao
 0 8 * * *|60|api/v1/cron/proposal-expiry
 30 8 * * *|60|api/v1/cron/proposal-promised-not-created
 0 6 * * 0|60|api/v1/cron/proposal-acceptance-rate

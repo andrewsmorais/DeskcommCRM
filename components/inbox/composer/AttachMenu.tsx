@@ -8,7 +8,12 @@ import { FileText, ImageSquare, Plus, UserCircle } from "@/lib/ui/icons";
 
 interface Props {
   disabled?: boolean;
-  onPick: (file: File) => void;
+  /**
+   * A ESCOLHA inteira, não o primeiro arquivo (trazido do produto original,
+   * #4364): o operador marca várias fotos ou vários PDFs no mesmo gesto, e a
+   * lista cai na MESMA fila do arraste — prévia, legenda e retry continuam um só.
+   */
+  onPick: (files: File[]) => void;
   onPickContact?: () => void;
 }
 
@@ -19,8 +24,10 @@ export function AttachMenu({ disabled, onPick, onPickContact }: Props) {
   const docRef = useRef<HTMLInputElement | null>(null);
 
   const handle = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) onPick(file);
+    // `Array.from` antes de esvaziar o input: `e.target.files` é uma lista VIVA,
+    // e zerar o `value` logo abaixo a esvazia — a fila leria zero arquivo.
+    const files = Array.from(e.target.files ?? []);
+    if (files.length) onPick(files);
     e.target.value = ""; // permite re-selecionar o mesmo arquivo
   };
 
@@ -72,10 +79,20 @@ export function AttachMenu({ disabled, onPick, onPickContact }: Props) {
           popover ao fechar, e um input desmontado no meio do clique perde o
           file picker ("nada acontece"). Aqui os refs seguem válidos após o
           fechamento — o .click() síncrono no onClick preserva o user-gesture. */}
-      <input ref={mediaRef} type="file" accept="image/*,video/*" className="hidden" onChange={handle} />
+      {/* `multiple` nos DOIS: várias fotos ou vários PDFs de uma vez, como já
+          dá para fazer arrastando. */}
+      <input
+        ref={mediaRef}
+        type="file"
+        multiple
+        accept="image/*,video/*"
+        className="hidden"
+        onChange={handle}
+      />
       <input
         ref={docRef}
         type="file"
+        multiple
         accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
         className="hidden"
         onChange={handle}

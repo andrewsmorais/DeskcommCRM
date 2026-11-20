@@ -7,7 +7,7 @@
  * lista que falta: o que a plataforma aprovou, NESTA organização.
  *
  * Duas exclusões, pelas mesmas razões que o turno do fluxo recusa o envio
- * (`resolveModeloAprovado` em `lib/agent-engine/agent/followup-turn.ts`) — a
+ * (`resolverModeloAprovadoNaConexao` em `lib/channels/meta/modelo-aprovado-da-conexao.ts`) — a
  * tela não oferece o que o motor depois pula:
  *   - status que não dispara (pendente, rejeitado, pausado);
  *   - modelo com variável: o fluxo não tem de onde tirar o valor.

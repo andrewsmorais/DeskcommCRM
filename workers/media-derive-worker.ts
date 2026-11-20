@@ -4,18 +4,22 @@
  * messages.media_derived_text. Camada UNIVERSAL da Onda 3 — o texto alimenta
  * qualquer modelo de chat. Retry/backoff delegados ao drain (padrão do repo).
  */
+import { MENSAGEM_REDIGIDA } from "@/lib/lgpd/cascata";
+import { avaliarPedidosFalados } from "@/workers/media-derive-worker.pedidos";
 import { generateText } from "ai";
 import type pg from "pg";
 
 import { extractPdfText } from "@/lib/ai/rag/extractors/pdf";
 import { visaoEmVigor } from "@/lib/ai/pontos/capacidade-em-vigor";
 import { resolveOrgLlmConfig, type LlmEdgeConfig } from "@/lib/agent-engine/edge/llm/credentials";
+import { configTecnicaDaPlataforma } from "@/lib/ai/agents/config-tecnica";
 import { createDefaultRegistry } from "@/lib/agent-engine/edge/llm/providers";
 import { createPool } from "@/lib/agent-engine/db/pool";
 import { env } from "@/lib/env";
 import type { EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
 import { deriveMediaText, type DeriveDeps } from "@/lib/messaging/media/derive";
-import { TIPOS_DERIVAVEIS } from "@/lib/messaging/media/derivable";
+import { fotoSemLeitorNoAtendimento } from "@/lib/messaging/media/visao-da-empresa";
+import { MARCADOR_NAO_LIDA, TIPOS_DERIVAVEIS } from "@/lib/messaging/media/derivable";
 import { deriveVideoText } from "@/lib/messaging/media/video-derive";
 import {
   apiTranscriptionProvider,
@@ -50,7 +54,22 @@ interface MessageRow {
   media_mime: string | null;
   media_storage_path: string | null;
   media_derived_status: string | null;
+  /**
+   * Onde o motivo do `failed` mora: sem ele o operador vê o estado sem a causa.
+   * É também o marcador da retenção (migration 0552): `media_status='expired'`
+   * separa "arquivo que ainda vai chegar" de "arquivo que a política já retirou".
+   */
+  metadata: Record<string, unknown> | null;
+  conversation_id: string | null;
+  /** Só a mensagem ENTRADA do cliente vira pedido de parar. */
+  direction: string | null;
+  /** Áudio do atendente não é pedido: `user` e `external_device` são gente nossa. */
+  sent_via: string | null;
+  /** Quando a mensagem entrou — a cascata dos pedidos olha a conversa de agora. */
+  created_at: string | null;
 }
+
+const ENVIADO_POR_PESSOA: ReadonlySet<string> = new Set(["user", "external_device"]);
 
 export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> {
   const consumer_key = MEDIA_DERIVE_CONSUMER_KEY;
@@ -60,7 +79,7 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("messages")
-    .select("id, organization_id, type, media_mime, media_storage_path, media_derived_status")
+    .select("id, organization_id, type, media_mime, media_storage_path, media_derived_status, metadata, conversation_id, direction, sent_via, created_at")
     .eq("id", messageId)
     .eq("organization_id", row.organization_id)
     .maybeSingle();
@@ -80,6 +99,12 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
     return { consumer_key, status: "skipped", detail };
   };
 
+  // A retenção já retirou esta mídia (migration 0552, #1534): não há o que
+  // derivar e, principalmente, nada a baixar do provedor — o `media_storage_path`
+  // foi anulado junto, mas o DETALHE tem de dizer o motivo real, senão o turno
+  // seguinte esperaria 120s por uma leitura que a política proibiu.
+  if (msg.metadata?.media_status === "expired") return markSkipped("expired by retention");
+
   if (!msg.media_storage_path) return markSkipped("no media");
   if (msg.media_derived_status === "ready") return { consumer_key, status: "skipped", detail: "already derived" };
   if (!TIPOS_DERIVAVEIS.has(msg.type)) return { consumer_key, status: "skipped", detail: `type ${msg.type}` };
@@ -95,6 +120,20 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
       .limit(1)
       .maybeSingle();
     if (!flag) return markSkipped("video_frames_disabled");
+  }
+  // Foto: a descrição é uma chamada paga à visão. Quando a empresa TEM agente
+  // publicado e TODOS desligaram "Ver as fotos que o cliente envia" (migration
+  // 0533), ninguém do atendimento automático lê a descrição — não pagamos por
+  // ela. Empresa sem agente publicado segue descrevendo: a descrição pode ter
+  // outro leitor (integração, MCP, rascunho), e na dúvida a foto é lida.
+  if (msg.type === "image") {
+    const { data: publicadas } = await admin
+      .from("ai_agent_versions")
+      .select("image_vision_enabled")
+      .eq("organization_id", row.organization_id)
+      .eq("status", "published")
+      .limit(50);
+    if (fotoSemLeitorNoAtendimento(publicadas ?? [])) return markSkipped("image_vision_disabled");
   }
 
   /** O que o operador chama de "isto" — o aviso não pode falar em `msg.type`. */
@@ -199,6 +238,21 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
       llm = await resolveOrgLlmConfig(derivePool(), llmCfg, row.organization_id);
     }
 
+    // Na chave da INSTALAÇÃO, quem escolhe o modelo é a plataforma — a mesma
+    // régua do seam (`run-model-call.ts`). O modelo do binding de visão e o
+    // padrão da organização são escritos por quem administra a ORGANIZAÇÃO;
+    // sem credencial própria, o que ela escolhesse rodava na conta do dono.
+    // Provedor e modelo vêm juntos da plataforma. Endereço próprio fica com a
+    // recusa de sempre (chave da instalação não vai para endereço da empresa).
+    if (llm.origemDaChave === "chave_da_instalacao" && !baseUrlDaVisao) {
+      const plataforma = configTecnicaDaPlataforma();
+      const daPlataforma = await resolveOrgLlmConfig(derivePool(), llmCfg, row.organization_id, {
+        provider: plataforma.provider,
+        credentialId: null,
+      });
+      llm = { ...daPlataforma, defaultModel: plataforma.model };
+    }
+
     // A transcrição é SEMPRE do Whisper (api.openai.com), então precisa de uma
     // chave OpenAI — não da chave do provedor de chat da org. O comentário
     // antigo já dizia isso ("senão exige credencial openai dedicada"), mas o
@@ -249,9 +303,41 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
     const deps = buildDeriveDeps(llm, openaiKey, row.organization_id, admin, baseUrlDaVisao, chaveEhDaInstalacao);
 
     const text = await deriveMediaText(msg.type, buffer, msg.media_mime ?? "application/octet-stream", deps);
-    await admin.from("messages")
+    // A transcrição só é gravada em mensagem que NÃO foi anonimizada no meio do
+    // caminho: regravar a linha redigida devolveria o que a cascata de LGPD
+    // apagou. `isdistinct` e não `neq`: `NULL <> '...'` é NULL, e o `neq`
+    // recusaria toda nota de voz (body vazio).
+    const { data: gravados, error: erroDaGravacao } = await admin
+      .from("messages")
       .update({ media_derived_text: text, media_derived_status: "ready" })
-      .eq("id", msg.id).eq("organization_id", msg.organization_id);
+      .eq("id", msg.id)
+      .eq("organization_id", msg.organization_id)
+      .filter("body", "isdistinct", MENSAGEM_REDIGIDA)
+      .select("id");
+    if (erroDaGravacao) return { consumer_key, status: "error", detail: erroDaGravacao.message };
+    if (!gravados || gravados.length === 0) {
+      return { consumer_key, status: "skipped", detail: "message_redacted" };
+    }
+    // ─── O pedido DITO no áudio, agora que ele virou texto ──────────────────
+    // A cascata dos pedidos sobre a transcrição — a regra de hoje e, só onde
+    // ela disse não, o Jev (quando a empresa o ligou). Só ÁUDIO, só ENTRADA e
+    // nunca áudio do atendente. Nada aqui bloqueia, passa, cala ou responde —
+    // só o aviso na Central (ver `./media-derive-worker.pedidos.ts`).
+    if (
+      msg.type === "audio" &&
+      msg.direction === "inbound" &&
+      msg.conversation_id &&
+      !ENVIADO_POR_PESSOA.has(msg.sent_via ?? "") &&
+      text.trim() !== ""
+    ) {
+      await avaliarPedidosFalados(admin, {
+        organizationId: msg.organization_id,
+        messageId: msg.id,
+        conversationId: msg.conversation_id,
+        transcricao: text,
+        recebidaEm: msg.created_at ?? null,
+      });
+    }
     return { consumer_key, status: "ok" };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -548,16 +634,8 @@ function buildDeriveDeps(
   };
 }
 
-/**
- * O texto que substitui a string vazia quando a mídia não pôde ser lida.
- *
- * Não é cosmético: o agente recebe este texto como derivado da mensagem, então
- * ele passa a SABER que chegou algo que não conseguiu interpretar, em vez de
- * concluir que a mensagem veio vazia. A diferença aparece na resposta ao
- * cliente — "não consegui abrir sua foto, pode me dizer o que é?" no lugar de
- * um silêncio que parece descaso.
- */
-export const MARCADOR_NAO_LIDA = "[o cliente enviou uma mídia que não consegui interpretar]";
+/** Mora em `lib/messaging/media/derivable.ts` (o balão da inbox também o lê). */
+export { MARCADOR_NAO_LIDA };
 
 /**
  * Abre UM aviso na Central por organização enquanto o problema durar.

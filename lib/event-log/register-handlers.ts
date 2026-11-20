@@ -17,6 +17,7 @@ import { automationRulesHandler } from "@/lib/automation/engine.handler";
 import { followupReactivityHandler } from "@/lib/followup/reactivity.handler";
 import { campanhaRespostaHandler } from "@/lib/campanhas/resposta.handler";
 import { followupGatilhoEtapaHandler } from "@/lib/followup/gatilho-etapa.handler";
+import { followupSaidaDaEtapaHandler } from "@/lib/followup/saida-da-etapa.handler";
 import { followupGatilhoLeadHandler } from "@/lib/followup/gatilho-lead.handler";
 import { followupGatilhoCasoHandler } from "@/lib/followup/gatilho-caso.handler";
 import { casoNaCentralHandler } from "@/lib/escalacao/caso-na-central.handler";
@@ -28,7 +29,11 @@ import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
 import { avisoDeEtapaHandler } from "@/lib/leads/aviso-de-etapa.handler";
 import { avisoDeCasoAoSuporteHandler } from "@/lib/escalacao/aviso-ao-suporte.handler";
 import { avisoDePropostaNoWhatsAppHandler } from "@/lib/propostas/aviso-no-whatsapp.handler";
+import { avisoDeAgendamentoNoWhatsAppHandler } from "@/lib/agenda/aviso-de-agendamento.handler";
+import { emailsTransacionaisHandler } from "@/lib/emails-transacionais/handler";
+import { reatribuicaoHandler } from "@/lib/conversas/reatribuicao.handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
+import { nuvemshopPedidoHandler } from "@/lib/nuvemshop/pedido.handler";
 
 let _registered = false;
 
@@ -52,6 +57,12 @@ export function ensureHandlersRegistered(): void {
   registerHandler(lgpdExportHandler);
   registerHandler(lgpdRedactHandler);
   registerHandler(automationRulesHandler);
+  // A outra metade do mesmo evento: saiu da etapa, o toque que ela armou morre
+  // (vindo do produto original). A ORDEM IMPORTA: a saída roda ANTES do gatilho
+  // porque o índice `idx_followup_enrollments_one_live` admite um único toque
+  // vivo por contato — na ordem inversa, o card que vai de uma etapa com fluxo
+  // para outra com fluxo ficaria sem follow-up nenhum.
+  registerHandler(followupSaidaDaEtapaHandler);
   registerHandler(followupGatilhoEtapaHandler);
   // Escrita curta no banco (um item na Central), vizinha do gatilho de etapa
   // que consome o mesmo evento.
@@ -63,9 +74,13 @@ export function ensureHandlersRegistered(): void {
   // longe do aviso ao suporte, que sai por rede de terceiro.
   registerHandler(casoNaCentralHandler);
   registerHandler(followupGatilhoPresencaHandler);
+  // Pedido da Nuvemshop → contato + negócio pela Captação (uma ida à API da loja).
+  registerHandler(nuvemshopPedidoHandler);
   registerHandler(mediaPersistHandler);
   registerHandler(mediaDeriveHandler);
   registerHandler(webPushInboundHandler);
+  // Reatribuição automática (migration 0514): tira o atendente offline da conversa.
+  registerHandler(reatribuicaoHandler);
   // Penúltimo, pelo MESMO critério do último: o aviso ao suporte sai por rede de
   // terceiro (o transporte de WhatsApp) e nunca pode atrasar quem escreve no
   // banco — inclusive o `followupGatilhoCasoHandler`, que consome o MESMO evento
@@ -75,9 +90,15 @@ export function ensureHandlersRegistered(): void {
   // Mesmo critério do de cima: sai por rede de terceiro, depois de quem só
   // escreve no banco. Consome o MESMO evento que a notificação do navegador.
   registerHandler(avisoDePropostaNoWhatsAppHandler);
+  // Mesmo critério: o aviso de agendamento ao dono sai por rede de terceiro e
+  // consome os mesmos `appointment.*` das automações, que escrevem no banco.
+  registerHandler(avisoDeAgendamentoNoWhatsAppHandler);
   // Por último: reportar a venda ao anúncio é o consumidor mais externo do
   // fechamento — depende de rede de terceiro e não pode atrasar quem escreve
   // no banco. Falha dele nunca segura os handlers acima.
+  // E-mail de relacionamento: sai por rede de terceiro e só fala com a pessoa
+  // DEPOIS de a conta/o plano já existirem — fica atrás de quem escreve no banco.
+  registerHandler(emailsTransacionaisHandler);
   registerHandler(conversaoDeVendaHandler);
   registerHandler(conversaoDeQualificacaoHandler);
   _registered = true;

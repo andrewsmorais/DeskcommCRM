@@ -12,9 +12,31 @@
  * chamada de verdade — asserção sobre o retorno de `runModelCall` passaria
  * mesmo se o provider instanciado fosse outro.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// A credencial da EMPRESA decifra para a chave do provedor escolhido: o binding
+// só vale com chave própria (na da instalação, quem escolhe é a plataforma).
+vi.mock("@/lib/crypto/aes_gcm", () => ({
+  byteaToBuffer: () => Buffer.from(""),
+  decryptKey: () => "chave-openai",
+}));
 
 import { runModelCall } from "@/lib/agent-engine/edge/llm/run-model-call";
+
+const CREDENCIAL_DA_EMPRESA = "16000000-0000-4000-8000-000000000001";
+
+// NA CHAVE DA INSTALAÇÃO QUEM ESCOLHE O MODELO É A PLATAFORMA
+// (`run-model-call.ts`, `configTecnicaDaPlataforma`). Este arquivo usa o padrão
+// da organização como linha de base, então a plataforma é declarada igual a ele
+// — o que se mede aqui é outra coisa.
+beforeEach(() => {
+  vi.stubEnv("PLATAFORMA_IA_PROVEDOR", "anthropic");
+  vi.stubEnv("PLATAFORMA_IA_MODELO", "claude-padrao-da-org");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 
@@ -59,7 +81,11 @@ function poolFalso(opts: {
       return { rows: opts.binding ? [opts.binding] : [] };
     }
     if (sql.includes("from ai_provider_credentials")) {
-      return { rows: [] }; // sem BYOK → cai na chave de plataforma
+      // Só a credencial ESCOLHIDA no binding existe; por provedor, sem BYOK →
+      // cai na chave de plataforma.
+      return params[1] === CREDENCIAL_DA_EMPRESA
+        ? { rows: [{ id: CREDENCIAL_DA_EMPRESA, api_key_encrypted: "x", api_key_iv: "y", api_key_tag: "z" }] }
+        : { rows: [] };
     }
     if (sql.includes("insert into llm_calls")) {
       inserts.push({ sql, params });
@@ -136,7 +162,7 @@ describe("o seam usa o modelo que o painel escolheu", () => {
       purpose: "stage_classifier",
       binding: {
         provider: "openai",
-        credential_id: null,
+        credential_id: CREDENCIAL_DA_EMPRESA,
         model_id: "gpt-5-mini",
         base_url: null,
         is_enabled: true,
@@ -156,7 +182,7 @@ describe("o seam usa o modelo que o painel escolheu", () => {
       model: "modelo-da-variavel-de-ambiente",
       binding: {
         provider: "openai",
-        credential_id: null,
+        credential_id: CREDENCIAL_DA_EMPRESA,
         model_id: "gpt-5-nano",
         base_url: null,
         is_enabled: true,
@@ -242,7 +268,7 @@ describe("o custo é atribuído ao ponto certo", () => {
       purpose: "flywheel_judge",
       binding: {
         provider: "openai",
-        credential_id: null,
+        credential_id: CREDENCIAL_DA_EMPRESA,
         model_id: "gpt-5-mini",
         base_url: null,
         is_enabled: true,

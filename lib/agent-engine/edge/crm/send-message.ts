@@ -4,6 +4,8 @@ import { assertApprovedReplyPg, type ApprovedReplyContext } from '@/lib/ai/repli
 import { assertMeetingDeliveryPg, type MeetingDeliveryContext } from '@/lib/agenda/meet-delivery';
 import type { JobClaim } from '../../queue/claim';
 import { assertAgendaEffectPg } from '@/lib/agenda/efeito';
+import { AgendaPuladoError } from '@/lib/agenda/escolha-no-envio';
+import { escolhaDoFluxoPg } from '@/lib/agenda/escolha-no-envio-leitura';
 import { AgendaDeferredError } from '@/lib/agenda/protecao-followup';
 import { StaleServiceBoundaryError } from '@/lib/atendimento/fronteira';
 import { requireCurrentServiceBoundary } from '@/lib/atendimento/fronteira-server';
@@ -27,6 +29,10 @@ import { parseServiceBoundary } from '@/lib/atendimento/fronteira';
  *      rotaciona o id (tentativa lógica nova).
  */
 import { sendWithLedger, pgSendLedger, type SendOutcome } from './send-ledger';
+import { logger } from '@/lib/logger';
+import { registrarCustoDeVoz, resolverCaminhoDeVoz, VozLedgerTerminalError } from './send-voice';
+import type { FormatoDaVoz } from '@/lib/ai/voz/formato';
+import { extraForaDaOrganizacao } from '@/lib/billing/extras';
 export type { SendOutcome, SendLedgerStatus } from './send-ledger';
 
 import { ApiError } from '@/lib/api/types';
@@ -64,7 +70,32 @@ export interface SendMessageInput {
    */
   template?: { name: string; language: string; values: Record<string, string> };
   /** Presente = imagem da pasta da conversa em `whatsapp-media`; `body` é a legenda. */
-  media?: { storagePath: string; mime: string };
+  media?:
+    | { storagePath: string; mime: string }
+    | { url: string; mime: string; type: 'image' | 'video' | 'audio' | 'document' };
+  /**
+   * Presente = esta mensagem sai como NOTA DE VOZ (ElevenLabs), não texto.
+   *
+   * `body` SEGUE sendo o texto FALADO (já limpo por `textoFalavel`) — é ele que
+   * entra no hash de idempotência do ledger. `textoOriginal` vira
+   * `media_derived_text` para a conversa não ficar cega (busca, LGPD,
+   * classificadores leem essa coluna em mídia).
+   *
+   * Ausente = comportamento desta função idêntico a antes.
+   */
+  voz?: {
+    textoOriginal: string;
+    apiKey: string;
+    voiceId: string;
+    modelId?: string;
+    /** mp3 ou ogg/opus — o que o canal da conversa entrega como nota de voz (`lib/ai/voz/formato.ts`). */
+    formato?: FormatoDaVoz;
+    /**
+     * Grava os bytes no Storage e devolve o path. O path PRECISA começar com
+     * `${organizationId}/${conversationId}/` (`isMediaPathOwnedBy`).
+     */
+    upload: (audio: Buffer, mimeType: string) => Promise<string>;
+  };
 }
 
 /**
@@ -75,10 +106,14 @@ export interface SendMessageInput {
 export function corpoDoEnvio(
   input: SendMessageInput,
   idempotencyKey: string,
+  /** A nota de voz já sintetizada (`input.voz` resolvido); ausente = texto/template/mídia. */
+  voz?: { mediaStoragePath: string; mimeType: string },
 ): Parameters<typeof sendMessageHandler>[2] {
   return {
     conversation_id: input.conversationId,
-    ...(input.template
+    ...(voz
+      ? { type: 'audio' as const, media_storage_path: voz.mediaStoragePath, media_mime: voz.mimeType }
+      : input.template
       ? {
           type: 'template' as const,
           template_name: input.template.name,
@@ -86,11 +121,19 @@ export function corpoDoEnvio(
           template_values: input.template.values,
         }
       : input.media
-        ? {
-            type: 'image' as const,
-            media_storage_path: input.media.storagePath,
-            media_mime: input.media.mime,
-          }
+        ? 'url' in input.media
+          ? {
+              // Mídia por URL de um passo automático: o `type` vem decidido e o
+              // handler é quem busca e confere o arquivo (anti-SSRF).
+              type: input.media.type,
+              media_url: input.media.url,
+              media_mime: input.media.mime,
+            }
+          : {
+              type: 'image' as const,
+              media_storage_path: input.media.storagePath,
+              media_mime: input.media.mime,
+            }
         : { type: 'text' as const }),
     // Foto sem legenda vai sem `body`: o schema do envio pede corpo não vazio.
     ...(input.body !== '' || !input.media ? { body: input.body } : {}),
@@ -120,6 +163,13 @@ export async function sendTurnMessage(
     db,
     parseServiceBoundary(sourceJobs[0]?.payload.service_boundary),
   );
+  // A escolha do FLUXO ("quando o contato tiver horário marcado") viaja no
+  // contexto: sem ela a guarda abaixo leria o padrão (`adiar`) e desfaria o que
+  // o fluxo publicou — um fluxo em `enviar` seguiria sendo segurado.
+  const enrollmentDoJob =
+    typeof sourceJobs[0]?.payload.followup_enrollment_id === 'string'
+      ? sourceJobs[0].payload.followup_enrollment_id
+      : undefined;
   const proactiveContext =
     sourceJobs[0]?.kind === 'followup_turn' && input.leadId
       ? {
@@ -127,10 +177,10 @@ export async function sendTurnMessage(
           contactId: input.leadId,
           jobId: input.jobId,
           jobClaim: input.jobClaim,
-          enrollmentId:
-            typeof sourceJobs[0].payload.followup_enrollment_id === 'string'
-              ? sourceJobs[0].payload.followup_enrollment_id
-              : undefined,
+          enrollmentId: enrollmentDoJob,
+          ...(enrollmentDoJob
+            ? { escolhaNoEnvio: await escolhaDoFluxoPg(db, input.tenantId, enrollmentDoJob) }
+            : {}),
           nodeId:
             typeof sourceJobs[0].payload.node_id === 'string'
               ? sourceJobs[0].payload.node_id
@@ -160,6 +210,61 @@ export async function sendTurnMessage(
     if (policy.body !== input.body || policy.conversation_id !== input.conversationId)
       throw new StaleServiceBoundaryError();
   }
+  // ─── Voz: resolve o ÁUDIO antes do ledger decidir o que fazer ───
+  //
+  // A síntese é cara e idempotente pela MESMA identidade (job_id, seq) que o
+  // ledger usa (`send-voice.ts`): um retry reusa o áudio já sintetizado em vez
+  // de pagar de novo. Qualquer falha da síntese (rede, ElevenLabs, Storage)
+  // cai para TEXTO: o cliente recebe a resposta, só não é a voz.
+  let vozResolvida: { mediaStoragePath: string; mimeType: string } | undefined;
+  // O extra de nota de voz é conferido de novo AQUI, na hora de enviar, e não
+  // só no começo do turno (`voz-do-turno.ts`): um envio que volta depois — job
+  // reagendado com a linha `queued`, turno longo, resposta aprovada mais tarde —
+  // reaproveitaria do ledger o áudio já sintetizado e mandaria nota de voz a
+  // uma empresa cujo extra foi desligado no meio (auditoria de planos de
+  // 19/11, achado 22). Sem o extra, sai em TEXTO, como na falha de síntese.
+  const vozDesligada =
+    input.voz !== undefined && (await extraForaDaOrganizacao(input.tenantId, 'nota_de_voz'));
+  if (input.voz && !vozDesligada) {
+    try {
+      const r = await resolverCaminhoDeVoz({
+        store: pgSendLedger(db),
+        identidade: { tenantId: input.tenantId, leadId: input.leadId, jobId: input.jobId, seq: input.seq },
+        textoFalado: input.body,
+        voz: {
+          apiKey: input.voz.apiKey,
+          voiceId: input.voz.voiceId,
+          modelId: input.voz.modelId,
+          ...(input.voz.formato ? { formato: input.voz.formato } : {}),
+        },
+        upload: input.voz.upload,
+      });
+      vozResolvida = { mediaStoragePath: r.mediaStoragePath, mimeType: r.mimeType };
+      // O custo entra só quando a síntese ACONTECEU agora — retry que reusou o
+      // áudio não pagou de novo.
+      if (r.sintetizouAgora) {
+        registrarCustoDeVoz({
+          supabase: cfg.supabase,
+          organizationId: input.tenantId,
+          jobId: input.jobId,
+          caracteres: r.caracteres,
+          modelId: input.voz.modelId ?? 'eleven_multilingual_v2',
+        });
+      }
+    } catch (err) {
+      if (err instanceof VozLedgerTerminalError) {
+        return err.kind === 'already_sent'
+          ? { kind: 'already_sent', idempotencyKey: err.key, crmMessageId: err.crmMessageId }
+          : { kind: 'blocked', idempotencyKey: err.key };
+      }
+      logger.warn('[send-message] síntese de voz falhou — respondendo em texto', {
+        organization_id: input.tenantId,
+        job_id: input.jobId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   return sendWithLedger(pgSendLedger(db), input, async (idempotencyKey, messageId) => {
     let message: Message;
     try {
@@ -175,11 +280,15 @@ export async function sendTurnMessage(
           approvedReply,
           agentOperation: input.agentOperation,
           internalMessageId: messageId,
+          // Nunca vem do corpo de uma requisição pública — só este seam a preenche.
+          ...(input.voz && vozResolvida ? { aiVoiceDerivedText: input.voz.textoOriginal } : {}),
         },
-        corpoDoEnvio(input, idempotencyKey),
+        corpoDoEnvio(input, idempotencyKey, vozResolvida),
       );
     } catch (err) {
-      if (err instanceof AgendaDeferredError || err instanceof StaleServiceBoundaryError) throw err;
+      // O PULO por compromisso não é falha de transporte: quem chama registra
+      // `skipped` com o motivo.
+      if (err instanceof AgendaPuladoError || err instanceof AgendaDeferredError || err instanceof StaleServiceBoundaryError) throw err;
       if (err instanceof ApiError && err.status === 403) {
         throw err;
       }

@@ -47,6 +47,16 @@ export function meetPgSupabase(pool: pg.Pool) {
       this.conditions.push([k, "is", v]);
       return this;
     }
+    /**
+     * `.not(coluna, "is", null)` — o "não é nulo" que as leituras de telefone
+     * usam para não casar ficha sem número. Só a forma `is null` é traduzida:
+     * qualquer outro operador reprova em vez de virar SQL inventado.
+     */
+    not(k: string, op: string, v: unknown) {
+      if (op !== "is" || v !== null) throw Error(`not(${k}, ${op}) não suportado neste harness`);
+      this.conditions.push([k, "not_is", v]);
+      return this;
+    }
     in(k: string, v: unknown[]) {
       this.conditions.push([k, "in", v]);
       return this;
@@ -91,9 +101,11 @@ export function meetPgSupabase(pool: pg.Pool) {
               .map(([k, op, v]) =>
                 op === "is"
                   ? `${field(k)} is null`
-                  : op === "in"
-                    ? `${field(k)}=any(${param(v)})`
-                    : `${field(k)}${op}${param(v)}`,
+                  : op === "not_is"
+                    ? `${field(k)} is not null`
+                    : op === "in"
+                      ? `${field(k)}=any(${param(v)})`
+                      : `${field(k)}${op}${param(v)}`,
               )
               .join(" and ")
           : "";
@@ -148,6 +160,9 @@ export function meetPgSupabase(pool: pg.Pool) {
           entries.map(([key, value]) => {
             // Esta porta recebe text[]; os demais argumentos preservam JSONB.
             if (name === "fn_reply_record_receipt" && key === "p_echo_ids" && Array.isArray(value))
+              return value;
+            // A pergunta LGPD em lote (0560) também recebe text[].
+            if (name === "fn_titulares_apagados_a_pedido" && key === "p_telefones" && Array.isArray(value))
               return value;
             return typeof value === "object" && value !== null ? JSON.stringify(value) : value;
           }),

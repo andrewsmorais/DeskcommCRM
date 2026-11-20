@@ -41,6 +41,11 @@ export const PUBLIC_PATHS: RegExp[] = [
   // redirect pro WhatsApp. Âncorado num segmento só (`[^/]+$`): um sub-path
   // futuro sob `/google/` não nasce público de carona.
   /^\/api\/v1\/anuncios\/google\/[^/]+$/,
+  // A irmã da Meta (UTMs da landing → `[ref:]`), mesma natureza e mesma âncora.
+  // Faltava esta linha: a rota existia, o script do site apontava os botões
+  // para ela, e todo visitante recebia 401 do proxy em vez do WhatsApp —
+  // medido em produção em 02/10/2026.
+  /^\/api\/v1\/anuncios\/meta\/[^/]+$/,
   // Heartbeat do agente do host (bearer INTERNAL_SECRET/INTERNAL_CRON_SECRET,
   // checado dentro da própria rota) — sem cookie de sessão, igual /cron/.
   /^\/api\/v1\/system\/agent$/,
@@ -57,19 +62,22 @@ export const PUBLIC_PATHS: RegExp[] = [
   // 401 antes de a rota existir, e o fluxo NUNCA completa: medido na v1.8.0, em
   // produção, `GET /api/v1/agenda/google/callback` → 401 `unauthenticated`.
   //
-  // A identidade não vem da sessão e sim do `state` assinado (HMAC de
-  // `INTERNAL_SECRET`), com nonce de uso único; no caso do Google, somado a um
-  // cookie de vínculo `SameSite=Lax` (`lib/agenda/google/vinculo.ts`) que prova
-  // que o navegador que volta é o que saiu. Mesma natureza de
-  // `/api/v1/system/relogio/tick`, logo acima: a auth mora DENTRO da rota.
+  // A identidade não vem da sessão. Nas TRÊS voltas abaixo (Agenda, Google Ads,
+  // loja) ela vem de três peças, todas conferidas ANTES de trocar o código:
+  // o `state` assinado (chave de `lib/auth/chave-de-assinatura.ts` — nunca o
+  // Bearer de cron, que vai para o agendador externo); o cookie de vínculo
+  // `SameSite=Lax`, assinado sobre o nonce do `state` e com `path` no próprio
+  // callback (`lib/auth/vinculo-oauth.ts`), que prova que o navegador que volta
+  // é o que saiu; e a queima do nonce em `calendar_oauth_nonces`, que faz cada
+  // `state` valer uma vez. Até a auditoria de novembro de 2026 só a Agenda
+  // tinha as duas últimas, e este comentário dizia que todas tinham. Mesma
+  // natureza de `/api/v1/system/relogio/tick`, logo acima: a auth mora DENTRO
+  // da rota. Quem acrescentar uma quarta volta: `callback-oauth-alcancavel`
+  // cobra a ordem vínculo → queima nas três.
   //
   // Ancorados com `$` de propósito — `/^\/api\/v1\/agenda\/google\// deixaria
   // qualquer sub-path futuro nascer público de carona.
   /^\/api\/v1\/agenda\/google\/callback$/,
-  // Volta do consentimento do Google Ads. Mesma natureza das duas linhas
-  // acima: a identidade vem do `state` assinado
-  // (`lib/plataformas-de-anuncio/google/estado.ts`), não da sessão — quem
-  // volta do Google não tem, e não pode ter, o cookie.
   /^\/api\/v1\/plataformas-de-anuncio\/google\/callback$/,
   /^\/api\/v1\/integrations\/nuvemshop\/callback$/,
   /^\/api\/internal\//,
@@ -132,7 +140,7 @@ export const PUBLIC_PATHS: RegExp[] = [
   // `/icon.png` (inexistente) devolvia 404 — a diferença é só a extensão.
   /^\/icon$/,
   // PNGs públicos do app instalado, apenas dois tamanhos e somente marca da instalação.
-  /^\/app-icon\/(192|512)$/,
+  /^\/app-icon\/(180|192|512|maskable)$/,
   /^\/manifest\.webmanifest$/,
   /^\/team\/accept-invite\/.+$/,
   /^\/account-suspended$/,
@@ -152,6 +160,12 @@ export const PUBLIC_PATHS: RegExp[] = [
   // dois nomes de propósito: `/^\/legal/` deixaria qualquer sub-path futuro
   // nascer público de carona.
   /^\/legal\/(terms|privacy)$/,
+  // Download da exportação de dados, aberto pelo link do e-mail de aviso por
+  // quem JÁ perdeu a sessão (conta suspensa ou cancelada). A autorização é a
+  // ASSINATURA do link, conferida na rota (`lib/exportacao/token.ts`): a
+  // organização sai de dentro dele, nunca da URL ou do corpo. Âncora `$` e dois
+  // segmentos de propósito: nenhum sub-path futuro nasce público de carona.
+  /^\/api\/v1\/exportacao\/[A-Za-z0-9_-]{10,200}\.[A-Za-z0-9_-]{20,100}$/,
 ];
 
 export function isPublicPath(pathname: string): boolean {

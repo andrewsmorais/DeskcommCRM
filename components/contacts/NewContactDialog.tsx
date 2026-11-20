@@ -18,6 +18,12 @@ import { normalizarTags } from "@/lib/contacts/tag-normalizada";
 import { contactCreateSchema, type ContactCreate } from "@/lib/schemas/contacts";
 import type { Contact } from "@/lib/types/contacts";
 import { useCreateContact } from "@/hooks/contacts/useCreateContact";
+import { useContactTagVocabulary } from "@/hooks/contacts/useContactTagVocabulary";
+import { useOrgAtivaId } from "@/hooks/auth/AuthProvider";
+import { useDefaultPipeline } from "@/hooks/pipelines/useDefaultPipeline";
+import { camposDoFunil } from "@/lib/leads/campos-do-funil";
+import { CustomFieldsEditor } from "@/components/contacts/CustomFieldsEditor";
+import { sugestoesDeEtiqueta } from "@/lib/contacts/sugestoes-de-etiqueta";
 
 interface FormShape {
   name?: string;
@@ -50,10 +56,28 @@ export function NewContactDialog({ open, onOpenChange, nomeInicial, onCriado }: 
   const t = useT();
   const create = useCreateContact();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>({});
+  const orgId = useOrgAtivaId();
+  // As DEFINIÇÕES dos campos moram no funil padrão (`crm_pipelines.settings.fields[]`),
+  // como na edição da ficha; só o VALOR vai para o contato. Fora de uma organização
+  // ativa (testes, telas sem provider) a seção simplesmente não aparece.
+  const pipelineQuery = useDefaultPipeline(open && Boolean(orgId));
+  const customFieldDefs = camposDoFunil(pipelineQuery.data?.pipeline.settings ?? null);
+  const { data: vocabulario } = useContactTagVocabulary(open ? orgId : null);
 
   const form = useForm<FormShape>({
     defaultValues: { name: nomeInicial ?? "", email: "", phone_number: "", cpf: "", tagsRaw: "" },
   });
+  const tagsRaw = form.watch("tagsRaw") ?? "";
+  const sugestoes = sugestoesDeEtiqueta(tagsRaw, vocabulario ?? []);
+
+  function escolherSugestao(tag: string) {
+    const partes = tagsRaw.split(",");
+    partes[partes.length - 1] = tag;
+    form.setValue("tagsRaw", `${partes.map((x) => x.trim()).filter(Boolean).join(", ")}, `, {
+      shouldDirty: true,
+    });
+  }
 
   async function onSubmit(values: FormShape) {
     setServerError(null);
@@ -67,6 +91,17 @@ export function NewContactDialog({ open, onOpenChange, nomeInicial, onCriado }: 
     if (values.phone_number?.trim()) payload.phone_number = values.phone_number.trim();
     if (values.cpf?.trim()) payload.cpf = values.cpf.trim();
     if (tags.length) payload.tags = tags;
+    // Só o que foi preenchido: campo vazio não vira chave no contato.
+    const preenchidos = Object.fromEntries(
+      Object.entries(customFields).filter(([, v]) => v !== "" && v !== null && v !== undefined),
+    );
+    if (Object.keys(preenchidos).length) payload.custom_fields = preenchidos;
+    // Campo marcado como obrigatório no funil: avisa antes de ir ao servidor.
+    const faltando = customFieldDefs.find((f) => f.required && !(f.key in preenchidos));
+    if (faltando) {
+      setServerError(`${t("Preencha o campo")} "${faltando.label}".`);
+      return;
+    }
 
     const parsed = contactCreateSchema.safeParse(payload);
     if (!parsed.success) {
@@ -79,6 +114,7 @@ export function NewContactDialog({ open, onOpenChange, nomeInicial, onCriado }: 
       const resposta = await create.mutateAsync(parsed.data as ContactCreate);
       toast.success(t("Contato criado"));
       form.reset();
+      setCustomFields({});
       onOpenChange(false);
       // `.data` é o envelope do `ok()`, e dentro dele mora `{ contact, action }`.
       // Entregar `resposta.data` aqui devolveria esse envelope como se fosse o
@@ -123,8 +159,38 @@ export function NewContactDialog({ open, onOpenChange, nomeInicial, onCriado }: 
           </div>
           <div className="space-y-2">
             <Label htmlFor="tagsRaw">{t("Tags (separadas por vírgula)")}</Label>
-            <Input id="tagsRaw" placeholder="vip, recompra" {...form.register("tagsRaw")} />
+            <Input
+              id="tagsRaw"
+              placeholder="vip, recompra"
+              autoComplete="off"
+              {...form.register("tagsRaw")}
+            />
+            {sugestoes.length > 0 && (
+              <div className="flex flex-wrap gap-1" aria-label={t("Etiquetas sugeridas")}>
+                {sugestoes.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => escolherSugestao(tag)}
+                    className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                  >
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+          {customFieldDefs.length > 0 && (
+            <div className="space-y-3 rounded-md border border-border p-3">
+              <h3 className="text-sm font-medium">{t("Campos personalizados")}</h3>
+              <CustomFieldsEditor
+                fields={customFieldDefs}
+                mode="contact"
+                value={customFields}
+                onChange={setCustomFields}
+              />
+            </div>
+          )}
           {serverError && (
             <p className="text-sm text-error-fg">{serverError}</p>
           )}

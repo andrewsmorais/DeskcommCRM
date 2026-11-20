@@ -17,13 +17,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mensagemDoEscopo, validarEscopoDaVersao } from "@/lib/ai/agents/escopo";
 import { versionCreateSchema } from "@/lib/ai/agents/validation";
+import { CAMPOS_TECNICOS, podeEditarConfigTecnica, travarConfigTecnica } from "@/lib/ai/agents/config-tecnica";
 import { lerAmbiente } from "@/lib/instalacao/ambiente";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
 const VERSION_COLUMNS =
-  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin";
+  "id, organization_id, agent_id, version_number, system_prompt, provider, model, credential_id, tool_ids, trigger_config, channel_session_id, max_steps, token_budget, cost_budget_cents, history_message_window, history_token_window, handoff_keywords, handoff_tool_enabled, proposal_ai_draft_enabled, cases_enabled, split_messages, split_max_chars, followup, voz_enabled, voz_quando, operator_enabled, operator_model, operator_tool_ids, status, published_at, superseded_at, created_at, created_by,pipeline_ids,knowledge_source_ids,provisioning_origin,inbound_debounce_ms,image_vision_enabled";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -92,14 +93,29 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       details: parsed.error.flatten(),
     });
   }
-  const v = parsed.data;
-
   const agentCheck = await assertAgentInOrg(id, activeOrg.orgId);
   if (!agentCheck.ok) {
     return fail("not_found", t("Agente não encontrado."), 404, { requestId });
   }
 
   const admin = createAdminClient();
+
+  // Cliente não escolhe provedor, modelo, chave nem freios: a versão nova herda
+  // os da última versão do agente, ou o padrão da plataforma (config-tecnica.ts).
+  const podeConfigTecnica = podeEditarConfigTecnica(authUser);
+  let baseTecnica: Record<string, unknown> | null = null;
+  if (!podeConfigTecnica) {
+    const { data: ultima } = await admin
+      .from("ai_agent_versions")
+      .select(CAMPOS_TECNICOS.join(", "))
+      .eq("organization_id", activeOrg.orgId)
+      .eq("agent_id", id)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    baseTecnica = (ultima as Record<string, unknown> | null) ?? null;
+  }
+  const v = travarConfigTecnica(parsed.data, { pode: podeConfigTecnica, modo: "insert", base: baseTecnica });
 
   // Ordering: insert with retry on 23505 (race com unique(agent_id,version_number)).
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -163,7 +179,11 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
         cases_enabled: v.cases_enabled,
         split_messages: v.split_messages,
         split_max_chars: v.split_max_chars,
+        inbound_debounce_ms: v.inbound_debounce_ms,
+        image_vision_enabled: v.image_vision_enabled,
         followup: v.followup,
+        voz_enabled: v.voz_enabled,
+        voz_quando: v.voz_quando,
         // Mesmo descarte silencioso da rota de criação de agente: o corpo aceita
         // e o INSERT ignorava. Criar uma versão nova pela API com escopo ou
         // acervo produzia uma versão vazia, com 201.

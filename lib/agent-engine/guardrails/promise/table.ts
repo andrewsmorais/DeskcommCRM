@@ -97,7 +97,7 @@ export async function loadPromiseTable(db: Queryable, tenantId: string): Promise
   const { rows } = await db.query<{ version_id: string; values: unknown }>(
     `select v.id as version_id, v.values
      from promise_table_pointers p
-     join promise_table_versions v on v.id = p.version_id
+     join promise_table_versions v on v.id = p.version_id and v.organization_id = p.organization_id
      where p.organization_id = $1`,
     [tenantId],
   );

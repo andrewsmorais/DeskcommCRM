@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { forgotPasswordSchema, type ForgotPasswordInput } from "@/lib/auth/schemas";
 import { audit, hashEmail } from "@/lib/audit";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
+import { origemDeRetorno } from "@/lib/auth/origem-de-retorno";
 import { env } from "@/lib/env";
 
 export type RequestPasswordResetResult =
@@ -34,7 +35,14 @@ export async function requestPasswordReset(
   }
 
   const hdrs = await headers();
-  const origin = hdrs.get("origin") ?? env.NEXT_PUBLIC_APP_URL;
+  // A base do link do e-mail é a URL CONFIGURADA, não o cabeçalho Origin: ele
+  // é do cliente, e o link leva o token de acesso da pessoa. Em desenvolvimento
+  // o host local é preservado — mesma régua das rotas de retorno da auth.
+  const origin = origemDeRetorno(
+    hdrs.get("origin") ?? env.NEXT_PUBLIC_APP_URL,
+    env.NEXT_PUBLIC_APP_URL,
+    process.env.NODE_ENV === "development",
+  );
   const requestId = hdrs.get("x-request-id");
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;

@@ -99,6 +99,13 @@ export const wahaPayloadSchema = z.looseObject({
   /** Id da mensagem ORIGINAL nos eventos `message.edited` / `message.revoked`. */
   editedMessageId: texto,
   revokedMessageId: texto,
+  /**
+   * O miolo do evento `message.reaction` — `{ text, messageId }`: `text` é o
+   * emoji (string VAZIA quando o autor removeu a reação) e `messageId`, o id da
+   * mensagem reagida. `unknown` de propósito: quem consome confere a forma, e
+   * exigi-la aqui transformaria mudança de formato do WAHA em descarte calado.
+   */
+  reaction: z.unknown().optional(),
   _data: z.looseObject({
     notifyName: texto,
     pushName: texto,

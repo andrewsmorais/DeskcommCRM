@@ -20,6 +20,8 @@ function candidato(over: Partial<CandidatoDaAudiencia> = {}): CandidatoDaAudienc
     bloqueado: over.bloqueado ?? false,
     anonimizado: over.anonimizado ?? false,
     recusouMarketing: over.recusouMarketing ?? false,
+    pessoal: over.pessoal,
+    sempreHumano: over.sempreHumano,
   };
 }
 
@@ -158,5 +160,22 @@ describe("classificação da lista", () => {
       ctx(),
     );
     expect(contarExclusoes(linhas)).toEqual({ opt_out: 2, sem_telefone: 1 });
+  });
+});
+
+describe("recusouMarketing — os dois formatos (auditoria 18/11, achado 12)", () => {
+  it("declined_at da captação e granted:false da ficha recusam; ausência e null não", () => {
+    expect(recusouMarketing({ marketing: { declined_at: "2026-01-01T00:00:00Z" } })).toBe(true);
+    expect(recusouMarketing({ marketing: { granted: false } })).toBe(true);
+    expect(recusouMarketing({ marketing: { granted: null } })).toBe(false);
+    expect(recusouMarketing({})).toBe(false);
+    expect(recusouMarketing(null)).toBe(false);
+  });
+});
+
+describe("motivoParaExcluir — sempre humano (auditoria 18/11, achado 10)", () => {
+  it("contato 'sempre atendimento humano' fica fora da campanha, com motivo próprio", () => {
+    expect(motivoParaExcluir(candidato({ sempreHumano: true }))).toBe("contato_sempre_humano");
+    expect(motivoParaExcluir(candidato({ pessoal: true, sempreHumano: true }))).toBe("contato_pessoal");
   });
 });

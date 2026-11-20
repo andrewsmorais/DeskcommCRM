@@ -10,7 +10,7 @@ import {
   pipelineConfigPatchSchema,
   type PipelineConfigPatch,
 } from "@/lib/schemas/settings";
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 
 export type UpdatePipelineConfigResult =
@@ -37,6 +37,10 @@ export async function updatePipelineConfig(
   if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
   }
+  // Depois do papel: quem TEM a verificação em duas etapas prova o código
+  // nesta sessão (trazido do produto original). Esta ação grava pelo client de
+  // serviço, que passa por cima da trava do banco.
+  if (await mfaEmDivida()) return { ok: false, error: "mfa_required" };
 
   const supabase = await createClient();
   const hdrs = await headers();
@@ -69,6 +73,11 @@ export async function updatePipelineConfig(
   if (parsed.data.reabertura_campos !== undefined) {
     nextSettings.reabertura_campos = parsed.data.reabertura_campos;
   }
+  // A entrada do Inbox: a ETAPA em que a conversa nova vira card neste funil.
+  // Grava o bloco inteiro (`ativa` e `stage_id` são uma decisão só).
+  if (parsed.data.entrada_do_inbox !== undefined) {
+    nextSettings.entrada_do_inbox = parsed.data.entrada_do_inbox;
+  }
 
   const { error } = await supabase
     .from("crm_pipelines")
@@ -90,6 +99,7 @@ export async function updatePipelineConfig(
       won_reasons_count: parsed.data.won_reasons?.length ?? null,
       won_reason_required: parsed.data.won_reason_required ?? null,
       reabertura: parsed.data.reabertura ?? null,
+      entrada_do_inbox_ativa: parsed.data.entrada_do_inbox?.ativa ?? null,
     },
   });
 

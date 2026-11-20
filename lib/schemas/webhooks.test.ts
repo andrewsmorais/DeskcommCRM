@@ -120,9 +120,15 @@ describe("createAutomationRuleSchema", () => {
 });
 
 describe("conditionSchema", () => {
-  it("rejects op outside eq/neq/contains", () => {
-    const r = conditionSchema.safeParse({ field: "status", op: "gt", value: "won" });
+  it("rejects an op the engine does not know", () => {
+    const r = conditionSchema.safeParse({ field: "status", op: "regex", value: "won" });
     expect(r.success).toBe(false);
+  });
+
+  it("accepts the newer ops (not_contains, gt, lt, is_set, is_empty)", () => {
+    for (const op of ["not_contains", "gt", "lt", "is_set", "is_empty"]) {
+      expect(conditionSchema.safeParse({ field: "lead.value_cents", op, value: "10" }).success).toBe(true);
+    }
   });
 
   it("accepts a valid condition", () => {

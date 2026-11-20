@@ -27,6 +27,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { integracaoDaLoja, segredoDoApp } from "@/lib/nuvemshop/integracao-da-loja";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createLgpdRequest } from "@/lib/lgpd/repository";
 
@@ -97,39 +99,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 3. Resolve organization_id from trusted source (DB lookup by store_id),
   //    never from the request body.
-  const { data: integration, error: lookupErr } = await admin
-    .from("tenant_integrations")
-    .select("id, organization_id, webhook_secret_encrypted")
-    .eq("provider", "nuvemshop")
-    .eq("store_metadata->>store_id", storeId)
-    .maybeSingle();
-
-  if (lookupErr || !integration) {
-    console.warn(`[lgpd-store-redact] tenant not found for store_id=${storeId}`);
+  // Organização pela loja; segredo do APP pelo ambiente (ver
+  // `lib/nuvemshop/integracao-da-loja.ts` — os dois porquês estão lá).
+  const busca = await integracaoDaLoja(admin, storeId);
+  if (busca.tipo === "ambigua" || busca.tipo === "erro") {
+    logger.error("[lgpd-store-redact] loja sem dono único", {
+      store_id: storeId,
+      motivo: busca.tipo,
+    });
+    return fail("internal_error", "ambiguous_store_binding", 500);
+  }
+  if (busca.tipo === "nenhuma") {
+    // Intentional 404 — this is a LGPD endpoint; fail-open would be wrong.
     return fail("not_found", "integration_not_found", 404);
   }
 
-  const orgId: string = integration.organization_id;
+  const orgId: string = busca.integracao.organization_id;
 
-  // 4. Decrypt webhook secret and verify HMAC
-  const dec = await admin.rpc("fn_decrypt_oauth", {
-    ciphertext: integration.webhook_secret_encrypted,
-  });
-
-  if (dec.error || !dec.data) {
-    console.error(`[lgpd-store-redact] decrypt failed for org=${orgId}: ${dec.error?.message}`);
-    await audit({
-      action: "webhook.hmac_invalid",
-      organizationId: orgId,
-      metadata: { reason: "decrypt_failed", event: "store/redact", store_id: storeId },
-    });
-    return fail("internal_error", "decrypt_failed", 500);
-  }
-
-  const clientSecret = dec.data as string;
+  // 4. Verify HMAC with the installation's app secret
+  const clientSecret = segredoDoApp();
+  if (!clientSecret) return fail("not_found", "integration_not_configured", 404);
   const sigHeader =
-    req.headers.get("x-linkedstore-hmac-sha256") ??
-    req.headers.get("X-Linkedstore-Hmac-Sha256");
+    req.headers.get("x-linkedstore-hmac-sha256") ?? req.headers.get("X-Linkedstore-Hmac-Sha256");
 
   if (!verifyHmacSha256(rawBody, sigHeader, clientSecret)) {
     await audit({

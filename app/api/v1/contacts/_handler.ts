@@ -32,7 +32,7 @@ import { contactListQuerySchema } from "@/lib/schemas";
 type SB = SupabaseClient;
 
 const SELECT_COLS =
-  "id, organization_id, name, display_name, email, email_normalized, phone_number, cpf_hash, birthdate, is_blocked, blocked_reason, is_anonymized, anonymized_at, is_merged_into, merged_at, consent, tags, source, source_metadata, custom_fields, created_at, updated_at, last_activity_at, first_service_at";
+  "id, organization_id, name, display_name, address_book_name, email, email_normalized, phone_number, cpf_hash, birthdate, is_blocked, blocked_reason, is_personal, ai_opt_out, is_anonymized, anonymized_at, is_merged_into, merged_at, consent, tags, source, source_metadata, custom_fields, created_at, updated_at, last_activity_at, first_service_at";
 
 interface CursorPayload {
   sort: string | null;
@@ -155,6 +155,9 @@ export async function listContactsHandler(
       // zero resultados para um contato que EXISTE, e desistiu — a demanda
       // morreria por uma coluna faltando no OR.
       `display_name.ilike.%${s}%`,
+      // O nome da agenda do celular (migration 0546) é o que a tela mostra
+      // quando não há nome escolhido no CRM — mesma razão do `display_name`.
+      `address_book_name.ilike.%${s}%`,
       `email.ilike.%${s}%`,
       `phone_number.ilike.%${s}%`,
     ];
@@ -165,9 +168,28 @@ export async function listContactsHandler(
         !digits.startsWith("55") && (digits.length === 10 || digits.length === 11)
           ? `55${digits}`
           : digits;
+      // Os critérios de TELEFONE do principal, reaproveitados para o extra abaixo.
+      const criteriosDeTelefone = [`phone_number.ilike.%${s}%`];
       for (const v of phoneLookupVariants(base)) {
         const d = v.replace(/\D/g, "");
-        if (d && d !== digits) orParts.push(`phone_number.ilike.%${d}%`);
+        if (d && d !== digits) {
+          orParts.push(`phone_number.ilike.%${d}%`);
+          criteriosDeTelefone.push(`phone_number.ilike.%${d}%`);
+        }
+      }
+      // Ficha cujo TELEFONE EXTRA (migration 0541) casa o termo também entra:
+      // sem isto, o número que não é o principal não acharia a pessoa que o
+      // tem. Filtrada por organização; só quando o termo tem cara de telefone.
+      if (/^[\d\s()+.-]+$/.test(q.search.trim())) {
+        const { data: extras } = await supabase
+          .from("contact_phones")
+          .select("contact_id")
+          .eq("organization_id", ctx.organization_id)
+          .or(criteriosDeTelefone.join(","));
+        const idsDeExtras = [
+          ...new Set(((extras ?? []) as { contact_id: string }[]).map((r) => r.contact_id)),
+        ];
+        if (idsDeExtras.length > 0) orParts.push(`id.in.(${idsDeExtras.join(",")})`);
       }
     }
     if (digits.length === 11) {
@@ -175,7 +197,10 @@ export async function listContactsHandler(
     }
     query = query.or(orParts.join(","));
   }
-  if (q.tag) query = query.contains("tags", [q.tag]);
+  // `contains` monta o literal de array SEM aspas (`cs.{valor}`): uma etiqueta
+  // com aspas, vírgula ou chave quebrava o literal e a rota respondia 500
+  // (schemathesis, 14/11/2026). O elemento vai entre aspas, escapado.
+  if (q.tag) query = query.filter("tags", "cs", `{"${q.tag.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"}`);
   if (q.source) query = query.eq("source", q.source);
 
   if (q.cursor) {
@@ -383,6 +408,13 @@ export async function createContactHandler(
   supabase: SB,
   ctx: HandlerCtx,
   input: ContactCreate,
+  _reservado?: undefined,
+  /**
+   * Por qual porta o contato nasce (vindo do produto original). `prospeccao`
+   * NÃO abre conversa aqui: quem abre é a campanha, no número DELA — abrir pela
+   * porta manual criava uma segunda conversa no número mais antigo da empresa.
+   */
+  opcoes: { porta?: "manual" | "prospeccao" } = {},
 ): Promise<CreateContactResult> {
   const a = actorAuditPayload(ctx.actor);
   const insertRow: Record<string, unknown> = {
@@ -441,7 +473,7 @@ export async function createContactHandler(
   }
 
   const contact = created as Contact;
-  if (contact.phone_number) {
+  if (contact.phone_number && opcoes.porta !== "prospeccao") {
     try {
       const sessionId = await sessaoProntaParaEnvio(supabase, ctx.organization_id);
       if (sessionId) {
@@ -545,6 +577,10 @@ export async function patchContactHandler(
   if (input.phone_number !== undefined) {
     patch.phone_number = input.phone_number ? canonicalPhoneBR(input.phone_number) : input.phone_number;
   }
+  // Tipo e WhatsApp do principal (0541). Ausentes não entram no patch: o
+  // gatilho do banco recalcula só o que a pessoa não fixou.
+  if (input.phone_type !== undefined) patch.phone_type = input.phone_type;
+  if (input.phone_whatsapp !== undefined) patch.phone_whatsapp = input.phone_whatsapp;
   if (input.birthdate !== undefined) patch.birthdate = input.birthdate;
   if (input.tags !== undefined) patch.tags = input.tags;
   if (input.source !== undefined) patch.source = input.source;
@@ -585,6 +621,29 @@ export async function patchContactHandler(
       ctx.requestId,
       traduzir("Nenhum campo para atualizar.", ctx.idioma ?? "pt-BR"),
     );
+  }
+
+  // Apagar o principal com telefone extra deixaria os extras sem número de
+  // resposta ("Tornar principal" é o caminho). Recusa ANTES do UPDATE.
+  if (input.phone_number === null && (existing as { phone_number?: string | null }).phone_number) {
+    const { data: extras, error: errExtras } = await supabase
+      .from("contact_phones")
+      .select("id")
+      .eq("organization_id", ctx.organization_id)
+      .eq("contact_id", contactId)
+      .limit(1);
+    if (errExtras) {
+      throw new ApiError(500, "internal_error", undefined, ctx.requestId, errExtras.message);
+    }
+    if (extras && extras.length > 0) {
+      throw new ApiError(
+        409,
+        "primary_phone_has_extras",
+        undefined,
+        ctx.requestId,
+        traduzir("Torne outro número principal antes de remover este.", ctx.idioma ?? "pt-BR"),
+      );
+    }
   }
 
   const tagServiceOrigin = input.tags !== undefined
@@ -815,20 +874,43 @@ export async function deleteContactHandler(
   try {
     // Mensagens e conversas RESTRICT no contato: apagar primeiro, senão o
     // DELETE da ficha falha para qualquer lead que já falou no canal.
-    const { error: msgErr } = await supabase
-      .from("messages")
-      .delete()
+    //
+    // Pelo login ninguém apaga o que o cliente disse nem o que a IA mandou
+    // (policy `messages_delete_de_atendente`, 0509), nem conversa: mensagens e
+    // conversas saem pela service role, mas só as das conversas que o caller
+    // ALCANÇA pela RLS dele — o mesmo recorte que o DELETE pela sessão fazia.
+    // Conversa que ele não vê fica, e o DELETE da ficha cai no RESTRICT
+    // abaixo, como antes.
+    const { data: conversasVisiveis, error: convSelErr } = await supabase
+      .from("conversations")
+      .select("id")
       .eq("contact_id", contactId)
       .eq("organization_id", ctx.organization_id);
-    throwOnDbError(msgErr, ctx.requestId, ctx.idioma);
+    throwOnDbError(convSelErr, ctx.requestId, ctx.idioma);
+    const idsDasConversas = ((conversasVisiveis ?? []) as Array<{ id: string }>).map((c) => c.id);
+    if (idsDasConversas.length > 0) {
+      const { error: msgErr } = await createAdminClient()
+        .from("messages")
+        .delete()
+        .eq("organization_id", ctx.organization_id)
+        .eq("contact_id", contactId)
+        .in("conversation_id", idsDasConversas);
+      throwOnDbError(msgErr, ctx.requestId, ctx.idioma);
+    }
     apagados.push("messages");
 
-    const { error: convErr } = await supabase
-      .from("conversations")
-      .delete()
-      .eq("contact_id", contactId)
-      .eq("organization_id", ctx.organization_id);
-    throwOnDbError(convErr, ctx.requestId, ctx.idioma);
+    // A conversa também só sai pela service role (0509: pelo login ninguém
+    // apaga conversa, porque o DELETE leva as mensagens junto em cascata) — e
+    // só as que o caller vê, as mesmas cujas mensagens saíram acima.
+    if (idsDasConversas.length > 0) {
+      const { error: convErr } = await createAdminClient()
+        .from("conversations")
+        .delete()
+        .eq("organization_id", ctx.organization_id)
+        .eq("contact_id", contactId)
+        .in("id", idsDasConversas);
+      throwOnDbError(convErr, ctx.requestId, ctx.idioma);
+    }
     apagados.push("conversations");
 
     const { data, error: delErr } = await supabase

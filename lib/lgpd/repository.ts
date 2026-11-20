@@ -17,7 +17,12 @@ import type { LgpdRequest, LgpdRequestType, LgpdScope } from "./types";
 export interface CreateLgpdRequestInput {
   organizationId: string;
   requestType: LgpdRequestType;
-  source: "nuvemshop" | "admin_panel" | "api";
+  /**
+   * `retention` = a exclusão por fim do prazo de exportação
+   * (`lib/exportacao/exclusao.ts`), aceita pelo CHECK desde a migration 0483.
+   */
+  /** `manual` = pedido feito pelo próprio contato na conversa (passo "Excluir contato" do chatbot). */
+  source: "nuvemshop" | "admin_panel" | "api" | "retention" | "manual";
   contactId?: string | null;
   externalCustomerId?: string | null;
   receivedAt: Date;

@@ -10,6 +10,10 @@
 	encode gzip
 
 	route {
+		# TRACE/TRACK/CONNECT: o Next responde 500 a eles antes de qualquer rota
+		# (achado do schemathesis, 14/11/2026). Ninguém usa; aqui viram 405.
+		@metodo_de_sonda method TRACE TRACK CONNECT
+		respond @metodo_de_sonda 405
 		# O webhook global do WAHA só pode ser chamado pela rede interna.
 		@waha_global path /api/v1/webhooks/waha
 		respond @waha_global 403

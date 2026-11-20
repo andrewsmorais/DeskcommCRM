@@ -27,6 +27,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { inviteMemberSchema, validateRequest } from "@/lib/schemas";
 import { ErroDaCotaDeEquipe } from "@/lib/billing/equipe";
 import { ErroDaReservaDeCota } from "@/lib/billing/reserva";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +55,20 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!authz.ok) return authz.response;
   const { user: authUser, org: activeOrg } = authz;
 
+  // Acompanhamento de suporte não cria membro (decisão de 11/11/2026, como no
+  // suporte das ferramentas do mercado): um convite emitido dentro dele virava
+  // um administrador PERMANENTE, que sobrevivia ao fim do acompanhamento e à
+  // revogação de quem o abriu. Mesma régua dos tokens de API. O banco recusa
+  // também (migration 0506), pela REST.
+  if (authUser.support) {
+    return fail(
+      "forbidden",
+      traduzir("Saia do acompanhamento para convidar pessoas para a equipe.", authUser.idioma),
+      403,
+      { requestId },
+    );
+  }
+
   let input;
   try {
     input = await validateRequest(inviteMemberSchema, req);
@@ -64,6 +80,23 @@ export async function POST(req: NextRequest): Promise<Response> {
       });
     }
     throw err;
+  }
+
+  // "Permissões avançadas" (interface por membro) é recurso do plano, e a rota
+  // irmã `PATCH /api/v1/team/[user_id]/interface` já o exige. O convite grava o
+  // MESMO estado por membro na aceitação, então cobra a mesma régua ANTES de
+  // emitir qualquer convite. Convite sem interface, ou com a completa, segue
+  // livre em todo plano.
+  const restringeInterface = input.invitations.some(
+    (inv) =>
+      inv.interface_settings !== undefined &&
+      (inv.interface_settings.preset !== "completa" || inv.interface_settings.destinos !== undefined),
+  );
+  if (restringeInterface) {
+    const recusado = await exigirRecursoDoPlano(activeOrg.orgId, "permissoes_avancadas", {
+      requestId,
+    });
+    if (recusado) return recusado;
   }
 
   const sent: SentItem[] = [];

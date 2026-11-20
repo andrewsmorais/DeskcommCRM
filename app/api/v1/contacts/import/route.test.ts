@@ -29,7 +29,12 @@ interface Resumo {
 
 /** Só as fronteiras externas são dubladas; multipart, CSV e schemas são reais. */
 function banco(opcoes: {
-  existentes?: Array<{ phone_number?: string; email_normalized?: string }>;
+  existentes?: Array<{
+    phone_number?: string;
+    email_normalized?: string;
+    organization_id?: string;
+    is_merged_into?: string | null;
+  }>;
   falhas?: Array<{ code: string; message: string } | null>;
   /** O país declarado pela organização; ausente/`null` é o Brasil. */
   pais?: string | null;
@@ -47,15 +52,30 @@ function banco(opcoes: {
         maybeSingle: vi.fn(async () => ({ data: { country: opcoes.pais ?? null }, error: null })),
       };
     }
+    // A pré-checagem de telefone extra lê `contact_phones` (0541). Sem extra no
+    // banco do teste a lista volta vazia — o mesmo que a base antiga.
+    if (tabela === "contact_phones") {
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn(async () => ({ data: [], error: null })),
+      };
+    }
     expect(tabela).toBe("contacts");
     const consulta = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
       not: vi.fn().mockReturnThis(),
       in: vi.fn(async (coluna: "phone_number" | "email_normalized", valores: string[]) => {
         expect(consulta.eq).toHaveBeenCalledWith("organization_id", ORG);
+        const filtroDeMescla = consulta.is.mock.calls.find(([campo]) => campo === "is_merged_into");
         return {
-          data: (opcoes.existentes ?? []).filter((r) => valores.includes(r[coluna] ?? "")),
+          data: (opcoes.existentes ?? []).filter((r) =>
+            (r.organization_id ?? ORG) === ORG
+            && valores.includes(r[coluna] ?? "")
+            && (!filtroDeMescla || (r.is_merged_into ?? null) === filtroDeMescla[1]),
+          ),
           error: null,
         };
       }),
@@ -198,6 +218,68 @@ describe("POST /api/v1/contacts/import — desfecho por linha", () => {
   });
 });
 
+describe("POST /api/v1/contacts/import — identificadores depois da mesclagem", () => {
+  const PRINCIPAL = "33333333-3333-4333-8333-333333333333";
+  const CASOS = [
+    {
+      campo: "telefone",
+      linha: `Pessoa,${PHONE},`,
+      identificador: { phone_number: PHONE },
+      principal: { phone_number: "+5521999998888" },
+    },
+    {
+      campo: "e-mail",
+      linha: "Pessoa,,secundario@example.com",
+      identificador: { email_normalized: "secundario@example.com" },
+      principal: { email_normalized: "principal@example.com" },
+    },
+  ];
+
+  it.each(CASOS)("importa $campo que ficou só na ficha absorvida", async ({ linha, identificador, principal }) => {
+    // A fusão só preenche o que o principal não tem. Quando os dois já têm
+    // valores diferentes, o secundário conserva o seu fora do índice único.
+    const db = banco({ existentes: [
+      { ...principal, is_merged_into: null },
+      { ...identificador, is_merged_into: PRINCIPAL },
+    ] });
+
+    const resumo = await importar([linha]);
+
+    expect(resumo).toEqual({ total_linhas: 1, imported: 1, skipped_duplicates: 0, errors: [] });
+    expect(db.tentativas).toHaveLength(1);
+    expect(db.rpc).toHaveBeenCalledExactlyOnceWith("emit_event", expect.objectContaining({
+      p_event_type: "contact.created", p_organization_id: ORG,
+    }));
+  });
+
+  it.each(CASOS)("continua pulando $campo herdado por um contato ativo", async ({ linha, identificador }) => {
+    const db = banco({ existentes: [
+      { ...identificador, is_merged_into: null },
+      { ...identificador, is_merged_into: PRINCIPAL },
+    ] });
+
+    const resumo = await importar([linha]);
+
+    expect(resumo).toEqual({ total_linhas: 1, imported: 0, skipped_duplicates: 1, errors: [] });
+    expect(db.tentativas).toHaveLength(0);
+    expect(db.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each(CASOS)("não reserva $campo de outra organização", async ({ linha, identificador }) => {
+    const db = banco({ existentes: [{
+      ...identificador,
+      organization_id: "44444444-4444-4444-8444-444444444444",
+      is_merged_into: null,
+    }] });
+
+    const resumo = await importar([linha]);
+
+    expect(resumo).toEqual({ total_linhas: 1, imported: 1, skipped_duplicates: 0, errors: [] });
+    expect(db.tentativas).toHaveLength(1);
+    expect(db.tentativas[0]).toMatchObject({ organization_id: ORG });
+  });
+});
+
 describe("POST /api/v1/contacts/import — a planilha segue o PAÍS da organização (issue #1033)", () => {
   /**
    * País sintético, e não um país de verdade: a issue #1033 proíbe publicar
@@ -282,3 +364,36 @@ describe("POST /api/v1/contacts/import — a planilha segue o PAÍS da organiza�
     expect(db.tentativas).toHaveLength(0);
   });
 });
+
+describe("POST /api/v1/contacts/import — arquivo .vcf do celular", () => {
+  async function importarVcf(conteudo: string) {
+    const form = new FormData();
+    form.set("file", new File([conteudo], "contatos.vcf", { type: "text/vcard" }));
+    return POST(new NextRequest("http://localhost/api/v1/contacts/import", { method: "POST", body: form }));
+  }
+
+  it("cria os contatos pelo mesmo caminho da planilha, com origem import_vcf", async () => {
+    const { tentativas } = banco();
+    const resposta = await importarVcf(
+      [
+        "BEGIN:VCARD", "VERSION:3.0", "FN:Ana Vcf", `TEL;TYPE=CELL:${PHONE}`, "END:VCARD",
+        "BEGIN:VCARD", "VERSION:3.0", "FN:Sem Contato", "END:VCARD",
+      ].join("\r\n"),
+    );
+    expect(resposta.status).toBe(200);
+    const { data } = (await resposta.json()) as { data: Resumo };
+    expect(data.total_linhas).toBe(2);
+    expect(data.imported).toBe(1);
+    expect(data.errors).toHaveLength(1);
+    expect(tentativas[0]).toMatchObject({ name: "Ana Vcf", phone_number: PHONE, source: "import_vcf" });
+  });
+
+  it("arquivo .vcf sem cartão é recusado com mensagem própria", async () => {
+    banco();
+    const resposta = await importarVcf("vazio");
+    expect(resposta.status).toBe(422);
+    const corpo = (await resposta.json()) as { error: { message: string } };
+    expect(corpo.error.message).toMatch(/Nenhum contato encontrado no arquivo \.vcf/);
+  });
+});
+

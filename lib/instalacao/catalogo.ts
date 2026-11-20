@@ -25,6 +25,7 @@ import { CHAVES_DE_CANAL_DA_INSTALACAO } from "@/lib/channels/chaves-da-instalac
 
 export type GrupoDaInstalacao =
   | "email"
+  | "ajuda"
   | "ia"
   | "whatsapp"
   | "banco"
@@ -142,7 +143,25 @@ export const CATALOGO_DA_INSTALACAO: readonly ChaveDaInstalacao[] = [
     chave: "SUPPORT_EMAIL",
     rotulo: "E-mail de suporte",
     explicacao: "O endereço que o sistema mostra a quem usa, quando alguém precisa de ajuda.",
-    grupo: "email",
+    grupo: "ajuda",
+    natureza: "texto",
+    controle: "edita",
+  },
+  {
+    chave: "AJUDA_ANTHROPIC_API_KEY",
+    rotulo: "Chave do assistente de ajuda (Claude)",
+    explicacao:
+      "A chave da Anthropic que o chat de ajuda do CRM usa para responder às dúvidas dos clientes. Separada da chave dos agentes, para o custo do suporte aparecer à parte. Sem ela o botão Ajuda mostra só o WhatsApp e o e-mail.",
+    grupo: "ajuda",
+    natureza: "segredo",
+    controle: "edita",
+  },
+  {
+    chave: "SUPPORT_WHATSAPP",
+    rotulo: "WhatsApp de suporte",
+    explicacao:
+      "O número que o sistema mostra a quem usa para falar com você, com DDI e DDD (ex.: 5511999999999). Vazio = nenhum número aparece.",
+    grupo: "ajuda",
     natureza: "texto",
     controle: "edita",
   },

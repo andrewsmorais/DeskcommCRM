@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
-import { Plus, MagnifyingGlass, UploadSimple, UsersThree } from "@/lib/ui/icons";
+import { ArrowsClockwise, Plus, DownloadSimple, MagnifyingGlass, UploadSimple, UsersThree } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,8 +20,11 @@ import { PontoDaEtiqueta } from "@/components/tags/PontoDaEtiqueta";
 import { NewContactDialog } from "@/components/contacts/NewContactDialog";
 import { ImportContactsDialog } from "@/components/contacts/ImportContactsDialog";
 import { TAG_DE_CLIENTE } from "@/lib/contacts/cliente";
+import { queryDaExportacao, type FormatoDeExport } from "@/lib/contacts/exportar";
+import { roleAtLeast } from "@/lib/auth/types";
 import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { MergeDialog } from "@/components/contacts/MergeDialog";
+import { SyncPhoneContactsDialog } from "@/components/contacts/SyncPhoneContactsDialog";
 import { EmptyContacts } from "@/components/empty";
 import type { ContactOrderBy } from "@/lib/schemas/contacts";
 
@@ -32,6 +35,7 @@ const SOURCE_OPTIONS = [
   { value: "site", label: "Site (landing page)" },
   { value: "nuvemshop", label: "Nuvemshop" },
   { value: "import_csv", label: "Importado (CSV)" },
+  { value: "import_vcf", label: "Importado (vCard)" },
   // Os dois valores que a atribuição de anúncio grava em `contacts.source`
   // (`PlataformaDeAnuncio` em lib/leads/atribuicao-de-anuncio.ts). Sem eles, o
   // contato que veio de um clique em anúncio existe no banco e não é
@@ -44,9 +48,13 @@ const SOURCE_OPTIONS = [
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
+/** O teto do pedido de export (`TETO_DOS_MARCADOS` na rota). */
+const TETO_DE_MARCADOS = 100;
+
 export function ContactsListClient() {
   const t = useT();
-  const clientesLigado = useActiveOrg()?.cliente_pela_agenda === true;
+  const orgAtiva = useActiveOrg();
+  const clientesLigado = orgAtiva?.cliente_pela_agenda === true;
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [tag, setTag] = useState<string | undefined>(undefined);
@@ -56,6 +64,7 @@ export function ContactsListClient() {
   const [limit, setLimit] = useState<number>(25);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [agendaOpen, setAgendaOpen] = useState(false);
   const [duplicadosOpen, setDuplicadosOpen] = useState(false);
 
   useEffect(() => {
@@ -100,6 +109,67 @@ export function ContactsListClient() {
     [orderBy],
   );
 
+  // O MESMO gate da rota (`requireRole("manager")`): um botão que só devolve
+  // 403 é armadilha — quem tem papel de leitura nem vê a porta.
+  const podeExportar = roleAtLeast(orgAtiva?.role, "manager");
+
+  /**
+   * Exportar é exportar o QUE A TELA ESTÁ MOSTRANDO: os mesmos filtros da lista
+   * viajam na query (busca, etiquetas em E/OU, origem, pessoais), sem `cursor`
+   * nem `limit` — o arquivo é o conjunto filtrado inteiro, não a página que a
+   * pessoa rolou até aqui.
+   */
+  // Seleção em lote: só quem pode exportar vê as caixinhas (é a única ação do
+  // lote), e o teto é o do pedido — 100 por arquivo.
+  const [marcados, setMarcados] = useState<Set<string>>(() => new Set());
+  const alternarMarcado = useCallback((id: string) => {
+    setMarcados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }, []);
+
+  const marcarTodos = useCallback(
+    (marcar: boolean) => {
+      setMarcados((atual) => {
+        const novo = new Set(atual);
+        for (const c of allContacts) {
+          if (!marcar) novo.delete(c.id);
+          else if (novo.size < TETO_DE_MARCADOS) novo.add(c.id);
+        }
+        return novo;
+      });
+    },
+    [allContacts],
+  );
+
+  const exportarMarcados = useCallback(
+    (formato: FormatoDeExport) => {
+      window.location.href = `/api/v1/contacts/export?${queryDaExportacao(formato, {
+        ids: [...marcados],
+      })}`;
+    },
+    [marcados],
+  );
+
+  const exportar = useCallback(
+    (formato: FormatoDeExport) => {
+      const qs = queryDaExportacao(formato, {
+        search,
+        tags: tag ? [tag] : [],
+        source,
+        order_by: orderBy,
+        order_dir: orderDir,
+      });
+      // `Content-Disposition: attachment` na resposta faz o navegador baixar,
+      // não navegar — o mesmo gesto do "Exportar CSV" da tela de auditoria.
+      window.location.href = `/api/v1/contacts/export?${qs}`;
+    },
+    [search, tag, source, orderBy, orderDir],
+  );
+
   return (
     <div className="space-y-4 p-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -111,8 +181,8 @@ export function ContactsListClient() {
         </div>
         {/*
           A estrutura é a da main (o "Importar CSV" do PR #313); o `shrink-0`
-          vem do PR #267, e vale para os DOIS botões agora: numa tela de 390px
-          uma linha de dois botões sem isso comprime os rótulos.
+          vem do PR #267, e vale para todos os botões: numa tela de 390px
+          uma linha de botões sem isso comprime os rótulos.
         */}
         <div className="flex shrink-0 items-center gap-2">
           {/*
@@ -129,6 +199,36 @@ export function ContactsListClient() {
             <UploadSimple size={16} weight="bold" aria-hidden />
             <span>{t("Importar CSV")}</span>
           </Button>
+          {/* Os contatos salvos no celular do número conectado — a porta que o CSV não tem. */}
+          <Button variant="outline" onClick={() => setAgendaOpen(true)}>
+            <ArrowsClockwise size={16} weight="bold" aria-hidden />
+            <span>{t("Agenda do celular")}</span>
+          </Button>
+          {/*
+            A porta de VOLTA do mesmo dado: importar sem exportar deixava o CRM
+            como saída única (SSH + psql), e o celular nem importa CSV — importa
+            vCard. Os dois formatos moram num menu porque são dois arquivos
+            diferentes para dois destinos diferentes, e um botão por formato
+            dobraria a largura do header numa tela de 390px.
+          */}
+          {podeExportar && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <DownloadSimple size={16} weight="bold" aria-hidden />
+                  <span>{t("Exportar")}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => exportar("csv")}>
+                  {t("Exportar CSV")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportar("vcf")}>
+                  {t("Exportar vCard")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button onClick={() => setCreateOpen(true)}>
             <Plus size={16} weight="bold" aria-hidden />
             <span>{t("Novo contato")}</span>
@@ -245,7 +345,41 @@ export function ContactsListClient() {
       ) : (
         <>
           <Card className="overflow-hidden">
+            {podeExportar && marcados.size > 0 && (
+              <div
+                className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-2 text-sm"
+                role="region"
+                aria-label={t("Contatos marcados")}
+              >
+                <span className="font-medium">
+                  {marcados.size} {marcados.size === 1 ? t("marcado") : t("marcados")}
+                </span>
+                {marcados.size >= TETO_DE_MARCADOS && (
+                  <span className="text-muted-foreground">
+                    {t("Máximo de 100 por arquivo.")}
+                  </span>
+                )}
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => exportarMarcados("csv")}>
+                    {t("Exportar marcados em CSV")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => exportarMarcados("vcf")}>
+                    {t("Exportar marcados em vCard")}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setMarcados(new Set())}>
+                    {t("Limpar marcação")}
+                  </Button>
+                </div>
+              </div>
+            )}
             <ContactsTable
+              {...(podeExportar
+                ? {
+                    selecionados: marcados,
+                    onAlternar: alternarMarcado,
+                    onAlternarTodos: marcarTodos,
+                  }
+                : {})}
               contacts={allContacts}
               orderBy={orderBy}
               orderDir={orderDir}
@@ -273,6 +407,7 @@ export function ContactsListClient() {
 
       <NewContactDialog open={createOpen} onOpenChange={setCreateOpen} />
       <ImportContactsDialog open={importOpen} onOpenChange={setImportOpen} />
+      <SyncPhoneContactsDialog open={agendaOpen} onOpenChange={setAgendaOpen} />
       <MergeDialog open={duplicadosOpen} onOpenChange={setDuplicadosOpen} />
     </div>
   );

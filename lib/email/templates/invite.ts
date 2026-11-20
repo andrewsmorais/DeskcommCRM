@@ -72,13 +72,13 @@ export function buildInviteEmail(opts: InviteEmailOptions): {
       <strong>${escapeHtml(opts.role)}</strong> no ${escapeHtml(marca)}.
     </p>
     <p style="margin:24px 0">
-      <a href="${opts.acceptUrl}" style="display:inline-block;padding:12px 24px;background:${opts.marca.accent};color:${opts.marca.accentFg};border-radius:6px;text-decoration:none;font-weight:600">
+      <a href="${escapeHtml(opts.acceptUrl)}" style="display:inline-block;padding:12px 24px;background:${opts.marca.accent};color:${opts.marca.accentFg};border-radius:6px;text-decoration:none;font-weight:600">
         Aceitar convite
       </a>
     </p>
     <p style="margin:0 0 8px;font-size:13px;color:${NEUTROS_DE_SAIDA.suave}">
       Ou copie e cole este link no navegador:<br>
-      <span style="word-break:break-all;color:${opts.marca.accent}">${opts.acceptUrl}</span>
+      <span style="word-break:break-all;color:${opts.marca.accent}">${escapeHtml(opts.acceptUrl)}</span>
     </p>
     <p style="margin:24px 0 0;font-size:13px;color:${NEUTROS_DE_SAIDA.suave}">
       Este link expira em <strong>${expiresStr}</strong>. Se você não esperava este convite, pode ignorá-lo.

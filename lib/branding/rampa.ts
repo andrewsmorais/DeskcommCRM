@@ -10,9 +10,10 @@
  * pré-buildada e cada dependência nova é superfície de advisory num produto que o
  * cliente hospeda. As conversões (sRGB ↔ OKLab, de Björn Ottosson) cabem em 60 linhas.
  *
- * A régua é `app/globals.css`. `rampaDeSemente('#506d48')` reproduz os 11 stops Sage
- * com Δ ≤ 2/255 por canal — medido, e vigiado por
- * `tests/unit/branding-rampa.test.ts`, que LÊ os stops esperados do próprio CSS.
+ * A calibração é `RAMPA_DE_CALIBRACAO` (a Sage do design system):
+ * `rampaDeSemente('#506d48')` reproduz os 11 stops com Δ ≤ 2/255 por canal — medido,
+ * e vigiado por `tests/unit/branding-rampa.test.ts`. A paleta do PRODUTO (violeta,
+ * no `globals.css`) é escolhida à mão e não passa por aqui.
  */
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
@@ -203,7 +204,21 @@ export function compor(cor: string, alfa: number, sobre: string): string {
 // ── A rampa ──────────────────────────────────────────────────────────────────
 
 /**
- * Lightness dos 11 stops Sage, medida em OKLab a partir de `app/globals.css`.
+ * A rampa de CALIBRAÇÃO: os 11 stops Sage do design system
+ * (`docs/design-system/02-palette-sage.md`), de onde `ESCADA_L` e `CURVA_C` foram
+ * medidas. Era também a cor do produto até o ChatAI Online passar para a paleta
+ * violeta (out/2026), que é escolhida à mão no `globals.css` e NÃO sai deste
+ * algoritmo. Por isso a referência fica congelada aqui: ela não é estado do
+ * produto que envelhece, é o conjunto contra o qual as constantes foram
+ * ajustadas — trocá-la exige remedir as duas.
+ */
+export const RAMPA_DE_CALIBRACAO: Rampa = [
+  "#f3f6f1", "#e4ebe0", "#c8d6c1", "#a4ba9a", "#82a077", "#67885d",
+  "#506d48", "#41573b", "#374731", "#2f3c2b", "#171f15",
+];
+
+/**
+ * Lightness dos 11 stops de `RAMPA_DE_CALIBRACAO`, medida em OKLab.
  * É a FORMA da escada — a curva de luminosidade que o design system desenhou à mão.
  */
 export const ESCADA_L = [

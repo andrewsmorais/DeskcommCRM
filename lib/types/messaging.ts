@@ -40,6 +40,14 @@ export interface Conversation {
   last_message_preview: string | null;
   unread_count_for_assignee: number;
   is_group: boolean;
+  /** Conversa privada (migration 0495): só o responsável e os gestores veem. */
+  is_private?: boolean;
+  /** Migration 0510: visivel | oculta | oculta_ate_mensagem. */
+  visibilidade?: "visivel" | "oculta" | "oculta_ate_mensagem";
+  /** Setor de atendimento (migration 0496), ou null. */
+  setor_id?: string | null;
+  /** O nome do setor, embutido pela lista (`setores!conversations_setor_fk`). */
+  setor?: { nome: string } | null;
   group_chat_id: string | null;
   tags: string[];
   metadata: Record<string, unknown>;
@@ -57,6 +65,12 @@ export interface Conversation {
    * resposta de uma versão anterior, ainda em cache do react-query, não o tem.
    */
   comando_da_conversa?: string | null;
+  /**
+   * A conversa está marcada como EXEMPLO para o agente aprender (opt-in de LGPD
+   * que a rota `POST .../usable-for-rag` liga). Opcional: resposta em cache de
+   * antes do campo não o tem — ausente é "não afirmo", nunca "não está".
+   */
+  usable_for_rag?: boolean;
   last_handoff_at: string | null;
   /**
    * Por que o automático está parado. Diferencia o handoff formal de uma pausa
@@ -92,6 +106,14 @@ export interface Message {
   media_mime: string | null;
   media_size_bytes: number | null;
   media_storage_path: string | null;
+  /**
+   * O texto que o worker tirou da mídia (transcrição do áudio, descrição da
+   * imagem). Opcional porque linhas de outras leituras (realtime antigo, testes)
+   * podem não trazer a coluna. O balão do áudio mostra a transcrição.
+   */
+  media_derived_text?: string | null;
+  /** `ready` | `failed` | `skipped` | null (ainda processando). */
+  media_derived_status?: string | null;
   // Espelha o CHECK do banco (messages_sent_via_check): 'crm', 'external_device',
   // 'automation', 'ai', 'user', 'system'. O tipo listava só três e o TypeScript
   // aceitava os demais só porque o dado vem do Supabase sem cast — a tela então
@@ -115,6 +137,8 @@ export interface Message {
    * combinado sem saber que ele mudou é como o erro começa.
    */
   edited_at: string | null;
+  /** Marcada com estrela na conversa (migration 0513); null = não favorita. */
+  favoritada_em?: string | null;
   /** Quando o AUTOR apagou para todos. A linha fica; o texto não é mostrado. */
   revoked_at: string | null;
   /** A mensagem que esta responde (citação). `null` = envio solto. */
@@ -130,6 +154,10 @@ export interface Note {
   created_by_user_id: string | null;
   created_by_name: string | null;
   created_at: string;
+  /** Anexo da nota (migration 0547), no bucket `internal-media`. Null = só texto. */
+  media_storage_path?: string | null;
+  media_mime?: string | null;
+  media_size_bytes?: number | null;
 }
 
 /**

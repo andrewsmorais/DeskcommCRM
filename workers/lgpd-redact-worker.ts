@@ -42,7 +42,7 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-interface TenantProgress {
+export interface TenantProgress {
   processed: number;
   batch_offset: number;
   failed_contacts: string[];
@@ -57,6 +57,56 @@ function readTenantProgress(payload: Record<string, unknown> | null | undefined)
       ? ((raw["failed_contacts"] as unknown[]).filter((x) => typeof x === "string") as string[])
       : [],
   };
+}
+
+/**
+ * Percorre os contatos AINDA NÃO anonimizados da organização, em lotes, e
+ * anonimiza cada um.
+ *
+ * ─── Por que cursor de id, e não deslocamento ───────────────────────────────
+ *
+ * A consulta filtra `is_anonymized = false`. Cada contato anonimizado SAI do
+ * conjunto — então avançar por deslocamento (`range(offset, …)`), como esta
+ * peça fazia, pulava contatos: com 250 pendentes, o lote 1 anonimiza os 100
+ * primeiros; o lote 2 pede "a partir do 100º" num conjunto que agora tem 150, e
+ * recebe os 50 últimos; o laço termina e a organização é marcada `redacted` com
+ * 100 contatos intactos. O cursor (`id > último visto`) não depende do tamanho do
+ * conjunto, e passa também por cima de quem falhou, que não sai do filtro.
+ *
+ * Quem falhou fica para a PRÓXIMA execução, que recomeça do início: o filtro
+ * devolve só quem ainda falta. Por isso `failed_contacts` é zerado a cada
+ * execução — senão contaria como falho quem já foi anonimizado no retry.
+ */
+export async function percorrerContatosPendentes(args: {
+  lerPagina: (depoisDe: string | null, tamanho: number) => Promise<string[]>;
+  anonimizar: (contatoId: string) => Promise<void>;
+  salvarProgresso: () => Promise<void>;
+  progresso: TenantProgress;
+  aoFalhar?: (contatoId: string, erro: unknown) => void;
+  tamanho?: number;
+}): Promise<void> {
+  const tamanho = args.tamanho ?? TENANT_BATCH_SIZE;
+  args.progresso.failed_contacts = [];
+  let depoisDe: string | null = null;
+  for (;;) {
+    const ids = await args.lerPagina(depoisDe, tamanho);
+    if (ids.length === 0) break;
+    for (const id of ids) {
+      try {
+        await args.anonimizar(id);
+        args.progresso.processed++;
+      } catch (err) {
+        args.progresso.failed_contacts.push(id);
+        args.aoFalhar?.(id, err);
+      }
+    }
+    depoisDe = ids[ids.length - 1] ?? depoisDe;
+    // `batch_offset` segue gravado (telas e relatórios o leem), agora como
+    // contagem de contatos visitados — não é mais usado para paginar.
+    args.progresso.batch_offset += ids.length;
+    await args.salvarProgresso();
+    if (ids.length < tamanho) break;
+  }
 }
 
 async function tryNuvemshopCallback(
@@ -312,66 +362,58 @@ export async function processLgpdRedact(event: EventRow): Promise<HandlerResult>
       const progress = readTenantProgress(req.request_payload);
       const aggregate = { contacts: 0, conversations: 0, messages: 0 };
 
-      // Loop until empty batch — each iteration checkpoints progress.
-      // Uses keyset-style ordering by id with offset (small batches, full table
-      // is bounded by tenant size).
-      while (true) {
-        const { data: batch, error: batchErr } = await admin
-          .from("contacts")
-          .select("id")
-          .eq("organization_id", orgId)
-          .eq("is_anonymized", false)
-          .order("id", { ascending: true })
-          .range(progress.batch_offset, progress.batch_offset + TENANT_BATCH_SIZE - 1);
-
-        if (batchErr) {
-          throw new Error(`tenant_batch_select_failed: ${batchErr.message}`);
-        }
-
-        const rows = (batch ?? []) as Array<{ id: string }>;
-        if (rows.length === 0) break;
-
-        for (const row of rows) {
-          try {
-            const cascade = await cascadeRedactContact({
-              organizationId: orgId,
-              contactId: row.id,
-              requestId,
-            });
-            if (!cascade.alreadyAnonymized) {
-              aggregate.contacts += cascade.counts["contacts"] ?? 0;
-              aggregate.conversations += cascade.counts["conversations"] ?? 0;
-              aggregate.messages += cascade.counts["messages"] ?? 0;
-            }
-            progress.processed++;
-          } catch (err) {
-            const detail = err instanceof Error ? err.message : String(err);
-            progress.failed_contacts.push(row.id);
-            logger.warn("[lgpd-redact-worker] tenant cascade single contact failed", {
-              request_id: shortId(requestId),
-              organization_id: orgId,
-              contact_id_short: shortId(row.id),
-              error_hash: sha256(detail),
-            });
+      // Lotes com cursor de id — ver `percorrerContatosPendentes`. Cada lote
+      // grava o progresso.
+      await percorrerContatosPendentes({
+        progresso: progress,
+        async lerPagina(depoisDe, tamanho) {
+          let consulta = admin
+            .from("contacts")
+            .select("id")
+            .eq("organization_id", orgId)
+            .eq("is_anonymized", false)
+            .order("id", { ascending: true })
+            .limit(tamanho);
+          if (depoisDe) consulta = consulta.gt("id", depoisDe);
+          const { data: batch, error: batchErr } = await consulta;
+          if (batchErr) {
+            throw new Error(`tenant_batch_select_failed: ${batchErr.message}`);
           }
-        }
-
-        progress.batch_offset += rows.length;
-
-        // Persist checkpoint.
-        const updatedPayload = {
-          ...(req.request_payload as Record<string, unknown>),
-          progress,
-        };
-        await admin
-          .from("lgpd_requests")
-          .update({ request_payload: updatedPayload })
-          .eq("organization_id", orgId)
-          .eq("id", requestId);
-
-        // If the page was short-read we're done.
-        if (rows.length < TENANT_BATCH_SIZE) break;
-      }
+          return ((batch ?? []) as Array<{ id: string }>).map((r) => r.id);
+        },
+        async anonimizar(contactId) {
+          const cascade = await cascadeRedactContact({
+            organizationId: orgId,
+            contactId,
+            requestId,
+          });
+          if (!cascade.alreadyAnonymized) {
+            aggregate.contacts += cascade.counts["contacts"] ?? 0;
+            aggregate.conversations += cascade.counts["conversations"] ?? 0;
+            aggregate.messages += cascade.counts["messages"] ?? 0;
+          }
+        },
+        aoFalhar(contactId, err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          logger.warn("[lgpd-redact-worker] tenant cascade single contact failed", {
+            request_id: shortId(requestId),
+            organization_id: orgId,
+            contact_id_short: shortId(contactId),
+            error_hash: sha256(detail),
+          });
+        },
+        async salvarProgresso() {
+          const updatedPayload = {
+            ...(req.request_payload as Record<string, unknown>),
+            progress,
+          };
+          await admin
+            .from("lgpd_requests")
+            .update({ request_payload: updatedPayload })
+            .eq("organization_id", orgId)
+            .eq("id", requestId);
+        },
+      });
 
       // Tenant fully processed → flip organizations.status='redacted'.
       const { error: orgUpdateErr } = await admin
@@ -386,7 +428,12 @@ export async function processLgpdRedact(event: EventRow): Promise<HandlerResult>
         });
       }
 
-      const callback = await tryNuvemshopCallback(orgId, req.request_payload ?? {});
+      // A confirmação à Nuvemshop só existe para pedido que veio dela; a exclusão
+      // por fim do prazo (`source = 'retention'`) não tem a quem avisar.
+      const callback =
+        req.source === "nuvemshop"
+          ? await tryNuvemshopCallback(orgId, req.request_payload ?? {})
+          : { called: false, status: "not_applicable" };
 
       const failedCount = progress.failed_contacts.length;
       const finalStatus = failedCount > 0 ? "pending_review" : "completed";

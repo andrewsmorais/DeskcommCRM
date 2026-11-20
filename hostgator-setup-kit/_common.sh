@@ -701,6 +701,229 @@ construir_aqui_e_subir() {  # construir_aqui_e_subir [versão alvo] → 0 se sub
   return 0
 }
 
+# ── A vigília do app DEPOIS de uma atualização (#2757) ─────────────────────
+#
+# O buraco que isto fecha: o `update.sh` devolve os SERVIÇOS em qualquer
+# saída (o `trap restaurar_servicos`) e o `agent.sh` devolve a IMAGEM quando o
+# run termina com erro — mas os dois dependem de alguém CONSTATAR a falha
+# enquanto ela acontece. Quando o app cai DEPOIS disso, quem mais precisa de
+# saída é justamente o dono com o painel em 502: o botão de voltar não responde
+# porque está dentro do app que parou.
+#
+# O agente é a única peça que roda fora do app (cron de 5 min), então é ele
+# que fica de vigília. Duas marcas em disco, estado da VPS, ao lado do
+# `.update.log` de sempre:
+#
+#   .update-vigia            duas linhas: epoch UTC + a versão de onde se saiu;
+#   .update-vigia-falhas     quantos healthchecks seguidos falharam.
+#
+# O que a vigília NÃO faz: decidir sozinha. Ela só existe enquanto a última
+# transição foi uma atualização (a marca nasce lá) e dentro da janela daqui
+# embaixo — uma queda dias depois não é mais "logo após a atualização", e
+# voltar a versão por conta própria nesse caso deixaria o dono sem saber por
+# que o sistema voltou atrás sozinho.
+VIGIA_ARQUIVO=".update-vigia"
+VIGIA_FALHAS_ARQUIVO=".update-vigia-falhas"
+# Janela de 2 horas = 24 ciclos de cron. Folgada de propósito: uma atualização
+# que derruba o app costuma derrubar na largada (primeiros requests, cron que
+# roda pela primeira vez na versão nova), e o rollback só devolve versão — o
+# banco continua no schema novo, que a versão anterior atende.
+VIGIA_JANELA_SEGUNDOS=$((2 * 60 * 60))
+# N — quantos healthchecks SEGUIDOS precisam falhar antes da volta.
+#
+# Escolhido com os números do próprio kit, não no chute:
+#
+#   * 1 não basta: o cron roda de 5 em 5 minutos e o app REINICIA durante
+#     qualquer atualização (~30–90 s). Uma sonda perdida no reinício é o caso
+#     normal, não defeito — e rollback sobre atualização que deu certo é um
+#     estorno sem motivo.
+#   * 2 é a primeira falha que sobrevive a um intervalo inteiro de cron: ~10
+#     minutos de app fora do ar, medidos de ponta a ponta, e ainda dentro do
+#     que a própria issue chamou de "em até um ciclo do agente".
+#   * 3+ custaria +5 min de apagão real a cada degrau, e nada compra: a
+#     atualização acabou de provar o app saudável (o `wait_app_healthy` do
+#     update.sh), então falha que atravessa duas sondas 5 min separadas é a
+#     release, não um solavanco do Docker.
+VIGIA_FALHAS_SEGUIDAS=2
+
+# A marca que autoriza a volta automática. Chamada pelo `update.sh` no único
+# ponto em que a atualização já se comprometeu (preflight passou) — antes
+# disso nada foi tocado e não há o que desfazer.
+#
+# Só arma com nome de VERSÃO PUBLICADA: instalação fora de release não tem tag
+# para onde voltar, e `update.sh --to <sha>` tentaria puxar uma imagem com o
+# SHA no lugar da versão — o caminho que termina em "não consegui puxar".
+vigia_armar() {  # vigia_armar <versão que estava no ar antes desta atualização>
+  local de="${1:-}" arq tmp
+  [[ "$de" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]] || return 0
+  arq="${PROJECT_DIR:?}/${VIGIA_ARQUIVO}"
+  tmp="${arq}.tmp.$$"
+  printf '%s
+%s
+' "$(date -u +%s)" "$de" > "$tmp" 2>/dev/null || return 0
+  mv "$tmp" "$arq" 2>/dev/null || return 0
+  # Marca nova zera a contagem: as falhas da atualização ANTERIOR não podem
+  # entrar na conta desta.
+  vigia_zerar
+  return 0
+}
+
+# A marca lida. Ecoa a versão para a qual ainda dá para voltar, ou VAZIO.
+#
+# Marca velha (fora da janela) é APAGADA aqui, e não só ignorada: uma marca
+# que sobrevivesse viraria rollback de madrugada sobre uma queda que ninguém
+# relaciona com a atualização de semanas atrás. Quem define a validade é esta
+# função, para todo chamador valer a MESMA janela.
+vigia_ler() {  # ecoa <versão> | vazio
+  local arq="${PROJECT_DIR:?}/${VIGIA_ARQUIVO}" epoch de agora
+  [ -f "$arq" ] || return 0
+  epoch="$(sed -n '1p' "$arq" 2>/dev/null || true)"
+  de="$(sed -n '2p' "$arq" 2>/dev/null || true)"
+  case "$epoch" in ''|*[!0-9]*) vigia_encerrar; return 0 ;; esac
+  [ -n "$de" ] || { vigia_encerrar; return 0; }
+  agora="$(date -u +%s)"
+  if [ $((agora - epoch)) -gt "$VIGIA_JANELA_SEGUNDOS" ]; then
+    vigia_encerrar
+    return 0
+  fi
+  printf '%s' "$de"
+}
+
+# Uma falha a mais. Ecoa o total de falhas SEGUIDAS registrado até agora.
+# `|| true` em tudo: isto roda no caminho de um app fora do ar, em que o disco
+# cheio é justamente uma das causas — a vigência não pode morrer por não
+# conseguir anotar que o app morreu.
+vigia_falhou() {  # ecoa <contador>
+  local arq="${PROJECT_DIR:?}/${VIGIA_FALHAS_ARQUIVO}" n
+  n="$(cat "$arq" 2>/dev/null || true)"
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  n=$((n + 1))
+  printf '%s
+' "$n" > "$arq" 2>/dev/null || true
+  printf '%s' "$n"
+}
+
+# O app respondeu: a contagem recomeça. A marca continua de pé — a janela de
+# validade é quem encerra a vigília, não um healthcheck bom isolado.
+vigia_zerar() {
+  rm -f "${PROJECT_DIR:?}/${VIGIA_FALHAS_ARQUIVO}" 2>/dev/null || true
+  return 0
+}
+
+# Fim da vigília (marca + contador), por qualquer motivo.
+vigia_encerrar() {
+  rm -f "${PROJECT_DIR:?}/${VIGIA_ARQUIVO}" "${PROJECT_DIR:?}/${VIGIA_FALHAS_ARQUIVO}" 2>/dev/null || true
+  return 0
+}
+
+# ── De onde esta instalação veio (auditoria de 18/11, achado 3) ───────────────
+#
+# A única versão para a qual o agente aceita VOLTAR quando o pedido vem do app
+# ("Voltar para a versão anterior" e "Forçar atualização"). Sem esta régua o
+# `to_version` do app escolhia qualquer versão antiga, e o agente acrescentava o
+# --force sozinho. Diferente da marca da vigília: esta não vence em duas horas —
+# o botão de voltar vale até a próxima troca de versão.
+#
+# Quem grava é o update.sh, numa ida para a FRENTE, com a versão que estava no ar.
+# Sem o arquivo (a ida foi feita por um update.sh anterior a este conserto), a
+# resposta sai do reflog do próprio git — que é do host, não do app: o último
+# "checkout: moving from X to Y" em que Y é o que roda agora.
+ORIGEM_ARQUIVO=".update-de-onde-vim"
+
+origem_registrar() {  # origem_registrar <versão que estava no ar antes da ida>
+  local de="${1:-}" arq tmp
+  [[ "$de" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+  arq="${PROJECT_DIR:?}/${ORIGEM_ARQUIVO}"
+  tmp="${arq}.tmp.$$"
+  printf '%s\n' "$de" > "$tmp" 2>/dev/null || return 0
+  mv "$tmp" "$arq" 2>/dev/null || true
+  return 0
+}
+
+# A régua do pedido de atualização que vem do app. Ecoa o MOTIVO da recusa
+# (em português, vai para a tela pelo log) ou nada quando o pedido pode seguir.
+# Sempre devolve 0: quem chama decide pelo texto.
+recusa_do_alvo_pedido() {  # <alvo> <tag atual> <release publicada> <volta: 1|vazio>
+  local alvo="${1:-}" atual="${2:-}" publicada="${3:-}" volta="${4:-}" origem
+  [ -n "$alvo" ] || return 0
+  if ! [[ "$alvo" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'O pedido trouxe um alvo que não é uma versão publicada (%s). Nada foi instalado.' "$(printf '%s' "$alvo" | head -c 60)"
+    return 0
+  fi
+  if [ -n "$volta" ]; then
+    origem="$(origem_ler)" || origem=""
+    if [ -z "$origem" ] || [ "${alvo#v}" != "${origem#v}" ]; then
+      printf 'Só dá para voltar para a versão de onde esta instalação veio%s; o pedido era para %s. Nada foi instalado. Quem tem acesso ao servidor pode voltar à mão: bash hostgator-setup-kit/update.sh --to %s --force' \
+        "${origem:+ ($origem)}" "$alvo" "$alvo"
+    fi
+    return 0
+  fi
+  [ "$alvo" != "$atual" ] || return 0
+  if [ -z "$publicada" ]; then
+    printf 'Não consegui confirmar agora qual é a versão publicada (o servidor não falou com o GitHub). Nada foi instalado; tente de novo em alguns minutos.'
+  elif [ "${alvo#v}" != "${publicada#v}" ]; then
+    printf 'O pedido era para %s, mas a versão publicada agora é %s. Nada foi instalado.' "$alvo" "$publicada"
+  fi
+  return 0
+}
+
+origem_ler() {  # ecoa a versão de origem (vX.Y.Z) | vazio
+  local arq="${PROJECT_DIR:?}/${ORIGEM_ARQUIVO}" de linha antes depois
+  de="$(head -n1 "$arq" 2>/dev/null || true)"
+  if [[ "$de" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf '%s' "$de"
+    return 0
+  fi
+  linha="$(git reflog --format='%gs' 2>/dev/null | grep -m1 '^checkout: moving from ' || true)"
+  [ -n "$linha" ] || return 0
+  antes="${linha#checkout: moving from }"
+  antes="${antes%% to *}"
+  depois="${linha##* to }"
+  # Só vale se a última troca é a que trouxe até aqui.
+  [ "$(git rev-parse --verify --quiet "${depois}^{commit}" 2>/dev/null)" = "$(git rev-parse HEAD 2>/dev/null)" ] || return 0
+  de="$(git describe --tags --exact-match "$antes" 2>/dev/null || true)"
+  [[ "$de" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] && printf '%s' "$de"
+  return 0
+}
+
+# O app está no ar no caminho que o DONO usa?
+#
+# É a mesma rota que o `healthcheck.sh` mostra ( `/api/v1/health`), batida
+# pelo endereço público — e o caminho público entra de propósito: o defeito
+# que a volta automática existe para encerrar é o 502 que o dono vê no
+# navegador, e ele é do app OU do proxy na frente dele; os dois são "o sistema
+# está fora". `--max-time` fecha o outro buraco medido (#1955): um `docker`
+# travado no resolver segurava o diagnóstico para sempre, e um agente preso
+# não vigia nada.
+#
+# ─── Quem decide é o CORPO, não o código HTTP (#2757) ────────────────────────
+# A rota responde **503** sempre que um dos serviços que ela vigia está `down`
+# (WAHA, Redis, Supabase) — é o diagnóstico dela, não sinal de que o site caiu.
+# Com `curl -f` esse 503 contava como falha, e uma queda do WhatsApp de ~10
+# minutos depois de uma atualização que deu certo fazia o sistema voltar de
+# versão: backup, migration e ~2 min fora do ar para consertar nada. Pior: a
+# mensagem que o mantenedor mediu é que `curl -f` também reprova qualquer
+# 5xx/4xx — e o 503 do PROXY (Traefik sem rota) e o 404 `page not found` dele
+# têm significados opostos ao 503 da rota com o mesmo código.
+#
+# Então: **no ar** = a resposta veio do próprio sistema, o que se reconhece
+# pela forma que só ele produz — o JSON `{"data":{"status":"healthy|degraded|
+# unhealthy","version":...}}`. Vale para qualquer código HTTP (200, 503).
+# **Fora** = conexão recusada, tempo esgotado, ou resposta que não tem esse
+# JSON: 502/504 do proxy, `404 page not found` do Traefik, 503 do proxy.
+# Sem `jq`, que pode não existir na VPS: são duas buscas de texto ancoradas na
+# chave, e `status` só casa com o vocabulário da rota (`ok`/`down` dos checks
+# não casam) — um HTML de proxy não tem nenhuma das duas.
+app_esta_no_ar() {
+  local url="${NEXT_PUBLIC_APP_URL:-}" corpo
+  [ -n "$url" ] || return 1
+  # Sem `-f` de propósito: ele converteria o 503 da própria rota em falha, que
+  # é exatamente o defeito acima. O `--max-time` segue sendo o prazo.
+  corpo="$(curl -sS --max-time 20 "${url%/}/api/v1/health" 2>/dev/null)" || return 1
+  printf '%s' "$corpo" \
+    | grep -Eq '"status"[[:space:]]*:[[:space:]]*"(healthy|degraded|unhealthy)"' || return 1
+  printf '%s' "$corpo" | grep -Eq '"version"[[:space:]]*:'
+}
 # ── A rede externa por onde o proxy de fora alcança o app ────────────────────
 # O nome que o docker compose dá ao projeto quando ninguém passa -p: basename do
 # diretório, minúsculo, só [a-z0-9_-] — E com os `_`/`-` do INÍCIO aparados
@@ -1268,7 +1491,12 @@ ler_rodada_do_banco() {
 # `publish-image.yml` digam o mesmo. Se você é um fork, é lá que está a lista do
 # que trocar junto — e, desde 18/09/2026, o CI do SEU fork não cobra este valor:
 # a asserção só vale quando o dono do runner é o dono deste repositório.
-IMG_NS="ghcr.io/melgarafael"
+#
+# ChatAI Online (fork andrewsmorais, 11/11/2026): a VPS roda as imagens que o
+# CI DESTE fork publica (`publish-image.yml` publica em ghcr.io/<dono do
+# repositório>). Com o namespace do upstream, o `update.sh` trocava o produto
+# do fork — planos, checkout, consertos de segurança — pela imagem do upstream.
+IMG_NS="ghcr.io/andrewsmorais"
 IMG_APP="${IMG_NS}/deskcommcrm"
 IMG_WORKER="${IMG_NS}/deskcomm-worker"
 IMG_SCHEDULER="${IMG_NS}/deskcomm-scheduler"
@@ -1288,7 +1516,7 @@ IMG_VOICE_AGENT="${IMG_NS}/deskcomm-voice-agent"
 # alguém porque não deu para resolver um número de versão seria trocar um
 # problema de previsibilidade por um de disponibilidade.
 ultima_versao_publicada() {
-  local url="${1:-https://github.com/melgarafael/DeskcommCRM.git}" ref
+  local url="${1:-https://github.com/andrewsmorais/DeskcommCRM.git}" ref
   command -v git >/dev/null 2>&1 || return 0
   # `grep -v -- -` descarta PRERELEASE (v1.11.0-rc1, v1.1.1-jmpo.1 — esta última
   # existe de verdade neste repo). O `--sort=-v:refname` do git põe o prerelease
@@ -1478,6 +1706,42 @@ gravar_imagens() {
   # não no `stable` móvel do default do compose.
   set_env_var "$envfile" VOICE_AGENT_IMAGE       "${IMG_VOICE_AGENT}:${versao}"
   set_env_var "$envfile" VOICE_AGENT_PULL_POLICY "$politica"
+  # O par dos avisos com o app fechado mora aqui porque é a função que o
+  # update.sh antigo chama depois de reler o kit, então o par chega já na
+  # primeira atualização. E chega antes do pull e do `up -d`.
+  completar_par_vapid "$envfile"
+}
+
+# ── A versão do WhatsApp (WAHA) de quem instalou com o padrão anterior ───────
+#
+# O `install.sh` grava `WAHA_IMAGE` no .env com o padrão do dia — então trocar o
+# padrão do compose não chega a quem já instalou: a linha do .env vence. Para o
+# parque receber o WAHA novo sem ninguém editar arquivo (doutrina de
+# packaging), o update troca o valor SÓ quando ele é exatamente um padrão
+# anterior nosso. Valor escolhido por quem opera (waha-plus, outra tag) não é
+# tocado: aparece um aviso, e quem escolheu decide.
+#
+# 2026.7.2 → 2026.9.2: o `sendSticker` (figurinhas) só existe a partir da
+# 2026.8.2. As sessões pareadas ficam no volume `waha-data`: trocar a imagem
+# não pede QR de novo.
+WAHA_PADRAO="devlikeapro/waha:latest-2026.9.2"
+WAHA_PADROES_ANTERIORES="devlikeapro/waha:latest-2026.7.2"
+
+atualizar_waha_do_padrao() {  # atualizar_waha_do_padrao [envfile] → imprime o que fez
+  local envfile="${1:-.env}" atual anterior
+  [ -f "$envfile" ] || return 0
+  [ -w "$envfile" ] || return 0
+  atual="$(grep -E '^WAHA_IMAGE=' "$envfile" | tail -1 | cut -d= -f2- | tr -d "'\"")"
+  [ -z "$atual" ] && return 0   # sem linha: vale o padrão do compose, já novo
+  [ "$atual" = "$WAHA_PADRAO" ] && return 0
+  for anterior in $WAHA_PADROES_ANTERIORES; do
+    if [ "$atual" = "$anterior" ]; then
+      set_env_var "$envfile" WAHA_IMAGE "$WAHA_PADRAO"
+      printf 'atualizado %s -> %s\n' "$atual" "$WAHA_PADRAO"
+      return 0
+    fi
+  done
+  printf 'mantido %s\n' "$atual"
 }
 
 # ── Os segredos da chamada de voz, no .env de quem já tinha instalado ────────
@@ -1517,6 +1781,96 @@ completar_segredos_da_voz() {  # completar_segredos_da_voz [envfile]
   done
 
   printf '%s' "${criados# }"
+}
+
+# ── O par VAPID: avisos com o app fechado (Web Push) ────────────────────────
+#
+# Nasce sozinho na instalação e na atualização, UMA vez, e nunca é trocado
+# (ADR-0006, D6): trocar o par desliga os avisos de todo aparelho já inscrito, e
+# cada atendente teria de religá-los à mão. Operador não edita `.env` para ter
+# push (docs/doctrine/packaging.md).
+#
+# A lacuna aqui é VALOR VAZIO, não só linha ausente — diferente de
+# `completar_segredos_da_voz`: o install grava `VAPID_*=""` em toda instalação,
+# então vazio é o padrão, não a escolha de alguém. Vazio é medido com a régua do
+# `trim()` do app (lib/notifications/vapid.ts): espaço e CR de um `.env` editado
+# no Windows contam como vazio, senão a tela pede para atualizar e a atualização
+# não faz nada.
+
+_b64url() { base64 | tr -d '\n=' | tr '/+' '_-'; }
+
+# Par P-256 só com openssl + coreutils (xxd não é garantido num Ubuntu mínimo).
+# Imprime "publica privada" em base64url sem padding. A chave fica só em memória.
+# Formato inesperado = falha, nunca lixo gravado.
+gerar_par_vapid() {
+  local pem hex pub priv
+  pem="$(openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null)" || return 1
+  hex="$(printf '%s\n' "$pem" | openssl ec -outform DER 2>/dev/null | od -An -v -tx1 | tr -d ' \n')" || return 1
+  # SEC1 DER de P-256, 121 bytes:
+  #   30 77 02 01 01 04 20 <privada:32> a0 0a <oid> a1 44 03 42 00 04 <X:32> <Y:32>
+  [ "${#hex}" -eq 242 ] && [ "${hex:0:14}" = 30770201010420 ] && [ "${hex:112:2}" = 04 ] || return 1
+  pub="$(printf '%s\n' "$pem" | openssl ec -outform DER 2>/dev/null | tail -c 65 | _b64url)" || return 1
+  priv="$(printf '%s\n' "$pem" | openssl ec -outform DER 2>/dev/null | head -c 39 | tail -c 32 | _b64url)" || return 1
+  [ "${#pub}" -eq 87 ] && [ "${#priv}" -eq 43 ] || return 1
+  printf '%s %s\n' "$pub" "$priv"
+}
+
+# completar_par_vapid [envfile] — usada pelo install.sh (depois de escrever o
+# .env) e pela atualização (antes da decisão de versão e dentro de
+# `gravar_imagens`). Quando cria o par, deixa PAR_VAPID_CRIADO=1. Sempre devolve 0: o
+# push é opcional, e nem a instalação nem a atualização morrem por causa dele.
+completar_par_vapid() {
+  local envfile="${1:-.env}" pub priv par tmp
+  [ -f "$envfile" ] || return 0
+  # `export ` e recuo no começo da linha: o Compose lê as duas formas, então
+  # elas também são o par (senão o kit gravaria um segundo, e o Compose fica
+  # com o último — a troca que a D6 proíbe).
+  pub="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?VAPID_PUBLIC_KEY=//p' "$envfile" 2>/dev/null | tail -1 | tr -d "\"' \t\r")"
+  priv="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?VAPID_PRIVATE_KEY=//p' "$envfile" 2>/dev/null | tail -1 | tr -d "\"' \t\r")"
+
+  [ -n "$pub" ] && [ -n "$priv" ] && return 0
+  if [ -n "$pub$priv" ]; then
+    # Meia chave: gerar a outra quebraria o par, e trocar a que existe é a
+    # troca que a D6 proíbe. Quem decide é quem opera.
+    c_ylw "$(t "  ⚠ Só uma das duas chaves dos avisos com o app fechado (VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY) está no .env. Não gerei a outra, para não quebrar o par.")"
+    c_ylw "$(t "    Para o kit gerar um par novo, apague as duas linhas e rode: bash hostgator-setup-kit/update.sh")"
+    return 0
+  fi
+  if [ ! -w "$envfile" ]; then
+    # Montagem somente-leitura ou permissão errada: não é erro daqui, mas a tela
+    # manda atualizar, e a atualização calada não diria por que nada mudou.
+    c_ylw "$(t "  ⚠ Não criei as chaves dos avisos com o app fechado: não consigo escrever no .env. Confira a permissão do arquivo e rode a atualização de novo.")"
+    return 0
+  fi
+
+  if ! par="$(gerar_par_vapid)"; then
+    # Falha fechado na ação (nada gravado) e aberto na informação (o aviso).
+    c_ylw "$(t "  ⚠ Não consegui gerar as chaves dos avisos com o app fechado; o resto segue normal. Para tentar de novo: bash hostgator-setup-kit/update.sh")"
+    return 0
+  fi
+  pub="${par% *}"; priv="${par#* }"
+
+  # As duas chaves numa escrita só: dois `set_env_var` seguidos deixariam meia
+  # chave se o processo morresse entre eles — e a regra acima se recusaria, para
+  # sempre, a curar o que o próprio kit estragou.
+  tmp="${envfile}.tmp.$$"
+  # `umask 077`: a cópia leva todos os segredos do .env e não pode passar um
+  # instante legível por outros usuários antes do chmod.
+  if ! ( umask 077
+         { { grep -vE '^[[:space:]]*(export[[:space:]]+)?VAPID_(PUBLIC|PRIVATE)_KEY=' "$envfile" || true; } \
+           && printf 'VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n' "$pub" "$priv"; } > "$tmp" ) \
+     || ! chmod 600 "$tmp" || ! mv "$tmp" "$envfile"; then
+    rm -f "$tmp"
+    c_ylw "$(t "  ⚠ Não consegui gerar as chaves dos avisos com o app fechado; o resto segue normal. Para tentar de novo: bash hostgator-setup-kit/update.sh")"
+    return 0
+  fi
+  # O ambiente também: o `load_env` exportou o vazio, e é dele que o compose lê
+  # o que interpola.
+  VAPID_PUBLIC_KEY="$pub"; VAPID_PRIVATE_KEY="$priv"
+  export VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
+  # Para quem chamou saber que precisa subir o app de novo (o retorno é sempre 0).
+  PAR_VAPID_CRIADO=1
+  c_grn "$(t "✓ chaves dos avisos com o app fechado criadas (uma vez só: não troque, trocar desliga os avisos de todo aparelho já inscrito)")"
 }
 
 # Grava (ou reescreve) uma chave no .env — sem duplicar linha se ela já existe.

@@ -32,9 +32,9 @@
 
 :root {
   /* Surfaces (light) */
-  --color-bg: #f8fafc;
+  --color-bg: #eef1f6;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f1f5f9;
+  --color-surface-elevated: #f6f8fc;
   --color-overlay: rgba(15, 23, 42, 0.42);
 
   /* Text (light) */
@@ -43,7 +43,7 @@
   --color-text-subtle: #64748b;
 
   /* Borders (light) */
-  --color-border: #e2e8f0;
+  --color-border: #e9edf4;
   --color-border-strong: #cbd5e1;
 
   /* Accent — violeta (11 stops) */
@@ -110,14 +110,14 @@
   --radius-none: 0px;
   --radius-sm: 4px;
   --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
   /* Shadows — desaturated, neutral-based */
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 8px 24px -6px rgba(15, 23, 42, 0.08);
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.03), 0 6px 20px -6px rgba(15, 23, 42, 0.07);
+  --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.04), 0 12px 32px -10px rgba(15, 23, 42, 0.10);
   --shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.12);
   --shadow-xl: 0 24px 64px -16px rgba(15, 23, 42, 0.16);
 
@@ -215,13 +215,13 @@
   --agenda-pessoa-7: #7b5bad; /* violeta */
   --agenda-pessoa-8: #cc77b1; /* framboesa */
   --flow-sidebar-bg: #ffffff;
-  --flow-nav-active-bg: #eef2ff;
-  --flow-nav-active-text: #5141bd;
+  --flow-nav-active-bg: var(--color-accent);
+  --flow-nav-active-text: var(--color-accent-fg);
   --flow-nav-active-border: transparent;
   --flow-nav-glow: none;
-  --flow-card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  --flow-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.03), 0 8px 24px -8px rgba(15, 23, 42, 0.07);
   --flow-auth-glow: rgba(99, 102, 241, 0.08);
-  --flow-control-radius: 10px;
+  --flow-control-radius: 12px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -258,14 +258,14 @@
    (lib/branding/css.ts), que só ganha consumidor com a tela de marca.
    ───────────────────────────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --color-bg: #f8fafc;
+  --color-bg: #eef1f6;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f1f5f9;
+  --color-surface-elevated: #f6f8fc;
   --color-overlay: rgba(15, 23, 42, 0.42);
   --color-text: #0f172a;
   --color-text-muted: #64748b;
   --color-text-subtle: #64748b;
-  --color-border: #e2e8f0;
+  --color-border: #e9edf4;
   --color-border-strong: #cbd5e1;
   --color-accent: var(--color-accent-600);
   --color-accent-fg: #ffffff;
@@ -294,9 +294,9 @@
   --color-info: #2563eb;
   --color-info-bg: rgba(59, 130, 246, 0.1);
   --color-info-fg: #1d4ed8;
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 8px 24px -6px rgba(15, 23, 42, 0.08);
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.03), 0 6px 20px -6px rgba(15, 23, 42, 0.07);
+  --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.04), 0 12px 32px -10px rgba(15, 23, 42, 0.10);
   --shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.12);
   --shadow-xl: 0 24px 64px -16px rgba(15, 23, 42, 0.16);
   --background: var(--color-bg);
@@ -333,11 +333,11 @@
   --agenda-pessoa-7: #7b5bad; /* violeta */
   --agenda-pessoa-8: #cc77b1; /* framboesa */
   --flow-sidebar-bg: #ffffff;
-  --flow-nav-active-bg: #eef2ff;
-  --flow-nav-active-text: #5141bd;
+  --flow-nav-active-bg: var(--color-accent);
+  --flow-nav-active-text: var(--color-accent-fg);
   --flow-nav-active-border: transparent;
   --flow-nav-glow: none;
-  --flow-card-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  --flow-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.03), 0 8px 24px -8px rgba(15, 23, 42, 0.07);
   --flow-auth-glow: rgba(99, 102, 241, 0.08);
 }
 
@@ -440,10 +440,15 @@
   --agenda-pessoa-7: #be9ef6;
   --agenda-pessoa-8: #cc77b1;
   --flow-sidebar-bg: #0d0e15;
-  --flow-nav-active-bg: linear-gradient(90deg, rgba(124, 58, 237, 0.25), rgba(124, 58, 237, 0.05));
-  --flow-nav-active-text: #ede9fe;
-  --flow-nav-active-border: rgba(139, 92, 246, 0.35);
-  --flow-nav-glow: 0 0 20px rgba(139, 92, 246, 0.12);
+  /* A pílula ativa veste o accent DO TEMA, não um grau fixo: `--color-accent` é o
+     stop que a caminhada de contraste garante ≥3:1 contra as superfícies escuras
+     para qualquer marca, e `--color-accent-fg` é a frente calculada sobre ele. O
+     600 com texto branco dava 2,7:1 contra `--color-surface` (abaixo do piso de
+     componente) e, numa marca amarela, deixava o texto branco ilegível. */
+  --flow-nav-active-bg: var(--color-accent);
+  --flow-nav-active-text: var(--color-accent-fg);
+  --flow-nav-active-border: transparent;
+  --flow-nav-glow: 0 2px 8px -2px rgba(99, 84, 223, 0.45);
   --flow-card-shadow: 0 0 25px rgba(139, 92, 246, 0.04);
   --flow-auth-glow: rgba(124, 58, 237, 0.14);
 }
@@ -556,7 +561,7 @@
 
   /* Tipografia */
   --font-sans:
-    var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    var(--font-manrope), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Espaçamento. Os valores são px LITERAIS (`--space-6` = 24px), não rem — e
@@ -720,7 +725,7 @@
     background-color: var(--color-bg);
     color: var(--color-text);
     font-family:
-      var(--font-jakarta),
+      var(--font-manrope),
       ui-sans-serif,
       system-ui,
       -apple-system,
@@ -736,8 +741,16 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    font-size: 14px;
-    line-height: 1.5;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 700;
+    letter-spacing: -0.022em;
   }
 
   code,
@@ -794,13 +807,21 @@
     }
   }
 
-  /* Scrollbar — subtle greige */
+  /* Scrollbar — o tom de borda do TEMA, não um neutro fixo.
+     Pedir `--color-neutral-300`/`-600` parecia theme-aware (os neutros têm par
+     por tema), mas eles NÃO entram na allowlist do tema de extensão
+     (`CHAVES_DE_TOKEN_DO_TEMA`, lista fechada): com a paleta `mist` ativa a tela
+     inteira mudava e a barra ficava no greige da paleta padrão (#d2cdbf no
+     claro, #33312a no escuro). `--color-border` é declarado pelas cinco paletas
+     (`app/design/lib/tokens.ts`, `surfaces.border`) nos dois temas e é
+     sobrescrito pelo bloco `body:has([data-tema-extensao])`. Como o token já
+     troca com `[data-theme]`, o par claro/escuro sai de um `var()` só — não há
+     mais bloco `[data-theme="dark"]` exclusivo da barra (era o segundo caminho
+     pelo qual uma cor fixa voltava). O guarda é
+     `tests/unit/barra-de-rolagem-do-tema.test.ts`. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-neutral-300) transparent;
-  }
-  [data-theme="dark"] * {
-    scrollbar-color: var(--color-neutral-600) transparent;
+    scrollbar-color: var(--color-border) transparent;
   }
   ::-webkit-scrollbar {
     width: 10px;
@@ -810,23 +831,18 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: var(--color-neutral-300);
+    background-color: var(--color-border);
     border-radius: var(--radius-full);
     border: 2px solid transparent;
     background-clip: padding-box;
   }
+  /* Um passo ADIANTE da borda, na direção do texto: escurece no claro, clareia
+     no escuro. Mistura de dois tokens do tema porque `--color-border-strong`
+     (o par "natural" da borda) está na allowlist do tema mas NÃO nas paletas —
+     usá-lo deixaria o hover na cor da paleta padrão justamente para quem
+     escolheu o tema. */
   ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-neutral-400);
-    background-clip: padding-box;
-    border: 2px solid transparent;
-  }
-  [data-theme="dark"] ::-webkit-scrollbar-thumb {
-    background-color: var(--color-neutral-600);
-    background-clip: padding-box;
-    border: 2px solid transparent;
-  }
-  [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-neutral-500);
+    background-color: color-mix(in oklab, var(--color-border) 70%, var(--color-text-muted));
     background-clip: padding-box;
     border: 2px solid transparent;
   }
@@ -1026,7 +1042,20 @@
   .flow-nav-item {
     color: var(--color-text-muted);
     border: 1px solid transparent;
-    min-height: 34px;
+    min-height: 40px;
+    border-radius: var(--flow-control-radius);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    letter-spacing: -0.006em;
+  }
+  /* Os rotulos de grupo (ATENDIMENTO, CRM, AGENTE DE IA) sao marcadores,
+     nao titulos: pequenos, espacados e discretos, como na referencia. */
+  .flow-nav-group-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-subtle);
   }
   .flow-nav-item:hover {
     background: var(--color-surface-elevated);
@@ -1038,21 +1067,12 @@
     border-color: var(--flow-nav-active-border);
     box-shadow: var(--flow-nav-glow);
     font-weight: 600;
+    border-radius: var(--flow-control-radius);
   }
-  .flow-nav-item[aria-current="page"]::before {
-    content: "";
-    position: absolute;
-    inset-block: 8px;
-    left: 0;
-    width: 3px;
-    border-radius: 999px;
-    background: var(--color-accent);
-  }
-  [data-theme="dark"] .flow-nav-item[aria-current="page"]::before {
-    background: #c4b5fd;
-    box-shadow:
-      0 0 10px #8b5cf6,
-      0 0 20px rgba(139, 92, 246, 0.4);
+  /* Os icones dentro da pilula herdam o texto, inclusive os que vem
+     com cor propria de estado. */
+  .flow-nav-item[aria-current="page"] svg {
+    color: currentColor;
   }
   .flow-card {
     box-shadow: var(--flow-card-shadow);

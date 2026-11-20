@@ -3,6 +3,9 @@ import { OrganizationTransitionProvider } from '@/components/shell/OrganizationT
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { makeQueryClient } from '@/lib/query/client';
+// Efeito de módulo: captura o pedido de instalação do navegador em qualquer
+// tela, inclusive no /login, antes de a pessoa chegar à tela de instalar.
+import '@/lib/pwa/pedido-de-instalacao';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => makeQueryClient());

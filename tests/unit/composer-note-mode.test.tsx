@@ -4,6 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendMock = vi.fn();
 const createNoteMock = vi.fn();
+const uploadMock = vi.fn(async (_args: { conversationId: string; file: File; destino?: string }) => ({
+  storage_path: "org/conv-1/note-1.pdf",
+  media_mime: "application/pdf",
+  media_size_bytes: 3,
+  kind: "document" as const,
+}));
 
 vi.mock("@/hooks/inbox/useSendMessage", () => ({
   useSendMessage: () => ({ mutate: sendMock, isPending: false }),
@@ -12,9 +18,10 @@ vi.mock("@/hooks/inbox/useCreateNote", () => ({
   useCreateNote: () => ({ mutate: createNoteMock, isPending: false }),
 }));
 vi.mock("@/hooks/inbox/useUploadMedia", () => ({
-  useUploadMedia: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUploadMedia: () => ({ mutateAsync: uploadMock, isPending: false }),
 }));
 vi.mock("@/hooks/inbox/useMessageTemplates", () => ({
+  useGruposDeRespostas: () => ({ data: [], isLoading: false }),
   useMessageTemplates: () => ({ data: [], isLoading: false }),
 }));
 vi.mock("@/hooks/inbox/useDraftReply", () => ({
@@ -62,14 +69,15 @@ describe("Composer + modo nota interna", () => {
     expect(input).toHaveValue("");
   });
 
-  it("alterna pra modo nota interna: some anexo/rascunho/áudio, muda placeholder", () => {
+  it("alterna pra modo nota interna: some rascunho/áudio, o anexo FICA (vai para a nota), muda placeholder", () => {
     renderComposer();
     expect(screen.getByRole("button", { name: /anexar/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sugerir resposta/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /nota interna/i }));
 
-    expect(screen.queryByRole("button", { name: /anexar/i })).not.toBeInTheDocument();
+    // Anexo na nota interna (migration 0547): o "+" continua, e anexa à nota.
+    expect(screen.getByRole("button", { name: /anexar/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sugerir resposta/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /gravar áudio/i })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/nota interna/i)).toBeInTheDocument();
@@ -85,6 +93,36 @@ describe("Composer + modo nota interna", () => {
     expect(createNoteMock).toHaveBeenCalledWith(
       expect.objectContaining({ conversation_id: "conv-1", body: "cliente ligou reclamando" }),
       expect.anything(),
+    );
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("anexo em nota interna: sobe pela rota da NOTA e vira nota — nada vai ao cliente", async () => {
+    uploadMock.mockClear();
+    renderComposer();
+    fireEvent.click(screen.getByRole("button", { name: /nota interna/i }));
+    fireEvent.click(screen.getByRole("button", { name: /anexar/i }));
+    const inputDoc = document.querySelector('input[accept^=".pdf"]') as HTMLInputElement;
+    const doc = new File([new Uint8Array([1, 2, 3])], "comprovante.pdf", { type: "application/pdf" });
+    fireEvent.change(inputDoc, { target: { files: [doc] } });
+
+    expect(await screen.findByText("Anexar à nota interna")).toBeInTheDocument();
+    expect(screen.getByTestId("previa-nota-interna")).toHaveTextContent("Só a equipe vê");
+    fireEvent.change(screen.getByLabelText(/legenda/i), { target: { value: "comprovante do pix" } });
+    fireEvent.click(screen.getByRole("button", { name: /^enviar$/i }));
+
+    await vi.waitFor(() =>
+      expect(uploadMock).toHaveBeenCalledWith(expect.objectContaining({ conversationId: "conv-1", destino: "nota" })),
+    );
+    await vi.waitFor(() =>
+      expect(createNoteMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversation_id: "conv-1",
+          body: "comprovante do pix",
+          anexo: expect.objectContaining({ storage_path: "org/conv-1/note-1.pdf" }),
+        }),
+        expect.anything(),
+      ),
     );
     expect(sendMock).not.toHaveBeenCalled();
   });

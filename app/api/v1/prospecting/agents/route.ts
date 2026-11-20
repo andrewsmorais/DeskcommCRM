@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { exigirExtra } from "@/lib/billing/extras";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
@@ -6,14 +7,20 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api/wrappers";
 import { AgentSetupError, setupProspectingAgent } from "@/lib/prospecting/agent-setup";
 import { prospectingAgentSetupSchema } from "@/lib/prospecting/agent-setup-schema";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const support = await requireSupportWrite();
   if (support) return support;
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const auth = await requireRole("admin", { requestId, resource: "ai_agents" });
   if (!auth.ok) return auth.response;
+  // Prospecção é EXTRA cobrado à parte: só a organização que o tem (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(auth.org.orgId, "prospeccao", { requestId });
+  if (semOExtra) return semOExtra;
   const input = prospectingAgentSetupSchema.safeParse(await req.json().catch(() => null));
   if (!input.success)
     return fail(
@@ -27,7 +34,12 @@ export async function POST(req: Request) {
       await setupProspectingAgent(
         getRequestPool(),
         createAdminClient(),
-        { orgId: auth.org.orgId, userId: auth.user.id, requestId },
+        {
+          orgId: auth.org.orgId,
+          userId: auth.user.id,
+          requestId,
+          isento: auth.user.is_platform_admin || Boolean(auth.user.support),
+        },
         input.data,
       ),
       { requestId, headers: { "Cache-Control": "no-store" } },

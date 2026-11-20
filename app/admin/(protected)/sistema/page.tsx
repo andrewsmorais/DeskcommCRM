@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 
 import { loadAuthUser } from "@/lib/auth/server";
 import { carregarComportamentoDaInstalacao } from "@/lib/instalacao/comportamento-servidor";
+import { empresasParaMolde, lerMoldeDeIa, resumoDoMoldeNoBanco } from "@/lib/instalacao/molde-de-ia-servidor";
 import { modulosLigados } from "@/lib/instalacao/modulos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 import { FormularioDeComportamento, FormularioDeModulos } from "./_form";
+import { FormularioDoMoldeDeIa } from "./_molde-de-ia";
 
 export const metadata = { title: "Comportamento da instalação" };
 export const dynamic = "force-dynamic";
@@ -43,9 +45,19 @@ export default async function Page() {
 
   // O valor EFETIVO (linha acima, `.env` como piso): a tela mostra o que está
   // valendo de verdade, e não o que a linha diria se ela existisse.
-  const [comportamento, ligados] = await Promise.all([
+  const admin = createAdminClient();
+  const [comportamento, ligados, molde] = await Promise.all([
     carregarComportamentoDaInstalacao(),
-    modulosLigados(createAdminClient()),
+    modulosLigados(admin),
+    lerMoldeDeIa(admin),
+  ]);
+  // O molde de IA das empresas novas (migration 0530). Leitura que falhou vira
+  // "nenhum" na tela, com a lista travada: o seletor não oferece escolha sobre
+  // um estado que ninguém leu.
+  const moldeAtual = molde ?? null;
+  const [empresasDoMolde, resumoDoMolde] = await Promise.all([
+    molde === undefined ? Promise.resolve(null) : empresasParaMolde(admin, moldeAtual),
+    moldeAtual ? resumoDoMoldeNoBanco(admin, moldeAtual) : Promise.resolve(null),
   ]);
 
   return (
@@ -63,6 +75,7 @@ export default async function Page() {
       </div>
       <FormularioDeComportamento inicial={comportamento} />
       <FormularioDeModulos ligados={ligados} />
+      <FormularioDoMoldeDeIa inicial={moldeAtual} empresas={empresasDoMolde} resumoInicial={resumoDoMolde} />
     </div>
   );
 }

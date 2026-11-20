@@ -359,14 +359,22 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
   {
     id: "followup_classify",
     rotulo: "Ler a resposta ao follow-up",
+    // As saídas são as que a empresa criou no passo "Classificar (IA)", não uma
+    // lista fixa: "aceitou, recusou ou pediu para falar depois" prometia classes
+    // que o fluxo pode nem ter.
     oQueFaz:
-      "Entende se o cliente aceitou, recusou ou pediu para falar depois, e encaminha o fluxo conforme isso.",
+      "Lê a resposta do cliente à mensagem do follow-up e diz em qual das saídas que você criou no fluxo ela se encaixa — o fluxo segue por essa saída.",
     papel: "entender",
     exige: {},
     emissor: "lib/agent-engine/agent/followup-flow-classify.ts",
     sintomaDeFalha:
       "O follow-up trava no mesmo passo: o cliente respondeu, mas o fluxo não segue para lugar nenhum.",
     registraEm: "llm_calls",
+    decisaoRapida: {
+      primitiva: "choice",
+      oQueOJevFaz:
+        "Lê a resposta do cliente à mensagem do follow-up, sozinha, e diz em qual das saídas que você criou no fluxo ela se encaixa.",
+    },
   },
   {
     id: "followup_decide_timing",
@@ -422,6 +430,27 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
     sintomaDeFalha:
       "O agente promete ao cliente coisas que a operação não entrega, e a cobrança chega depois.",
     registraEm: "llm_calls",
+  },
+
+  {
+    // A conferência de fato (#2231): o ponto é dela (o Jev responde por aqui, e
+    // a credencial é a que resolve), não uma IA de sempre reservada — quem
+    // decide é só o Jev, e sem resposta a frase segue como está (fail-open).
+    id: "afirmacao_de_fato",
+    rotulo: "Conferir afirmações de fato na resposta",
+    oQueFaz:
+      "Lê a resposta que o assistente vai enviar e confere, nas evidências consultadas neste turno, se o que ele afirma sobre o negócio está escrito ali — ou se o material diz o contrário.",
+    papel: "proteger",
+    exige: {},
+    emissor: "lib/ai/decisao/afirmacao-de-fato.ts",
+    sintomaDeFalha:
+      "O agente diz ao cliente um horário, um preço ou um endereço que não está em nenhum material, e a pessoa vai até a loja ou à recepção por algo que não é verdade.",
+    registraEm: "llm_calls",
+    decisaoRapida: {
+      primitiva: "noul",
+      oQueOJevFaz:
+        "Lê a resposta que o assistente vai enviar e confere, nas evidências consultadas neste turno, se o que ele afirma sobre o negócio está escrito ali — ou se o material diz o contrário.",
+    },
   },
 
   // ─────────────────────────── Lembrar e buscar ────────────────────────────
@@ -542,6 +571,23 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
     sintomaDeFalha:
       "O cliente manda uma foto do produto ou um comprovante e o agente age como se a imagem não existisse.",
     registraEm: "nenhum",
+  },
+  {
+    id: "sintese_de_voz",
+    rotulo: "Responder o cliente falando",
+    oQueFaz:
+      "Transforma a resposta do agente em nota de voz, nas organizações e versões que ligaram essa opção.",
+    papel: "atender",
+    exige: {},
+    emissor: "lib/agent-engine/edge/crm/send-message.ts",
+    fixo: {
+      razao:
+        "Usa o ElevenLabs — não é um modelo de conversa, e hoje não há um segundo serviço de síntese para escolher entre.",
+      usa: { provider: "elevenlabs", modelId: "eleven_multilingual_v2" },
+    },
+    sintomaDeFalha:
+      "A organização ligou a resposta em voz e o agente continua respondendo só em texto.",
+    registraEm: "llm_calls",
   },
 
   // ────────────────────────── Melhorar e testar ────────────────────────────

@@ -22,6 +22,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { autorizaCron } from "@/lib/auth/cron-auth";
 import { rodarUmaRodadaDeCampanha } from "@/lib/campanhas/rodada";
+import { disparoEmMassaLigado } from "@/lib/instalacao/disparo-em-massa";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,11 @@ async function handle(req: NextRequest): Promise<Response> {
   if (!autorizaCron(req)) {
     return fail("forbidden", "Cron secret missing or invalid.", 403, { requestId });
   }
+
+  // Com o disparo em massa desligado, nenhuma campanha envia — inclusive a que
+  // estava rodando quando o módulo foi desligado. Sem efeito, sem auditoria.
+  // Ver `lib/instalacao/disparo-em-massa.ts`.
+  if (!(await disparoEmMassaLigado())) return ok({ desligado: true }, { requestId });
 
   const r = await rodarUmaRodadaDeCampanha(createAdminClient());
 

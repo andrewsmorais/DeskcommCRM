@@ -4,6 +4,19 @@ import { MAX_MEDIA_BYTES } from "@/lib/messaging/media/types";
 export type MessageKind = "image" | "video" | "audio" | "document";
 
 /**
+ * Leitura por service role: a organização vem da autorização no backend.
+ * Os escritores também guardam PDFs em `{org}/{proposta}.pdf`, então não se
+ * exige pasta de conversa. O SDK concatena o path na URL de sign/download:
+ * recuse escapes e separadores ambíguos, sem normalizar para outro objeto.
+ */
+export function isMediaPathInOrganization(path: string, orgId: string): boolean {
+  const segmentos = path.split("/");
+  if (segmentos.length < 2 || segmentos[0] !== orgId) return false;
+  if (/[%\\?#\p{Cc}]/u.test(path) || path.endsWith(" ")) return false;
+  return segmentos.every((segmento) => segmento !== "" && segmento !== "." && segmento !== "..");
+}
+
+/**
  * Posse do objeto no bucket: o path DEVE estar sob {org}/{conversation}/
  * (chaves do Storage são literais — sem semântica de traversal).
  *
@@ -14,7 +27,29 @@ export type MessageKind = "image" | "video" | "audio" | "document";
  * `docs/doctrine/restricao-de-canal.md` proíbe.
  */
 export function isMediaPathOwnedBy(path: string, orgId: string, conversationId: string): boolean {
-  return path.startsWith(`${orgId}/${conversationId}/`);
+  return path.startsWith(`${orgId}/${conversationId}/`) && caminhoDeMidiaLiteral(path);
+}
+
+/**
+ * O caminho é LITERAL — nenhum pedaço que uma URL resolveria para outro lugar?
+ *
+ * A chave do Storage é literal dentro do banco, mas a biblioteca cliente a põe
+ * CRUA no caminho da URL do pedido (`/object/<bucket>/<path>`), e a URL resolve
+ * `..` antes de sair. Um caminho `<org>/<conversa>/../../<outra-org>/…` passava
+ * pelo `startsWith` e virava, no pedido com a service role, o arquivo de outra
+ * empresa (auditoria de 14/11/2026). Aqui se recusa todo segmento vazio, `.`,
+ * `..`, e qualquer `%`, `\`, `?`, `#` ou caractere de controle.
+ */
+export function caminhoDeMidiaLiteral(path: string): boolean {
+  if (!path || path.length > 500) return false;
+  // eslint-disable-next-line no-control-regex
+  if (/[%\\?#\u0000-\u001f\u007f]/.test(path)) return false;
+  return path.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
+}
+
+/** Arquivo da PRÓPRIA empresa, com caminho literal. Para rotas que leem um caminho já gravado. */
+export function caminhoDeMidiaDaEmpresa(path: string | null | undefined, orgId: string): path is string {
+  return typeof path === "string" && path.startsWith(`${orgId}/`) && caminhoDeMidiaLiteral(path);
 }
 
 const DOCUMENT_MIMES = new Set([
@@ -29,6 +64,16 @@ const DOCUMENT_MIMES = new Set([
   "text/csv",
   "application/zip",
 ]);
+
+/** O tipo de mensagem pelo MIME, ou `null` quando não é mídia que o canal leva. */
+export function kindFromMime(mime: string): MessageKind | null {
+  const base = (mime || "").split(";")[0]!.trim().toLowerCase();
+  if (base.startsWith("image/")) return "image";
+  if (base.startsWith("video/")) return "video";
+  if (base.startsWith("audio/")) return "audio";
+  if (DOCUMENT_MIMES.has(base)) return "document";
+  return null;
+}
 
 type Ok = { ok: true; kind: MessageKind };
 type Fail = { ok: false; code: "unsupported_media_type" | "payload_too_large" | "validation_failed"; message: string };

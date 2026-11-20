@@ -108,6 +108,9 @@ const ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE: ReadonlyArray<string> = [
   "crm_propose_reactivation",
   // `app/api/v1/conversations/[id]/assign` — exige `agent`: é a fila.
   "crm_assign_conversation",
+  // `app/api/v1/conversations/[id]/setor` — exige `agent`: passar para o setor
+  // é o mesmo gesto do botão "Transferir para setor" e do passo do chatbot.
+  "crm_set_conversation_sector",
   // `app/api/v1/conversation-tags` é leitura `viewer`; marcar conversa é trabalho
   // de atendente e o dano máximo é um filtro sujo, reversível na tela.
   "crm_manage_tags",

@@ -2,6 +2,10 @@
 
 > Instruções pra futuras sessões Claude trabalhando neste repo. Leitura obrigatória antes de qualquer task de código.
 
+> **Fork ChatAI Online:** antes de qualquer tarefa, leia [`docs/chataionline/MAPA.md`](docs/chataionline/MAPA.md)
+> — o que já foi feito, as decisões do dono e a branch onde está o código de verdade. Ao terminar,
+> acrescente lá o que mudou. O dono não lê inglês: fale com ele em português simples.
+
 **Este arquivo é a doutrina — a autoridade final sobre convenção e anti-pattern.** Complementos, na ordem em que ajudam:
 
 - [`AGENTS.md`](AGENTS.md) — mesmo contrato em forma portável (para Codex/Cursor/Copilot e afins). É derivado deste arquivo, não o substitui. **Ao mudar doutrina aqui, verifique se `AGENTS.md` desatualizou.**
@@ -140,7 +144,7 @@ DeskcommCRM é um sistema operacional de vendas open source com agentes de IA na
 - Action audit obrigatória: `lgpd.data_request_received`, `lgpd.export_generated`, `lgpd.redact_executed`, `lgpd.consent_changed`
 
 ### WAHA
-- Default fixo `devlikeapro/waha:latest-2026.7.2`, NOWEB. A prova local criou duas sessões CORE simultâneas até `SCAN_QR_CODE`; não prova pairing, duas contas `WORKING` nem envio. Não bloquear segunda sessão por tier: conferir resposta estruturada e pós-condição da operação.
+- Default fixo `devlikeapro/waha:latest-2026.9.2` (desde 14/11/2026, pelo `sendSticker` das figurinhas), NOWEB; o mesmo valor mora em `WAHA_PADRAO` (`hostgator-setup-kit/_common.sh`), e o `update.sh` leva a ele quem estava no padrão anterior. Duas sessões simultâneas até `SCAN_QR_CODE` são medidas no CI (`scripts/seguranca/waha-confere.ts`); não prova pairing, duas contas `WORKING` nem envio. Não bloquear segunda sessão por tier: conferir resposta estruturada e pós-condição da operação.
 - Engine NOWEB default; WEBJS apenas se precisar stickers animados / botões
 - Auth: env do WAHA recebe **hash SHA512 hex** da api key; cliente envia plaintext em `X-Api-Key`
 - Webhooks: HMAC SHA512 com `crypto.timingSafeEqual`

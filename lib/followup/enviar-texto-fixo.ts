@@ -1,6 +1,8 @@
 import {sendWithLedger,supabaseSendLedger} from "@/lib/agent-engine/edge/crm/send-ledger";
 import { randomUUID } from "node:crypto";
 import { assertAgendaEffectSupabase } from "@/lib/agenda/efeito";
+import { AgendaPuladoError, MOTIVO_DO_PULO } from "@/lib/agenda/escolha-no-envio";
+import { escolhaDoFluxo } from "@/lib/agenda/escolha-no-envio-leitura";
 import { AgendaDeferredError } from "@/lib/agenda/protecao-followup";
 import { parseServiceBoundary, StaleServiceBoundaryError } from "@/lib/atendimento/fronteira";
 import { assertServiceBoundarySupabase } from "@/lib/atendimento/origem";
@@ -14,6 +16,8 @@ import { createSupabaseAdminClient, type FollowupJobRequest } from "@/lib/follow
 import type { EnrollmentRow } from "@/lib/followup/node-handlers";
 import { completeTurnForEnrollment, type TurnBridgeAdminClient } from "@/lib/followup/turn-bridge";
 import { logger } from "@/lib/logger";
+import { classificarMidiaComLegenda, type TipoDeMidiaComLegenda } from "@/lib/messaging/media/midia-com-legenda";
+import { recusaDeMidiaForaDaJanela } from "@/lib/messaging/media/recusa-de-midia-fora-da-janela";
 
 function ponteSupabase(admin: SupabaseClient): TurnBridgeAdminClient {
   const base = createSupabaseAdminClient(admin);
@@ -112,6 +116,27 @@ export async function enviarTextoFixoPendente(
       const boundary = parseServiceBoundary((job.payload as Record<string, unknown>).service_boundary);
       await assertServiceBoundarySupabase(admin, boundary);
       const conversationId = boundary!.conversation_id;
+      // MÍDIA DO PASSO, quando o nó a declara: o `fixed_body` vira a LEGENDA.
+      // Arquivo sem tipo identificável é CONFIGURAÇÃO — retry não conserta, o job
+      // fecha com o motivo.
+      const mediaUrl =
+        typeof payload.fixed_media_url === "string" && payload.fixed_media_url.trim()
+          ? payload.fixed_media_url.trim()
+          : null;
+      let midia: { type: TipoDeMidiaComLegenda; mime: string } | null = null;
+      if (mediaUrl) {
+        const classificada = classificarMidiaComLegenda(mediaUrl);
+        if (!classificada.ok) {
+          logger.warn("[followup] texto fixo com mídia recusada", {
+            organization_id: job.organization_id,
+            enrollment_id: enrollmentId,
+            motivo: classificada.motivo,
+          });
+          await settle(job.organization_id, job.id, jobClaim.acquired_at, true, classificada.motivo);
+          continue;
+        }
+        midia = { type: classificada.type, mime: classificada.mime };
+      }
       // GATE DE ELEGIBILIDADE — este envio inline BYPASSA `executarTurnoDoAgente`
       // (é o atalho "sem cron e sem agent-worker"), então precisa da checagem
       // por conta própria. Mesma regra pura do drain/turno. Canal 'open' → passa.
@@ -134,12 +159,47 @@ export async function enviarTextoFixoPendente(
         continue;
       }
 
-      const proactiveContext={organizationId:job.organization_id as string,contactId,enrollmentId,nodeId,jobId:job.id,jobClaim};
-      await assertAgendaEffectSupabase(admin,proactiveContext);
+      // "Quando o contato tiver horário marcado" é escolha do FLUXO, lida da
+      // configuração publicada do follow-up (ao lado de `send_window`). Ausente =
+      // `adiar`, o comportamento de sempre. A escolha viaja NO contexto: o handler
+      // de envio repete a guarda, e sem ela leria `adiar` e desfaria o `enviar`.
+      const escolhaDaAgenda = await escolhaDoFluxo(admin, job.organization_id as string, enrollmentId);
+      const proactiveContext={organizationId:job.organization_id as string,contactId,enrollmentId,nodeId,jobId:job.id,jobClaim,escolhaNoEnvio:escolhaDaAgenda};
+      try {
+        await assertAgendaEffectSupabase(admin,proactiveContext);
+      } catch (err) {
+        // `nao_enviar`: o pulo tem MOTIVO e volta para o enrollment como `skipped`,
+        // não como falha que o dead-man leria como worker morto.
+        if (!(err instanceof AgendaPuladoError)) throw err;
+        logger.info("[followup] texto fixo pulado — contato com horário marcado", {
+          organization_id: job.organization_id,
+          conversation_id: conversationId,
+          enrollment_id: enrollmentId,
+          motivo: MOTIVO_DO_PULO,
+          appointment_id: err.protection.appointment_id,
+        });
+        await completeTurnForEnrollment(ponte, job.organization_id, enrollmentId, nodeId, { kind: "skipped", reason: MOTIVO_DO_PULO }, undefined, job.id, jobClaim);
+        await settle(job.organization_id, job.id, jobClaim.acquired_at, true, MOTIVO_DO_PULO);
+        continue;
+      }
+      // CANAL OFICIAL, JANELA FECHADA: a mídia não sai, e o texto NÃO sai sozinho.
+      if (midia) {
+        const recusa = await recusaDeMidiaForaDaJanela(admin, {
+          organizationId: job.organization_id as string,
+          conversationId,
+          agora: new Date(),
+        });
+        if (recusa) {
+          await settle(job.organization_id, job.id, jobClaim.acquired_at, true, recusa);
+          continue;
+        }
+      }
       const resultado=await sendWithLedger(supabaseSendLedger(admin),{tenantId:job.organization_id,leadId:contactId,jobId:job.id,seq:1,body},async(key,messageId)=>sendMessageHandler(
         admin,
         {organization_id:job.organization_id,actor:{type:"webhook_source",id:enrollmentId},serviceBoundary:boundary,proactiveContext,internalMessageId:messageId,requestId:key},
-        {conversation_id:conversationId,type:"text",body,metadata:{idempotency_key:key}},
+        (midia
+          ? {conversation_id:conversationId,type:midia.type,body,media_url:mediaUrl,media_mime:midia.mime,metadata:{idempotency_key:key}}
+          : {conversation_id:conversationId,type:"text",body,metadata:{idempotency_key:key}}) as Parameters<typeof sendMessageHandler>[2],
       ));
       if(resultado.kind!=="sent" && resultado.kind!=="already_sent") throw new Error(`message_${resultado.kind}`);
       enviados++;

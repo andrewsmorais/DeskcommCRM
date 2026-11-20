@@ -5,6 +5,7 @@ import { useT } from "@/hooks/i18n/useT";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { idiomaAtual } from "@/lib/i18n/IdiomaProvider";
 import { ApiError } from "@/lib/api/types";
+import { tipoDeFalha } from "@/lib/api/retentativa";
 
 type Variant = "error" | "warning" | "info";
 
@@ -157,6 +158,18 @@ function toastFor(err: unknown, t: (texto: string) => string): void {
       return;
     }
     toast.error(t(err.message) || err.code, { description });
+    return;
+  }
+  // A FALHA DE TRANSPORTE NÃO É "INESPERADA": tempo esgotado e conexão caída
+  // chegam como `DOMException` (`TimeoutError`) e `TypeError`. É transitório, e
+  // a frase diz o que fazer. `warning`: nada quebrou, tentar de novo é o caminho.
+  const tipo = tipoDeFalha(err);
+  if (tipo === "tempo_esgotado" || tipo === "sem_conexao") {
+    toast.warning(
+      tipo === "tempo_esgotado"
+        ? t("A consulta excedeu o tempo limite. Tente de novo.")
+        : t("Sem conexão com o servidor. Verifique a rede e tente de novo."),
+    );
     return;
   }
   toast.error(t("Erro inesperado. Tente novamente."));

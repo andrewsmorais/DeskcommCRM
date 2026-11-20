@@ -7,13 +7,15 @@
 # deveria ser offline. Doutrina: docs/doctrine/packaging.md, invariante 1.
 FROM alpine:3.20
 
-LABEL org.opencontainers.image.source="https://github.com/melgarafael/DeskcommCRM" \
+LABEL org.opencontainers.image.source="https://github.com/andrewsmorais/DeskcommCRM" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.title="DeskcommCRM scheduler"
 
 ENV TZ=UTC
 
-RUN apk add --no-cache curl tzdata
+# `apk upgrade` na mesma camada: o Trivy achou o musl da base com falha
+# conhecida (14/11/2026) — a correção já estava no repositório do Alpine.
+RUN apk add --no-cache curl tzdata && apk upgrade --no-cache
 
 COPY docker/scheduler/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

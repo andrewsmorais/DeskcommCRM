@@ -6,6 +6,8 @@
  * (Este cabeçalho já afirmou "exatamente os 5 eventos" — número que envelheceu
  * na primeira vez que alguém acrescentou um. Agora não há número a envelhecer.)
  */
+import { ESCOLHAS_NO_ENVIO } from "@/lib/agenda/escolha-no-envio";
+import { horasDoIntervalo } from "@/lib/automation/limite-por-contato";
 import { z } from "zod";
 
 import {
@@ -46,6 +48,13 @@ export const ENTIDADE_ESPERADA_POR_GATILHO = {
   // registrava "mensagem enviada" para uma mensagem que nunca chegou.
   "message.failed": "message",
   "lead.tag_added": "crm_lead",
+  // Desfecho do negócio: GANHO e PERDA. Quem emite é o trigger de banco
+  // `fn_emit_event_on_lead_change`, que grava a entidade como `lead` (derivada
+  // do prefixo do tipo) — e é o ÚNICO emissor (`encerramento.ts` não re-emite),
+  // então aqui a entidade esperada é `lead`, e não `crm_lead` como nos irmãos.
+  // Sem os dois, quem integra por webhook não sabia quando a venda fechou.
+  "lead.won": "lead",
+  "lead.lost": "lead",
   "contact.tag_added": "contact",
   // O aniversário nasce do cron `contact-birthdays`, e não de uma ação de
   // alguém: a entidade que ele traz é o próprio contato que faz aniversário.
@@ -74,6 +83,12 @@ export const ENTIDADE_ESPERADA_POR_GATILHO = {
   // regras do mesmo gatilho com N diferentes disparariam juntas.
   "lead.silent_for": "crm_lead",
   "lead.stage_stale": "crm_lead",
+  // A LIGAÇÃO RECEBIDA QUE NINGUÉM ATENDEU. Nasce do worker de voz
+  // (`workers/voice-agent`, via `lib/voip/evento-de-ligacao-perdida.ts`), que é
+  // quem encerra a linha `ringing` como `timeout`. A entidade é o CONTATO — é
+  // ele que a ação de WhatsApp precisa no contexto do motor; o telefone e o
+  // `call_id` viajam no payload.
+  "voice_call.missed": "contact",
 } as const;
 
 export type GatilhoDeAutomacao = keyof typeof ENTIDADE_ESPERADA_POR_GATILHO;
@@ -85,14 +100,37 @@ export const TRIGGER_EVENTS = Object.keys(ENTIDADE_ESPERADA_POR_GATILHO) as [
 
 export const conditionSchema = z.object({
   field: z.string().min(1).max(200),
-  op: z.enum(["eq", "neq", "contains"]),
+  op: z.enum(["eq", "neq", "contains", "not_contains", "gt", "lt", "is_set", "is_empty"]),
   value: z.string().max(500),
 });
 
 export const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("create_or_move_lead"), config: z.object({ pipeline_id: z.string().uuid(), stage_id: z.string().uuid() }) }),
-  z.object({ type: z.literal("send_whatsapp_message"), config: z.object({ channel_session_id: z.string().uuid(), template: z.string().min(1).max(2000) }) }),
+  z.object({
+    type: z.literal("send_whatsapp_message"),
+    config: z.object({
+      channel_session_id: z.string().uuid(),
+      template: z.string().min(1).max(2000),
+      /**
+       * MÍDIA OPCIONAL por URL (vindo do produto original): presente, o
+       * `template` vira a LEGENDA. O tipo (imagem, vídeo, áudio, documento) é
+       * decidido no envio pelo MIME/extensão — guardar uma cópia aqui seria uma
+       * segunda verdade. `nullish`: regra antiga (só texto) segue idêntica.
+       */
+      media_url: z.string().url().max(2000).nullish(),
+      /** "Quando o contato tiver horário marcado": `adiar` (padrão), `enviar` ou `nao_enviar`. */
+      quando_ha_compromisso: z.enum(ESCOLHAS_NO_ENVIO).optional(),
+    }),
+  }),
   z.object({ type: z.literal("add_tag"), config: z.object({ tags: z.array(z.string().min(1).max(60)).min(1).max(10) }) }),
+  // A irmã da `add_tag`: TIRA as etiquetas, do card (padrão) ou do contato.
+  z.object({
+    type: z.literal("remove_tag"),
+    config: z.object({
+      tags: z.array(z.string().min(1).max(60)).min(1).max(10),
+      destino: z.enum(["card", "contato"]).optional(),
+    }),
+  }),
   z.object({ type: z.literal("assign_owner"), config: z.object({ user_id: z.string().uuid() }) }),
   z.object({
     type: z.literal("send_ai_message"),
@@ -106,6 +144,8 @@ export const actionSchema = z.discriminatedUnion("type", [
        * mais que isso está tentando pôr o prompt do agente aqui dentro.
        */
       instruction: z.string().min(1).max(1000),
+      /** Mesma escolha da irmã `send_whatsapp_message`. */
+      quando_ha_compromisso: z.enum(ESCOLHAS_NO_ENVIO).optional(),
     }),
   }),
   z.object({
@@ -128,9 +168,44 @@ export const actionSchema = z.discriminatedUnion("type", [
       include_owner: z.boolean().optional(),
     }),
   }),
+  // "Mensagem para a equipe": recado INTERNO (nunca ao cliente), por aviso no
+  // celular/navegador de quem a regra escolheu.
+  z.object({
+    type: z.literal("notify_team"),
+    config: z.object({
+      titulo: z.string().max(100).optional(),
+      /** Aceita `{{lead.title}}` e `{{contact.name}}`. */
+      mensagem: z.string().min(1).max(500),
+      destinatario: z.union([
+        z.literal("dono_do_lead"),
+        z.literal("gerentes"),
+        z.object({ usuario_id: z.string().uuid() }),
+      ]),
+    }),
+  }),
+  // "Enviar e-mail": destinatário numa escolha FECHADA (nunca um endereço livre).
+  z.object({
+    type: z.literal("send_email"),
+    config: z.object({
+      /** Aceita `{{contact.name}}` e `{{lead.title}}`. */
+      assunto: z.string().min(1).max(150),
+      mensagem: z.string().min(1).max(3000),
+      destinatario: z.union([
+        z.literal("contato"),
+        z.literal("dono_do_lead"),
+        z.literal("gerentes"),
+        z.object({ usuario_id: z.string().uuid() }),
+      ]),
+    }),
+  }),
   z.object({
     type: z.literal("start_message_flow"),
     config: z.object({ flow_pointer_id: z.string().uuid() }),
+  }),
+  // Começa um fluxo de chatbot de "Iniciar por automação" (Kiwify, Cakto, etapa do funil).
+  z.object({
+    type: z.literal("start_chatbot_flow"),
+    config: z.object({ chatbot_flow_id: z.string().uuid(), channel_session_id: z.string().uuid() }),
   }),
   // #1540 — a ação que NUNCA fala com o cliente: grava `crm_tasks` e avisa o
   // responsável. Advocacia, saúde e serviços regulados precisam do lembrete e
@@ -186,7 +261,37 @@ export const createAutomationRuleSchema = z
     trigger_config: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine(exigirConfigDoGatilhoDeData)
-  .superRefine(exigirConfigDosGatilhosDeTempo);
+  .superRefine(exigirConfigDosGatilhosDeTempo)
+  .superRefine(recusarLimitePorContatoTorto);
+
+/**
+ * Limite por contato (vindo do produto original). O motor lê
+ * `uma_vez_por_contato` com `=== true` e `repetir_apos_horas` como inteiro de
+ * 1 a 720: um `"sim"` ou `"24"` gravado por outra porta seria DESLIGADO em
+ * silêncio, e a tela mentiria. Recusar na porta é o desfecho honesto. Ausente
+ * ou `null` passa: é o comportamento de antes.
+ */
+function recusarLimitePorContatoTorto(
+  regra: { trigger_config?: Record<string, unknown> },
+  ctx: z.RefinementCtx,
+): void {
+  const umaVez = regra.trigger_config?.uma_vez_por_contato;
+  if (!(umaVez === undefined || umaVez === null || typeof umaVez === "boolean")) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["trigger_config", "uma_vez_por_contato"],
+      message: "A opção “uma vez por contato” só aceita ligado ou desligado.",
+    });
+  }
+  const horas = regra.trigger_config?.repetir_apos_horas;
+  if (horas !== undefined && horas !== null && horasDoIntervalo(horas) === null) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["trigger_config", "repetir_apos_horas"],
+      message: "O intervalo por contato é um número inteiro de horas, de 1 a 720.",
+    });
+  }
+}
 
 /**
  * O gatilho de data sem a configuração dele é uma regra que NUNCA dispara — a
@@ -264,7 +369,8 @@ export const updateAutomationRuleSchema = z
     // configuração, produz o mesmo calado da criação (#1540): regra salva que
     // a varredura não sabe avaliar.
     exigirConfigDosGatilhosDeTempo(patch as { trigger_event: string; trigger_config?: Record<string, unknown> }, ctx);
-  });
+  })
+  .superRefine(recusarLimitePorContatoTorto);
 
 export type CreateWebhookSourceInput = z.infer<typeof createWebhookSourceSchema>;
 export type UpdateWebhookSourceInput = z.infer<typeof updateWebhookSourceSchema>;

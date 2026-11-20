@@ -9,7 +9,9 @@
  * Timeout 5s, sem retry. Erros 401 são distintos de erros de rede.
  */
 import { baseDaApiDoJev } from "@/lib/ai/decisao/cliente";
+import { caminhoDaProva, ORIGEM_PADRAO, type OrigemDoJev } from "@/lib/ai/decisao/origem";
 import type { ProvedorComChave } from "@/lib/ai/pontos/provedores";
+import type { PROVEDORES_DE_SERVICO } from "@/lib/ai/pontos/provedores-de-servico";
 import { motivoDaRecusaDeDestino } from "@/lib/automation/destinos-internos-autorizados";
 import { env } from "@/lib/env";
 
@@ -24,6 +26,13 @@ export interface ValidationFail {
 }
 
 export type ValidationResult = ValidationOk | ValidationFail;
+
+/**
+ * Os provedores de SERVIÇO (voz, hoje) cuja chave este arquivo sabe validar.
+ * Derivado de `lib/ai/pontos/provedores-de-servico.ts` — lista separada da de
+ * chat porque voz não conversa: não entra no seletor de modelo do agente.
+ */
+export type ServiceProvider = (typeof PROVEDORES_DE_SERVICO)[number]["id"];
 
 const TIMEOUT_MS = 5000;
 /** Só do provedor personalizado — ver `validateCustomKey`. */
@@ -286,9 +295,12 @@ export async function validateRequestyKey(apiKey: string): Promise<ValidationRes
  * `{ data: [{ id }] }` dos outros. A base é a mesma que o cliente usa, para o
  * dublê do e2e validar pelo mesmo caminho.
  */
-export async function validateTypeSafeKey(apiKey: string): Promise<ValidationResult> {
+export async function validateTypeSafeKey(
+  apiKey: string,
+  origem: OrigemDoJev = ORIGEM_PADRAO,
+): Promise<ValidationResult> {
   try {
-    const res = await timedFetch(`${baseDaApiDoJev()}/v1/models`, {
+    const res = await timedFetch(`${baseDaApiDoJev(origem)}${caminhoDaProva(origem)}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${apiKey}` },
     });
@@ -298,6 +310,8 @@ export async function validateTypeSafeKey(apiKey: string): Promise<ValidationRes
     if (!res.ok) {
       return { ok: false, error: `provider_status_${res.status}` };
     }
+    // A prova da OpenRouter não devolve catálogo: provar a chave é o que importa.
+    if (origem === "openrouter") return { ok: true, models: [] };
     const json = (await res.json()) as { models?: { name?: string }[] };
     const models = (json.models ?? []).map((m) => m.name ?? "").filter(Boolean);
     return { ok: true, models };
@@ -372,8 +386,34 @@ export async function validateCustomKey(
  * 0127 — quando era repetida à mão aqui, a 0127 abriu o banco para a OpenRouter
  * e as cópias continuaram recusando.
  */
+/**
+ * ElevenLabs — `/v1/voices` exige a chave e devolve as vozes da conta, que é o
+ * que a tela de voz lista para o operador escolher. `models` carrega o
+ * `voice_id`, que é o valor que a síntese precisa.
+ */
+export async function validateElevenLabsKey(apiKey: string): Promise<ValidationResult> {
+  try {
+    const res = await timedFetch("https://api.elevenlabs.io/v1/voices", {
+      method: "GET",
+      headers: { "xi-api-key": apiKey },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, error: "auth_failed_401" };
+    }
+    if (!res.ok) {
+      return { ok: false, error: `provider_status_${res.status}` };
+    }
+    const json = (await res.json()) as { voices?: { voice_id?: string }[] };
+    const models = (json.voices ?? []).map((v) => v.voice_id ?? "").filter(Boolean);
+    return { ok: true, models };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.name : "network_error" };
+  }
+}
+
 export function validateProviderKey(
-  provider: ProvedorComChave,
+  // A credencial dos dois mundos (chat e serviço de voz) mora na mesma tabela.
+  provider: ProvedorComChave | ServiceProvider,
   apiKey: string,
   baseUrl?: string,
 ): Promise<ValidationResult> {
@@ -388,6 +428,8 @@ export function validateProviderKey(
       return validateOpenRouterKey(apiKey);
     case "deepseek":
       return validateDeepSeekKey(apiKey);
+    case "elevenlabs":
+      return validateElevenLabsKey(apiKey);
     case "requesty":
       return validateRequestyKey(apiKey);
     case "custom":

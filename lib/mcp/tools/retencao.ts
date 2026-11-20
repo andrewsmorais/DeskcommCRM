@@ -614,6 +614,7 @@ export const crmEnrollFollowupFlow: McpToolDefinition<typeof inscreverShape> = {
       contactId: input.contact_id,
       actorUserId: a.actorUserId,
       requestId: ctx.requestId,
+      origem: "agente",
     });
 
     if (!r.ok) {

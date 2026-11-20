@@ -26,6 +26,7 @@ interface AgendamentoListado {
   donoId: string | null;
   contatoId: string | null;
   contatoNome: string | null;
+  convidadosDaEquipe?: string[];
 }
 
 export interface RecorteDaGrade {
@@ -99,6 +100,7 @@ export function useAgendamentos(recorte: RecorteDaGrade | null) {
           // Campo novo é optional e a rota pode ainda não mandá-lo — `?? undefined`
           // mantém o wire tolerante a servidor mais velho que o cliente.
           quemSeraAtendido: a.contatoNome ?? undefined,
+          convidadosDaEquipe: a.convidadosDaEquipe ?? [],
         }));
       } catch (err) {
         showApiError(err);

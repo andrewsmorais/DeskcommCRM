@@ -33,6 +33,7 @@ import {
   crmAssignConversation,
   crmManageTags,
   crmGetQueueStatus,
+  crmSetConversationSector,
 } from "./governance";
 import {
   crmListAvailableAttendants,
@@ -160,6 +161,8 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmCreateConversationDraft,
   crmAssignConversation,
   crmManageTags,
+  // O7 — a IA passa a conversa para um setor (com a fila e o horário dele).
+  crmSetConversationSector,
   // write — organizar a operação (W4)
   crmCreateStage,
   crmUpdateStage,

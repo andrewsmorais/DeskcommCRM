@@ -25,9 +25,12 @@
  * configuração a algo que a pessoa já viu acontecer no negócio dela.
  */
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { apiClient } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/types";
+import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useT } from "@/hooks/i18n/useT";
+import { normalizarVoiceId, problemaNoVoiceId } from "@/lib/ai/voz/voice-id";
 
 import { CartaoDoJev, jevNoPonto, useDadosDoJev, type DadosDoJev } from "./CartaoDoJev";
 
@@ -206,6 +210,7 @@ export function PainelDeProvedores() {
       )}
 
       <CartaoDoPadrao dados={dados} aoSalvar={carregar} />
+      <CartaoDeVoz podeEditar={dados.podeEditar} />
 
       <CartaoDoJev dados={jev.dados} erro={jev.erro} recarregar={jev.recarregar} />
 
@@ -403,6 +408,245 @@ function CartaoDoPadrao({ dados, aoSalvar }: { dados: Dados; aoSalvar: () => Pro
   );
 }
 
+/**
+ * A VOZ da organização — qual voz o agente usa quando uma versão liga
+ * `voz_enabled` (editor de agente). Separado de `CartaoDoPadrao` porque é
+ * outro eixo: aquele é modelo de CONVERSA por ponto; isto é um recurso
+ * contratado uma vez (ElevenLabs), igual à chave em si.
+ *
+ * Duas portas para o MESMO valor (#4260, item 2): a lista do provedor (nome e
+ * idioma, quando dá para perguntar) e o campo de texto. A lista é atalho, não
+ * permissão — cliente com voz própria na conta ElevenLabs cola o id e ele vale.
+ * Se a listagem falhar, a tela cai na lista da última validação da credencial e
+ * diz que está nela; o campo continua aceitando qualquer id.
+ */
+interface VozDoCatalogo {
+  id: string;
+  nome: string;
+  idioma: string | null;
+}
+
+function CartaoDeVoz({ podeEditar }: { podeEditar: boolean }) {
+  const t = useT();
+  const [carregando, setCarregando] = useState(true);
+  const [voiceId, setVoiceId] = useState("");
+  const [catalogo, setCatalogo] = useState<VozDoCatalogo[]>([]);
+  const [catalogoVeioDoProvedor, setCatalogoVeioDoProvedor] = useState(false);
+  const [temCredencial, setTemCredencial] = useState(false);
+  const [erroDeFormato, setErroDeFormato] = useState<string | null>(null);
+  const [erroDoProvedor, setErroDoProvedor] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [ouvindo, setOuvindo] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      const res = await apiClient.get<{
+        data: {
+          voiceId: string | null;
+          vozesDisponiveis?: string[];
+          catalogo?: VozDoCatalogo[];
+          catalogoVeioDoProvedor?: boolean;
+          temCredencial: boolean;
+        };
+      }>("/api/v1/ai/voz");
+      setVoiceId(res.data.voiceId ?? "");
+      // Resposta incompleta não derruba o painel inteiro: sem catálogo, cai na
+      // lista de ids que já era a da tela; sem nenhuma das duas, fica só o campo.
+      const doCatalogo = res.data.catalogo ?? [];
+      setCatalogo(
+        doCatalogo.length > 0
+          ? doCatalogo
+          : (res.data.vozesDisponiveis ?? []).map((id) => ({ id, nome: id, idioma: null })),
+      );
+      setCatalogoVeioDoProvedor(res.data.catalogoVeioDoProvedor === true);
+      setTemCredencial(res.data.temCredencial === true);
+    } catch (err) {
+      showApiError(err);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  /** Valida o FORMATO antes de gastar requisição/síntese. Não consulta lista. */
+  function idParaUsar(): string | null {
+    const problema = problemaNoVoiceId(voiceId);
+    if (problema === null) {
+      setErroDeFormato(null);
+      return normalizarVoiceId(voiceId);
+    }
+    setErroDeFormato(
+      problema === "vazio"
+        ? t("Informe um Voice ID.")
+        : t("Voice ID inválido: use só letras, números, hífen e sublinhado (8 a 64 caracteres)."),
+    );
+    return null;
+  }
+
+  async function salvar() {
+    const id = idParaUsar();
+    if (id === null) return;
+    setErroDoProvedor(null);
+    setSalvando(true);
+    try {
+      const res = await apiClient.patch<{ data: { voiceId: string } }>("/api/v1/ai/voz", {
+        voice_id: id,
+      });
+      setVoiceId(res.data.voiceId);
+      toast.success(`${t("Voz salva:")} ${res.data.voiceId}`);
+    } catch (err) {
+      showApiError(err);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function ouvirPrevia() {
+    const id = idParaUsar();
+    if (id === null) return;
+    setErroDoProvedor(null);
+    setOuvindo(true);
+    try {
+      const res = await apiClient.post<{ data: { audioBase64: string; mimeType: string } }>(
+        "/api/v1/ai/voz/preview",
+        { voice_id: id },
+      );
+      if (audioRef.current) {
+        audioRef.current.src = `data:${res.data.mimeType};base64,${res.data.audioBase64}`;
+        await audioRef.current.play();
+      }
+    } catch (err) {
+      // A recusa do provedor sobre a voz aparece AQUI, com o texto dele: é o
+      // que diferencia "id errado" de "ElevenLabs fora do ar" para quem colou
+      // um id que a lista não conhece.
+      const detalhes = err instanceof ApiError ? err.details : undefined;
+      const doProvedor = detalhes?.erroDoProvedor;
+      if (typeof doProvedor === "string" && doProvedor.trim() !== "") setErroDoProvedor(doProvedor);
+      showApiError(err);
+    } finally {
+      setOuvindo(false);
+    }
+  }
+
+  if (carregando) return null;
+
+  const naLista = catalogo.some((v) => v.id === voiceId);
+
+  return (
+    <Card className="mb-6 space-y-3 p-4" data-testid="cartao-de-voz">
+      <h2 className="text-base font-semibold">{t("Voz do agente")}</h2>
+      <p className="text-sm text-muted-foreground">
+        {t(
+          "Qual voz sai quando um agente responde em áudio — ligado por versão, no editor do agente. Precisa de uma credencial do ElevenLabs validada.",
+        )}
+      </p>
+
+      {!temCredencial && (
+        <p className="text-sm text-amber-600 dark:text-amber-500">
+          {t("Sem credencial do ElevenLabs validada ainda.")}{" "}
+          <Link className="underline underline-offset-4" href="/app/ai/credentials">
+            {t("Cadastrar em Credenciais")}
+          </Link>
+        </p>
+      )}
+
+      {temCredencial && !catalogoVeioDoProvedor && (
+        <p className="text-xs text-muted-foreground" data-testid="voz-catalogo-antigo">
+          {t(
+            "Não consegui listar as vozes no ElevenLabs agora. A lista abaixo é a da última validação da credencial — e colar um Voice ID continua funcionando.",
+          )}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-64 space-y-1.5">
+          <Label className="text-xs" htmlFor="voz-voice-id">
+            {t("Voice ID")}
+          </Label>
+          {catalogo.length > 0 && (
+            <Select
+              value={naLista ? voiceId : ""}
+              onValueChange={(id) => {
+                setVoiceId(id);
+                setErroDeFormato(null);
+              }}
+              disabled={!podeEditar}
+            >
+              <SelectTrigger data-testid="voz-escolher-da-lista" aria-label={t("Escolher da lista")}>
+                <SelectValue placeholder={t("escolha da lista")} />
+              </SelectTrigger>
+              <SelectContent>
+                {catalogo.map((voz) => (
+                  <SelectItem key={voz.id} value={voz.id}>
+                    {voz.nome === voz.id
+                      ? voz.id
+                      : `${voz.nome}${voz.idioma ? ` — ${voz.idioma}` : ""}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Input
+            id="voz-voice-id"
+            value={voiceId}
+            onChange={(e) => {
+              setVoiceId(e.target.value);
+              setErroDeFormato(null);
+            }}
+            placeholder="ex.: 21m00Tcm4TlvDq8ikWAM"
+            data-testid="voz-voice-id"
+            disabled={!podeEditar}
+            aria-invalid={erroDeFormato !== null}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Escolha da lista ou cole o ID de qualquer voz da sua conta, inclusive uma que não apareça aqui.",
+            )}
+          </p>
+          {erroDeFormato !== null && (
+            <p className="text-xs text-destructive" role="alert" data-testid="voz-erro-de-formato">
+              {erroDeFormato}
+            </p>
+          )}
+        </div>
+
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={ouvindo || voiceId.trim() === ""}
+          onClick={() => void ouvirPrevia()}
+          data-testid="voz-ouvir-previa"
+        >
+          {ouvindo ? t("Gerando…") : t("Ouvir prévia")}
+        </Button>
+
+        {podeEditar && (
+          <Button
+            size="sm"
+            disabled={salvando || voiceId.trim() === ""}
+            onClick={() => void salvar()}
+            data-testid="voz-salvar"
+          >
+            {salvando ? t("Salvando…") : t("Salvar voz")}
+          </Button>
+        )}
+      </div>
+
+      {erroDoProvedor !== null && (
+        <p className="text-xs text-destructive" role="alert" data-testid="voz-erro-do-provedor">
+          {t("O provedor recusou esta voz:")} {erroDoProvedor}
+        </p>
+      )}
+
+      <audio ref={audioRef} data-testid="voz-audio-previa" />
+    </Card>
+  );
+}
+
 function ResumoDoGrupo({ pontos }: { pontos: Ponto[] }) {
   const t = useT();
   const modelos = [...new Set(pontos.map((p) => p.efetivo.modelId ?? t("não definido")))];
@@ -496,9 +740,25 @@ function CartaoDoPonto({
 
   return (
     <Card className="p-4" data-testid={`ponto-${ponto.id}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+      {/*
+        A 375 px o texto do cabeçalho perdia a largura para a coluna do modelo:
+        `flex-1` dentro de um `flex-wrap` tem base ZERO, então a linha nunca
+        quebrava — o bloco do modelo/origem ficava com o que pedia e o texto
+        encolhia até o `min-w-0`. Medido com o Tailwind deste repo a 375 px: o
+        título ficava com 82 px e quebrava em 5 linhas; sem o `flex-1`, 197 px;
+        com as duas colunas empilhadas, os 293 px do cartão, em 2 linhas.
+
+        Abaixo de `md` é uma coluna só — texto na largura do cartão e
+        modelo/origem na linha de baixo, alinhados à esquerda. De `md` para cima
+        as duas colunas voltam a dividir a linha, como antes.
+      */}
+      <div
+        className="grid gap-x-3 gap-y-2 md:grid-cols-[minmax(0,1fr)_auto]"
+      >
+        <div className="min-w-0">
+          {/* `flex-wrap`: selo que não cabe desce para a linha de baixo em vez
+              de espremer o título. */}
+          <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-medium">{t(ponto.rotulo)}</h3>
             {ponto.exige.tools && (
               <Badge variant="outline" className="text-xs">
@@ -524,8 +784,8 @@ function CartaoDoPonto({
             </p>
           )}
         </div>
-        <div className="text-right text-xs text-muted-foreground">
-          <div className="font-mono">{ponto.efetivo.modelId ?? "—"}</div>
+        <div className="text-left text-xs text-muted-foreground md:col-start-2 md:row-start-1 md:text-right">
+          <div className="break-words font-mono">{ponto.efetivo.modelId ?? "—"}</div>
           <div data-testid={`origem-${ponto.id}`}>{t(ponto.efetivo.porQue)}</div>
         </div>
       </div>

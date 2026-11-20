@@ -22,6 +22,7 @@ function formatError(err: unknown, t: (texto: string) => string): string {
 }
 import { KanbanBoard } from "@/components/kanban/KanbanBoard";
 import { FilterBar } from "@/components/kanban/FilterBar";
+import { ListaDoFunil } from "@/components/kanban/ListaDoFunil";
 import { BulkActionBar } from "@/components/kanban/BulkActionBar";
 import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,18 @@ export function PipelinePageClient({
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [newOpen, setNewOpen] = useState(false);
+  // Quadro ou Lista: escolha na URL (?visao=lista), para o link abrir como se viu.
+  const visao = searchParams.get("visao") === "lista" ? "lista" : "quadro";
+  const trocarVisao = useCallback(
+    (v: "quadro" | "lista") => {
+      const p = new URLSearchParams(searchParams.toString());
+      if (v === "lista") p.set("visao", "lista");
+      else p.delete("visao");
+      const qs = p.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   /**
    * Motivo e categoria da perda (#1537): a categoria NÃO vem no lead — ela é
@@ -89,7 +102,12 @@ export function PipelinePageClient({
       // p-6 do <main>), quem rola é o quadro: a barra horizontal fica sempre no
       // pé da tela e o cabeçalho de cada etapa fica preso em cima. O piso de
       // 28rem é para tela baixa demais, onde a página volta a rolar.
-      className="flex h-[calc(100dvh-var(--space-16)-3rem)] min-h-[28rem] flex-col gap-4"
+      //
+      // O `p-6` de baixo NÃO é fixo: a casca aplica `max(PISO, --rodape-ocupado)`
+      // quando uma peça fixa se registra no rodapé (`lib/ui/rodape-ocupado.tsx`).
+      // Descontar `3rem` cravados deixava rolagem morta com o painel de voz
+      // aberto. A conta é a mesma do Inbox (`components/inbox/InboxLayout.tsx`).
+      className="flex h-[calc(100dvh-var(--space-16)-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] min-h-[28rem] flex-col gap-4"
       // OBSERVÁVEL de propósito, e é a razão de existir desta linha: "a
       // assinatura morreu" e "nada aconteceu" produzem o MESMO silêncio na
       // tela, e sem este valor nem o produto nem o teste conseguem separar as
@@ -129,6 +147,20 @@ export function PipelinePageClient({
           stages={data.stages}
         />
       )}
+      <div role="tablist" className="flex gap-1" data-testid="abas-do-funil">
+        {(["quadro", "lista"] as const).map((v) => (
+          <Button
+            key={v}
+            role="tab"
+            aria-selected={visao === v}
+            variant={visao === v ? "default" : "outline"}
+            size="sm"
+            onClick={() => trocarVisao(v)}
+          >
+            {v === "quadro" ? t("Quadro") : t("Lista")}
+          </Button>
+        ))}
+      </div>
       <FilterBar
         filters={filters}
         onChange={setFilters}
@@ -143,6 +175,13 @@ export function PipelinePageClient({
         <div className="flex flex-1 animate-pulse items-center justify-center text-muted-foreground">
           {t("Carregando…")}
         </div>
+      ) : visao === "lista" ? (
+        <ListaDoFunil
+          pipelineId={pipelineId}
+          pipeline={data.pipeline}
+          stages={data.stages}
+          filtros={filters}
+        />
       ) : (
         <KanbanBoard
           pipelineId={pipelineId}

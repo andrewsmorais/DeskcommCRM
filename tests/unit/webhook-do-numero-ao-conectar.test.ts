@@ -35,6 +35,14 @@ vi.mock("@/lib/webhooks/secrets", () => ({
 }));
 vi.mock("@/lib/channels/meta/validate-credentials", () => ({ validateMetaCredentials: vi.fn() }));
 vi.mock("@/lib/channels/meta/app", () => ({ appDaMeta: vi.fn() }));
+// A cota do plano (quantos WhatsApps o plano permite) roda ANTES do registro do
+// webhook e tem a própria suíte (`lib/channels/cota-do-plano.test.ts`). Aqui ela
+// deixa passar: este arquivo mede o webhook, e o banco falso abaixo não conta
+// linhas (`.in()`, `count`) — ensiná-lo a contar só para atravessar a cota
+// acoplaria este teste à regra de plano.
+vi.mock("@/lib/channels/cota-do-plano", () => ({
+  comCotaDeCanal: vi.fn((_db: unknown, _org: string, _id: string | null, operacao: () => unknown) => operacao()),
+}));
 vi.mock("@/lib/logger", () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));

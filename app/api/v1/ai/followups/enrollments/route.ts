@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { roleAtLeast } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { createFollowupEnrollmentSchema } from "@/lib/followup/api-schemas";
@@ -41,6 +42,12 @@ export async function GET(req: NextRequest): Promise<Response> {
     return fail("invalid_request", t("status inválido."), 400, { requestId });
   }
 
+  // Recorte por contato (o painel da conversa): só UUID, senão 400.
+  const contactId = req.nextUrl.searchParams.get("contact_id");
+  if (contactId !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contactId)) {
+    return fail("invalid_request", t("contact_id inválido."), 400, { requestId });
+  }
+
   const supabase = await createClient();
   let query = supabase
     .from("followup_enrollments")
@@ -48,10 +55,14 @@ export async function GET(req: NextRequest): Promise<Response> {
     .eq("organization_id", activeOrg.orgId)
     .order("updated_at", { ascending: false });
   if (status !== null) query = query.eq("status", status);
+  if (contactId !== null) query = query.eq("contact_id", contactId);
 
   const { data, error } = await query;
   if (error) return fail("internal_error", error.message, 500, { requestId });
-  return ok(data ?? [], { requestId });
+  // A MESMA régua do POST (manager+), dita pelo servidor para a tela não
+  // oferecer um botão que o POST recusaria.
+  const podeInscrever = authz.user.is_platform_admin === true || roleAtLeast(activeOrg.role, "manager");
+  return ok(data ?? [], { requestId, meta: { pode_inscrever: podeInscrever } });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -86,6 +97,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     agentId: parsed.data.agent_id,
     actorUserId: user.id,
     requestId,
+    origem: "tela",
   });
 
   if (!result.ok) {

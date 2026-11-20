@@ -65,24 +65,29 @@ export function ImportContactsDialog({ open, onOpenChange }: Props) {
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("Importar contatos de planilha")}</DialogTitle>
+          <DialogTitle>{t("Importar contatos")}</DialogTitle>
           <DialogDescription>
             {t(
               "Envie um arquivo .csv com cabeçalho — colunas reconhecidas: nome, telefone, email, cpf, nascimento, tags. Excel: use “Salvar como” → “CSV UTF-8”. Máximo de 500 linhas por arquivo.",
             )}
           </DialogDescription>
+          <p className="text-sm text-muted-foreground">
+            {t(
+              "Também aceita o arquivo de contatos do celular (.vcf): no Android, Contatos › Exportar; no Google Contatos, Exportar › vCard.",
+            )}
+          </p>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4">
           {!resumo && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="csv-file">{t("Arquivo CSV")}</Label>
+                <Label htmlFor="csv-file">{t("Arquivo .csv ou .vcf")}</Label>
                 <Input
                   id="csv-file"
                   ref={inputRef}
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,text/csv,.vcf,.vcard,text/vcard,text/x-vcard"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
                 {file && (

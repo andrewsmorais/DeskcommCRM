@@ -1,0 +1,184 @@
+name: trivy
+# Varredura do Trivy (https://github.com/aquasecurity/trivy) no código e nas
+# imagens Docker do produto:
+#   1. código (pnpm-lock.yaml, Dockerfiles, compose, workflows): bibliotecas com
+#      falha conhecida, senha/chave esquecida e configuração insegura;
+#   2. as três imagens que a VPS do cliente roda (app, worker, scheduler),
+#      construídas aqui do jeito do publish-image.yml: falhas no sistema e nas
+#      bibliotecas que vão DENTRO da imagem.
+# A ação é fixada pelo commit (v0.36.0), não pela etiqueta: etiqueta de ação
+# pode ser trocada por quem controla o repositório dela.
+# Não reprova o job: informa. O resumo aparece na página da execução e os
+# relatórios completos (JSON) saem como artefato.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [chataionline/seguranca-auditoria]
+    paths:
+      - .github/workflows/trivy.yml
+      - .trivyignore
+      - pnpm-lock.yaml
+      - Dockerfile*
+      - docker-compose.prod.yml
+      - hostgator-setup-kit/_common.sh
+      - scripts/seguranca/waha-confere.ts
+  schedule:
+    - cron: "41 6 * * 1" # segunda, 03:41 em Brasília
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trivy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: "Trivy 1/2 — código (bibliotecas, segredos, configuração)"
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          skip-dirs: node_modules,.next,evidence,tests
+          format: json
+          output: trivy-codigo.json
+          exit-code: "0"
+
+      - name: Construir as imagens (como o publish-image.yml, sem publicar)
+        run: |
+          docker build -q -f Dockerfile -t deskcomm-app:scan --build-arg APP_VERSION=scan . 
+          docker build -q -f Dockerfile.worker -t deskcomm-worker:scan --build-arg APP_VERSION=scan .
+          docker build -q -f Dockerfile.scheduler -t deskcomm-scheduler:scan --build-arg APP_VERSION=scan .
+
+      - name: As imagens ainda ligam sem npm e pnpm dentro
+        run: |
+          # O worker roda pelo tsx de node_modules (sem pnpm): o atalho tem de
+          # funcionar sozinho. E nenhuma das imagens pode ter sobrado com npm,
+          # npx, corepack ou pnpm — eles é que traziam as falhas conhecidas.
+          docker run --rm --entrypoint node_modules/.bin/tsx deskcomm-worker:scan -e "console.log('tsx do worker: ok')"
+          docker run --rm --entrypoint node deskcomm-app:scan -e "console.log('node do app: ok')"
+          for img in deskcomm-app:scan deskcomm-worker:scan; do
+            sobra=$(docker run --rm --entrypoint sh "$img" -c 'for b in npm npx corepack pnpm; do command -v $b; done' || true)
+            if [ -n "$sobra" ]; then echo "::error::$img ainda tem: $sobra"; exit 1; fi
+            echo "$img: sem npm/npx/corepack/pnpm"
+          done
+
+      - name: "Trivy 2/2 — imagem do app"
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: image
+          image-ref: deskcomm-app:scan
+          scanners: vuln,secret
+          format: json
+          output: trivy-imagem-app.json
+          exit-code: "0"
+
+      - name: "Trivy 2/2 — imagem do worker"
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: image
+          image-ref: deskcomm-worker:scan
+          scanners: vuln,secret
+          format: json
+          output: trivy-imagem-worker.json
+          exit-code: "0"
+          skip-setup-trivy: true
+
+      - name: "Trivy 2/2 — imagem do scheduler"
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: image
+          image-ref: deskcomm-scheduler:scan
+          scanners: vuln,secret
+          format: json
+          output: trivy-imagem-scheduler.json
+          exit-code: "0"
+          skip-setup-trivy: true
+
+      - uses: ./.github/actions/preparar-node
+        timeout-minutes: 5
+
+      - name: "WAHA fixado: sobe, fala com o app e tem sendSticker"
+        run: |
+          IMG=$(grep -oE 'WAHA_IMAGE:-[^}]+' docker-compose.prod.yml | head -1 | cut -d- -f2-)
+          PADRAO=$(grep -oE '^WAHA_PADRAO="[^"]+"' hostgator-setup-kit/_common.sh | cut -d'"' -f2)
+          echo "compose: $IMG | update.sh: $PADRAO"
+          [ "$IMG" = "$PADRAO" ] || { echo "::error::o compose e o _common.sh discordam da versão do WAHA"; exit 1; }
+          CHAVE=$(openssl rand -hex 24)
+          HASH=$(printf '%s' "$CHAVE" | sha512sum | cut -d' ' -f1)
+          docker run -d --name waha -p 3000:3000 \
+            -e WAHA_API_KEY="sha512:$HASH" -e WHATSAPP_DEFAULT_ENGINE=NOWEB "$IMG"
+          for i in $(seq 1 60); do
+            c=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Api-Key: $CHAVE" http://127.0.0.1:3000/api/server/version || true)
+            [ "$c" = "200" ] && break; sleep 2
+          done
+          WAHA_URL=http://127.0.0.1:3000 WAHA_CHAVE="$CHAVE" WAHA_VERSAO_ESPERADA="${IMG##*latest-}" \
+            pnpm exec tsx scripts/seguranca/waha-confere.ts || { docker logs --tail 60 waha; exit 1; }
+
+      - name: "Trivy — imagem do WAHA fixado"
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: image
+          image-ref: devlikeapro/waha:latest-2026.9.2
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          format: json
+          output: trivy-imagem-waha.json
+          exit-code: "0"
+          skip-setup-trivy: true
+
+      - name: Resumo
+        if: always()
+        run: |
+          # Também no log: o artefato fica num armazenamento que nem todo
+          # leitor alcança, e o log da execução sim.
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os
+          ordem = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
+          nomes = {"CRITICAL": "Crítica", "HIGH": "Alta", "MEDIUM": "Média", "LOW": "Baixa", "UNKNOWN": "?"}
+          print("# Varredura do Trivy\n")
+          for arq, titulo in (("trivy-codigo.json", "Código"), ("trivy-imagem-app.json", "Imagem do app"),
+                              ("trivy-imagem-worker.json", "Imagem do worker"), ("trivy-imagem-scheduler.json", "Imagem do scheduler"),
+                              ("trivy-imagem-waha.json", "Imagem do WAHA (de terceiros; só crítica e alta)")):
+              print(f"## {titulo}\n")
+              if not os.path.exists(arq):
+                  print("_Sem relatório (o passo falhou — veja o log)._\n"); continue
+              linhas = []
+              for r in json.load(open(arq)).get("Results", []) or []:
+                  alvo = r.get("Target", "")
+                  for v in r.get("Vulnerabilities") or []:
+                      linhas.append((v.get("Severity", "UNKNOWN"), "biblioteca", f"{v.get('PkgName')} {v.get('InstalledVersion')} → {v.get('FixedVersion') or 'sem correção'}", v.get("VulnerabilityID"), alvo))
+                  for s in r.get("Secrets") or []:
+                      linhas.append((s.get("Severity", "UNKNOWN"), "segredo", s.get("Title", ""), s.get("RuleID"), f"{alvo}:{s.get('StartLine')}"))
+                  for m in r.get("Misconfigurations") or []:
+                      if m.get("Status") == "FAIL":
+                          linhas.append((m.get("Severity", "UNKNOWN"), "configuração", m.get("Title", ""), m.get("ID"), alvo))
+              linhas.sort(key=lambda l: ordem.get(l[0], 9))
+              if not linhas:
+                  print("Nada encontrado.\n"); continue
+              print("| Gravidade | Tipo | O quê | Id | Onde |\n|---|---|---|---|---|")
+              for g, tipo, oque, ident, onde in linhas[:300]:
+                  print(f"| {nomes.get(g, g)} | {tipo} | {oque} | {ident} | `{onde}` |")
+              if len(linhas) > 300: print(f"\n…e mais {len(linhas)-300} (ver o artefato).")
+              print()
+          PY
+
+      - name: Publicar os relatórios
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-relatorios
+          path: trivy-*.json
+          retention-days: 30

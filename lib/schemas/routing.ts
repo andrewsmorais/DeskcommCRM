@@ -15,8 +15,13 @@ import { fusoValido } from "@/lib/tempo/fusos";
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Modos de roteamento no MVP (decisão G1-06b); "load" fica pós-MVP. */
-export const ROUTING_MODES = ["manual", "round_robin"] as const;
+export const ROUTING_MODES = ["manual", "round_robin", "least_load"] as const;
 export type RoutingMode = (typeof ROUTING_MODES)[number];
+
+/** Os modos em que o sistema escolhe o atendente (tudo menos o manual). */
+export function modoDistribuiSozinho(mode: string): boolean {
+  return mode === "round_robin" || mode === "least_load";
+}
 
 /**
  * organizations.settings.routing. Default mode = "manual" (round_robin é opt-in,
@@ -35,6 +40,19 @@ export const routingConfigSchema = z.object({
    * `lib/escalacao/devolucao-automatica.ts`, e a faixa (5 min – 24 h) também.
    */
   handoff_return_after_minutes: z
+    .number()
+    .int()
+    .min(PRAZO_MIN_MINUTOS)
+    .max(PRAZO_MAX_MINUTOS)
+    .nullable()
+    .default(null),
+  /**
+   * Prazo, em minutos, para a conversa que está com um atendente e tem cliente
+   * esperando, sem nenhuma resposta, VOLTAR PARA A FILA (e para o roteamento).
+   * `null` = nunca, o comportamento de sempre. Quem faz é o cron
+   * `conversa-sem-resposta`; a regra pura está em `lib/routing/sem-resposta.ts`.
+   */
+  unanswered_return_after_minutes: z
     .number()
     .int()
     .min(PRAZO_MIN_MINUTOS)
@@ -84,7 +102,7 @@ export function conversaFicaComQuemAtendeu(settings: unknown): boolean {
  * aqui só se declara a validação do input externo. A `satisfies` abaixo é o que
  * impede as duas listas de divergirem sem ninguém notar.
  */
-export const VISIBILITY_MODES = ["all", "own_and_unassigned", "own"] as const;
+export const VISIBILITY_MODES = ["all", "own_and_unassigned", "own", "own_and_sector"] as const;
 export type VisibilityModeInput = (typeof VISIBILITY_MODES)[number];
 
 /**
@@ -103,6 +121,14 @@ export const atendimentoConfigPatchSchema = routingConfigSchema.extend({
    * roteamento, não pode desligar a devolução automática por omissão.
    */
   handoff_return_after_minutes: z
+    .number()
+    .int()
+    .min(PRAZO_MIN_MINUTOS)
+    .max(PRAZO_MAX_MINUTOS)
+    .nullable()
+    .optional(),
+  /** Opcional pela mesma razão: cliente antigo não desliga o prazo por omissão. */
+  unanswered_return_after_minutes: z
     .number()
     .int()
     .min(PRAZO_MIN_MINUTOS)
@@ -132,6 +158,7 @@ export function mesclarSettingsDeAtendimento(
   const {
     visibility_mode,
     handoff_return_after_minutes,
+    unanswered_return_after_minutes,
     conversation_stays_with_attendant,
     ...routingInput
   } = input;
@@ -144,6 +171,10 @@ export function mesclarSettingsDeAtendimento(
       handoff_return_after_minutes !== undefined
         ? handoff_return_after_minutes
         : routingAtual.handoff_return_after_minutes,
+    unanswered_return_after_minutes:
+      unanswered_return_after_minutes !== undefined
+        ? unanswered_return_after_minutes
+        : routingAtual.unanswered_return_after_minutes,
     conversation_stays_with_attendant:
       conversation_stays_with_attendant ?? routingAtual.conversation_stays_with_attendant,
   };
@@ -197,10 +228,12 @@ export const availabilityPatchSchema = z
     is_available: z.boolean(),
     capacity: z.number().int().min(1).max(1000),
     schedule: availabilityScheduleSchema,
+    /** Reatribuição automática (migration 0514). Só gerente ou acima muda. */
+    reatribuicao: z.enum(["desligada", "offline", "sempre"]),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, {
-    message: "Informe ao menos um campo (is_available, capacity ou schedule).",
+    message: "Informe ao menos um campo (is_available, capacity, schedule ou reatribuicao).",
   });
 export type AvailabilityPatch = z.infer<typeof availabilityPatchSchema>;
 
@@ -209,3 +242,12 @@ export const channelRoutingPatchSchema = z.object({
   user_ids: z.array(z.string().uuid()).max(1000),
   reset: z.boolean().default(false),
 }).strict();
+
+/** PATCH de `/api/v1/settings/routing/channels/modo` — o jeito de distribuir de UM número (0559). */
+export const channelDistributionModePatchSchema = z
+  .object({
+    channel_session_id: z.string().uuid(),
+    /** `null` = volta a seguir o modo da organização. */
+    routing_mode: z.enum(ROUTING_MODES).nullable(),
+  })
+  .strict();

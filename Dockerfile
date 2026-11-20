@@ -70,7 +70,10 @@ RUN pnpm build
 # nenhum. Sem ele: "Setting up fake worker failed: Cannot find module
 # '/app/.next/server/chunks/pdf.worker.mjs'" — um SEGUNDO arquivo ausente,
 # de causa diferente dos dois symlinks, e só aparece testando o bundle real.
+# Preserve também os alvos dos links: o binding opcional instalado pertence
+# ao estágio de dependências da imagem, sem buscar binários da máquina do autor.
 RUN PDFJS_DIR=$(basename node_modules/.pnpm/pdfjs-dist@*) && \
+    cp -a node_modules/.pnpm/@napi-rs+canvas* .next/standalone/node_modules/.pnpm/ && \
     cp -a "node_modules/pdfjs-dist" ".next/standalone/node_modules/pdfjs-dist" && \
     mkdir -p ".next/standalone/node_modules/.pnpm/$PDFJS_DIR/node_modules/@napi-rs" && \
     cp -a "node_modules/.pnpm/$PDFJS_DIR/node_modules/@napi-rs/canvas" \
@@ -86,7 +89,7 @@ WORKDIR /app
 # OCI via docker/metadata-action; estes aqui são defesa em profundidade — valem
 # para qualquer build, inclusive o local de docker-compose.build.yml, que não
 # passa pelo metadata-action e sem isto sairia sem origem nenhuma.
-LABEL org.opencontainers.image.source="https://github.com/melgarafael/DeskcommCRM" \
+LABEL org.opencontainers.image.source="https://github.com/andrewsmorais/DeskcommCRM" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.title="DeskcommCRM"
 
@@ -112,7 +115,17 @@ ENV NODE_ENV=production \
 # ffmpeg: a derivação de vídeo (Onda 3.1) roda no processo do app — o cron
 # event-log-drain executa o media_derive handler, que chama `ffmpeg` via spawn
 # pra extrair áudio+frames. Sem o binário, todo vídeo recebido falha a derivação.
-RUN apk add --no-cache ffmpeg
+# Na mesma camada do ffmpeg: as atualizações de segurança do Alpine (o Trivy
+# achou zlib com falha conhecida na base) e a retirada do npm, do npx e do
+# corepack. O processo deste contêiner é `node server.js` e nada mais — nem o
+# healthcheck nem o update.sh chamam npm aqui —, e o npm embutido na imagem do
+# Node traz tar, sigstore, pacote, glob e brace-expansion com falhas conhecidas
+# (relatório do Trivy, 13/11/2026). Ferramenta que não roda não precisa estar lá.
+RUN apk add --no-cache ffmpeg \
+ && apk upgrade --no-cache \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 # non-root
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 # A versão que /api/v1/health reporta (invariante 7). Precisa vir por ARG: a

@@ -1824,6 +1824,7 @@ export type Database = {
           max_steps: number
           model: string
           multimodal_input: boolean
+          image_vision_enabled: boolean
           operator_enabled: boolean
           operator_model: string | null
           operator_tool_ids: string[]
@@ -1862,6 +1863,7 @@ export type Database = {
           max_steps?: number
           model: string
           multimodal_input?: boolean
+          image_vision_enabled?: boolean
           operator_enabled?: boolean
           operator_model?: string | null
           operator_tool_ids?: string[]
@@ -1900,6 +1902,7 @@ export type Database = {
           max_steps?: number
           model?: string
           multimodal_input?: boolean
+          image_vision_enabled?: boolean
           operator_enabled?: boolean
           operator_model?: string | null
           operator_tool_ids?: string[]
@@ -2696,6 +2699,10 @@ export type Database = {
       ai_router_decisions: {
         Row: {
           agent_id: string | null
+          agente_anterior_id: string | null
+          motivo: string | null
+          origem: string
+          solicitado_por: string | null
           confidence: number | null
           conversation_id: string | null
           created_at: string
@@ -2708,6 +2715,10 @@ export type Database = {
         }
         Insert: {
           agent_id?: string | null
+          agente_anterior_id?: string | null
+          motivo?: string | null
+          origem?: string
+          solicitado_por?: string | null
           confidence?: number | null
           conversation_id?: string | null
           created_at?: string
@@ -2720,6 +2731,10 @@ export type Database = {
         }
         Update: {
           agent_id?: string | null
+          agente_anterior_id?: string | null
+          motivo?: string | null
+          origem?: string
+          solicitado_por?: string | null
           confidence?: number | null
           conversation_id?: string | null
           created_at?: string
@@ -3052,9 +3067,37 @@ export type Database = {
           },
         ]
       }
+      automation_rule_contact_claims: {
+        Row: {
+          contact_id: string
+          created_at: string
+          event_id: string | null
+          id: string
+          organization_id: string
+          rule_id: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          organization_id: string
+          rule_id: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          organization_id?: string
+          rule_id?: string
+        }
+        Relationships: []
+      }
       automation_rule_runs: {
         Row: {
           actions_result: Json
+          contact_id: string | null
           created_at: string
           error: string | null
           event_id: string | null
@@ -3065,6 +3108,7 @@ export type Database = {
         }
         Insert: {
           actions_result?: Json
+          contact_id?: string | null
           created_at?: string
           error?: string | null
           event_id?: string | null
@@ -3075,6 +3119,7 @@ export type Database = {
         }
         Update: {
           actions_result?: Json
+          contact_id?: string | null
           created_at?: string
           error?: string | null
           event_id?: string | null
@@ -3297,6 +3342,7 @@ export type Database = {
           source: string
           starts_at: string
           status: string
+          team_guest_user_ids: string[]
           time_zone: string
           title: string
           updated_at: string
@@ -3363,6 +3409,7 @@ export type Database = {
           source?: string
           starts_at: string
           status?: string
+          team_guest_user_ids?: string[]
           time_zone?: string
           title: string
           updated_at?: string
@@ -3429,6 +3476,7 @@ export type Database = {
           source?: string
           starts_at?: string
           status?: string
+          team_guest_user_ids?: string[]
           time_zone?: string
           title?: string
           updated_at?: string
@@ -4200,6 +4248,7 @@ export type Database = {
           organization_id: string
           phone_number: string | null
           provider: string
+          routing_mode: string | null
           status: string
           status_reason: string | null
           updated_at: string
@@ -4236,6 +4285,7 @@ export type Database = {
           organization_id: string
           phone_number?: string | null
           provider?: string
+          routing_mode?: string | null
           status?: string
           status_reason?: string | null
           updated_at?: string
@@ -4272,6 +4322,7 @@ export type Database = {
           organization_id?: string
           phone_number?: string | null
           provider?: string
+          routing_mode?: string | null
           status?: string
           status_reason?: string | null
           updated_at?: string
@@ -4394,6 +4445,7 @@ export type Database = {
       }
       contacts: {
         Row: {
+          address_book_name: string | null
           ai_authorized_at: string | null
           ai_authorized_reason: string | null
           anonymized_at: string | null
@@ -4425,6 +4477,7 @@ export type Database = {
           locale: string | null
           merged_at: string | null
           name: string | null
+          name_lookup_at: string | null
           organization_id: string
           person_id: string | null
           phone_lookup_at: string | null
@@ -4438,6 +4491,7 @@ export type Database = {
           wa_lid: string | null
         }
         Insert: {
+          address_book_name?: string | null
           ai_authorized_at?: string | null
           ai_authorized_reason?: string | null
           anonymized_at?: string | null
@@ -4468,6 +4522,7 @@ export type Database = {
           locale?: string | null
           merged_at?: string | null
           name?: string | null
+          name_lookup_at?: string | null
           organization_id: string
           person_id?: string | null
           phone_lookup_at?: string | null
@@ -4481,6 +4536,7 @@ export type Database = {
           wa_lid?: string | null
         }
         Update: {
+          address_book_name?: string | null
           ai_authorized_at?: string | null
           ai_authorized_reason?: string | null
           anonymized_at?: string | null
@@ -4511,6 +4567,7 @@ export type Database = {
           locale?: string | null
           merged_at?: string | null
           name?: string | null
+          name_lookup_at?: string | null
           organization_id?: string
           person_id?: string | null
           phone_lookup_at?: string | null
@@ -4604,6 +4661,9 @@ export type Database = {
           created_by_user_id: string | null
           id: string
           organization_id: string
+          media_mime: string | null
+          media_size_bytes: number | null
+          media_storage_path: string | null
         }
         Insert: {
           body: string
@@ -4613,6 +4673,9 @@ export type Database = {
           created_by_user_id?: string | null
           id?: string
           organization_id: string
+          media_mime?: string | null
+          media_size_bytes?: number | null
+          media_storage_path?: string | null
         }
         Update: {
           body?: string
@@ -4622,6 +4685,9 @@ export type Database = {
           created_by_user_id?: string | null
           id?: string
           organization_id?: string
+          media_mime?: string | null
+          media_size_bytes?: number | null
+          media_storage_path?: string | null
         }
         Relationships: [
           {
@@ -4660,6 +4726,8 @@ export type Database = {
           group_chat_id: string | null
           id: string
           is_group: boolean
+          is_private: boolean
+          setor_id: string | null
           last_handoff_at: string | null
           last_handoff_reason: string | null
           last_inbound_at: string | null
@@ -4704,6 +4772,8 @@ export type Database = {
           group_chat_id?: string | null
           id?: string
           is_group?: boolean
+          is_private?: boolean
+          setor_id?: string | null
           last_handoff_at?: string | null
           last_handoff_reason?: string | null
           last_inbound_at?: string | null
@@ -4748,6 +4818,8 @@ export type Database = {
           group_chat_id?: string | null
           id?: string
           is_group?: boolean
+          is_private?: boolean
+          setor_id?: string | null
           last_handoff_at?: string | null
           last_handoff_reason?: string | null
           last_inbound_at?: string | null
@@ -6646,6 +6718,82 @@ export type Database = {
           },
         ]
       }
+      importacoes_de_historico: {
+        Row: {
+          channel_session_id: string
+          conversas_feitas: number
+          created_at: string
+          criada_por: string | null
+          cursor: NonNullable<Json>
+          dias: number
+          erro: string | null
+          id: string
+          mensagens_existentes: number
+          mensagens_gravadas: number
+          mensagens_ignoradas: number
+          midias_baixadas: number
+          midias_indisponiveis: number
+          organization_id: string
+          previa: Json | null
+          status: string
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          channel_session_id: string
+          conversas_feitas?: number
+          created_at?: string
+          criada_por?: string | null
+          cursor?: NonNullable<Json>
+          dias: number
+          erro?: string | null
+          id?: string
+          mensagens_existentes?: number
+          mensagens_gravadas?: number
+          mensagens_ignoradas?: number
+          midias_baixadas?: number
+          midias_indisponiveis?: number
+          organization_id: string
+          previa?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          channel_session_id?: string
+          conversas_feitas?: number
+          created_at?: string
+          criada_por?: string | null
+          cursor?: NonNullable<Json>
+          dias?: number
+          erro?: string | null
+          id?: string
+          mensagens_existentes?: number
+          mensagens_gravadas?: number
+          mensagens_ignoradas?: number
+          midias_baixadas?: number
+          midias_indisponiveis?: number
+          organization_id?: string
+          previa?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "importacoes_de_historico_channel_session_id_fkey"
+            columns: ["channel_session_id"]
+            isOneToOne: false
+            referencedRelation: "channel_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "importacoes_de_historico_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incidents: {
         Row: {
           acknowledged_at: string | null
@@ -7166,6 +7314,42 @@ export type Database = {
           },
         ]
       }
+      lgpd_marcas_de_apagamento: {
+        Row: {
+          created_at: string
+          id: string
+          marca_lid: string | null
+          marca_telefone: string | null
+          organization_id: string
+          sal: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          id?: string
+          marca_lid?: string | null
+          marca_telefone?: string | null
+          organization_id: string
+          sal: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          marca_lid?: string | null
+          marca_telefone?: string | null
+          organization_id?: string
+          sal?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lgpd_marcas_de_apagamento_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lgpd_requests: {
         Row: {
           attempts: number
@@ -7456,6 +7640,8 @@ export type Database = {
           demanda_revision: number | null
           direction: string
           edited_at: string | null
+          favoritada_em: string | null
+          favoritada_por: string | null
           error_code: string | null
           error_message: string | null
           external_id: string | null
@@ -7495,6 +7681,8 @@ export type Database = {
           demanda_revision?: number | null
           direction: string
           edited_at?: string | null
+          favoritada_em?: string | null
+          favoritada_por?: string | null
           error_code?: string | null
           error_message?: string | null
           external_id?: string | null
@@ -7534,6 +7722,8 @@ export type Database = {
           demanda_revision?: number | null
           direction?: string
           edited_at?: string | null
+          favoritada_em?: string | null
+          favoritada_por?: string | null
           error_code?: string | null
           error_message?: string | null
           external_id?: string | null
@@ -8933,6 +9123,80 @@ export type Database = {
           },
         ]
       }
+      setor_membros: {
+        Row: {
+          created_at: string
+          organization_id: string
+          setor_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          organization_id: string
+          setor_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          organization_id?: string
+          setor_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setor_membros_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "setor_membros_organization_id_setor_id_fkey"
+            columns: ["organization_id", "setor_id"]
+            referencedRelation: "setores"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "setor_membros_organization_id_user_id_fkey"
+            columns: ["organization_id", "user_id"]
+            referencedRelation: "user_organizations"
+            referencedColumns: ["organization_id", "user_id"]
+          },
+        ]
+      }
+      setores: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          id: string
+          nome: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "setores_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       skill_activations: {
         Row: {
           created_at: string
@@ -10009,6 +10273,10 @@ export type Database = {
         }
         Returns: string
       }
+      fn_set_channel_distribution_mode: {
+        Args: { p_channel: string; p_mode: string | null; p_org: string }
+        Returns: Json
+      }
       fn_set_channel_routing: {
         Args: {
           p_channel: string
@@ -10642,6 +10910,14 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: number
       }
+      fn_titular_apagado_a_pedido: {
+        Args: { p_lid: string; p_org: string; p_telefone: string }
+        Returns: boolean
+      }
+      fn_titulares_apagados_a_pedido: {
+        Args: { p_org: string; p_telefones: string[] }
+        Returns: string[]
+      }
       fn_upsert_wa_contact: {
         Args: {
           p_chat_id: string
@@ -10655,6 +10931,10 @@ export type Database = {
       }
       fn_upsert_wa_conversation: {
         Args: { p_contact: string; p_org: string; p_session: string }
+        Returns: string
+      }
+      fn_upsert_wa_conversation_importada: {
+        Args: { p_contact: string; p_last_message_at: string; p_org: string; p_session: string }
         Returns: string
       }
       fn_user_org_ids: { Args: never; Returns: string[] }

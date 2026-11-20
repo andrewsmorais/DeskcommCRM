@@ -40,4 +40,11 @@ export default defineConfig([
     files: ["loop/**/*.ts"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
   },
+  {
+    // CommonJS pela extensão: em `.cjs`, `require()` é o jeito de importar do
+    // formato, não atalho. Hoje são os validadores do guia security-audit
+    // (`.agents/skills/` e o espelho em `.claude/skills/`).
+    files: ["**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);

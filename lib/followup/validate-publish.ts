@@ -4,6 +4,7 @@ import { branchIdForCondition, nodeBranches } from './graph-schema';
 import { rotuloDoRamo } from './rotulo-do-ramo';
 import type { NomesDeValor } from './vocabulario';
 import { capabilitiesOf, transportaMensagem, type ChannelProvider } from '../channels/capabilities';
+import { horarioDaEsperaValido } from './espera-no-horario';
 
 /**
  * Structural publish validator for follow-up flow graphs.
@@ -35,6 +36,11 @@ export const PUBLISH_ERROR_CODES = [
   'roteiro_ramificado',
   'campo_repetido',
   'roteiro_em_ciclo',
+  // Espera com horário (`ate_o_horario`) que não dá para obedecer: o motor
+  // terminaria a espera na duração crua, calado (falha aberta).
+  'horario_da_espera_invalido',
+  // Passo "Atualizar o card" sem etapa e sem etiqueta: não faria nada.
+  'crm_update_vazio',
 ] as const;
 export type PublishErrorCode = (typeof PUBLISH_ERROR_CODES)[number];
 
@@ -147,8 +153,8 @@ function cicloDoEncadeamento(
  * recusava em silêncio; a recusa aqui é o erro que a pessoa lê no editor.
  */
 export const NOS_DA_SUPERFICIE: Record<FollowupFlowSurface, readonly NodeType[]> = {
-  followup: ['trigger', 'wait', 'condition', 'ai_classify', 'match_reply', 'repeat', 'action', 'internal_task', 'end'],
-  crm_automation: ['trigger', 'wait', 'condition', 'ai_classify', 'match_reply', 'repeat', 'action', 'internal_task', 'end'],
+  followup: ['trigger', 'wait', 'condition', 'ai_classify', 'match_reply', 'repeat', 'action', 'internal_task', 'crm_update', 'end'],
+  crm_automation: ['trigger', 'wait', 'condition', 'ai_classify', 'match_reply', 'repeat', 'action', 'internal_task', 'crm_update', 'end'],
   atendimento: ['trigger', 'collect', 'skill', 'end'],
 };
 
@@ -181,6 +187,20 @@ function validarSomenteInterno(
       node_id: n.id,
       code: 'interno_com_envio',
       message: `O fluxo é "somente interno" e a caixa "${n.label}" envia mensagem ao cliente — tire a marca "somente interno" ou troque a caixa por "Lembrete interno".`,
+    });
+  }
+}
+
+/** O passo "Atualizar o card" precisa mudar alguma coisa. */
+function validarCrmUpdate(graph: FlowGraph, errors: PublishValidationError[]): void {
+  for (const n of [...graph.nodes].sort(byId)) {
+    if (n.type !== 'crm_update') continue;
+    const c = n.config;
+    if (c.etapa_id || c.adicionar_etiquetas.length || c.remover_etiquetas.length) continue;
+    errors.push({
+      node_id: n.id,
+      code: 'crm_update_vazio',
+      message: `A caixa "${n.label}" não muda nada: escolha uma etapa ou ao menos uma etiqueta.`,
     });
   }
 }
@@ -566,6 +586,7 @@ export function validateFlowForPublish(
   const surface = contexto.surface ?? 'followup';
   validarSuperficie(graph, surface, errors, contexto.roteiro);
   validarSomenteInterno(graph, surface, errors);
+  validarCrmUpdate(graph, errors);
   const etapas = contexto.etapas;
   const nomes: NomesDeValor = etapas ? { etapa: (id) => etapas.get(id)?.nome ?? null } : {};
   const nodesById = new Map(nodes.map((n) => [n.id, n]));
@@ -653,6 +674,19 @@ export function validateFlowForPublish(
         message: `Nó "${node.id}" é imune à resposta e precisa de pelo menos 24h de espera.`,
       });
     }
+  }
+
+  // Espera com horário: o rascunho aceita o horário torto (o painel grava a cada
+  // clique), a publicação não.
+  for (const node of [...nodes].sort(byId)) {
+    if (node.type !== 'wait' || node.config.mode !== 'fixed') continue;
+    const horario = node.config.ate_o_horario;
+    if (horario === undefined || horarioDaEsperaValido(horario)) continue;
+    errors.push({
+      node_id: node.id,
+      code: 'horario_da_espera_invalido',
+      message: `Nó "${node.id}": o horário da espera precisa de pelo menos um dia e de um início antes do fim.`,
+    });
   }
 
   // Cobertura por ramo — SÓ no modo 'per_check'. É deliberado que o modo

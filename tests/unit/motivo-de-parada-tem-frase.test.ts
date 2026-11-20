@@ -76,6 +76,34 @@ const COMO_CONSERTAR =
  */
 const ORIGENS: DeclaracaoDeOrigem[] = [
   {
+    arquivo: "lib/automation/actions/send-whatsapp.ts",
+    expressao: "MOTIVO_DO_PULO",
+    porque:
+      "a escolha `nao_enviar` (\"quando o contato tiver horário marcado\") devolve o pulo pelo `reason` do resultado; o código possível é um só e está escrito em `MOTIVO_DO_PULO`, no produtor declarado ao lado",
+    produtor: { arquivo: "lib/agenda/escolha-no-envio.ts" },
+  },
+  {
+    arquivo: "lib/automation/actions/send-ai-message.ts",
+    expressao: "MOTIVO_DO_PULO",
+    porque:
+      "a irmã de IA devolve o MESMO código de pulo por compromisso na agenda, pelo `reason` do resultado; a constante é uma e mora no produtor declarado ao lado",
+    produtor: { arquivo: "lib/agenda/escolha-no-envio.ts" },
+  },
+  {
+    arquivo: "lib/automation/actions/send-email.ts",
+    expressao: "alvo.reason",
+    porque:
+      "a escolha do destinatário do e-mail devolve o motivo de recusa pelo `reason` do resultado; os códigos possíveis são literais da própria `resolverEnderecos`, no mesmo arquivo, varrido ao lado",
+    produtor: { arquivo: "lib/automation/actions/send-email.ts" },
+  },
+  {
+    arquivo: "lib/automation/actions/send-whatsapp.ts",
+    expressao: "classificada.motivo",
+    porque:
+      "a recusa da mídia sem tipo identificável chega à tela pelo `error` do resultado; o motivo é a frase de gente que o produtor escreve, e o produtor é varrido ao lado",
+    produtor: { arquivo: "lib/messaging/media/midia-com-legenda.ts" },
+  },
+  {
     arquivo: "lib/automation/actions/send-ai-message.ts",
     expressao: "guarda.reason",
     porque:
@@ -87,6 +115,13 @@ const ORIGENS: DeclaracaoDeOrigem[] = [
     expressao: "guarda.reason",
     porque:
       "mesma guarda compartilhada da ação de IA: o código do bloqueio chega pelo `reason` do resultado, e o produtor é o mesmo arquivo",
+    produtor: { arquivo: "lib/automation/guarda-do-contato.ts" },
+  },
+  {
+    arquivo: "lib/automation/actions/start-chatbot-flow.ts",
+    expressao: "guarda.reason",
+    porque:
+      "o início de chatbot por automação usa a mesma guarda do contato antes de emitir o pedido; o código do bloqueio chega pelo `reason` do resultado",
     produtor: { arquivo: "lib/automation/guarda-do-contato.ts" },
   },
   {

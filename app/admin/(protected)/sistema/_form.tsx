@@ -216,6 +216,27 @@ const MODULOS_NA_TELA: ReadonlyArray<{ modulo: ModuloPorFlag; id: string; rotulo
     descricao:
       "Ligado, cada empresa ganha no CRM o cadastro de Empresas (razão social e CNPJ, com os dados públicos preenchidos pela BrasilAPI), as Pessoas que decidem dentro delas, com vários telefones, e a importação de planilha CSV ou Excel. Consultar um CNPJ manda o número para a BrasilAPI. Desligado, as telas e o menu somem.",
   },
+  {
+    modulo: "disparo_em_massa",
+    id: "modulo-disparo-em-massa",
+    rotulo: "Campanhas e prospecção (disparo para quem não chamou)",
+    descricao:
+      "Ligado, cada empresa pode montar campanhas para listas de contatos e a prospecção fria, que manda a primeira mensagem para quem nunca falou com ela. Com o WhatsApp conectado por QR code, é isso que mais derruba número. Desligado, as telas, o menu e as rotas somem, e nenhuma campanha envia, nem a que estava rodando. Os follow-ups continuam.",
+  },
+  {
+    modulo: "cold_call",
+    id: "modulo-cold-call",
+    rotulo: "Cold Call (fila de ligações)",
+    descricao:
+      "Ligado, cada empresa ganha no CRM a tela Cold Call: um funil próprio, a importação da lista e a ligação para um lead por vez, pelo canal de voz quando ele está pareado ou pelo discador do aparelho. Quem pediu para não ser incomodado, contato pessoal e contato anonimizado não recebem ligação. Desligado, a tela e o menu somem.",
+  },
+  {
+    modulo: "conferir_whatsapp",
+    id: "modulo-conferir-whatsapp",
+    rotulo: "Conferir WhatsApp na prospecção",
+    descricao:
+      "Ligado, a prospecção pergunta ao WhatsApp, pelo número por QR que a campanha escolheu, se cada telefone achado numa busca tem conta, e quem não tem sai da abordagem. A pergunta só sai na janela e nos dias da prospecção daquele número, até 50 por número por dia; campanha sem número escolhido não pergunta nada. Mesmo assim, consultar em quantidade pode chamar a atenção do WhatsApp e arriscar o número. Desligado, nada é consultado e a abordagem segue como antes.",
+  },
 ];
 
 export function FormularioDeModulos({ ligados }: { ligados: readonly ModuloOpcional[] }) {

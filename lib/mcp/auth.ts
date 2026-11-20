@@ -102,6 +102,8 @@ export interface ResolvedApiToken {
   scopes: string[];
   /** `api_tokens.created_by` — quem provisionou o token. `uuid not null` no schema. */
   createdBy: string;
+  /** `organizations.status` da dona do token; `suspended` recusa o uso. */
+  organizationStatus?: string | null;
 }
 
 /**
@@ -131,7 +133,11 @@ export async function resolveApiToken(plaintext: string): Promise<ResolvedApiTok
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("api_tokens")
-    .select("id, organization_id, scopes, revoked_at, expires_at, created_by")
+    // `organizations(status)` no MESMO select: a suspensão da organização é
+    // decidida em todo uso do token, e uma segunda ida ao banco não se paga.
+    .select(
+      "id, organization_id, scopes, revoked_at, expires_at, created_by, organizations(status)",
+    )
     .eq("token_hash", hashLiteral)
     .maybeSingle();
 
@@ -156,11 +162,16 @@ export async function resolveApiToken(plaintext: string): Promise<ResolvedApiTok
       if (updErr) console.error("[mcp.auth] last_used_at update failed", updErr.message);
     });
 
+  const orgs = (
+    data as { organizations?: { status?: string | null } | { status?: string | null }[] | null }
+  ).organizations;
+  const org = Array.isArray(orgs) ? (orgs[0] ?? null) : (orgs ?? null);
   return {
     id: data.id,
     organizationId: data.organization_id,
     scopes: parseScopes(data.scopes),
     createdBy: data.created_by,
+    organizationStatus: org?.status ?? undefined,
   };
 }
 
@@ -173,9 +184,7 @@ export async function resolveApiToken(plaintext: string): Promise<ResolvedApiTok
 const TETO_DE_TOKEN_MSG =
   "Too many failed token attempts. Wait a few minutes before retrying and send a valid `dsk_` API token — if yours was revoked or expired, issue a new one.";
 
-export async function validateBearerToken(
-  authHeader: string | null,
-): Promise<McpAuthResult> {
+export async function validateBearerToken(authHeader: string | null): Promise<McpAuthResult> {
   const plaintext = extractBearer(authHeader);
   if (!plaintext) {
     // Cabeçalho torto é o primeiro palpite de quem varre: conta antes de sair.
@@ -219,6 +228,10 @@ export async function validateBearerToken(
   // sem passar por esta porta; suas ferramentas básicas seguem no Essencial.
   const acesso = await verificarRecursoDoPlano(resolved.organizationId, "api");
   if (!acesso.ok) throw new McpAuthError(-32002, acesso.status, acesso.message);
+  // Organização suspensa pela plataforma: o token dela para junto com a tela.
+  if (resolved.organizationStatus === "suspended") {
+    throw new McpAuthError(-32002, 403, "Organização suspensa.");
+  }
 
   return {
     organizationId: resolved.organizationId,
@@ -231,11 +244,7 @@ export async function validateBearerToken(
 
 export function ensureRole(actual: Role, minimum: Role): void {
   if (ROLE_RANK[actual] < ROLE_RANK[minimum]) {
-    throw new McpAuthError(
-      -32002,
-      403,
-      `Role '${actual}' insufficient (required: '${minimum}').`,
-    );
+    throw new McpAuthError(-32002, 403, `Role '${actual}' insufficient (required: '${minimum}').`);
   }
 }
 

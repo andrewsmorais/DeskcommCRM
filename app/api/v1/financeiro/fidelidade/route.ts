@@ -41,9 +41,14 @@ const movimentoSchema = z.object({
    * negativo para corrigir, não uma recusa que a deixa sem entender o estoque
    * de pontos daquele cliente.
    */
-  points: z.number().int().min(-100_000).max(100_000).refine((v) => v !== 0, {
-    message: "O movimento precisa somar ou subtrair algum ponto.",
-  }),
+  points: z
+    .number()
+    .int()
+    .min(-100_000)
+    .max(100_000)
+    .refine((v) => v !== 0, {
+      message: "O movimento precisa somar ou subtrair algum ponto.",
+    }),
   reason: z.string().min(3).max(200),
 });
 
@@ -81,7 +86,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   const supportDenied = await requireSupportWrite();
   if (supportDenied) return supportDenied;
 
-  const authz = await requireRole("agent", { requestId, resource: "financeiro" });
+  const authz = await requireRole("agent", {
+    requestId,
+    resource: "financeiro",
+    plano: "comandas_e_propostas",
+  });
   if (!authz.ok) return authz.response;
 
   const lido = movimentoSchema.safeParse(await req.json().catch(() => ({})));

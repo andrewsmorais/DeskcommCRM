@@ -7,13 +7,11 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
 import { tenantSchema, type TenantInput } from "@/lib/schemas/settings";
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { paisesOferecidos } from "@/lib/legal/perfil-do-pais";
 
-export type UpdateTenantResult =
-  | { ok: true }
-  | { ok: false; error: string; details?: unknown };
+export type UpdateTenantResult = { ok: true } | { ok: false; error: string; details?: unknown };
 
 export async function updateTenant(input: TenantInput): Promise<UpdateTenantResult> {
   const parsed = tenantSchema.safeParse(input);
@@ -29,26 +27,30 @@ export async function updateTenant(input: TenantInput): Promise<UpdateTenantResu
   if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     return { ok: false, error: "forbidden_role" };
   }
+  // Depois do papel: quem TEM a verificação em duas etapas prova o código
+  // nesta sessão (trazido do produto original). Esta ação grava pelo client de
+  // serviço, que passa por cima da trava do banco.
+  if (await mfaEmDivida()) return { ok: false, error: "mfa_required" };
 
-/**
- * A ESCRITA EM `organizations` VAI PELO ADMIN CLIENT — e não é preguiça.
- *
- * A única policy de escrita da tabela é `orgs_write_platform_admin`, com
- * `USING (fn_is_platform_admin())`. Pelo client de sessão, o UPDATE de quem não
- * é super-admin de plataforma casa ZERO linhas — e o PostgREST devolve sucesso,
- * porque "nenhuma linha casou o filtro" não é erro. Resultado: a tela dizia
- * "salvo", nada era gravado, e recarregar mostrava o estado antigo.
- *
- * Medido em Postgres com o baseline aplicado (issue #144): sob `authenticated`
- * com o JWT de um manager, `update organizations` devolve 0 linhas; sob
- * postgres, 1. Ninguém tinha notado porque o dono do repo e o owner criado pelo
- * `bootstrap-owner.ts` SÃO platform_admin — quem tropeça é o segundo admin
- * convidado e qualquer manager.
- *
- * O gate continua sendo o de cima (papel resolvido de fonte confiável), e o
- * filtro por `organization_id` é explícito, como a doutrina exige de todo
- * handler que usa service role.
- */
+  /**
+   * A ESCRITA EM `organizations` VAI PELO ADMIN CLIENT — e não é preguiça.
+   *
+   * A única policy de escrita da tabela é `orgs_write_platform_admin`, com
+   * `USING (fn_is_platform_admin())`. Pelo client de sessão, o UPDATE de quem não
+   * é super-admin de plataforma casa ZERO linhas — e o PostgREST devolve sucesso,
+   * porque "nenhuma linha casou o filtro" não é erro. Resultado: a tela dizia
+   * "salvo", nada era gravado, e recarregar mostrava o estado antigo.
+   *
+   * Medido em Postgres com o baseline aplicado (issue #144): sob `authenticated`
+   * com o JWT de um manager, `update organizations` devolve 0 linhas; sob
+   * postgres, 1. Ninguém tinha notado porque o dono do repo e o owner criado pelo
+   * `bootstrap-owner.ts` SÃO platform_admin — quem tropeça é o segundo admin
+   * convidado e qualquer manager.
+   *
+   * O gate continua sendo o de cima (papel resolvido de fonte confiável), e o
+   * filtro por `organization_id` é explícito, como a doutrina exige de todo
+   * handler que usa service role.
+   */
   const supabase = createAdminClient();
   const hdrs = await headers();
   const requestId = hdrs.get("x-request-id");
@@ -76,11 +78,22 @@ export async function updateTenant(input: TenantInput): Promise<UpdateTenantResu
       locale: parsed.data.locale,
       currency: parsed.data.currency,
       media_retention_days: parsed.data.media_retention_days,
+      media_retention_enforced: parsed.data.media_retention_enforced,
       dpo_email: parsed.data.dpo_email ?? null,
       privacy_policy_url: parsed.data.privacy_policy_url ?? null,
     })
     .eq("id", activeOrg.orgId);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // A mensagem crua do banco dizia "organizations_cnpj_key": contava a
+    // qualquer admin se aquele CNPJ já é cliente desta instalação.
+    if ((error as { code?: string }).code === "23505") {
+      return {
+        ok: false,
+        error: "Não foi possível salvar este CNPJ. Confira o número ou fale com o suporte.",
+      };
+    }
+    return { ok: false, error: error.message };
+  }
 
   await audit({
     action: "org.updated",

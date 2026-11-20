@@ -19,6 +19,7 @@
  *    da bolha de voz. E a Meta **não converte** — quem manda mp3 com `voice:true` erra;
  *    o outro canal converte por nós, este não.
  */
+import { payloadDeEscolhas } from "../meta/escolhas-interativas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { metaContactsPayload } from "@/lib/channels/meta/contact-card";
 import { graphBaseUrl } from "@/lib/channels/meta/graph-base";
@@ -267,6 +268,20 @@ export const metaCloudAdapter: ChannelAdapter = {
     return { buffer, mime };
   },
 
+  async sendReaction(input: ChannelTenantScope & { sessionRef: string; recipient: string | null; externalId: string; emoji: string }): Promise<{ externalId: string | null }> {
+    if (!input.recipient) throw new Error("recipient_unavailable");
+    const creds = await resolveMetaCreds(createAdminClient(), { organizationId: input.organizationId, phoneNumberId: input.sessionRef });
+    if (!creds) throw new Error("meta_not_configured");
+    const res = await fetch(`${graphBaseUrl()}/${creds.phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: input.recipient, type: "reaction", reaction: { message_id: input.externalId, emoji: input.emoji } }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { messages?: { id?: string }[]; error?: { code?: number; message?: string } };
+    if (!res.ok || body.error) throw new Error(`meta_${body.error?.code ?? res.status}: ${body.error?.message ?? `http_${res.status}`}`);
+    return { externalId: body.messages?.[0]?.id ?? null };
+  },
+
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {
     // Sessão primeiro, env como fallback. O `sessionRef` do canal oficial É o
     // `phone_number_id` (ver `resolveSessionRef`), então ele é a chave da busca.
@@ -288,6 +303,7 @@ export const metaCloudAdapter: ChannelAdapter = {
     const corpo =
       contactPayload(envelope) ??
       mediaPayload(envelope) ??
+      (envelope.kind === "text" ? payloadDeEscolhas(envelope.escolhas) : null) ??
       { type: "text", text: { body: envelope.body ?? "" } };
 
     await envelope.beforeSend?.();

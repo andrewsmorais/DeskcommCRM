@@ -14,8 +14,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { waitConfigSchema } from "@/lib/followup/graph-schema";
 import { MODOS_DE_ESPERA, opcoes } from "@/lib/followup/vocabulario";
+import type { HorarioDaEspera } from "@/lib/followup/espera-no-horario";
 import { useT } from "@/hooks/i18n/useT";
 
+import { HorarioDaEsperaEditor } from "./HorarioDaEsperaEditor";
 import { msToMin, minToMs, type ConfigOf } from "./shared";
 
 export function WaitForm({
@@ -33,7 +35,14 @@ export function WaitForm({
   const [minMin, setMinMin] = useState(config.mode === "smart" ? msToMin(config.min_ms) : 5);
   const [maxMin, setMaxMin] = useState(config.mode === "smart" ? msToMin(config.max_ms) : 60);
   const [guidance, setGuidance] = useState(config.mode === "smart" ? (config.guidance ?? "") : "");
+  const [horario, setHorario] = useState<HorarioDaEspera | null>(
+    config.mode === "fixed" ? (config.ate_o_horario ?? null) : null,
+  );
   const [error, setError] = useState<string | null>(null);
+
+  // O que este formulário não edita, ele CONSERVA: `immune_to_reply` não tem
+  // controle aqui e sumia no primeiro clique.
+  const imune = config.mode === "fixed" && config.immune_to_reply === true;
 
   const commit = (next: {
     mode: "fixed" | "smart";
@@ -41,10 +50,16 @@ export function WaitForm({
     minMin: number;
     maxMin: number;
     guidance: string;
+    horario: HorarioDaEspera | null;
   }) => {
     const candidate =
       next.mode === "fixed"
-        ? { mode: "fixed" as const, duration_ms: minToMs(next.durationMin) }
+        ? {
+            mode: "fixed" as const,
+            duration_ms: minToMs(next.durationMin),
+            ...(imune ? { immune_to_reply: true } : {}),
+            ...(next.horario ? { ate_o_horario: next.horario } : {}),
+          }
         : {
             mode: "smart" as const,
             min_ms: minToMs(next.minMin),
@@ -69,7 +84,7 @@ export function WaitForm({
           onValueChange={(v) => {
             const next = v as "fixed" | "smart";
             setMode(next);
-            commit({ mode: next, durationMin, minMin, maxMin, guidance });
+            commit({ mode: next, durationMin, minMin, maxMin, guidance, horario });
           }}
         >
           <SelectTrigger id="wait-mode">
@@ -96,7 +111,14 @@ export function WaitForm({
             onChange={(e) => {
               const v = Number(e.target.value);
               setDurationMin(v);
-              commit({ mode, durationMin: v, minMin, maxMin, guidance });
+              commit({ mode, durationMin: v, minMin, maxMin, guidance, horario });
+            }}
+          />
+          <HorarioDaEsperaEditor
+            value={horario}
+            onChange={(h) => {
+              setHorario(h);
+              commit({ mode, durationMin, minMin, maxMin, guidance, horario: h });
             }}
           />
         </div>
@@ -113,7 +135,7 @@ export function WaitForm({
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   setMinMin(v);
-                  commit({ mode, durationMin, minMin: v, maxMin, guidance });
+                  commit({ mode, durationMin, minMin: v, maxMin, guidance, horario });
                 }}
               />
             </div>
@@ -127,7 +149,7 @@ export function WaitForm({
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   setMaxMin(v);
-                  commit({ mode, durationMin, minMin, maxMin: v, guidance });
+                  commit({ mode, durationMin, minMin, maxMin: v, guidance, horario });
                 }}
               />
             </div>
@@ -140,7 +162,7 @@ export function WaitForm({
               value={guidance}
               onChange={(e) => {
                 setGuidance(e.target.value);
-                commit({ mode, durationMin, minMin, maxMin, guidance: e.target.value });
+                commit({ mode, durationMin, minMin, maxMin, guidance: e.target.value, horario });
               }}
             />
           </div>

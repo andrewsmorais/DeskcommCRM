@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Ajuda — chat de suporte com o manual do CRM",
+    "subtitle": "O assistente responde a partir do menu, do catálogo de planos e do manual; o que ele não resolve vai para WhatsApp e e-mail",
+    "output": "ajuda-assistente.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    {
+      "id": "pessoa",
+      "label": "Cliente"
+    },
+    {
+      "id": "servidor",
+      "label": "Servidor"
+    },
+    {
+      "id": "dados",
+      "label": "Fontes e banco"
+    },
+    {
+      "id": "operacao",
+      "label": "Dono da plataforma"
+    }
+  ],
+  "mainPath": [
+    "botao",
+    "rota",
+    "prompt",
+    "claude",
+    "registro",
+    "painel"
+  ],
+  "nodes": [
+    {
+      "id": "botao",
+      "lane": "pessoa",
+      "col": 1,
+      "type": "frontend",
+      "label": "Botão Ajuda (TopBar)",
+      "sublabel": "chat, print, WhatsApp e e-mail"
+    },
+    {
+      "id": "rota",
+      "lane": "servidor",
+      "col": 2,
+      "type": "api",
+      "label": "/api/v1/ajuda",
+      "sublabel": "sessão decide org e papel; 50 mensagens/24h"
+    },
+    {
+      "id": "prompt",
+      "lane": "servidor",
+      "col": 3,
+      "type": "service",
+      "label": "lib/ajuda/prompt",
+      "sublabel": "parte fixa com cache + parte do cliente"
+    },
+    {
+      "id": "fontes",
+      "lane": "dados",
+      "col": 3,
+      "type": "lib",
+      "label": "NAV_CATALOG + catálogo de planos + manual",
+      "sublabel": "cerca reprova tela sem manual"
+    },
+    {
+      "id": "claude",
+      "lane": "servidor",
+      "col": 4,
+      "type": "service",
+      "label": "Claude Haiku (chave da ajuda)",
+      "sublabel": "AJUDA_ANTHROPIC_API_KEY, separada dos agentes"
+    },
+    {
+      "id": "registro",
+      "lane": "dados",
+      "col": 4,
+      "type": "database",
+      "label": "ajuda_mensagens",
+      "sublabel": "limite, custo e poda de 90 dias"
+    },
+    {
+      "id": "painel",
+      "lane": "operacao",
+      "col": 5,
+      "type": "frontend",
+      "label": "/admin/ajuda",
+      "sublabel": "onde os clientes travam"
+    },
+    {
+      "id": "config",
+      "lane": "operacao",
+      "col": 2,
+      "type": "frontend",
+      "label": "Admin › Configuração › Ajuda e suporte",
+      "sublabel": "WhatsApp, e-mail e chave"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "botao",
+      "to": "rota",
+      "label": "conversa (12 últimas) + print opcional"
+    },
+    {
+      "id": "e2",
+      "from": "rota",
+      "to": "prompt",
+      "label": "plano, papel e telas visíveis lidos no servidor"
+    },
+    {
+      "id": "e3",
+      "from": "fontes",
+      "to": "prompt",
+      "label": "mudou o menu ou o plano, mudou o prompt"
+    },
+    {
+      "id": "e4",
+      "from": "prompt",
+      "to": "claude",
+      "label": "system em dois blocos"
+    },
+    {
+      "id": "e5",
+      "from": "claude",
+      "to": "rota",
+      "label": "resposta; [ESCALAR] mostra os contatos"
+    },
+    {
+      "id": "e6",
+      "from": "rota",
+      "to": "registro",
+      "label": "pergunta, resposta, tokens"
+    },
+    {
+      "id": "e7",
+      "from": "registro",
+      "to": "painel",
+      "label": "perguntas repetidas viram correção de tela ou de manual"
+    },
+    {
+      "id": "e8",
+      "from": "config",
+      "to": "rota",
+      "label": "contatos e chave da instalação"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Laço de retorno",
+      "items": [
+        "Pergunta que se repete em /admin/ajuda aponta tela confusa ou manual incompleto",
+        "Tela nova sem entrada no manual reprova tests/unit/ajuda-manual-cobre-todas-as-telas.test.ts"
+      ]
+    }
+  ]
+}

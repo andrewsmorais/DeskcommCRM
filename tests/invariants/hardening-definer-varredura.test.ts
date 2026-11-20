@@ -132,6 +132,10 @@ const AUTHENTICATED_PERMITIDO: readonly Excecao[] = [
       "service_role negado, suporte readonly/expirado, MFA e retomada.",
   },
   {
+    fn: "fn_set_channel_distribution_mode(uuid,uuid,text)",
+    razao: "PATCH app/api/v1/settings/routing/channels/modo/route.ts usa createClient da sessão; RPC (migration 0559) exige manager, suporte de escrita e MFA, e só grava o modo de distribuição de um número da própria org. tests/invariants/jeito-de-distribuir-por-numero.test.ts prova os dois sentidos do modo por número.",
+  },
+  {
     fn: "fn_set_channel_routing(uuid,uuid,uuid[],boolean)",
     razao: "PATCH app/api/v1/settings/routing/channels/route.ts usa createClient da sessão; RPC exige manager, suporte de escrita, MFA e canal/membros da org na mesma transação. tests/invariants/channel-routing.test.ts prova viewer, tenants A/B, membro revogado, policy vazia e MFA platform aal1/aal2.",
   },
@@ -249,6 +253,20 @@ const AUTHENTICATED_PERMITIDO: readonly Excecao[] = [
       "(Configurações › Avisos de atendimento). Até ela existir, o grant é " +
       "superfície sem consumidor — declarado aqui em vez de presumido —, e a " +
       "função recusa tudo que não seja admin da própria organização.",
+  },
+  {
+    fn: "fn_definir_aviso_de_agendamento(uuid,boolean,uuid,text,boolean,boolean)",
+    razao:
+      "A ÚNICA porta de escrita de `config_aviso_de_agendamento` (migration 0704) — " +
+      "a tabela só tem `grant select` sob RLS de admin. PUT " +
+      "app/api/v1/agenda/aviso/route.ts chama com createClient da sessão. A função " +
+      "exige auth.uid(), fn_role_at_least(p_org,'admin'), " +
+      "fn_support_write_allowed(p_org) e fn_session_mfa_proven(); com número próprio, " +
+      "E.164, conexão DA organização e não arquivada, recusa do número da própria " +
+      "organização e de número que já é contato sem confirmação. " +
+      "tests/invariants/aviso-de-agendamento-escrita.test.ts prova agent e viewer " +
+      "recusados, admin aprovado, admin de OUTRA organização recusado, conexão do " +
+      "vizinho recusada e anon sem EXECUTE.",
   },
   {
     fn: "fn_vocabulario_de_tags_operar(uuid,text,text,text,text)",

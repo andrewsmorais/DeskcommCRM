@@ -8,6 +8,7 @@ import {
   PREFIXO_PROPRIEDADE,
   type EventoDoGoogle,
 } from "./evento";
+import { emailsDeQuemSaiuDoEvento, emailsDosConvidadosDaEquipe } from "./convidados-da-equipe";
 import {
   compare,
   comConviteDaFicha,
@@ -30,6 +31,7 @@ import {
 } from "./sync-store";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { classificarErroDoGoogle, type OperacaoNoGoogle } from "./erros";
+import { emitirMudancaVindaDoGoogle } from "./mudanca-vinda-do-google";
 
 /** A operação do Google que corresponde ao método HTTP usado na publicação. */
 const OPERACAO_POR_METODO: Record<PendingWrite["method"], OperacaoNoGoogle> = {
@@ -171,6 +173,18 @@ export async function reconcileAppointment(
       return "processed";
     }
     const contato = await emailDoContato(db, org, a.contact_id);
+    /**
+     * Os convidados da EQUIPE (migration 0561), já com o e-mail do convite
+     * (conta Google conectada; sem ela, o de login). Resolvidos UMA vez por
+     * passada: o hash local, o POST e o PATCH precisam ver a mesma lista, senão
+     * cada passada acharia que há algo a escrever.
+     */
+    const convidadosDaEquipe = await emailsDosConvidadosDaEquipe(db, org, a.team_guest_user_ids);
+    const comEquipe = <T extends object>(x: T) => ({
+      ...x,
+      convidados_da_equipe: convidadosDaEquipe,
+      convidados_equipe_ids: a.team_guest_user_ids,
+    });
     if (!a.google_connection_id || !a.google_calendar_id || !a.google_event_id)
       throw new Error("Publicação antiga sem identidade completa. Revise a conexão.");
     const api = googleTransport(
@@ -185,7 +199,7 @@ export async function reconcileAppointment(
       a = appointmentSnapshotSchema.parse(await call("meet", { result: { ...observation, etag } }));
       meetingObserved = true;
     };
-    let local = localProjection(a);
+    let local = localProjection(comEquipe(a));
     let base = a.google_base_projection;
     // Listagem é sinal de mudança, não versão para um PATCH: GET exato revalida.
     const event = await api.get(a.google_calendar_id, a.google_event_id);
@@ -193,6 +207,25 @@ export async function reconcileAppointment(
     const association =
       linked?.[`${PREFIXO_PROPRIEDADE}_org`] === org &&
       linked?.[`${PREFIXO_PROPRIEDADE}_appointment`] === id;
+    /**
+     * Quem ESTAVA na lista publicada no evento (`chataionline_guests`) e saiu da
+     * lista do CRM — ou da organização. É o único jeito de desconvidar: os
+     * checkpoints guardam o hash da lista, não os e-mails.
+     */
+    const quemSaiu = association
+      ? await emailsDeQuemSaiuDoEvento(
+          db,
+          org,
+          (linked?.[`${PREFIXO_PROPRIEDADE}_guests`] ?? "").split(","),
+          a.team_guest_user_ids,
+        )
+      : [];
+    /** Os e-mails que NÓS gerenciamos no evento: o digitado, a equipe e quem acabou de sair. */
+    const convidadosGerenciados = () => [
+      a.guest_email,
+      ...convidadosDaEquipe.map((g) => g.email),
+      ...quemSaiu,
+    ];
     const wasPublished = base !== null;
     const conflict = async (
       reason: GoogleConflict["reason"],
@@ -226,7 +259,7 @@ export async function reconcileAppointment(
       await conflict("series", null);
       return "processed";
     }
-    let remote = event ? remoteProjection(event, local, base) : null;
+    let remote = event ? remoteProjection(event, local, base, convidadosGerenciados()) : null;
     if (a.google_conflict?.reason === "series" && event && remote) {
       // As guardas acima provaram que o recurso é novamente único e válido.
       // Refaça as três vias; não reconheça a intenção nem desfaça o domínio aqui.
@@ -254,7 +287,7 @@ export async function reconcileAppointment(
       const pending = a.google_pending_write;
       // Observe a escrita no contexto capturado (A → B), antes de comparar
       // a intenção atual (C). O checkpoint histórico não reconhece C.
-      const historical = event ? remoteProjection(event, pending.desired, base) : null;
+      const historical = event ? remoteProjection(event, pending.desired, base, convidadosGerenciados()) : null;
       const reached =
         pending.method === "DELETE"
           ? !event || event.status === "cancelled"
@@ -305,7 +338,7 @@ export async function reconcileAppointment(
       }
     }
     // Uma escrita histórica reconhecida pode mudar quem é o convidado gerido.
-    remote = event ? remoteProjection(event, local, base) : null;
+    remote = event ? remoteProjection(event, local, base, convidadosGerenciados()) : null;
     if (a.google_conflict) {
       const conflictState = a.google_conflict;
       const resolution = conflictState.resolution;
@@ -337,6 +370,7 @@ export async function reconcileAppointment(
           return "processed";
         }
         const next = checkpoint(base, local, remote, [], true);
+        const antes = a;
         const accepted = await commit({
           base: next,
           remote: remote.shared,
@@ -347,6 +381,7 @@ export async function reconcileAppointment(
           ack: groups.every((g) => next.local[g] === local.outbound[g]),
         });
         if (!accepted) await conflict("overlap", remote);
+        else await emitirMudancaVindaDoGoogle(db, org, antes, a);
         return "processed";
       }
       if (resolution.choice === "preserve_remote") {
@@ -377,7 +412,7 @@ export async function reconcileAppointment(
         await commit({ base: next, conflict: null, clear_pending: true, etag: event.etag });
       }
     }
-    local = localProjection(a);
+    local = localProjection(comEquipe(a));
     base = a.google_base_projection;
     if (!event) {
       if (wasPublished) {
@@ -391,14 +426,17 @@ export async function reconcileAppointment(
       } else {
         await send(
           "POST",
-          paraEventoDoGoogle({
-            ...a,
-            participantes: participantesDoAgendamento({
-              contactEmail: contato?.email,
-              contactName: contato?.nome,
-              guestEmail: a.guest_email,
+          paraEventoDoGoogle(
+            comEquipe({
+              ...a,
+              participantes: participantesDoAgendamento({
+                contactEmail: contato?.email,
+                contactName: contato?.nome,
+                guestEmail: a.guest_email,
+                teamGuests: convidadosDaEquipe,
+              }),
             }),
-          }) as unknown as Record<string, unknown>,
+          ) as unknown as Record<string, unknown>,
           null,
           [...groups],
           true,
@@ -425,6 +463,7 @@ export async function reconcileAppointment(
         return "processed";
       }
       const next = checkpoint(base, local, remote, [], true);
+      const antes = a;
       const accepted = await commit({
         base: next,
         remote: remote.shared,
@@ -433,6 +472,9 @@ export async function reconcileAppointment(
         ack: groups.every((g) => next.local[g] === local.outbound[g]),
       });
       if (!accepted) await conflict("overlap", remote);
+      // A remarcação ou o cancelamento feito NO GOOGLE vira o mesmo evento que
+      // a tela emite — sem isto, o aviso e as automações não sabiam dela.
+      else await emitirMudancaVindaDoGoogle(db, org, antes, a);
       return "processed";
     }
     if (
@@ -476,15 +518,16 @@ export async function reconcileAppointment(
       local.shared.cancelled
         ? undefined
         : delta(
-            {
+            comEquipe({
               ...a,
               contact_email: contato?.email ?? null,
               contact_nome: contato?.nome ?? null,
-            },
+            }),
             event,
             base,
             decision.groups,
             decision.shared,
+            { convidadosAnteriores: quemSaiu },
           ),
       event.etag ?? null,
       decision.groups,
@@ -553,7 +596,7 @@ export async function reconcileAppointment(
         etag,
       );
       const observed = response
-        ? remoteProjection(response, local, base)
+        ? remoteProjection(response, local, base, convidadosGerenciados())
         : { ...local, shared: { ...local.shared, cancelled: true } };
       await commit({
         base: checkpoint(base, local, observed, fields, shared),

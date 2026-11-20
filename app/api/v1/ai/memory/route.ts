@@ -75,7 +75,8 @@ export async function GET(_req: NextRequest): Promise<Response> {
     .from("org_memory_entries")
     .select("id, title, body, source, status, created_at")
     .eq("organization_id", org.orgId)
-    .neq("status", "proposed")
+    // Sugestão do AGENTE aparece aqui para aprovar; a do flywheel tem tela própria.
+    .or("status.neq.proposed,source.eq.agent")
     .order("created_at", { ascending: false });
   if (entriesErr) {
     return fail("internal_error", t("Erro ao carregar entradas da memória."), 500, { requestId });

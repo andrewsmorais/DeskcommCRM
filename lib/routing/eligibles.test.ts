@@ -57,4 +57,53 @@ describe("elegibilidade com origem explícita", () => {
     const { db } = fixture({ attendant_availability: new Error("offline") });
     await expect(loadEligibleAttendants(db, "org", now, scope)).rejects.toThrow("offline");
   });
+  it("setor da conversa: só membros do setor recebem", async () => {
+    const { db, filters } = fixture({
+      user_organizations: [{ user_id: "ana" }, { user_id: "bia" }],
+      attendant_availability: [
+        { user_id: "ana", capacity: 2, schedule: {} },
+        { user_id: "bia", capacity: 2, schedule: {} },
+      ],
+      setor_membros: [{ user_id: "bia" }],
+    });
+    const r = await loadEligibleAttendants(db, "org", now, { ...scope, setorId: "vendas" });
+    expect(r.map((c) => c.userId)).toEqual(["bia"]);
+    expect(filters).toContainEqual(["setor_membros", "setor_id", "vendas"]);
+    expect(filters).toContainEqual(["setor_membros", "organization_id", "org"]);
+  });
+  it("setor fora do horário (0545): ninguém recebe — a conversa espera a abertura", async () => {
+    // `now` = domingo 12:00 em São Paulo; o setor só atende de segunda.
+    const { db, filters } = fixture({
+      setores: { horario: { timezone: "America/Sao_Paulo", windows: [{ dow: 1, start: "08:00", end: "18:00" }] } },
+      setor_membros: [{ user_id: "ana" }],
+    });
+    expect(await loadEligibleAttendants(db, "org", now, { ...scope, setorId: "vendas" })).toEqual([]);
+    expect(filters).toContainEqual(["setores", "organization_id", "org"]);
+  });
+  it("setor dentro do horário entrega normalmente; horário vazio é qualquer hora", async () => {
+    const aberto = fixture({
+      setores: { horario: { timezone: "America/Sao_Paulo", windows: [{ dow: 0, start: "10:00", end: "14:00" }] } },
+      setor_membros: [{ user_id: "ana" }],
+    });
+    expect((await loadEligibleAttendants(aberto.db, "org", now, { ...scope, setorId: "vendas" })).map((c) => c.userId)).toEqual(["ana"]);
+    const livre = fixture({ setores: { horario: {} }, setor_membros: [{ user_id: "ana" }] });
+    expect((await loadEligibleAttendants(livre.db, "org", now, { ...scope, setorId: "vendas" })).map((c) => c.userId)).toEqual(["ana"]);
+  });
+  it("setor sem membros: ninguém recebe (não cai na equipe toda)", async () => {
+    const { db } = fixture({ setor_membros: [] });
+    expect(await loadEligibleAttendants(db, "org", now, { ...scope, setorId: "vazio" })).toEqual([]);
+  });
+  it("setor e responsáveis do número valem juntos", async () => {
+    const { db } = fixture({
+      channel_routing_policies: { id: "policy" },
+      channel_routing_responsibles: [{ user_id: "ana" }],
+      user_organizations: [{ user_id: "ana" }, { user_id: "bia" }],
+      attendant_availability: [
+        { user_id: "ana", capacity: 2, schedule: {} },
+        { user_id: "bia", capacity: 2, schedule: {} },
+      ],
+      setor_membros: [{ user_id: "bia" }],
+    });
+    expect(await loadEligibleAttendants(db, "org", now, { ...scope, setorId: "vendas" })).toEqual([]);
+  });
 });

@@ -33,7 +33,7 @@ const JANELA_PADRAO_DIAS = 30;
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  const authz = await requireRole("agent", { requestId, resource: "financeiro" });
+  const authz = await requireRole("agent", { requestId, resource: "financeiro", plano: "comandas_e_propostas" });
   if (!authz.ok) return authz.response;
 
   const url = new URL(req.url);

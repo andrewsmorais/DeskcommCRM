@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import { ehHexValido } from "@/lib/branding/rampa";
+import { normalizarTags } from "@/lib/contacts/tag-normalizada";
 import { IDIOMAS } from "@/lib/i18n/idiomas";
 import { MOEDAS_SERVIDAS } from "@/lib/money";
 
@@ -71,6 +72,14 @@ export const profileSchema = z.object({
     .nullable()
     .optional()
     .or(z.literal("").transform(() => null)),
+  /**
+   * Assinatura do atendente (Configurações › Conversas): o nome que vai antes
+   * das mensagens. Vazia, assina com o nome. Opcional: quem não manda o campo
+   * não apaga o que estava gravado.
+   */
+  assinatura: z.string().trim().max(75).nullable().optional(),
+  /** Despedida pessoal do Fechar: vale mais que a mensagem padrão da empresa. */
+  mensagem_de_finalizacao: z.string().trim().max(4096).nullable().optional(),
 });
 export type ProfileInput = z.infer<typeof profileSchema>;
 
@@ -110,6 +119,13 @@ export const tenantSchema = z.object({
   locale: z.enum(LOCALES),
   currency: z.enum(MOEDAS),
   media_retention_days: z.coerce.number().int().min(30).max(3650),
+  /**
+   * Interruptor da limpeza automática de mídia antiga (issue #1534, migration
+   * 0557). `true` é o padrão do banco, para a organização que já existia e para
+   * a nova: a limpeza roda desde a 0432. Quem desliga é a tela; quem aplica é a
+   * função do banco. Sem este campo a tela prometeria o que a coluna não grava.
+   */
+  media_retention_enforced: z.boolean(),
   dpo_email: z
     .string()
     .email()
@@ -187,6 +203,24 @@ export const customFieldSchema = z.object({
       ao_perder: z.boolean().optional(),
     })
     .optional(),
+  /**
+   * MOSTRAR NO RESUMO DA PASSAGEM (issue #4303).
+   *
+   * LIGADO, o valor que este campo tem no CARD entra no resumo que a pessoa lê
+   * ao assumir a conversa (`montarBriefingDaPassagem`, bloco "Dados coletados
+   * automaticamente"), com o RÓTULO do campo. É o dado que decide a próxima
+   * frase de quem atende — consumo em kWh, valor da conta — e que hoje só
+   * aparece se a pessoa abrir o card.
+   *
+   * DESLIGADO (o padrão) é o que toda definição já instalada é: a chave ausente
+   * não liga nada, e o resumo sai byte a byte como saía antes desta opção. Não
+   * há migration porque a definição é o jsonb `pipelines.settings.fields`; um
+   * funil antigo simplesmente não tem a chave.
+   *
+   * A leitura é `lib/leads/campos-do-resumo-da-passagem.ts`; quem lê só o CARD
+   * da conversa (negócio), nunca campos do contato nem de outra organização.
+   */
+  mostrar_no_resumo_da_passagem: z.boolean().optional(),
   options: z
     .array(z.object({ value: z.string().min(1), label: z.string().min(1) }))
     .optional(),
@@ -256,6 +290,39 @@ export const pipelineConfigPatchSchema = z.object({
   reabertura: z.enum(["mesmo_registro", "novo_negocio"]).optional(),
   /** O que a retomada copia da origem; ausente é o piso (`custom_fields` e tags). */
   reabertura_campos: z.array(z.enum(CAMPOS_COPIAVEIS_NA_RETOMADA)).max(8).optional(),
+  /**
+   * A ENTRADA DO INBOX — em que ETAPA deste funil a conversa nova vira card
+   * (issue #3011, fatia 1).
+   *
+   * Hoje a etapa de entrada não é escolhida por ninguém: é a de menor
+   * `position` entre as não-arquivadas (`lib/leads/nascimento-do-lead.ts`). Quem
+   * opera com uma etapa "Conversas iniciadas" não tinha como dizer isso ao
+   * produto — a conversa nascia na primeira etapa que já existia, e a separação
+   * entre "chegou" e "está sendo atendido" ficava por conta de arrasto manual.
+   *
+   * ⚠️ O QUE ESTE BLOCO **NÃO** ESCOLHE: o FUNIL. O card continua nascendo no
+   * funil de entrada (`crm_pipelines.is_default`), e só a ETAPA é declarada
+   * aqui. Escolher o funil dentro do `settings` de um funil seria a roda
+   * quadrada — o valor apontaria para outra linha da mesma tabela e nenhum
+   * CHECK poderia cobrar que ela exista, seja do mesmo tenant ou não.
+   *
+   * ⚠️ A CHAVE É `ativa`. Como em `settings.crm.cliente_pela_agenda`, só o
+   * `true` EXPLÍCITO liga; ausente, `false` ou qualquer outro valor é o
+   * comportamento de sempre (a primeira etapa). Quem lê confere o `stage_id`
+   * de novo contra o banco — `z.uuid()` aqui diz que o valor tem forma de
+   * identificador, não que a etapa exista, esteja neste funil ou esteja aberta:
+   * a régua final é a consulta, e é ela que impede um card nascer em etapa de
+   * outro tenant ou em "Perdido".
+   *
+   * `stage_id` é opcional para a tela poder DESLIGAR sem perder a etapa
+   * escolhida — religar não deve obrigar a escolher de novo.
+   */
+  entrada_do_inbox: z
+    .object({
+      ativa: z.boolean(),
+      stage_id: z.uuid().nullable().optional(),
+    })
+    .optional(),
 });
 export type PipelineConfigPatch = z.infer<typeof pipelineConfigPatchSchema>;
 
@@ -345,10 +412,31 @@ export const agendaSettingsSchema = agendaSettingsWriteSchema.catch({confirmatio
  * `fn_marcar_contato_como_cliente`. Ausente, `false`, a string `"true"` ou
  * qualquer lixo é desligado aqui E lá. Se os dois idiomas divergissem, a tela
  * mostraria o selo de uma regra que o trigger não aplica.
+ *
+ * `internal_contact_tags` (#2353): a lista de etiquetas que marcam um contato
+ * INTERNO (equipe, sócio, família, fornecedor). Contato com uma delas não vira
+ * card e não recebe atendimento da IA — ver `lib/contacts/tags-internas.ts`.
+ * Mora no MESMO bolso jsonb porque já existia para a chave acima: nenhuma
+ * coluna nem tabela nova, e o par (liga/desliga + lista) fica no lugar em que a
+ * organização já procura as regras de CRM. Ausente/lixo → lista vazia (nenhum
+ * contato é interno), que é o comportamento de antes desta chave existir.
  */
+export const internalContactTagsSchema = z.array(z.string()).catch([]);
+
+/**
+ * `team_contact_tags` (vindo do produto original, #3534): etiquetas que marcam
+ * um contato da EQUIPE — ele É atendido, mas a prospecção nunca o aborda.
+ * Ausente/lixo → lista vazia (ninguém é da equipe), o comportamento de antes.
+ */
+export const teamContactTagsSchema = z.array(z.string()).catch([]);
+
 export const crmSettingsSchema = z
-  .object({ cliente_pela_agenda: z.boolean().catch(false) })
-  .catch({ cliente_pela_agenda: false });
+  .object({
+    cliente_pela_agenda: z.boolean().catch(false),
+    internal_contact_tags: internalContactTagsSchema,
+    team_contact_tags: teamContactTagsSchema,
+  })
+  .catch({ cliente_pela_agenda: false, internal_contact_tags: [], team_contact_tags: [] });
 
 /** A regra "cliente pela agenda" está ligada nesta organização? Nunca lança. */
 export function clientePelaAgendaLigado(settings: unknown): boolean {
@@ -357,6 +445,32 @@ export function clientePelaAgendaLigado(settings: unknown): boolean {
       ? (settings as Record<string, unknown>).crm
       : undefined;
   return crmSettingsSchema.parse(crm ?? {}).cliente_pela_agenda === true;
+}
+
+/**
+ * As etiquetas de contato INTERNO desta organização, na forma em que o banco as
+ * guarda (`normalizarTag`: minúscula, aparada, sem repetição). Nunca lança — um
+ * jsonb torto devolve lista vazia, que é "nenhum contato é interno", o mesmo
+ * estado de toda organização que nunca configurou a lista.
+ */
+export function tagsInternasDaOrg(settings: unknown): string[] {
+  const crm =
+    settings && typeof settings === "object" && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>).crm
+      : undefined;
+  return normalizarTags(crmSettingsSchema.parse(crm ?? {}).internal_contact_tags);
+}
+
+/**
+ * Lê `organizations.settings.crm.team_contact_tags` já normalizada — a MESMA
+ * forma de `tagsInternasDaOrg`. Lixo → lista vazia.
+ */
+export function tagsDaEquipeDaOrg(settings: unknown): string[] {
+  const crm =
+    settings && typeof settings === "object" && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>).crm
+      : undefined;
+  return normalizarTags(crmSettingsSchema.parse(crm ?? {}).team_contact_tags);
 }
 
 /**

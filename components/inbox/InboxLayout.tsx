@@ -2,7 +2,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/hooks/auth/AuthProvider";
+import { useParticipantesDaConversa } from "@/hooks/inbox/useParticipantesDaConversa";
+import { gravarFiltrosLembrados, lerFiltrosLembrados } from "@/lib/inbox/filtros-lembrados";
+import { armazenamentoDoNavegador } from "@/lib/inbox/barra-de-respostas";
+import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
+import { roleAtLeast } from "@/lib/auth/types";
+import { useBulkConversations, type AcaoEmLote } from "@/hooks/inbox/useBulkConversations";
+import { useSelecaoEmLote } from "@/hooks/inbox/useSelecaoEmLote";
+import { BarraDeAcoesEmLote } from "./BarraDeAcoesEmLote";
+import { composerBloqueadoAteAssumir } from "@/lib/inbox/bloqueio-ate-assumir";
 import { fonteDeTemplates } from "@/lib/channels/templates-fonte";
 import { estadoDaJanela, formatarDecorrido } from "@/lib/channels/janela";
 import { JanelaFechadaAviso } from "@/components/inbox/JanelaFechadaAviso";
@@ -21,6 +29,7 @@ import { InboxFilters, type InboxFiltersValue, type InboxTab } from "./InboxFilt
 import { ChatThread } from "./ChatThread";
 import { Composer, type ComposerHandle } from "./Composer";
 import { ConversationHeader } from "./ConversationHeader";
+import { BotaoIniciarConversa } from "./PainelIniciarConversa";
 import { RetentionNotice } from "./RetentionNotice";
 import { CRMSidePanel } from "./CRMSidePanel";
 import type { Message as ConversationMensagem } from "@/lib/types/messaging";
@@ -140,13 +149,41 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const tab = parseFilterParam(searchParams.get("filter"));
   const idNaUrl = searchParams.get("id");
 
-  // tab vive na URL (?filter=); os demais filtros são estado local de sessão.
+  // tab vive na URL (?filter=); os demais filtros são estado local de sessão —
+  // exceto o número e o "Não lidos", lembrados por organização (trazido do
+  // produto original, lib/inbox/filtros-lembrados).
   const [aux, setAux] = useState<Omit<InboxFiltersValue, "tab">>({
     search: "",
     onlyUnread: false,
     onlyGroups: false,
   });
-  const filterValue: InboxFiltersValue = { tab, ...aux };
+  // Lidos depois da hidratação: o servidor não enxerga o localStorage.
+  const [orgDosFiltros, setOrgDosFiltros] = useState<string | null>(null);
+  useEffect(() => {
+    if (!orgId) return;
+    const lembrados = lerFiltrosLembrados(armazenamentoDoNavegador(), orgId);
+    setAux((atual) => ({
+      ...atual,
+      channel_session_id: lembrados.channel_session_id,
+      onlyUnread: lembrados.onlyUnread ?? false,
+    }));
+    // O contexto acompanha o estado restaurado no PRÓXIMO render. Uma ref
+    // marcada aqui liberaria o efeito de gravação com os filtros anteriores.
+    setOrgDosFiltros(orgId);
+  }, [orgId]);
+  useEffect(() => {
+    if (!orgId || orgDosFiltros !== orgId) return;
+    gravarFiltrosLembrados(armazenamentoDoNavegador(), orgId, {
+      channel_session_id: aux.channel_session_id,
+      onlyUnread: aux.onlyUnread,
+    });
+  }, [orgId, orgDosFiltros, aux.channel_session_id, aux.onlyUnread]);
+  const filterValue: InboxFiltersValue = {
+    tab,
+    ...aux,
+    // Uma troca de organização não leva o número anterior nem à consulta.
+    ...(orgDosFiltros !== orgId ? { channel_session_id: undefined, onlyUnread: false } : {}),
+  };
   const setFilterValue = useCallback(
     (next: InboxFiltersValue) => {
       if (next.tab !== tab) {
@@ -163,7 +200,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   // Desliga só os AUXILIARES e mantém a aba: a aba é onde a pessoa está, e
   // limpá-la junto a tiraria do lugar sem ela ter pedido.
   const limparFiltrosAuxiliares = useCallback(() => {
-    setFilterValue({ tab, search: "", onlyUnread: false, onlyGroups: false });
+    setFilterValue({ tab, search: "", onlyUnread: false, onlyGroups: false, onlyOcultas: false });
   }, [tab, setFilterValue]);
 
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? idNaUrl);
@@ -233,18 +270,29 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
         ? filterValue.search
         : undefined,
       channel_session_id: filterValue.channel_session_id,
+      setor_id: filterValue.setor_id,
       tag: filterValue.tag,
+      modo: filterValue.tagMode === "ou" ? ("ou" as const) : undefined,
+      // O atendente escolhido vale em toda aba menos Minhas (que já é "as minhas").
+      ...(filterValue.assigned_to && filterValue.tab !== "mine"
+        ? { assigned_to: filterValue.assigned_to }
+        : {}),
       unread: filterValue.onlyUnread || undefined,
       is_group: filterValue.onlyGroups || undefined,
+      ocultas: filterValue.onlyOcultas ? ("so" as const) : undefined,
     }),
     [
       filterValue.tab,
       automaticoDaOrg,
       filterValue.search,
       filterValue.channel_session_id,
+      filterValue.setor_id,
       filterValue.tag,
+      filterValue.tagMode,
+      filterValue.assigned_to,
       filterValue.onlyUnread,
       filterValue.onlyGroups,
+      filterValue.onlyOcultas,
     ],
   );
 
@@ -252,6 +300,26 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   // We need the selected conversation object for header / composer / side panel.
   // Source it from the same query the list uses to avoid an extra request.
   const listQ = useConversationsRealtime(filters, orgId);
+
+  // LOTE (vindo do produto original): seleção múltipla e barra de ações. Quem
+  // pode responder pode agir em lote; a rota valida de novo, item por item.
+  const podeAgirEmLote = usePermission("inbox.reply");
+  // O mesmo critério da rota `usable-for-rag`: atendente para cima.
+  const podeMarcarExemplo = roleAtLeast(activeOrg?.role, "agent");
+  const selecao = useSelecaoEmLote();
+  const lote = useBulkConversations();
+  const rodarLote = useCallback(
+    (action: AcaoEmLote, toUserId?: string, reason?: string) => {
+      const ids = Array.from(selecao.selecionados);
+      if (ids.length === 0) return;
+      lote.mutate(
+        { ids, action, to_user_id: toUserId, reason },
+        // A seleção é limpa depois do lote, aconteça o que acontecer.
+        { onSuccess: () => selecao.limpar() },
+      );
+    },
+    [lote, selecao],
+  );
   const inList = useMemo(() => {
     const all = listQ.data?.pages.flatMap((p) => p.data) ?? [];
     return all.find((c) => c.id === selectedId) ?? null;
@@ -293,6 +361,15 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const selectedConversation: ConversationWithContact | null = inList ?? single.data ?? null;
   const selectionNotFound =
     needsFetch && !single.isPending && !single.data && isNotFound(single.error);
+  // Convidado para a conversa (atendimento conjunto) responde sem assumir,
+  // mesmo com "bloquear até assumir" ligado. Só se a organização ligou a trava.
+  const participantes = useParticipantesDaConversa(
+    selectedConversation?.id ?? "",
+    activeOrg?.interface_settings?.bloquearAteAssumir === true &&
+      !!selectedConversation &&
+      selectedConversation.assigned_to_user_id !== user.id,
+  );
+  const souParticipante = (participantes.data ?? []).some((p) => p.user_id === user.id);
 
   const colunas = colunasDoCelular(Boolean(selectedId));
 
@@ -415,7 +492,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   return (
     <OpenConversationProvider conversationId={selectedId}>
     <div
-      className="grid h-[calc(100dvh-var(--space-16)-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]"
+      className="grid h-[calc(100dvh-var(--space-16)-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] w-full grid-cols-1 gap-0 md:grid-cols-[300px_1fr] md:gap-3 md:p-3 xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]"
       /*
        * O ESTADO DO TEMPO REAL, LEGÍVEL DE FORA — mesmo par que o dossiê do lead
        * já publica (`LeadDossier`), e pela mesma razão: quando a entrega morre,
@@ -454,11 +531,26 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       */}
       <div
         className={cn(
-          "h-full min-h-0 flex-col border-r border-border md:flex",
+          "h-full min-h-0 flex-col md:flex",
+          "md:flow-card md:overflow-hidden md:rounded-2xl md:bg-surface",
           colunas.lista,
         )}
       >
+        <BotaoIniciarConversa />
         <InboxFilters value={filterValue} onChange={setFilterValue} />
+        {podeAgirEmLote && (
+          <BarraDeAcoesEmLote
+            quantidade={selecao.quantidade}
+            pendente={lote.isPending}
+            onFechar={() => rodarLote("close")}
+            onArquivar={() => rodarLote("archive")}
+            onMarcarComoLida={() => rodarLote("mark-read")}
+            onPausarIa={() => rodarLote("pause-ai")}
+            onDevolverAoAutomatico={() => rodarLote("reactivate-bot")}
+            onTransferir={(toUserId, reason) => rodarLote("transfer", toUserId, reason)}
+            onLimpar={selecao.limpar}
+          />
+        )}
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
             listQuery={listQ}
@@ -467,6 +559,14 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
             onSelect={handleSelect}
             onVisibleChange={handleVisibleChange}
             onLimparFiltros={limparFiltrosAuxiliares}
+            selecionados={selecao.selecionados}
+            onAlternarSelecao={podeAgirEmLote ? selecao.alternar : undefined}
+            podeMarcarExemplo={podeMarcarExemplo}
+            onSelecionarTodosVisiveis={
+              podeAgirEmLote
+                ? () => selecao.selecionarTodos((listQ.data?.pages.flatMap((p) => p.data) ?? []).map((c) => c.id))
+                : undefined
+            }
           />
         </div>
       </div>
@@ -486,6 +586,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       <div
         className={cn(
           "h-full min-h-0 min-w-0 flex-col md:flex",
+          "md:flow-card md:overflow-hidden md:rounded-2xl md:bg-surface",
           colunas.conversa,
         )}
       >
@@ -580,6 +681,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
                   nome: selectedConversation.assigned_to_user_name ?? null,
                 }}
                 contatoId={selectedConversation.contacts?.id ?? null}
+                contatoRecusaEnvio={Boolean(selectedConversation.contacts?.is_blocked)}
               />
             </div>
             <RetentionNotice conversationId={selectedConversation.id} />
@@ -610,6 +712,14 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               blockedReason={supportReadonly ? "Acompanhamento somente leitura" : blockedReason}
               janelaFechada={motivoDaJanela}
               disabled={selectedConversation.status === "closed"}
+              // "Bloquear até assumir" é da ORGANIZAÇÃO (Configurações › Empresa).
+              // Desligado (o padrão), a expressão é `false` em todo estado.
+              aguardandoAssumir={composerBloqueadoAteAssumir({
+                ligada: activeOrg?.interface_settings?.bloquearAteAssumir === true,
+                donoDaConversa: selectedConversation.assigned_to_user_id,
+                atendenteId: user.id,
+                participanteAtivo: souParticipante,
+              })}
               contactName={selectedConversation.contacts?.name ?? null}
               respondendo={respondendo}
               onCancelarResposta={() => setRespondendo(null)}
@@ -635,7 +745,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
         )}
       </div>
 
-      <div className="hidden h-full min-h-0 min-w-0 xl:block">
+      <div className="flow-card hidden h-full min-h-0 min-w-0 overflow-hidden rounded-2xl bg-surface xl:block">
         <CRMSidePanel conversation={selectedConversation} />
       </div>
 

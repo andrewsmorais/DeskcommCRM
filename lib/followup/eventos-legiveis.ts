@@ -134,6 +134,7 @@ const TIPO_DO_NO: Record<FlowNode["type"], string> = {
   action: "Mensagem",
   // #1540 — não é "Mensagem": é o passo que NÃO fala com o cliente.
   internal_task: "Lembrete interno",
+  crm_update: "Atualizar o card",
   end: "Fim",
 };
 
@@ -161,7 +162,7 @@ export function resumoDoNo(node: FlowNode): NoDoDossie {
         ...base,
         resumo:
           node.config.mode === "fixed"
-            ? `espera ${duracaoLegivel(node.config.duration_ms)}`
+            ? `espera ${duracaoLegivel(node.config.duration_ms)}${node.config.ate_o_horario ? " e só termina em horário comercial" : ""}`
             : `espera adaptativa, entre ${duracaoLegivel(node.config.min_ms)} e ${duracaoLegivel(node.config.max_ms)}`,
       };
     case "condition":
@@ -201,6 +202,13 @@ export function resumoDoNo(node: FlowNode): NoDoDossie {
     case "internal_task": {
       const prazo = node.config.vence_em_dias === 0 ? "hoje" : `em ${node.config.vence_em_dias} dia(s)`;
       return { ...base, resumo: `cria a tarefa "${node.config.titulo}" para ${prazo} — sem mensagem ao cliente` };
+    }
+    case "crm_update": {
+      const partes: string[] = [];
+      if (node.config.etapa_id) partes.push("move o card de etapa");
+      if (node.config.adicionar_etiquetas.length) partes.push(`põe ${node.config.adicionar_etiquetas.join(", ")}`);
+      if (node.config.remover_etiquetas.length) partes.push(`tira ${node.config.remover_etiquetas.join(", ")}`);
+      return { ...base, resumo: `${partes.join(" e ")} — sem mensagem ao cliente` };
     }
     case "end":
       return { ...base, resumo: `encerra — ${DESFECHO[node.config.outcome] ?? node.config.outcome}` };
@@ -516,6 +524,12 @@ export function descreveEvento(
       return {
         titulo: "Cancelado porque o caso foi resolvido",
         detalhe: "o follow-up existia para esse caso e parou junto com ele",
+        ...motor,
+      };
+    case "cancelled_by_stage_change":
+      return {
+        titulo: "Cancelado porque o negócio saiu da etapa",
+        detalhe: "o toque era da etapa que armou este fluxo, e o card saiu dela",
         ...motor,
       };
     default:

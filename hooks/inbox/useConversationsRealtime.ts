@@ -12,6 +12,9 @@ export interface ContactSummary {
   id: string;
   display_name: string | null;
   name: string | null;
+  /** Nome salvo na agenda do celular. SÓ A EQUIPE vê (`rotuloParaAEquipe`); nunca vai em mensagem.
+   *  Opcional: conversas em cache de antes do campo existir. */
+  address_book_name?: string | null;
   phone_number: string | null;
   tags: string[];
   is_blocked: boolean;
@@ -93,9 +96,16 @@ export interface ConversationsFilters {
    */
   unread?: boolean;
   channel_session_id?: string;
-  tag?: string;
+  /** Só as do setor (migration 0496). */
+  setor_id?: string;
+  /** Uma etiqueta ou várias (vindo do produto original). */
+  tag?: string | readonly string[];
+  /** OU entre as etiquetas; ausente = E (todas). */
+  modo?: "ou";
   /** A aba "Grupos" do inbox (Task 10). Ausente = sem filtro, mostra tudo. */
   is_group?: boolean;
+  /** `so` = só as ocultas (migration 0510). Ausente = a rota esconde as ocultas. */
+  ocultas?: "so";
 }
 
 interface ListResponse {
@@ -132,8 +142,11 @@ export function useConversationsRealtime(
       if (filters.search) qs.set("search", filters.search);
       if (filters.unread) qs.set("unread", "true");
       if (filters.channel_session_id) qs.set("channel_session_id", filters.channel_session_id);
-      if (filters.tag) qs.set("tag", filters.tag);
+      if (filters.setor_id) qs.set("setor_id", filters.setor_id);
+      for (const tag of typeof filters.tag === "string" ? [filters.tag] : (filters.tag ?? [])) qs.append("tag", tag);
+      if (filters.modo) qs.set("modo", filters.modo);
       if (filters.is_group !== undefined) qs.set("is_group", filters.is_group ? "true" : "false");
+      if (filters.ocultas) qs.set("ocultas", filters.ocultas);
       if (pageParam) qs.set("cursor", pageParam);
       qs.set("limit", "50");
       try {

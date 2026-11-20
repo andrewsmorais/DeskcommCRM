@@ -62,16 +62,36 @@ export async function persistMessageMedia(row: EventRow): Promise<HandlerResult>
   if (error) return { consumer_key, status: "error", detail: error.message };
 
   const msg = data as MessageMediaRow | null;
+  // A retenção marcou `metadata.media_status='expired'` (migration 0552): a mídia
+  // foi retirada por política, nem `media_url` nem `media_storage_path` devem
+  // voltar. NÃO tentar baixar de novo do provedor o que expirou (#1534). Vem
+  // ANTES do `!media_url`: a poda anula a `media_url`, e depois dele esta guarda
+  // nunca seria alcançada — o detalhe diria "no media_url" em vez do motivo real.
+  if (msg?.metadata?.media_status === "expired") {
+    return { consumer_key, status: "skipped", detail: "expired by retention" };
+  }
   if (!msg?.media_url) return { consumer_key, status: "skipped", detail: "no media_url" };
   if (msg.media_storage_path) return { consumer_key, status: "skipped", detail: "already stored" };
 
-  const markStatus = async (media_status: "stored" | "failed", patch: Record<string, unknown> = {}) => {
-    const { error: updErr } = await admin
+  // Auditoria 18/11, achado 16: a linha foi lida lá em cima e o download e o
+  // upload levam segundos. Se a LGPD anonimizou a mensagem nesse intervalo
+  // (`media_url` e `metadata` zerados), gravar por cima traria de volta o
+  // endereço da foto e os dados do remetente. Por isso a gravação só vale se a
+  // mensagem ainda estiver como o worker a leu; devolve quantas linhas mudou.
+  const markStatus = async (
+    media_status: "stored" | "failed",
+    patch: Record<string, unknown> = {},
+  ): Promise<number> => {
+    const { data: gravadas, error: updErr } = await admin
       .from("messages")
       .update({ metadata: { ...(msg.metadata ?? {}), media_status }, ...patch })
       .eq("id", msg.id)
-      .eq("organization_id", msg.organization_id);
+      .eq("organization_id", msg.organization_id)
+      .eq("media_url", msg.media_url as string)
+      .is("media_storage_path", null)
+      .select("id");
     if (updErr) throw new Error(`message update failed: ${updErr.message}`);
+    return gravadas?.length ?? 0;
   };
 
   const isLastAttempt = row.attempts >= DRAIN_MAX_ATTEMPTS - 1;
@@ -86,12 +106,15 @@ export async function persistMessageMedia(row: EventRow): Promise<HandlerResult>
     // O worker não pergunta QUAL canal é — o invariante 1 proíbe e o
     // `lint:channels` reprova. Ele pede a sessão, pede o adapter e testa a
     // presença do método.
-    const { data: sessao } = await admin
+    const { data: sessao, error: sessionErr } = await admin
       .from("channel_sessions")
       .select(`provider, ${CHANNEL_SESSION_REF_COLUMNS}`)
       .eq("organization_id", msg.organization_id)
       .eq("id", msg.channel_session_id)
       .maybeSingle();
+    // Leitura que falhou não prova ausência de suporte a mídia. O catch mantém
+    // as tentativas do dreno e só marca failed quando elas se esgotam.
+    if (sessionErr) throw new Error(`session lookup failed: ${sessionErr.message}`);
 
     const adapter = getAdapter(
       ((sessao?.provider as string) ?? DEFAULT_CHANNEL_PROVIDER) as ChannelProvider,
@@ -134,11 +157,20 @@ export async function persistMessageMedia(row: EventRow): Promise<HandlerResult>
     return { consumer_key, status: "error", detail: uploadErr.message };
   }
 
-  await markStatus("stored", {
+  const gravadas = await markStatus("stored", {
     media_storage_path: path,
     media_size_bytes: media.buffer.byteLength,
     media_mime: media.mime,
   });
+  if (gravadas === 0) {
+    // A mensagem mudou enquanto o arquivo subia (anonimização, retenção): o
+    // arquivo recém-subido não tem dono — apaga, para não ficar órfão no bucket.
+    const { error: removeErr } = await admin.storage.from("whatsapp-media").remove([path]);
+    if (removeErr) {
+      logger.warn("[media-persist] arquivo órfão não removido", { message_id: msg.id, detail: removeErr.message });
+    }
+    return { consumer_key, status: "skipped", detail: "message changed while persisting" };
+  }
 
   // Grupo nunca é derivado: a IA não serve grupos, e derivar custaria visão/
   // transcrição PAGA sem consumidor nenhum do outro lado — ninguém leria "o
@@ -166,7 +198,12 @@ export async function persistMessageMedia(row: EventRow): Promise<HandlerResult>
   }
   const isGroup = Boolean((conv as { is_group?: boolean | null } | null)?.is_group);
 
-  if (!isGroup) {
+  // Histórico importado é guardado para quem abrir a conversa depois: sem
+  // transcrição nem visão automática, que são pagas e responderiam a conversa de
+  // meses atrás. A chave é texto 'true' (contrato da migration 0526).
+  const historicoImportado = (msg.metadata as Record<string, unknown> | null)?.historico_importado === "true";
+
+  if (!isGroup && !historicoImportado) {
     // Dispara a derivação textual (Onda 3) — fire-and-forget, mesmo padrão do
     // resto do repo: falha de emit não reverte a persistência já concluída.
     const { error: emitErr } = await admin.rpc("emit_event" as never, {

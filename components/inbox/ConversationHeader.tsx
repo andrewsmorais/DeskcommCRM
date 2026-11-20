@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { JanelaSelo } from "@/components/inbox/JanelaSelo";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
 import { Phone, ArrowRight, MagnifyingGlass } from "@/lib/ui/icons";
-import { useAuth } from "@/hooks/auth/AuthProvider";
+import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import {
@@ -32,10 +32,30 @@ import { OwnerBadge } from "@/components/kanban/OwnerBadge";
 import { comandoDaConversa, ROTULO_DO_MOTIVO } from "@/lib/inbox/comando-da-conversa";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
+import { IniciarChatbotButton } from "@/components/inbox/IniciarChatbotButton";
+import { BaixarHistoricoButton } from "@/components/inbox/BaixarHistoricoButton";
+import { FavoritasButton } from "@/components/inbox/FavoritasButton";
+import { QuemEstaVendo } from "@/components/inbox/QuemEstaVendo";
+import { PrivacidadeButton } from "@/components/inbox/PrivacidadeButton";
+import { VisibilidadeButton } from "@/components/inbox/VisibilidadeButton";
+import {
+  EncerramentoDoFechar,
+  lembrarDespedida,
+  escolhaInicial,
+  type EscolhaDoEncerramento,
+} from "@/components/inbox/EncerramentoDoFechar";
+import { lerAssinarLembrado, usePreferenciasDeConversa } from "@/hooks/inbox/usePreferenciasDeConversa";
+import { despedidaSugerida, saidasDoFinalizar } from "@/lib/conversas/preferencias";
+import { toast } from "sonner";
+import { useSetores } from "@/hooks/inbox/useSetores";
 import { DialButton } from "@/components/voice/DialButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
-import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { rotuloParaAEquipe } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
+import { ROLE_RANK } from "@/lib/auth/types";
+import { useEnderecoDaResposta } from "@/hooks/inbox/useEnderecoDaResposta";
+import { ParticipantesDaConversa } from "@/components/inbox/ParticipantesDaConversa";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -85,7 +105,10 @@ export function ConversationHeader({
   botaoBuscaRef,
 }: Props) {
   const t = useT();
-  const { user } = useAuth();
+  const rotuloCanal = rotuloDoCanalDaConversa(conversation.channel_sessions, t);
+  const { user, activeOrg } = useAuth();
+  const privacidadeDeQualquer = usePermission("inbox.privacy.any");
+  const podeOcultar = usePermission("inbox.visibility");
   const claim = useClaimConversation();
   const release = useReleaseConversation();
   const close = useCloseConversation();
@@ -93,18 +116,40 @@ export function ConversationHeader({
   const arquivar = useArchiveConversation();
   const retomar = useResumeAiAttendance();
   const pausar = usePauseAiAttendance();
+  // O nome do setor (migration 0496) só é buscado quando a conversa tem um.
+  const { data: setores } = useSetores(Boolean(conversation.setor_id));
+  const setorDaConversa = conversation.setor_id
+    ? (setores?.find((s) => s.id === conversation.setor_id) ?? null)
+    : null;
   // "Existe automático nesta org?" — sem isto o selo afirmava que o robô estava
   // atendendo em instalação que nunca configurou agente nenhum.
   const automaticoDaOrg = useAutomaticoAtivo();
   const [reassignOpen, setReassignOpen] = useState(false);
   const [confirmFecharOpen, setConfirmFecharOpen] = useState(false);
+  const [encerramento, setEncerramento] = useState<EscolhaDoEncerramento>({ tipo: "nenhum" });
+  // Configurações › Conversas: o que o Fechar oferece e o que já vem sugerido.
+  const prefsDeConversa = usePreferenciasDeConversa();
+  const permitidasNoFechar = saidasDoFinalizar(prefsDeConversa.data?.finalizar.comportamento ?? "atendente_escolhe");
+  const despedidaPadrao = despedidaSugerida(
+    prefsDeConversa.data?.meu.mensagem_de_finalizacao,
+    prefsDeConversa.data?.finalizar.mensagem_padrao ?? null,
+  );
+  const chatbotPadrao = prefsDeConversa.data?.finalizar.chatbot_padrao ?? null;
   const [confirmArquivarOpen, setConfirmArquivarOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
-  const displayName = rotuloDoContato(c, t);
+  const displayName = rotuloParaAEquipe(c, t);
   const phone = c?.phone_number ? phoneForDisplay(c.phone_number) : null;
+  const enderecoDaResposta = useEnderecoDaResposta(conversation.id, conversation.last_inbound_at ?? null);
+  const endereco = enderecoDaResposta.data?.data ?? null;
   const status = conversation.status;
   const isMineAssigned = conversation.assigned_to_user_id === user.id;
+  // Atendimento conjunto (migration 0544): convida quem é o responsável ou um
+  // gestor — o mesmo gate da rota, que revalida tudo no servidor.
+  const podeConvidar =
+    isMineAssigned ||
+    (user.is_platform_admin && !user.support) ||
+    (activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager);
   const isOpen = status === "open" || conversation.assigned_to_user_id == null;
 
   /**
@@ -193,6 +238,21 @@ export function ConversationHeader({
             provider={conversation.channel_sessions?.provider ?? null}
             lastInboundAt={conversation.last_inbound_at}
           />
+          {/* O CANAL DESTA CONVERSA no topo (trazido do produto original, #2383):
+              a lista já dizia por onde a conversa entrou; a conversa aberta não.
+              O logo nomeia o provedor, não o número — com "Peças" e "Vendas"
+              conectados ele é igual nos dois. Mesmo texto da lista e da tela de
+              canais; `truncate` + `title` para nomes compridos. */}
+          {rotuloCanal && (
+            <Badge
+              variant="outline"
+              className="h-4 min-w-0 max-w-[9rem] truncate px-1.5 text-[10px]"
+              title={`${t("Entrou por")} ${rotuloCanal}`}
+              data-testid="canal-da-conversa"
+            >
+              <span className="truncate">{rotuloCanal}</span>
+            </Badge>
+          )}
         </div>
 
         {/* QUEM ESTÁ NO COMANDO, com nome e por GEOMETRIA — disco cheio para
@@ -210,10 +270,35 @@ export function ConversationHeader({
             // TRACEJADO do OwnerBadge, que é como o funil já desenha "ninguém".
             <OwnerBadge ownerKind={null} ownerName={null} />
           )}
+          {/* O setor ao lado de quem manda: é a outra metade de "quem atende" —
+              só membros do setor recebem esta conversa. */}
+          {setorDaConversa && (
+            <Badge
+              variant="outline"
+              className="h-4 max-w-[10rem] truncate px-1.5 text-[10px]"
+              title={setorDaConversa.nome}
+              data-testid="selo-setor"
+            >
+              {t("Setor")}: {setorDaConversa.nome}
+            </Badge>
+          )}
         </div>
         {phone && (
           <p className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-xs text-muted-foreground">
             <Phone size={11} weight="regular" aria-hidden /> {phone}
+          </p>
+        )}
+        {/* Contato com telefone extra: diz por qual número a resposta sai. Sem
+            extra, nada muda na tela. No canal que responde pela última mensagem
+            recebida, a resposta vai para o número por onde ela chegou; nos outros
+            segue pelo principal, e a linha não aparece. */}
+        {endereco?.has_extras && c?.phone_number && endereco.follows_last_inbound && endereco.phone_number && (
+          <p
+            className="mt-0.5 min-w-0 truncate text-xs text-muted-foreground"
+            data-testid="resposta-sai-por"
+            title={`${t("A resposta sai por:")} ${phoneForDisplay(endereco.phone_number)}`}
+          >
+            {t("A resposta sai por:")} {phoneForDisplay(endereco.phone_number)}
           </p>
         )}
       </div>
@@ -245,11 +330,32 @@ export function ConversationHeader({
             <MagnifyingGlass size={16} aria-hidden />
           </Button>
         )}
+        <QuemEstaVendo conversationId={conversation.id} />
+        <FavoritasButton conversationId={conversation.id} />
+        <BaixarHistoricoButton conversationId={conversation.id} />
         {/* A chamada usa o telefone da ficha, mesmo quando o contato chegou por
             outro canal. Grupos não representam uma pessoa para ligar. */}
         {!conversation.is_group && c?.id && (
           <DialButton contactId={c.id} hasPhone={!!c.phone_number} />
         )}
+        {/* O chatbot não atende grupo; e só aparece com chatbot de início manual ligado. */}
+        {!conversation.is_group && !encerrada && <IniciarChatbotButton conversationId={conversation.id} />}
+        {/* Ocultar da caixa de entrada (migration 0510). A rota exige atendente
+            para cima; o leitor não vê o botão. */}
+        {podeOcultar && (
+          <VisibilidadeButton
+            conversationId={conversation.id}
+            visibilidade={conversation.visibilidade ?? "visivel"}
+          />
+        )}
+        {!conversation.is_group &&
+          (privacidadeDeQualquer || conversation.assigned_to_user_id === user.id) && (
+            <PrivacidadeButton
+              conversationId={conversation.id}
+              privada={Boolean(conversation.is_private)}
+              temResponsavel={conversation.assigned_to_user_id != null}
+            />
+          )}
         {isOpen && (
           <Button
             size="sm"
@@ -334,6 +440,13 @@ export function ConversationHeader({
             {t("Transferir")}
           </Button>
         )}
+        {!encerrada && !conversation.is_group && (
+          <ParticipantesDaConversa
+            conversationId={conversation.id}
+            podeConvidar={podeConvidar}
+            atendenteId={user.id}
+          />
+        )}
         {!encerrada && (
           <SnoozeButton
             conversationId={conversation.id}
@@ -345,7 +458,14 @@ export function ConversationHeader({
             size="sm"
             variant="outline"
             disabled={close.isPending}
-            onClick={() => setConfirmFecharOpen(true)}
+            onClick={() => {
+              setEncerramento(
+                conversation.is_group
+                  ? { tipo: "nenhum" }
+                  : escolhaInicial(permitidasNoFechar, despedidaPadrao, chatbotPadrao),
+              );
+              setConfirmFecharOpen(true);
+            }}
           >
             {t("Fechar")}
           </Button>
@@ -408,6 +528,7 @@ export function ConversationHeader({
         conversationId={conversation.id}
         open={reassignOpen}
         onOpenChange={setReassignOpen}
+        setorAtual={conversation.setor_id ?? null}
         numero={
           onAbrirConversa && c?.id
             ? {
@@ -427,17 +548,55 @@ export function ConversationHeader({
               {t("O atendimento é encerrado. Se o cliente escrever de novo, você pode reabrir.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* Como o "Finalizar" da Umbler: despedida antes, ou chatbot de
+              encerramento. Grupo não tem chatbot nem despedida automática. */}
+          {!conversation.is_group && (
+            <EncerramentoDoFechar
+              valor={encerramento}
+              onChange={setEncerramento}
+              permitidas={permitidasNoFechar}
+              despedidaPadrao={despedidaPadrao}
+              chatbotPadrao={chatbotPadrao}
+            />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() =>
-                close.mutate({
+              disabled={
+                (encerramento.tipo === "mensagem" && !encerramento.texto.trim()) ||
+                (encerramento.tipo === "chatbot" && !encerramento.chatbot_flow_id)
+              }
+              onClick={() => {
+                const escolha = encerramento;
+                if (escolha.tipo === "mensagem") lembrarDespedida(escolha.texto.trim());
+                const pedido = {
                   conversation_id: conversation.id,
                   expected_revision: conversation.service_revision,
-                })
-              }
+                  ...(escolha.tipo === "mensagem"
+                    ? {
+                        encerramento: {
+                          tipo: "mensagem" as const,
+                          texto: escolha.texto.trim(),
+                          // A despedida segue a chave "Assinar" do atendente.
+                          ...(lerAssinarLembrado() ? { assinar: true } : {}),
+                        },
+                      }
+                    : escolha.tipo === "chatbot"
+                      ? { encerramento: { tipo: "chatbot" as const, chatbot_flow_id: escolha.chatbot_flow_id } }
+                      : {}),
+                };
+                if (escolha.tipo === "chatbot")
+                  close.mutate(pedido, {
+                    onSuccess: () =>
+                      toast.success(
+                        t('Chatbot de encerramento acionado. Ele encerra a conversa no passo "Finalizar conversa".'),
+                      ),
+                  });
+                else close.mutate(pedido);
+                setEncerramento({ tipo: "nenhum" });
+              }}
             >
-              {t("Fechar")}
+              {encerramento.tipo === "chatbot" ? t("Acionar chatbot") : t("Fechar")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

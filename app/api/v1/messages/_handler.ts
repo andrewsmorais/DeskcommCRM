@@ -47,9 +47,11 @@ import {
 } from "@/lib/messaging/contact-card";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
+import { escolhasDoEnvio } from "@/lib/channels/escolhas";
 import { emitirFalhaDeEntrega } from "@/lib/messaging/falha-de-entrega";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { enderecoDaUltimaRecebida } from "@/lib/channels/endereco-da-ultima-recebida";
 import type { Message } from "@/lib/types/messaging";
 
 type SB = SupabaseClient;
@@ -178,7 +180,7 @@ export function origemDaMensagem(actor: Actor): "user" | "ai" | "automation" | "
 }
 
 const MSG_COLS =
-  "id, organization_id, conversation_id, channel_session_id, contact_id, external_id, type, direction, status, ack, error_code, error_message, body, media_url, media_mime, media_size_bytes, media_storage_path, sent_via, sent_by_user_id, sent_on_behalf_of_user_id, sent_at, delivered_at, read_at, metadata, edited_at, revoked_at, reply_to_message_id, created_at";
+  "id, organization_id, conversation_id, channel_session_id, contact_id, external_id, type, direction, status, ack, error_code, error_message, body, media_url, media_mime, media_size_bytes, media_storage_path, media_derived_text, media_derived_status, sent_via, sent_by_user_id, sent_on_behalf_of_user_id, sent_at, delivered_at, read_at, metadata, edited_at, revoked_at, reply_to_message_id, created_at";
 
 /**
  * `Actor.type` → o vocabulário de `messages.sent_via` (o CHECK da coluna:
@@ -239,15 +241,34 @@ function apiTokenIdDoActor(actor: Actor): string | undefined {
 interface MsgCursorPayload {
   sent_at: string;
   id: string;
+  /**
+   * O desempate do meio (ver a ordem em `listMessagesHandler`). Opcional porque
+   * um cursor emitido antes dele — numa aba aberta durante a atualização — não
+   * o traz, e tem de continuar paginando como antes em vez de virar 400.
+   */
+  created_at?: string;
 }
 
 function encodeMsgCursor(p: MsgCursorPayload): string {
   return Buffer.from(JSON.stringify(p), "utf8").toString("base64url");
 }
+/**
+ * Os valores do cursor entram por interpolação no `.or()` do PostgREST. Os
+ * filtros de organização e de conversa são parâmetros separados (somados com
+ * AND), então um cursor forjado não sai da conversa — mas vírgula ou parêntese
+ * ali reescreveria o filtro de dentro dela. Só passa o FORMATO que o servidor
+ * emite: UUID e instante ISO-8601.
+ */
+const UUID_DO_CURSOR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const INSTANTE_DO_CURSOR = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/;
+
 function decodeMsgCursor(raw: string): MsgCursorPayload | null {
   try {
     const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as MsgCursorPayload;
     if (typeof parsed.id !== "string" || typeof parsed.sent_at !== "string") return null;
+    if (parsed.created_at !== undefined && typeof parsed.created_at !== "string") return null;
+    if (!UUID_DO_CURSOR.test(parsed.id) || !INSTANTE_DO_CURSOR.test(parsed.sent_at)) return null;
+    if (parsed.created_at !== undefined && !INSTANTE_DO_CURSOR.test(parsed.created_at)) return null;
     return parsed;
   } catch {
     return null;
@@ -289,6 +310,16 @@ export async function listMessagesHandler(
     .eq("conversation_id", conversationId)
     .eq("organization_id", ctx.organization_id)
     .order("sent_at", { ascending: false })
+    // DESEMPATE PELA CHEGADA, não pelo id.
+    //
+    // `sent_at` vem do canal com precisão de SEGUNDO (a API oficial da Meta manda
+    // `timestamp` em segundos). Quem manda 3 fotos de uma vez gera 3 mensagens no
+    // mesmo `sent_at`, e o `id` é `uuid_generate_v4()` — sorteado. Desempatar por
+    // ele punha as fotos em ordem aleatória: medido numa instalação real em
+    // 09/11/2026, Foto 1-2-3 e PDF 1-2-3 apareceram 3-2-1. `created_at` é o
+    // instante (com microssegundos) em que cada uma foi gravada, na ordem em que
+    // o canal as entregou. O `id` fica por último, só para a ordem ser total.
+    .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(q.limit + 1);
 
@@ -303,7 +334,14 @@ export async function listMessagesHandler(
         traduzir("Cursor inválido.", ctx.idioma ?? "pt-BR"),
       );
     }
-    query = query.or(`sent_at.lt.${c.sent_at},and(sent_at.eq.${c.sent_at},id.lt.${c.id})`);
+    query = query.or(
+      c.created_at
+        ? `sent_at.lt.${c.sent_at},` +
+            `and(sent_at.eq.${c.sent_at},created_at.lt.${c.created_at}),` +
+            `and(sent_at.eq.${c.sent_at},created_at.eq.${c.created_at},id.lt.${c.id})`
+        : // Cursor anterior ao desempate pela chegada: segue o critério antigo.
+          `sent_at.lt.${c.sent_at},and(sent_at.eq.${c.sent_at},id.lt.${c.id})`,
+    );
   }
 
   const { data, error } = await query;
@@ -319,7 +357,9 @@ export async function listMessagesHandler(
   // sai o cursor, porque a próxima página é a que vem ANTES no tempo.
   const oldest = page[page.length - 1];
   const cursor =
-    hasMore && oldest ? encodeMsgCursor({ sent_at: oldest.sent_at, id: oldest.id }) : null;
+    hasMore && oldest
+      ? encodeMsgCursor({ sent_at: oldest.sent_at, created_at: oldest.created_at, id: oldest.id })
+      : null;
 
   // A RESPOSTA continua cronológica (antigo → novo), igual a antes: o consumidor
   // renderiza de cima para baixo sem mudar nada. O que mudou foi QUAIS mensagens
@@ -390,7 +430,7 @@ export async function sendMessageHandler(
   // envio com 42703. Sem a coluna, nada está arquivado — e a consulta sem ela é a
   // consulta certa (ver lib/channels/archived).
   const convSelect = (comArchived: boolean) =>
-    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(phone_number, wa_identity, wa_lid, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
+    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(phone_number, wa_identity, wa_lid, is_blocked, is_personal, ai_opt_out), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
   //
   // O filtro por `organization_id` NÃO é redundância com a RLS — é a única
   // proteção que existe na metade dos chamadores. Este handler é a porta de
@@ -458,6 +498,8 @@ export async function sendMessageHandler(
       wa_identity: string | null;
       wa_lid: string | null;
       is_blocked: boolean;
+      is_personal?: boolean | null;
+      ai_opt_out?: boolean | null;
     } | null;
     channel_sessions: (ChannelSessionRef & { status: string; archived_at?: string | null }) | null;
   };
@@ -470,6 +512,29 @@ export async function sendMessageHandler(
       undefined,
       ctx.requestId,
       traduzir("Contato bloqueou o atendimento.", ctx.idioma ?? "pt-BR"),
+    );
+  }
+
+  // ─── "Pessoal" e "sempre humano": nada que não seja uma pessoa sai ─────────
+  //
+  // Auditoria 18/11, achado 10. As duas marcas valem no agente, na prospecção e
+  // na campanha, mas cada um confere por conta própria — e este handler é a
+  // porta de saída de TODOS (automação, chatbot, MCP, token de servidor). Quem
+  // esquecesse de conferir mandava para quem a empresa marcou como "nada
+  // automático". Pessoa (`sent_via='user'`) continua podendo escrever: a marca
+  // proíbe o robô, não o atendente.
+  if (origemDaMensagem(ctx.actor) !== "user" && (c.contacts?.is_personal || c.contacts?.ai_opt_out)) {
+    throw new ApiError(
+      403,
+      "forbidden",
+      undefined,
+      ctx.requestId,
+      traduzir(
+        c.contacts?.is_personal
+          ? "Contato marcado como pessoal: só uma pessoa pode escrever para ele."
+          : "Contato marcado como sempre atendimento humano: só uma pessoa pode escrever para ele.",
+        ctx.idioma ?? "pt-BR",
+      ),
     );
   }
 
@@ -712,10 +777,20 @@ export async function sendMessageHandler(
     direction: "outbound" as const,
     status: "queued",
     body: input.body ?? null,
-    media_url: input.media_url ?? null,
+    // Com `media_storage_path` o arquivo sai do NOSSO Storage (assinado na hora
+    // do envio) e a `media_url` não é usada para nada — só ficava gravada sem
+    // ter passado pela guarda anti-SSRF, e era o que o proxy de mídia lia
+    // depois (auditoria de 18/11, achado 1). Não se grava o que não se usa.
+    media_url: input.media_storage_path ? null : (input.media_url ?? null),
     media_mime: input.media_mime ?? null,
     media_storage_path: input.media_storage_path ?? null,
     media_size_bytes: input.media_size_bytes ?? null,
+    // O texto ORIGINAL de uma nota de voz do agente, para a conversa continuar
+    // legível depois que `body` deixou de ser o que o cliente lê. Nunca vem do
+    // corpo da requisição (ver `aiVoiceDerivedText` em `HandlerCtx`).
+    ...(ctx.aiVoiceDerivedText
+      ? { media_derived_text: ctx.aiVoiceDerivedText, media_derived_status: "ready" }
+      : {}),
     sent_via: origemDaMensagem(ctx.actor),
     sent_by_user_id: ctx.actor.type === "user" ? ctx.actor.id : null,
     // A PESSOA, não o token (#1613). Só chega aqui pelo ctx validado na rota
@@ -781,12 +856,23 @@ export async function sendMessageHandler(
   // (`conversations.channel_session_id` é NOT NULL com FK ON DELETE RESTRICT),
   // e ainda assim mantido para não trocar o desfecho desse ramo defensivo.
   const adapter = getAdapter(c.channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER);
+  // Ficha com telefone extra: a resposta volta pelo número que a pessoa escreveu.
+  // A porta de canal decide quem tem isso. A organização vem de `ctx` (fonte
+  // confiável), não do corpo.
+  const ultimoRecebidoChatId = await enderecoDaUltimaRecebida(supabase, {
+    provider: c.channel_sessions?.provider,
+    isGroup: c.is_group,
+    organizationId: ctx.organization_id,
+    conversationId: c.id,
+    contactId: c.contact_id,
+  });
   const chatId = adapter.resolveRecipient({
     isGroup: c.is_group,
     groupChatId: c.group_chat_id,
     phoneNumber: c.contacts?.phone_number,
     waIdentity: c.contacts?.wa_identity,
     waLid: c.contacts?.wa_lid,
+    ultimoRecebidoChatId,
   });
 
   // Releitura no sink: o operador pode ter fechado o canal enquanto o modelo
@@ -1034,6 +1120,8 @@ export async function sendMessageHandler(
           providerConversationId: c.provider_conversation_id,
           kind: input.type,
           body: input.body ?? "",
+          // Botões/lista quando o canal sabe desenhar; o body já tem a lista numerada.
+          escolhas: escolhasDoEnvio(input.metadata),
           replyToExternalId: citada?.external_id ?? null,
         }));
       }
@@ -1178,7 +1266,15 @@ export async function sendMessageHandler(
     // a conversa contando a espera que a própria resposta acabou de encerrar.
     awaiting_since: c.last_inbound_at,
   };
-  if (ctx.actor.type === "user") {
+  // Resposta humana pela TELA ou envio EM NOME DE uma pessoa (#3421): as duas
+  // decisões são de gente da equipe, e a segunda gravava a linha sem calar a
+  // IA — ela respondia junto com o atendente. O envio em nome de atravessa a
+  // rota só com o escopo `messages:on_behalf` + membership validados
+  // (`app/api/v1/messages/route.ts:103-179`), que é a mesma certeza de "foi
+  // pessoa quem decidiu" que o `actor.type === "user"` tem. Mesmo carimbo,
+  // mesma janela, mesma régua de quem lê `bot_silenced_until`; quem NÃO traz
+  // `onBehalfOf` (automação, integração pura, agente) continua de fora.
+  if (ctx.actor.type === "user" || ctx.onBehalfOf) {
     const silenceUntil = extendBotSilence(c.bot_silenced_until, now);
     if (silenceUntil) conversationUpdate.bot_silenced_until = silenceUntil;
   }

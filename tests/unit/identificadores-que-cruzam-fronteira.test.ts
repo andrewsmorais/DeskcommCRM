@@ -169,16 +169,30 @@ const SITES: { arquivo: string; fronteira: string; papel?: "gerador" | "validado
   { arquivo: "app/api/v1/settings/sons/route.ts", fronteira: "storage.chave-de-objeto" },
   { arquivo: "app/api/v1/marca/logo/route.ts", fronteira: "storage.chave-de-objeto" },
   { arquivo: "app/api/v1/conversations/[id]/media/route.ts", fronteira: "storage.chave-de-objeto" },
+  { arquivo: "app/api/v1/conversations/[id]/notes/media/route.ts", fronteira: "storage.chave-de-objeto" },
   { arquivo: "app/api/v1/ai/knowledge/sources/upload/route.ts", fronteira: "storage.chave-de-objeto" },
   { arquivo: "app/api/v1/ai/knowledge/sources/route.ts", fronteira: "storage.chave-de-objeto" },
   // O PDF da proposta comercial (#1832): `<org>/<proposta>.pdf`, dois uuids.
   { arquivo: "lib/propostas/storage.ts", fronteira: "storage.chave-de-objeto" },
+  // O arquivo do passo "Enviar mídia" do chatbot: `<org>/chatbot/<fluxo>/<uuid>.<ext>`,
+  // três uuids e um segmento fixo — a mesma forma, abaixo do teto da chave.
+  { arquivo: "app/api/v1/chatbot-flows/[id]/media/route.ts", fronteira: "storage.chave-de-objeto" },
+  // A figurinha salva (migration 0516): `<org>/figurinhas/<sha256>.webp` — um
+  // uuid, um segmento fixo e 64 hex gerados no servidor.
+  { arquivo: "app/api/v1/figurinhas/route.ts", fronteira: "storage.chave-de-objeto" },
+  // A nota de voz do agente (migration 0520): `<org>/<conversa>/voz-agente-<job>-<seq>.<mp3|ogg>`,
+  // três uuids, um inteiro e um segmento fixo — abaixo do teto da chave.
+  { arquivo: "lib/agent-engine/agent/inbound-turn.ts", fronteira: "storage.chave-de-objeto" },
+  // A mídia da resposta rápida (migration 0521): `<org>/templates/<template>/<uuid>.<ext>`,
+  // três uuids e um segmento fixo — a mesma forma do chatbot, abaixo do teto da chave.
+  { arquivo: "app/api/v1/message-templates/[id]/midias/route.ts", fronteira: "storage.chave-de-objeto" },
   // Chave de idempotência: os geradores (manda UUID) e os validadores (exige UUID).
   { arquivo: "app/onboarding/connect-whatsapp/_client.tsx", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "components/extensions/ExtensionsManager.tsx", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "components/modulos/ModulosManager.tsx", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "hooks/ai/useSkills.ts", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "hooks/contacts/useImportContacts.ts", fronteira: "api.idempotency-key", papel: "gerador" },
+  { arquivo: "hooks/contacts/useSyncPhoneContacts.ts", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "lib/api/client.ts", fronteira: "api.idempotency-key", papel: "gerador" },
   { arquivo: "lib/api/idempotency.ts", fronteira: "api.idempotency-key", papel: "validador" },
   { arquivo: "lib/extensions/http.ts", fronteira: "api.idempotency-key", papel: "validador" },

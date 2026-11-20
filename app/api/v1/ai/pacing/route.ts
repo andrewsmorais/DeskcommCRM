@@ -29,7 +29,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const KNOB_COLUMNS =
-  "throttle_ms, jitter_max_ms, window_start_hour, window_end_hour, allow_sunday, timezone, warmup_daily_caps, number_activated_at";
+  "throttle_ms, jitter_max_ms, window_start_hour, window_end_hour, allow_sunday, prospeccao_dias, timezone, warmup_daily_caps, number_activated_at";
 
 /**
  * `organizations.timezone`, para a tela mostrar o fuso em que o motor avalia a

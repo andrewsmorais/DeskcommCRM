@@ -9,6 +9,7 @@
  * Mutations privilegiadas exigem role admin. Errors voltam em forma simples
  * `{ ok: false, error, message }` para a UI tratar com toast.
  */
+import { CODIGO_NOME_DE_AGENTE_EM_USO, ehNomeDeAgenteRepetido } from "@/lib/ai/agents/nome-repetido";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
@@ -18,6 +19,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Role } from "@/lib/auth/types";
 import { duplicateAgentWithVersion } from "@/lib/ai/agents/duplicate";
+import { criarDentroDaCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 
 const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,7 +27,11 @@ type ActionResult<T = void> =
   { ok: true; data?: T } | { ok: false; error: string; message?: string };
 
 type AdminGuard =
-  | { kind: "ok"; authUser: { id: string }; activeOrg: { orgId: string; role: Role } }
+  | {
+      kind: "ok";
+      authUser: { id: string; is_platform_admin?: boolean; support?: unknown };
+      activeOrg: { orgId: string; role: Role };
+    }
   | { kind: "fail"; result: { ok: false; error: string } };
 
 async function ensureAdmin(): Promise<AdminGuard> {
@@ -198,6 +204,10 @@ export async function renameAgentAction(id: string, name: string): Promise<Actio
     .update({ name: trimmed, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("organization_id", activeOrg.orgId);
+  // Nome que a organização já usa (`ai_agents_name_unique`): código próprio, e
+  // a tela mostra a frase no campo (trazido do produto original, #3952). Antes
+  // o toast mostrava a mensagem crua do Postgres, em inglês.
+  if (error && ehNomeDeAgenteRepetido(error)) return { ok: false, error: CODIGO_NOME_DE_AGENTE_EM_USO };
   if (error) return { ok: false, error: "internal_error", message: error.message };
 
   void audit({
@@ -227,12 +237,26 @@ export async function duplicateAgentAction(id: string): Promise<ActionResult<{ n
   // palavras de handoff, budgets e follow-up vivem em ai_agent_versions.
   // `requireVersion: false` porque o botão da lista também duplica rag_bot
   // legado, que não tem versão nenhuma.
-  const result = await duplicateAgentWithVersion(admin, {
-    orgId: activeOrg.orgId,
-    agentId: id,
-    actorUserId: authUser.id,
-    requireVersion: false,
-  });
+  // Contagem da cota e cópia dentro da MESMA reserva (ver
+  // `criarDentroDaCotaDeAgentes`): dois cliques simultâneos não passam do plano.
+  const criado = await criarDentroDaCotaDeAgentes(
+    admin,
+    activeOrg.orgId,
+    { isento: authUser.is_platform_admin === true || Boolean(authUser.support) },
+    (cota) => ({ recusa: cota }) as const,
+    async () => ({
+      result: await duplicateAgentWithVersion(admin, {
+        orgId: activeOrg.orgId,
+        agentId: id,
+        actorUserId: authUser.id,
+        requireVersion: false,
+      }),
+    }),
+  );
+  if ("recusa" in criado) {
+    return { ok: false, error: criado.recusa.code, message: criado.recusa.message };
+  }
+  const result = criado.result;
 
   if (!result.ok) {
     if (result.error === "not_found") return { ok: false, error: "not_found" };

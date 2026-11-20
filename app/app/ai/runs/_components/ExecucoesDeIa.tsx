@@ -15,6 +15,7 @@ import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
  * decisão de desenho mais importante aqui — invertê-la faz a tela abrir com
  * jargão e devolve ao operador o trabalho de adivinhação que ela veio acabar.
  */
+import { RoteamentoResultados } from "./RoteamentoResultados";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -76,7 +77,9 @@ export function ExecucoesDeIa() {
   // traz a pessoa já filtrada ("Ver as decisões do Jev").
   const router = useRouter();
   const pathname = usePathname();
-  const provider = useSearchParams().get("provider");
+  const parametros = useSearchParams();
+  const provider = parametros.get("provider");
+  const abaRoteamento = parametros.get("tab") === "roteamento";
   const soOJev = provider === PROVEDOR_DO_JEV;
 
   const carregar = useCallback(async () => {
@@ -114,6 +117,8 @@ export function ExecucoesDeIa() {
     void carregar();
   }, [carregar]);
 
+  if (abaRoteamento) return <RoteamentoResultados />;
+
   if (erro) {
     return (
       <div className="p-6">
@@ -136,6 +141,7 @@ export function ExecucoesDeIa() {
     <div className="mx-auto w-full max-w-5xl p-6" data-testid="execucoes-de-ia">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("Execuções de IA")}</h1>
+        <div className="mt-2 flex gap-3 text-sm"><span aria-current="page" className="font-medium">{t("Execuções")}</span><a href="/app/ai/runs?tab=roteamento" className="underline">{t("Roteamento")}</a></div>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           {t(
             "Tudo que a inteligência artificial fez por aqui — e, quando algo falhou, o que aconteceu e o que fazer.",

@@ -32,12 +32,17 @@ export interface AgentVersionRow {
   knowledge_source_ids: string[];
   split_messages: boolean;
   split_max_chars: number;
+  inbound_debounce_ms: number | null;
+  image_vision_enabled?: boolean;
   followup: {
     enabled: boolean;
     flow_pointer_ids: string[];
     callback_enabled?: boolean;
     send_window?: { start: string; end: string; weekdays: number[] } | null;
   };
+  /** A resposta pode sair como nota de voz (ElevenLabs). */
+  voz_enabled: boolean;
+  voz_quando: "nunca" | "espelhar" | "sempre" | "quando_pede";
   status: "draft" | "published" | "superseded" | "archived";
   published_at: string | null;
   superseded_at: string | null;

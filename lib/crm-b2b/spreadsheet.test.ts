@@ -63,8 +63,102 @@ describe("parseImportFile — XLSX", () => {
     expect(xls).toEqual({ ok: false, error: "Formato não suportado — envie .csv ou .xlsx." });
   });
 
+  /**
+   * Zip-bomb. O teste não infla nada grande de verdade: mexe só no tamanho
+   * DECLARADO no diretório central (é o que o filtro do fflate vê antes de
+   * inflar) ou estraga o deflate de uma aba que o leitor não deveria abrir.
+   */
+  function editarZip(
+    buf: ArrayBuffer,
+    editar: (entrada: {
+      nome: string;
+      metodo: number;
+      declarar: (n: number) => void;
+      estragar: () => void;
+    }) => void,
+  ): ArrayBuffer {
+    const d = new DataView(buf);
+    const u8 = new Uint8Array(buf);
+    let fim = u8.length - 22;
+    while (d.getUint32(fim, true) !== 0x06054b50) fim--;
+    const total = d.getUint16(fim + 10, true);
+    let o = d.getUint32(fim + 16, true);
+    for (let i = 0; i < total; i++) {
+      const tamNome = d.getUint16(o + 28, true);
+      const nome = new TextDecoder().decode(u8.subarray(o + 46, o + 46 + tamNome));
+      const local = d.getUint32(o + 42, true);
+      const cd = o;
+      editar({
+        nome,
+        metodo: d.getUint16(o + 10, true),
+        declarar: (n) => d.setUint32(cd + 24, n, true),
+        // BFINAL=1 + BTYPE=11 (reservado): o inflate recusa no primeiro byte.
+        estragar: () => {
+          const dados = local + 30 + d.getUint16(local + 26, true) + d.getUint16(local + 28, true);
+          u8[dados] = 0x07;
+        },
+      });
+      o += 46 + tamNome + d.getUint16(o + 30, true) + d.getUint16(o + 32, true);
+    }
+    return buf;
+  }
+  const MB = 1024 * 1024;
+  const PLANILHA = {
+    "xl/workbook.xml": WORKBOOK,
+    "xl/_rels/workbook.xml.rels": RELS,
+    "xl/sharedStrings.xml": COMPARTILHADOS,
+    "xl/worksheets/sheet1.xml": ABA_ERRADA,
+    "xl/worksheets/sheet2.xml": ABA_CERTA,
+  };
+  function xlsxGuardado(partes: Record<string, string>): ArrayBuffer {
+    const zip = zipSync(
+      Object.fromEntries(Object.entries(partes).map(([k, v]) => [k, [strToU8(v), { level: 0 }]])),
+    );
+    return zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;
+  }
+
+  it("aba que não é a primeira nunca é descompactada", async () => {
+    // Antes, toda `xl/worksheets/*.xml` era inflada e guardada — 50 abas de
+    // quase 40 MB cabiam num upload de 2 MB. Uma aba extra estragada prova que
+    // o leitor nem tenta abri-la.
+    const extras = Object.fromEntries(
+      Array.from({ length: 5 }, (_, i) => [`xl/worksheets/extra${i}.xml`, ABA_ERRADA.repeat(20)]),
+    );
+    const buf = editarZip(xlsx({ ...PLANILHA, ...extras }), (e) => {
+      if (e.nome.includes("/extra")) {
+        expect(e.metodo).toBe(8);
+        e.estragar();
+        e.declarar(30 * MB);
+      }
+    });
+    const r = await parseImportFile(buf, "clientes.xlsx");
+    expect(r.ok).toBe(true);
+  });
+
+  it("a soma do que é lido tem teto, não só cada arquivo", async () => {
+    // Aba e textos compartilhados declaram 30 MB cada: os dois passam no teto
+    // por arquivo (40 MB), a soma não. Entradas GUARDADAS (sem deflate): o
+    // fflate copia os bytes reais e o tamanho declarado não aloca nada aqui.
+    const buf = editarZip(xlsxGuardado(PLANILHA), (e) => {
+      if (e.nome === "xl/worksheets/sheet2.xml" || e.nome === "xl/sharedStrings.xml") {
+        e.declarar(30 * MB);
+      }
+    });
+    const r = await parseImportFile(buf, "clientes.xlsx");
+    expect(r).toEqual({ ok: false, error: "Planilha grande demais para importar de uma vez." });
+
+    // Controle: o mesmo arquivo, com o declarado verdadeiro, é lido.
+    expect((await parseImportFile(xlsxGuardado(PLANILHA), "clientes.xlsx")).ok).toBe(true);
+  });
+
   it("CSV continua pelo parser dos contatos (Excel em português, com `;`)", async () => {
-    const r = await parseImportFile(strToU8("Empresa;CNPJ\nACME;11.222.333/0001-81\n").buffer as ArrayBuffer, "a.csv");
-    expect(r).toEqual({ ok: true, sheet: { headers: ["Empresa", "CNPJ"], rows: [["ACME", "11.222.333/0001-81"]] } });
+    const r = await parseImportFile(
+      strToU8("Empresa;CNPJ\nACME;11.222.333/0001-81\n").buffer as ArrayBuffer,
+      "a.csv",
+    );
+    expect(r).toEqual({
+      ok: true,
+      sheet: { headers: ["Empresa", "CNPJ"], rows: [["ACME", "11.222.333/0001-81"]] },
+    });
   });
 });

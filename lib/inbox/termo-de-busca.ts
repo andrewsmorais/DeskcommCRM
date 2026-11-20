@@ -62,3 +62,31 @@ export function normalizarTermoDeBusca(bruto: string): string {
 export function buscaValeConsulta(bruto: string): boolean {
   return normalizarTermoDeBusca(bruto).length >= PISO_DA_BUSCA;
 }
+
+/** Letras que o NFD não separa em letra + acento: trocadas à mão. */
+const NAO_DECOMPOEM: Record<string, string> = {
+  ß: "ss",
+  æ: "ae",
+  œ: "oe",
+  ø: "o",
+  đ: "d",
+  ð: "d",
+  ł: "l",
+  þ: "th",
+  ı: "i",
+  ħ: "h",
+  ŧ: "t",
+  ĸ: "k",
+};
+
+/**
+ * O termo sem acento e em minúscula, para comparar no navegador (o filtro da
+ * fila do Cold Call). "Andreia" acha "Andréia".
+ */
+export function termoSemAcento(bruto: string): string {
+  return bruto
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[ßæœøđðłþıħŧĸ]/gi, (letra) => NAO_DECOMPOEM[letra.toLowerCase()] ?? letra)
+    .toLowerCase();
+}

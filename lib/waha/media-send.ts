@@ -11,7 +11,7 @@ export interface OutboundMedia {
 }
 
 export interface WahaSendPlan {
-  endpoint: "sendImage" | "sendVideo" | "sendVoice" | "sendFile";
+  endpoint: "sendImage" | "sendVideo" | "sendVoice" | "sendFile" | "sendSticker";
   payload: Record<string, unknown>;
 }
 
@@ -29,6 +29,10 @@ export function wahaSendPlanFor(kind: string, media: OutboundMedia): WahaSendPla
       };
     case "audio":
       return { endpoint: "sendVoice", payload: { file, convert: true } };
+    case "sticker":
+      // WAHA 2026.8.2+. Figurinha não leva legenda nem nome de arquivo, e tem de
+      // ser WebP (o WAHA não converte) — lib/figurinhas/figurinha.ts já entrega assim.
+      return { endpoint: "sendSticker", payload: { file: { url: media.url, mimetype: "image/webp" } } };
     default:
       return { endpoint: "sendFile", payload: { file, ...(media.caption ? { caption: media.caption } : {}) } };
   }

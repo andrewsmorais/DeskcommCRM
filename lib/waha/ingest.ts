@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { audit } from "@/lib/audit";
 import { sincronizarSaudeDaConexao } from "@/lib/channels/health";
 import { marcarConversaComMensagem } from "@/lib/channels/marcar-conversa";
+import { gravarReacaoDeMensagem } from "@/lib/channels/reacao";
 import { aplicarEfeitosPosEntrada } from "@/lib/channels/pos-entrada";
 import {
   MOTIVO_COMANDO_OFF,
@@ -36,7 +37,7 @@ import type { RemetenteDeGrupo } from "@/lib/messaging/remetente-de-grupo";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
 import type { WahaEnvelope, WahaPayload } from "@/lib/waha/envelope";
-import { bareWaMessageId, chatIdFromWaMessageId } from "@/lib/waha/message-id";
+import { bareWaMessageId, chatIdFromWaMessageId, wahaEchoExternalIds } from "@/lib/waha/message-id";
 import { logger } from "@/lib/logger";
 import {
   ehNumeroInternoDeAviso,
@@ -93,7 +94,7 @@ async function ehEcoDeEnvioNosso(
   const desde = new Date(Date.now() - JANELA_DO_ECO_MS).toISOString();
   const { data, error } = await admin
     .from("messages")
-    .select("id, body, type")
+    .select("id, body, type, external_id, status")
     .eq("organization_id", organizationId)
     .eq("conversation_id", conversationId)
     .eq("direction", "outbound")
@@ -112,11 +113,20 @@ async function ehEcoDeEnvioNosso(
     // integração deixa de ser reconhecida como envio NOSSO, o eco do próprio
     // envio vira "resposta pelo celular" e cala a IA por três horas.
     .in("sent_via", ["ai", "user", "automation", "system"])
-    // Sem `external_id` = ainda não confirmada pelo canal = ainda em voo. É esta
-    // a janela exata em que o eco é indistinguível de digitação humana.
-    .is("external_id", null)
-    .in("status", ["queued", "sending"])
-    .gte("created_at", desde)
+    // ⚠️ O `external_id` NÃO é filtro aqui, de propósito (trazido do produto
+    // original, #3165): as duas marcas da prova — id nulo (em voo) e id igual ao
+    // que o canal entregou (carimbado DURANTE a ingestão) — são decididas sobre a
+    // MESMA linha desta leitura, no laço abaixo. Com `.is("external_id", null)`
+    // no SQL, o carimbo do envio (`marcarEnviada`, que grava `sent` mais o id)
+    // caindo entre a re-checagem pós-insert e esta decisão deixava a linha fora
+    // do alcance: o eco virava "resposta pelo celular" e a IA pausava.
+    // `sent` entra porque é o status gravado JUNTO do id.
+    .in("status", ["queued", "sending", "sent"])
+    // `updated_at`, e não `created_at`: o reenvio (`POST /messages/{id}/retry`)
+    // põe na fila uma linha criada há muito tempo, e o eco dele tem de casar do
+    // mesmo jeito. Para o envio novo dá no mesmo (`updated_at` nasce igual a
+    // `created_at` e só cresce), então a janela só fica mais larga, nunca mais estreita.
+    .gte("updated_at", desde)
     .limit(20);
 
   if (error) {
@@ -127,8 +137,23 @@ async function ehEcoDeEnvioNosso(
   }
 
   const corpo = (p.body ?? "").trim();
+  // As formas que o id desta mensagem pode ter no banco: o composto que o webhook
+  // entregou e a cauda que o envio grava (`canonicalExternalId`).
+  const idsDaMensagem = p.id ? [...new Set([p.id, bareWaMessageId(p.id)])] : [];
   for (const linha of data ?? []) {
-    const l = linha as { body: string | null; type?: string | null };
+    const l = linha as {
+      body: string | null;
+      type?: string | null;
+      external_id?: string | null;
+      status?: string | null;
+    };
+    // MARCA 2: o carimbo do envio já está NESTA linha, com o id que o canal
+    // acabou de entregar. É a MESMA mensagem — o corpo nem precisa ser comparado.
+    if (l.external_id != null && idsDaMensagem.includes(l.external_id)) return true;
+    // MARCA 1: linha ainda EM VOO — sem id e no status de antes do canal. Linha
+    // com id de OUTRA mensagem nunca foi a janela do eco desta.
+    if (l.external_id != null) continue;
+    if (l.status !== "queued" && l.status !== "sending") continue;
     if (p.type && p.type !== "chat") {
       // Mídia: sem corpo para comparar, a existência do envio em voo é a prova
       // possível. Mais fraco, e escrito para ninguém supor o contrário.
@@ -237,6 +262,10 @@ export function parseChatId(chatId: string): ChatIdentity {
     // `replace(/^\+/, "")` fica: é ancorado em `^`, casa 1 caractere, O(1) — não é
     // o que o CodeQL apontou.
     const digits = semSufixoDeChat(chatId).replace(/^\+/, "");
+    // Mesma faixa do CHECK contacts_phone_e164_format. Avisos do WhatsApp
+    // (0@s.whatsapp.net) não são contatos discáveis: quem lê ignora, em vez de
+    // abortar no upsert com telefone +0.
+    if (!/^\d{8,15}$/.test(digits)) return { kind: "unknown", phone: null, lid: null };
     return { kind: "phone", phone: "+" + digits, lid: null };
   }
   return { kind: "unknown", phone: null, lid: null };
@@ -408,12 +437,12 @@ export function resolveMessageType(p: WahaPayload): string {
   return "text";
 }
 
-function notifyNameOf(p: WahaPayload): string | null {
+export function notifyNameOf(p: WahaPayload): string | null {
   return p._data?.notifyName ?? p._data?.pushName ?? null;
 }
 
 /** Corpo textual: WAHA nem sempre preenche `body` em cartões de contato NOWEB. */
-function bodyOf(p: WahaPayload): string | null {
+export function bodyOf(p: WahaPayload): string | null {
   if (p.body) return p.body;
   const msg = p._data?.message;
   if (!msg || typeof msg !== "object") return null;
@@ -736,12 +765,53 @@ async function mensagemIngeridaPorExternalId(
   return data ?? null;
 }
 
+/** Objeto simples (não nulo, não array) — para ler o miolo cru da reação. */
+function objetoSimples(v: unknown): Record<string, unknown> | null {
+  return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/** String não-vazia, em runtime. */
+function textoNaoVazio(v: unknown): string | null {
+  return typeof v === "string" && v !== "" ? v : null;
+}
+
+/**
+ * O payload é de REAÇÃO, mesmo quando chega por `message.any`? (vindo do
+ * produto original) O WAHA emite `message.any` para QUALQUER mensagem nova, e a
+ * reação é uma delas — sem este corte o caminho normal gravaria uma linha sem
+ * emoji e sem alvo, e ainda carimbaria a conversa. A linha certa é a do ramo
+ * `message.reaction`, ligada ao alvo.
+ */
+export function ehReacao(p: WahaPayload): boolean {
+  return p.type === "reaction" || objetoSimples(p.reaction) !== null;
+}
+
+/**
+ * A forma em que a ENTRADA grava `messages.external_id`: o id completo do webhook
+ * (`false_<chat>_<id>`). Fonte única, usada por `handleInbound` e pelo importador
+ * de histórico: as duas trilhas gravam a MESMA string, senão a unique não recusa
+ * a segunda linha e a mensagem duplica.
+ */
+export function externalIdDeEntrada(p: WahaPayload): string | null {
+  return p.id ?? null;
+}
+
+/**
+ * A forma em que a SAÍDA (eco do celular) grava `messages.external_id`: o bare id.
+ * Fonte única, ver `externalIdDeEntrada`.
+ */
+export function externalIdDeSaida(p: WahaPayload): string | null {
+  return p.id ? bareWaMessageId(p.id) : null;
+}
+
 async function handleInbound(
   admin: Admin,
   session: Session,
   p: WahaPayload,
   requestId: string,
 ): Promise<void> {
+  // Reação não é mensagem: o ramo `message.reaction` grava a linha ligada ao alvo.
+  if (ehReacao(p)) return;
   const chatId = p.from ?? "";
   const parsed = parseChatId(chatId);
   if (parsed.kind === "group") {
@@ -990,6 +1060,8 @@ async function handleOutboundFromUserPhone(
   p: WahaPayload,
   requestId: string,
 ): Promise<void> {
+  // Idem: o eco da reação que o operador fez pelo celular também chega aqui.
+  if (ehReacao(p)) return;
   // De onde sai o chat, em ordem de confiança:
   //   1. `to`  — o WEBJS manda; é o destinatário explícito.
   //   2. o id  — `{fromMe}_{chatId}_{bareId}` carrega o chat em qualquer engine.
@@ -1392,6 +1464,63 @@ async function handleMessageRevoked(
 }
 
 /**
+ * Quem REAGIU — a chave que a remoção usa para apagar SÓ o gesto deste autor.
+ * Em grupo o autor vem no `participant`; no 1:1 é o `from`. Em `fromMe` o autor
+ * é sempre o número conectado: a etiqueta `me` o identifica.
+ */
+function autorDaReacao(p: WahaPayload): string | null {
+  if (p.fromMe === true) return "me";
+  return primeiroTexto(p.participant, p.from);
+}
+
+/**
+ * `message.reaction` — a reação vira linha LIGADA ao alvo, e nada mais (vindo
+ * do produto original). Não carimba a conversa (última mensagem, janela de 24h,
+ * não lidas), não aplica os efeitos de entrada (opt-out, lead, agente) e não
+ * audita `message.received`: um 👍 não é fala. Falha de banco sobe como
+ * transitória (503) e o WAHA reentrega — seguro, porque a idempotência é pela
+ * chave externa da própria reação.
+ */
+async function handleReaction(admin: Admin, session: Session, p: WahaPayload): Promise<void> {
+  const miolo = objetoSimples(p.reaction);
+  const alvoId = textoNaoVazio(miolo?.messageId);
+  const externalId = textoNaoVazio(p.id);
+  const autor = autorDaReacao(p);
+  if (!externalId || !alvoId || !autor) {
+    logger.warn("waha.ingest: reação sem id de alvo ou sem autor — descartada", {
+      organization_id: session.organization_id,
+      external_id: externalId,
+      alvo: alvoId,
+    });
+    return;
+  }
+  const chat = p.to ?? chatIdFromWaMessageId(externalId) ?? p.from ?? "";
+  const cauda = bareWaMessageId(alvoId);
+  const desfecho = await gravarReacaoDeMensagem(admin as unknown as SupabaseClient, {
+    organizationId: session.organization_id,
+    channelSessionId: session.id,
+    externalId,
+    alvoExternalId: alvoId,
+    candidatosDoAlvo: wahaEchoExternalIds(alvoId, chat),
+    // Abaixo de 16 caracteres o LIKE casaria outra mensagem por coincidência.
+    sufixoDoAlvo: cauda.length >= 16 ? `_${cauda}` : null,
+    // `text` vazio é a REMOÇÃO do gesto.
+    emoji: typeof miolo?.text === "string" ? miolo.text.trim() : null,
+    author: autor,
+    direction: p.fromMe === true ? "outbound" : "inbound",
+    sentAt: dataDoTimestamp(p.timestamp, new Date().toISOString()),
+    sentVia: "external_device",
+    canal: "waha",
+  });
+  if (desfecho.status === "falha") {
+    lancarFalhaDeIngestao("messages.insert reaction", {
+      code: desfecho.codigo ?? undefined,
+      message: desfecho.motivo,
+    });
+  }
+}
+
+/**
  * Roteador único de eventos WAHA. Os dois route handlers convergem aqui após
  * resolver a sessão e validar HMAC.
  */
@@ -1416,6 +1545,8 @@ export async function dispatchWahaEvent(
     await handleMessageEdited(admin, session, payload);
   } else if (eventType === "message.revoked") {
     await handleMessageRevoked(admin, session, payload);
+  } else if (eventType === "message.reaction") {
+    await handleReaction(admin, session, payload);
   } else if (eventType === "session.status" || eventType === "state.change") {
     await handleSessionStatus(admin, session, payload);
   }

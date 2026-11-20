@@ -75,7 +75,12 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      const data = url === "/api/v1/ai/jev" ? jev(jevLigado) : PROVEDORES;
+      const data =
+        url === "/api/v1/ai/jev"
+          ? jev(jevLigado)
+          : url === "/api/v1/ai/voz"
+            ? { voiceId: null, vozesDisponiveis: [], temCredencial: false }
+            : PROVEDORES;
       return new Response(JSON.stringify({ data }), { status: 200 });
     }),
   );

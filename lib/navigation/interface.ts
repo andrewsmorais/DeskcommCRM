@@ -15,6 +15,12 @@ export const interfaceSettingsSchema = z
       .max(ids.length)
       .transform((values) => ids.filter((id) => values.includes(id)))
       .optional(),
+    /**
+     * A caixa de mensagem do Inbox fica BLOQUEADA até o atendente assumir a
+     * conversa (vindo do produto original). Regra da ORGANIZAÇÃO, não
+     * autorização: só esconde a caixa até alguém assumir. Ausente = desligado.
+     */
+    bloquearAteAssumir: z.boolean().optional(),
   })
   .strict();
 export type InterfaceSettings = z.infer<typeof interfaceSettingsSchema>;
@@ -97,6 +103,8 @@ export function lerInterface(raw: unknown): {
   const parsed = interfaceSettingsSchema.safeParse({
     preset: value.preset,
     ...(destinos ? { destinos } : {}),
+    // A regra do Inbox viaja no mesmo objeto: sem esta linha a releitura a perdia.
+    ...(value.bloquearAteAssumir === true ? { bloquearAteAssumir: true } : {}),
   });
   if (!parsed.success) return { settings: INTERFACE_COMPLETA, needsAdjustment: true };
   return {

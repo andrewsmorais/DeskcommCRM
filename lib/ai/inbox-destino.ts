@@ -120,8 +120,17 @@ export const POLITICAS_DE_AVISO = {
     refs: ["proposal"],
     orientacao: "A IA rascunhou esta proposta — confirme o modelo sugerido (ou escolha outro) e confira se todos os itens têm preço antes de enviar.",
   },
+  // O passo "Notificar atendente" do chatbot: o motivo é o que quem montou o
+  // fluxo escreveu, e o botão leva à conversa.
+  chatbot_aviso: { refs: ["conversation"], orientacao: "Abra a conversa: o chatbot pediu que alguém da equipe olhasse." },
   // `agent_case`: o caso que a IA abriu, na Central no instante da abertura
   // (`lib/escalacao/caso-na-central.handler.ts`).
+  // Spec 32. O resumo aponta SEMPRE para a conexão (`ref_kind: channel_session`).
+  recuperacao_da_queda: { refs: ["channel_session"], orientacao: "Confira em Conexões se o número voltou e se o histórico do período fora do ar entrou como esperado." },
+  // Spec 32. Nasce SEMPRE com `ref_kind: conversation` (a conversa recuperada).
+  cliente_sem_resposta_na_queda: { refs: ["conversation"], orientacao: "Abra a conversa e responda o cliente — ele escreveu enquanto o número estava fora do ar." },
+  jev_pedido_de_humano: { refs: ["conversation"], orientacao: "Abra a conversa e decida se alguém da equipe assume o atendimento." },
+  jev_parar_de_receber: { refs: ["conversation"], orientacao: "Abra a conversa e confira se o cliente quer mesmo parar de receber mensagens." },
   other: { refs: ["lead", "channel_session", "appointment", "ai_agent", "ai_provider_credential", "agent_case"], orientacao: "Confira a situação descrita neste aviso com a pessoa responsável." },
 } satisfies Record<InboxKind, Politica>;
 
@@ -140,6 +149,9 @@ const ROTULO_POR_KIND: Record<string, string> = {
   // "Abrir o fluxo" convida a olhar; o aviso pede CONFERIR qual fluxo está
   // parado antes de ir ligá-lo no agente.
   followup_sem_agente: "Ver o fluxo parado",
+  // O aviso é sobre o que o cliente escreveu ali: a ação é ler e decidir.
+  jev_pedido_de_humano: "Abrir a conversa",
+  jev_parar_de_receber: "Abrir a conversa",
 };
 
 const SEM_DESTINO: DestinoDoAviso = { estado: "sem_destino", orientacao: "Este aviso não tem um contexto que possa ser aberto nesta versão." };

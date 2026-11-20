@@ -8,6 +8,8 @@ import type { NextRequest } from "next/server";
 
 import { ok, fail, noContent } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
+import { exigirRecursoDoPlano } from "@/lib/billing/acesso";
+import { regraUsaAutomacaoAvancada } from "@/lib/billing/automacao-do-plano";
 import { requireRole } from "@/lib/auth/require-role";
 import { autoriaDaMudanca } from "@/lib/operacao/autoria";
 import { updateAutomationRuleSchema } from "@/lib/schemas";
@@ -50,15 +52,34 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
   const supabase = await createClient();
   const { data: existing, error: fetchErr } = await supabase
     .from("automation_rules")
-    .select("id")
+    .select("id, actions, trigger_event")
     .eq("id", id)
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
   if (fetchErr) return fail("internal_error", fetchErr.message, 500, { requestId });
   if (!existing) return fail("not_found", t("Regra não encontrada."), 404, { requestId });
 
+  // Automação avançada é do Impulso em diante. Vale para a regra como ela
+  // FICARÁ depois do PATCH; só desligar (`is_active: false`, sozinho) passa em
+  // qualquer plano — quem desceu precisa conseguir parar o que ficou ligado.
+  const soDesliga =
+    Object.keys(parsed.data).length === 1 && parsed.data.is_active === false;
+  if (
+    !soDesliga &&
+    regraUsaAutomacaoAvancada({
+      trigger_event: parsed.data.trigger_event ?? existing.trigger_event,
+      actions: parsed.data.actions ?? existing.actions,
+    })
+  ) {
+    const foraDoPlano = await exigirRecursoDoPlano(activeOrg.orgId, "automacoes_avancadas", {
+      requestId,
+    });
+    if (foraDoPlano) return foraDoPlano;
+  }
+
   // Secrets de call_webhook nunca ficam em claro no jsonb (migration 0041);
-  // secret_enc existente (round-trip do editor) passa intacto.
+  // secret_enc do round-trip do editor só passa se for um que esta regra já
+  // tinha gravado (lib/webhooks/secrets.ts).
   // A autoria vai junto de TODA escrita, pelo mesmo helper que o agente usa: uma
   // regra ligada é o estado mais perigoso do sistema, e a tela precisa dizer
   // quem a ligou (migration 0101).
@@ -68,11 +89,17 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
     ...autoriaDaMudanca({ type: "user", id: user.id, role: activeOrg.role }),
   };
   if (parsed.data.actions !== undefined) {
-    const safeActions = await encryptRuleActionSecrets(createAdminClient(), parsed.data.actions);
+    const safeActions = await encryptRuleActionSecrets(
+      createAdminClient(),
+      parsed.data.actions,
+      existing.actions,
+    );
     if (safeActions === null) {
       return fail(
         "encryption_unavailable",
-        t("Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave."),
+        t(
+          "Não foi possível guardar o segredo do webhook com segurança: a chave de cifra desta instalação não está ativa. Quem administra o servidor resolve rodando o update.sh, que gera e ativa a chave.",
+        ),
         422,
         { requestId },
       );
@@ -97,7 +124,10 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> 
     resourceId: id,
     requestId,
     // actions fora do audit: config de call_webhook carrega secret plaintext no input.
-    metadata: { ...auditableRule, ...(parsed.data.actions !== undefined ? { actions_changed: true } : {}) },
+    metadata: {
+      ...auditableRule,
+      ...(parsed.data.actions !== undefined ? { actions_changed: true } : {}),
+    },
   });
 
   return ok(updated, { requestId });

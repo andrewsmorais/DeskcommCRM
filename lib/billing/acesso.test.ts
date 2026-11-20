@@ -1,8 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ ler: vi.fn() }));
 vi.mock("@/lib/billing", () => ({ getOrganizationBilling: mock.ler }));
 import { exigirRecursoDoPlano, verificarRecursoDoPlano } from "./acesso";
 import { RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "./catalogo";
+
+// Estes casos medem a camada comercial LIGADA (EXIGIR_ASSINATURA=true, como no
+// ChatAI Online). Desligada é o padrão — ver lib/billing/exigencia.ts.
+beforeEach(() => {
+  vi.stubEnv("EXIGIR_ASSINATURA", "true");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 
 beforeEach(() => vi.clearAllMocks());
 describe("o plano selecionado autoriza a mesma capacidade no CRM e no runtime", () => {
@@ -11,7 +21,8 @@ describe("o plano selecionado autoriza a mesma capacidade no CRM e no runtime", 
       it(`${plano}: ${recurso}`, async () => {
         mock.ler.mockResolvedValue({ ok: true, billing: { plan_slug: plano, is_active: true } });
         const res = await verificarRecursoDoPlano("org-confiavel", recurso as RecursoDoPlano);
-        const esperado = plano === "escala" || (plano === "impulso" && oferta.desde === "impulso");
+        const ordem: Record<string, number> = { essencial: 0, impulso: 1, escala: 2 };
+        const esperado = ordem[plano]! >= ordem[oferta.desde]!;
         expect(res.ok).toBe(esperado);
         expect(planoInclui(plano, recurso as RecursoDoPlano)).toBe(esperado);
         expect(mock.ler).toHaveBeenCalledWith("org-confiavel");

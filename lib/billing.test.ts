@@ -49,6 +49,31 @@ function preparar(sub: unknown = assinatura, catalogo: unknown = plano) {
 
 beforeEach(() => vi.clearAllMocks());
 
+describe("descida agendada", () => {
+  it("enquanto a descida não vale, criar já respeita o plano menor", async () => {
+    preparar(
+      {
+        ...assinatura,
+        plan_type: "escala",
+        plan_id: "plano-escala",
+        troca_plano: "essencial",
+        troca_tipo: "downgrade",
+        troca_efetiva_em: "2998-01-01T00:00:00.000Z",
+      },
+      { name: "Escala", slug: "escala", limits: {} },
+    );
+    const r = await getOrganizationBilling(ORG);
+    expect(r.ok && r.billing?.plan_slug).toBe("escala");
+    expect(r.ok && r.billing?.limits).toMatchObject({
+      whatsapp: 2,
+      agentes_ia: 1,
+      chatbots: 1,
+      pipelines: 2,
+      usuarios: 2,
+    });
+  });
+});
+
 describe("plano persistido da organização", () => {
   it("resolve por plan_id mesmo quando o checkout não gravou plan_type", async () => {
     const { assinaturaQuery, planoQuery } = preparar();
@@ -60,13 +85,20 @@ describe("plano persistido da organização", () => {
         organization_id: ORG,
         plan_name: "Impulso",
         plan_slug: "impulso",
-        limits: plano.limits,
+        // A promessa do card (catálogo) vence o JSON de `plans`: Impulso 4/4/2/2/4.
+        limits: { whatsapp: 4, pipelines: 4, agentes_ia: 2, chatbots: 2, usuarios: 4 },
         status: "active",
         current_period_end: assinatura.current_period_end,
         asaas_subscription_id: assinatura.asaas_subscription_id,
         is_active: true,
         seats: 10,
         billing_cycle: "monthly",
+        current_period_start: null,
+        canceled_at: null,
+        plan_type: null,
+        troca: null,
+        escala_com_proposta: false,
+        extras: [],
       },
     });
     expect(assinaturaQuery.eq).toHaveBeenCalledWith("organization_id", ORG);
@@ -106,6 +138,44 @@ describe("plano persistido da organização", () => {
       billing: { plan_slug: "impulso" },
     });
     expect(porSlug.eq).toHaveBeenCalledWith("slug", "impulso");
+  });
+
+  it("downgrade agendado: até o fim do período vale o plano atual, e a troca aparece", async () => {
+    const { planoQuery } = preparar({
+      ...assinatura,
+      plan_id: null,
+      plan_type: "impulso",
+      troca_plano: "essencial",
+      troca_tipo: "downgrade",
+      troca_efetiva_em: "2999-01-01T00:00:00.000Z",
+    });
+    expect(await getOrganizationBilling(ORG)).toMatchObject({
+      ok: true,
+      billing: {
+        plan_slug: "impulso",
+        troca: { plano: "essencial", tipo: "downgrade", efetiva_em: "2999-01-01T00:00:00.000Z" },
+      },
+    });
+    expect(planoQuery.eq).toHaveBeenCalledWith("slug", "impulso");
+  });
+
+  it("downgrade vencido: o plano menor vale mesmo antes de a renovação consolidar", async () => {
+    const { planoQuery } = preparar(
+      {
+        ...assinatura,
+        plan_type: "impulso",
+        troca_plano: "essencial",
+        troca_tipo: "downgrade",
+        troca_efetiva_em: "2020-01-01T00:00:00.000Z",
+      },
+      { name: "Essencial", slug: "essencial", limits: {} },
+    );
+    expect(await getOrganizationBilling(ORG)).toMatchObject({
+      ok: true,
+      billing: { plan_slug: "essencial", troca: null },
+    });
+    // O plan_id gravado é o do plano antigo: a leitura vai pelo slug que vale.
+    expect(planoQuery.eq.mock.calls).toEqual([["slug", "essencial"]]);
   });
 
   it("distingue instalação sem assinatura de falha de consulta", async () => {

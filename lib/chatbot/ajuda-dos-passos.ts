@@ -1,0 +1,220 @@
+/**
+ * O texto do botão "Ajuda" (?) de cada passo do editor de chatbot, no modelo
+ * da Umbler Talk: quando usar, o que acontece de fato, as opções e os cuidados,
+ * e as variáveis que o passo deixa para os passos seguintes.
+ *
+ * `Record<TipoDePasso, string>` obriga: passo novo no catálogo sem ajuda não
+ * compila. O texto descreve o que ESTE sistema faz (lib/chatbot/motor.ts e
+ * executar.ts), não o que a Umbler faz — onde os dois diferem, vale o daqui.
+ *
+ * Um texto por passo, com os parágrafos separados por linha em branco, numa
+ * tabela constante: é a forma que a tela passa por `t(AJUDA_DOS_PASSOS[tipo])`
+ * e que a cerca do espanhol (tests/unit/i18n-espanhol-cobre-a-tela.test.ts)
+ * consegue ler. O espanhol mora no dicionário.
+ */
+import { lerConfig, type TipoDePasso } from "./passos";
+
+export const AJUDA_DOS_PASSOS: Record<TipoDePasso, string> = {
+  inicio_canal:
+    "Quando adicionada essa ação no seu chatbot, ele passa a responder sozinho as conversas que chegam pelo número de WhatsApp escolhido, assim que o fluxo estiver ligado.\n\nVocê escolhe se ele começa em toda conversa nova ou só quando a mensagem do cliente tiver uma das palavras-chave. Cada número tem um só chatbot de entrada ligado: ligar outro para o mesmo número desliga o anterior.\n\nDepois que o fluxo termina, ele só recomeça na mesma conversa 6 horas depois, para não responder a cada “obrigado”.\n\nEm “Etiqueta de origem”, você liga frases a etiquetas: se a primeira mensagem tiver a frase, o contato ganha a etiqueta. Use a mensagem pronta do seu anúncio (“vi no Instagram”) ou do link do site para saber de onde cada contato veio, e separe o caminho depois com a condição “Etiquetas”.\n\nO chatbot não responde quando a conversa já está com um atendente, quando o contato está bloqueado, nem em grupos de WhatsApp.",
+  inicio_automacao:
+    "Quando adicionada essa ação no seu chatbot, ele não responde mensagens sozinho: ele começa quando uma regra de Automações manda, com a ação “Iniciar chatbot”. Por exemplo, quando uma compra é aprovada na Kiwify, na Cakto ou na Hotmart, ou quando um negócio muda de etapa.\n\nUm fluxo que só tem este início pode ficar ligado junto com o fluxo de atendimento do mesmo número.\n\nSe o contato estava parado em outro fluxo, aquele termina e este começa: a automação é o fato mais novo.",
+  inicio_manual:
+    "Quando adicionada essa ação no seu chatbot, ele fica disponível para os atendentes dentro de qualquer conversa: na Inbox, o botão do robô no topo da conversa lista os chatbots ligados que têm este início.\n\nO chatbot responde até o fluxo terminar, mesmo com a conversa no nome do atendente. É bom para pesquisa de satisfação no fim do atendimento, menu de pagamento ou coleta de dados.\n\nO fluxo precisa estar ligado para aparecer na lista. Um fluxo só com este início pode ficar ligado junto com o fluxo de atendimento.\n\nAo começar, as mensagens de espera programadas nesta conversa param: o fluxo novo é quem fala agora.",
+  horarios:
+    "Quando adicionada essa condição no seu chatbot, ele segue por um caminho dentro das faixas de horário que você marcar e por outro fora delas.\n\nUse para avisar quando a empresa está fechada, ou para só passar para a equipe no horário de atendimento. Uma faixa que passa da meia-noite (22:00 às 06:00) também vale.\n\nO horário é o do fuso da empresa, não o do cliente.\n\nEm “Feriados”, você pode marcar os feriados nacionais (e, se quiser, Carnaval e Corpus Christi) e escrever os dias em que a empresa fecha, como os feriados do estado e da cidade. Nesses dias, o chatbot segue por “Fora do horário” o dia inteiro.",
+  dias_semana:
+    "Quando adicionada essa condição no seu chatbot, ele segue por um caminho nos dias da semana marcados e por outro nos demais.\n\nCombine com “Horários” para montar o expediente: por exemplo, segunda a sexta das 8h às 18h. Usa o fuso horário da empresa.",
+  mensagem_contem:
+    "Quando adicionada essa condição no seu chatbot, ele olha a última mensagem do contato e segue por “Contém” se ela tiver qualquer uma das palavras escritas, ou por “Não contém”.\n\nMaiúsculas e acentos não importam: “Preço” encontra “preco”. Separe as palavras com vírgula.\n\nÁudio, foto ou figurinha não têm texto, então seguem por “Não contém”.",
+  condicao_campo_contato:
+    "Quando adicionada essa condição no seu chatbot, ele olha um campo do cadastro do contato (nome, e-mail, aniversário ou um campo personalizado) e segue por “Regra atendida” ou “Regra não atendida”.\n\nVocê escolhe a comparação: é igual, contém, está preenchido, está vazio ou, para números, é maior ou menor. Maiúsculas e acentos não importam.\n\nUm valor que o próprio fluxo acabou de gravar (em “Campo do contato”, nas ações) já conta. Use, por exemplo, para só pedir o e-mail a quem ainda não tem.",
+  definir_condicao:
+    "Quando adicionada essa condição no seu chatbot, ele segue por “Regra atendida” ou “Regra não atendida” conforme uma regra que você monta.\n\nA regra pode olhar uma etiqueta do contato, uma resposta guardada antes no fluxo, um campo do contato (nome, e-mail, aniversário ou campo personalizado) ou a última mensagem.\n\nMaiúsculas e acentos não importam. Para comparar números (por exemplo, uma nota), use “É maior ou igual a”.",
+  multi_condicional:
+    "Quando adicionada essa condição no seu chatbot, você monta várias regras e cada uma ganha uma saída própria. Vale a primeira regra que bater, de cima para baixo.\n\nSe nenhuma bater, o fluxo segue por “Nenhuma regra”. Dê um nome a cada saída para o quadro ficar fácil de ler.",
+  distribuir_fluxo:
+    "Quando adicionada essa condição no seu chatbot, cada contato segue por uma das saídas, sorteada pelo peso de cada uma. Pesos 70 e 30 mandam cerca de 70% dos contatos para a primeira e 30% para a segunda.\n\nÉ o jeito de fazer teste A/B: duas mensagens de boas-vindas diferentes, por exemplo, para ver qual vende mais.",
+  contato_ativo:
+    "Quando adicionada essa condição no seu chatbot, ele verifica se o contato mandou mensagem dentro do tempo escolhido (24 horas por padrão) e segue por “Ativo” ou “Inativo”.\n\n24 horas é a janela do WhatsApp: fora dela, escrever primeiro tem mais risco de bloqueio, e no número oficial só modelo aprovado pode sair.",
+  tem_etiqueta:
+    "Quando adicionada essa condição no seu chatbot, ele segue por “Tem” se o contato ou a conversa tiver as etiquetas escritas, ou por “Não tem”.\n\nVocê escolhe se basta uma delas ou se precisa ter todas. Valem as etiquetas do contato e as da conversa, como no filtro de Conversas. Uma etiqueta que o próprio fluxo acabou de pôr (em “Editar etiquetas”) já conta.",
+  primeira_conversa:
+    "Quando adicionada essa condição no seu chatbot, ele segue por “Primeira vez” se o contato nunca tinha mandado mensagem antes deste atendimento, ou por “Já conversou antes”.\n\nUse para dar boas-vindas diferentes a quem é novo e a quem já é cliente.",
+  canal_da_conversa:
+    "Quando adicionada essa condição no seu chatbot, ele segue por “Um dos números” se a conversa estiver acontecendo por um dos números de WhatsApp marcados, ou por “Outro número”.\n\nÚtil quando o mesmo fluxo atende mais de um número (por exemplo, vendas e suporte) e cada um precisa de um caminho.",
+  atendente_da_conversa:
+    "Quando adicionada essa condição no seu chatbot, ele verifica quem é o atendente responsável pela conversa e segue por “É um deles” ou “Outro ou ninguém”.\n\nSem nenhum atendente marcado, a condição vale para qualquer atendente: serve para saber se a conversa já tem dono.",
+  presenca_do_atendente:
+    "Quando adicionada essa condição no seu chatbot, ele verifica se alguém da equipe pode assumir a conversa agora: disponível, dentro do horário e com folga no limite de conversas.\n\nÉ a mesma regra da Distribuição de atendimento. Use antes de transferir: se ninguém estiver disponível, avise o cliente quando vão responder.",
+  bot_paralelo:
+    "Quando adicionada essa condição no seu chatbot, ele verifica se o agente de IA ou outro chatbot está atendendo esta mesma conversa agora, e segue por “Tem outro bot” ou “Só este”.\n\nUse para não deixar dois robôs respondendo o mesmo cliente ao mesmo tempo.",
+  setor_da_conversa:
+    "Quando adicionada essa condição no seu chatbot, ele verifica em que setor a conversa está agora e segue por “Um dos setores”, se for um dos marcados, ou por “Outro ou nenhum”.\n\nO setor muda quando um passo “Transferir para a equipe” manda a conversa a um setor, ou quando um atendente troca o setor pela Inbox. Os setores são criados em Configurações › Setores.",
+  status_da_conversa:
+    "Quando adicionada essa condição no seu chatbot, ele verifica se o contato está esperando resposta, isto é, se a última mensagem da conversa é dele, e segue por “Esperando resposta” ou “Já respondido”.",
+  valor:
+    "Quando adicionada essa condição no seu chatbot, ele compara uma resposta guardada, um campo do contato ou a última mensagem com um valor que você escreve, e segue por “Verdadeiro” ou “Falso”.\n\nO valor pode ter {{variavel}}: por exemplo, comparar o e-mail que o cliente digitou com o e-mail do cadastro.\n\nTexto ignora maiúsculas e acentos. Maior e menor funcionam entre números (10, 4,5) ou entre datas (25/12/2026); entre texto e número a resposta é sempre “Falso”.",
+  guardar_valor:
+    "Quando adicionada essa ação no seu chatbot, ele guarda um valor com o nome que você escolher, para usar depois como {{nome}}: numa mensagem, no “Valor”, no WebHook ou em outro passo.\n\nO valor pode ter outras variáveis — por exemplo, {{nome}} {{sobrenome}} — ou ser um texto fixo, como “instagram” para marcar de onde o contato veio. Se a variável já existir, o valor novo toma o lugar do antigo.\n\nO valor vale até o fim da conversa com o chatbot e vai junto para o fluxo chamado em “Acionar outro fluxo”. Para guardar no cadastro do contato, use “Campo do contato”.",
+  enviar_mensagem:
+    "Quando adicionada essa ação no seu chatbot, ele envia o texto escrito diretamente para o contato no WhatsApp.\n\nUse {{nome}} para inserir o que o contato respondeu antes em “Pedir para digitar” ou outra resposta guardada.\n\nAs mensagens saem com um pequeno intervalo entre elas e só dentro da janela de envio do número, para proteger o WhatsApp de bloqueio.\n\nOs links do texto são conferidos: um endereço que não abre página (como javascript:) ou incompleto impede de ligar o fluxo, e um link com http:// mostra um aviso para trocar por https://.",
+  enviar_midia:
+    "Quando adicionada essa ação no seu chatbot, ele envia uma foto, um vídeo, um áudio ou um documento (como PDF) para o contato, com legenda opcional.\n\nO arquivo fica guardado no sistema e aparece na conversa como qualquer outra mídia enviada.",
+  enviar_template:
+    "Quando adicionada essa ação no seu chatbot, ele envia um modelo de mensagem aprovado pela Meta. É a única mensagem que o WhatsApp aceita depois de 24 horas sem o contato escrever.\n\nSó funciona em número oficial (API da Meta). Em número conectado por QR Code não há modelo: o fluxo segue por “Não enviado” e a conversa ganha uma nota com o motivo.\n\nModelos com variáveis não aparecem na lista, porque o fluxo não tem de onde tirar os valores.",
+  pedir_escolher:
+    "Quando adicionada essa ação no seu chatbot, ele envia a pergunta com as opções numeradas e espera a resposta do contato. Cada opção ganha uma saída própria no quadro.\n\nO contato pode responder com o número (“2”) ou com o texto da opção. Se responder outra coisa, o chatbot pede de novo, até o número de tentativas; depois segue por “Não respondeu certo”.\n\nEm número da API oficial da Meta, as opções viram botões: até 3 opções com até 20 letras aparecem como botões, e até 10 opções com até 24 letras aparecem numa lista. O contato só toca na opção. Em número conectado por QR Code, o próprio WhatsApp não mostra botões, então as opções vão numeradas.\n\nEm “Se o contato não responder”, você pode dar um prazo: passado o tempo sem resposta, o fluxo segue pela saída “Não respondeu a tempo” (por exemplo, para mandar um lembrete ou passar para a equipe). Sem prazo, o chatbot espera pelo tempo que for.",
+  pedir_digitar:
+    "Quando adicionada essa ação no seu chatbot, ele envia a pergunta e espera o contato responder.\n\nEm “O que a resposta precisa ser”, você escolhe o formato: qualquer texto, e-mail, telefone, CPF, CNPJ, número, data ou hora. Fora do formato, o chatbot pede de novo; depois das tentativas, segue por “Não respondeu certo”. O CPF e o CNPJ têm os dígitos conferidos, então número digitado errado não passa.\n\nA resposta fica guardada já arrumada (e-mail em minúsculas, CPF e CNPJ com pontuação, data em dia/mês/ano, hora em hh:mm) com o nome que você escolher, para usar depois numa mensagem, numa condição ou para gravar no cadastro com “Campo do contato”.\n\nCom “Usar a mensagem anterior”, o chatbot não faz a pergunta se a mensagem que o contato acabou de mandar já estiver no formato. Por exemplo: o cliente começa a conversa mandando o CPF.\n\nCom “Aceitar várias respostas”, você cria opções, cada uma com um formato pronto ou uma regra própria (expressão regular), e cada opção ganha uma saída no quadro. A resposta segue pela primeira opção que bate, na ordem da lista; se nenhuma bater, o chatbot pede de novo e, depois das tentativas, segue por “Nenhuma opção”. Use “Testar opções” para ver por onde uma resposta seguiria. A regra própria tem até 200 caracteres e não pode repetir um grupo que já tem repetição dentro, para não travar o atendimento.\n\nEm “Se o contato não responder”, você pode dar um prazo: passado o tempo sem resposta, o fluxo segue pela saída “Não respondeu a tempo” (por exemplo, para mandar um lembrete ou passar para a equipe). Sem prazo, o chatbot espera pelo tempo que for.",
+  enviar_formulario:
+    "Quando adicionada essa ação no seu chatbot, ele faz várias perguntas em sequência, uma por mensagem, e confere cada resposta pelo tipo: texto, e-mail, número, data, hora, telefone, CPF ou CNPJ (com os dígitos conferidos).\n\nCada resposta fica guardada com o nome escolhido e, se você marcar, também é gravada no nome, e-mail ou aniversário do contato.\n\nSe o contato errar todas as tentativas de uma pergunta, o fluxo segue por “Não respondeu certo”. Não é o formulário nativo do WhatsApp: funciona em qualquer número.\n\nEm “Se o contato não responder”, você pode dar um prazo para cada pergunta: passado o tempo sem resposta, o fluxo segue por “Não respondeu a tempo”. As respostas que já chegaram ficam guardadas.",
+  agendar_horario:
+    "Quando adicionada essa ação no seu chatbot, ele oferece os próximos horários livres de um tipo de atendimento da Agenda e marca o que o contato escolher.\n\nÉ a mesma agenda e a mesma marcação que o agente de IA usa. Se não houver horário livre, segue por “Sem horário livre”; se o contato não escolher nenhum, por “Não escolheu”.\n\nEm atendimentos que a equipe aprova antes, o horário fica reservado até a confirmação.\n\nEm “Se o contato não responder”, você pode dar um prazo, contado a partir da lista de horários: passado o tempo sem escolha, o fluxo segue por “Não respondeu a tempo”. Nada é marcado.",
+  negocio_funil:
+    "Quando adicionada essa ação no seu chatbot, ele põe o contato no funil de vendas: se o contato já tem um negócio aberto naquele funil, o negócio vai para a etapa escolhida; se não tem, nasce nela.\n\nO título do negócio novo pode usar {{variavel}}; vazio, usa o nome do contato.",
+  acionar_fluxo:
+    "Quando adicionada essa ação no seu chatbot, este fluxo termina aqui e o fluxo escolhido começa do início, levando as respostas já guardadas.\n\nEscolha este mesmo fluxo para “voltar ao menu”. Para montar submenus, crie o outro fluxo com “Iniciar por automação”: ele pode ficar ligado junto com este.\n\nO fluxo escolhido precisa estar ligado.",
+  transferir_equipe:
+    "Quando adicionada essa ação no seu chatbot, a conversa vai para a fila de atendimento humano e fica como Aguardando até alguém pegar. A Distribuição de atendimento escolhe quem pega.\n\nEm “Para quem”, escolha a equipe toda ou um setor. Com um setor, só os membros dele recebem a conversa, e ela aparece marcada com o setor na Inbox; se o atendente que já estava com ela não for do setor, ela volta para a fila.\n\nO agente de IA fica calado nesta conversa até uma pessoa devolvê-la (ou até vencer o prazo de devolução automática, se a empresa ligou um). A mensagem antes de transferir é opcional.\n\nEm “Mensagem de espera”, o chatbot pode mandar um aviso se ninguém responder dentro do tempo escolhido, até 3 vezes. Ele para assim que uma pessoa responder.",
+  transferir_atendente:
+    "Quando adicionada essa ação no seu chatbot, a conversa vai direto para uma pessoa da equipe. Em “Para quem”, você escolhe como ela é escolhida:\n\n• Um atendente específico: sempre a mesma pessoa, mesmo que ela esteja fora do ar.\n• Rodízio entre a equipe: um de cada vez, começando por quem está há mais tempo sem receber conversa.\n• Quem tem menos conversas abertas: quem está mais livre no momento.\n• Quem atendeu o contato antes: o último atendente que falou com esse contato neste número.\n\nNo rodízio e em menos conversas, só entra quem está disponível agora (com Presença ligada, dentro do horário e com vaga). Você pode marcar só alguns atendentes; sem ninguém marcado, valem as regras do número e do setor da conversa.\n\nSe ninguém puder receber (ninguém disponível, ninguém atendeu antes, ou o atendente escolhido saiu da equipe), a conversa vai para a fila da equipe como Aguardando e fica uma nota interna explicando o motivo.\n\nA mensagem antes de transferir e a mensagem de espera funcionam como em “Transferir para a equipe”.",
+  transferir_ia:
+    "Quando adicionada essa ação no seu chatbot, a conversa volta para o atendimento automático: o agente de IA deste número (ou o roteador) responde dali em diante, inclusive a mensagem que o contato acabou de mandar.\n\nSe não houver agente de IA ligado no número, o fluxo segue por “Sem agente de IA”. Ligue ali um “Transferir para a equipe”.\n\nO chatbot em si não usa IA; o agente gasta IA como sempre, dentro do orçamento dele.",
+  editar_etiquetas:
+    "Quando adicionada essa ação no seu chatbot, ele adiciona ou remove etiquetas do contato ou da conversa.\n\nNo contato, as etiquetas seguem com ele em todas as conversas, e as novas disparam as automações de “etiqueta adicionada”, como se uma pessoa as tivesse posto.\n\nNa conversa, valem só para este atendimento: aparecem em “Tags da conversa” e no filtro de Conversas. A conversa guarda até 20 etiquetas; o que passar disso não entra.",
+  campo_contato:
+    "Quando adicionada essa ação no seu chatbot, ele grava um valor no cadastro do contato: nome, e-mail, aniversário ou um campo personalizado.\n\nO valor costuma ser uma resposta do contato, como {{email}}. Se o valor não servir (e-mail sem @, data que não existe), o fluxo segue por “Valor inválido”, para você pedir de novo.",
+  criar_nota:
+    "Quando adicionada essa ação no seu chatbot, ele deixa uma nota interna na conversa. A equipe vê, o contato não.\n\nUse para resumir o que o cliente respondeu antes de passar para um atendente.",
+  pedir_avaliacao:
+    "Quando adicionada essa ação no seu chatbot, ele pede uma nota para o atendimento, de 1 a 5 ou de 0 a 10, e espera a resposta.\n\nO contato pode responder com o número ou com estrelas. A nota aparece na conversa como nota interna e entra na média da lista de chatbots.\n\nSe o contato não der uma nota válida depois das tentativas, segue por “Não avaliou”.",
+  pedir_feedback:
+    "Quando adicionada essa ação no seu chatbot, ele pede um comentário sobre o atendimento e espera a resposta.\n\nO comentário vai para a conversa como nota interna, junto da nota da avaliação.",
+  iniciar_followup:
+    "Quando adicionada essa ação no seu chatbot, ele coloca o contato num dos follow-ups publicados do CRM, os mesmos que o agente de IA usa.\n\nSe o contato já estiver em outro follow-up ativo, ele fica no que está, e a conversa ganha uma nota dizendo isso.",
+  notificar_atendente:
+    "Quando adicionada essa ação no seu chatbot, ele abre um aviso na Central de avisos, com som e notificação para a equipe, levando à conversa.\n\nAs respostas do contato entram só na nota da conversa, não no aviso.",
+  enviar_oferta:
+    "Quando adicionada essa ação no seu chatbot, ele envia uma promoção que vale até a data que você escolher.\n\nAté esse dia (inclusive, no fuso da empresa), a mensagem sai com a linha “Válida até” no fim; se preferir pôr a data no meio do texto, escreva {{validade}} onde ela deve aparecer.\n\nDepois da data, nada é enviado e o fluxo segue por “Oferta vencida”: ligue ali outra mensagem (“essa promoção acabou, mas temos…”) ou a passagem para a equipe. Sem nada ligado, o fluxo termina.\n\nSem data, a oferta não vence e funciona como uma mensagem comum.",
+  enviar_pagamento:
+    "Quando adicionada essa ação no seu chatbot, ele envia ao contato o link de pagamento numa mensagem arrumada: o que está sendo cobrado, o valor e o link. Se você colocar o Pix copia e cola, ele vai numa mensagem separada, para o contato copiar inteiro.\n\nUse o link do Mercado Pago, Asaas, PagSeguro, da sua loja ou de qualquer plataforma. O link aceita {{variavel}}: por exemplo, o {{link_checkout}} que chega numa automação de venda, ou um link guardado pelo WebHook.\n\nO chatbot não gera a cobrança nem confere se foi pago. Fica uma nota interna na conversa dizendo que o link foi enviado.\n\nSe o link e o Pix ficarem vazios (uma variável sem valor), nada é enviado e o fluxo segue por “Sem link”.",
+  etapa_do_funil:
+    "Quando adicionada essa condição no seu chatbot, ele olha os negócios abertos do contato e segue por “Está” se ele tiver negócio no funil escolhido, numa das etapas marcadas (ou em qualquer etapa, se nenhuma estiver marcada). Senão, segue por “Não está”.\n\nUse para tratar diferente quem já está em negociação, quem já pagou ou quem ainda não entrou no funil.",
+  reagendar_horario:
+    "Quando adicionada essa ação no seu chatbot, ele acha o próximo compromisso do contato na Agenda e oferece os horários livres do mesmo tipo de atendimento e da mesma agenda. O contato escolhe e o compromisso muda de horário: a Agenda confere de novo se o horário está livre, avisa a agenda conectada e registra a mudança.\n\nSe o horário escolhido for ocupado no meio do caminho, o chatbot oferece os livres de novo. Sem compromisso futuro, segue por “Sem agendamento”; sem horário livre, por “Sem horário livre”.\n\nEm “Se o contato não responder”, você pode dar um prazo, contado a partir da lista de horários: passado o tempo sem escolha, o fluxo segue por “Não respondeu a tempo”. Nada é marcado.",
+  cancelar_agendamento:
+    "Quando adicionada essa ação no seu chatbot, ele cancela o próximo compromisso do contato na Agenda, do mesmo jeito que o botão da tela: o horário volta a ficar livre e a agenda conectada é avisada. O horário cancelado fica em {{agendamento}}, para você confirmar numa mensagem.\n\nSem compromisso futuro, segue por “Sem agendamento”. Para pedir confirmação antes de cancelar, coloque um “Pedir para escolher” na frente.",
+  enviar_localizacao:
+    "Quando adicionada essa ação no seu chatbot, ele envia o nome do lugar, o endereço e o link do mapa, que abre direto no celular do contato. Com latitude e longitude, o mapa cai no ponto exato.\n\nO pino de localização do WhatsApp não é usado: a mensagem com o link funciona em qualquer número.",
+  enviar_contato:
+    "Quando adicionada essa ação no seu chatbot, ele envia um cartão de contato (nome e telefone), o mesmo que a Inbox manda. O contato salva com um toque, por exemplo o número do financeiro ou de um vendedor.",
+  enviar_produto:
+    "Quando adicionada essa ação no seu chatbot, ele envia um produto do Catálogo: a primeira foto com o nome, o preço e a descrição. Tudo é lido na hora do envio, então preço mudado no Catálogo já sai certo.\n\nProduto desativado ou apagado não é enviado, e fica uma nota interna para a equipe.",
+  visibilidade_conversa:
+    "Quando adicionada essa ação no seu chatbot, ela tira a conversa da caixa de entrada sem fechar o atendimento, ou a mostra de novo.\n\nOculta, a conversa some das abas da tela de Conversas e aparece no filtro “Ocultas”. Nada é apagado: o histórico, o responsável e o funil continuam iguais.\n\n“Oculta até a próxima mensagem do contato” volta sozinha para a caixa de entrada quando o contato escrever. “Oculta” fica oculta até alguém mostrar, pelo olho no topo da conversa ou por outro chatbot.\n\nUse, por exemplo, para tirar da frente da equipe a conversa que o chatbot já resolveu, sem finalizá-la.",
+  privar_liberar:
+    "Quando adicionada essa ação no seu chatbot, ela torna a conversa privada ou a libera de novo. Privada, a conversa só aparece para o atendente responsável, para os gerentes e administradores; os outros atendentes não a veem, nem as mensagens e notas dela, mesmo que a empresa deixe todos verem tudo.\n\nUse depois de transferir para um atendente específico: sem responsável, só os gestores enxergam a conversa até alguém assumi-la.\n\nLiberar devolve a conversa à visibilidade da empresa. A mudança fica registrada na auditoria e numa nota da conversa.",
+  fluxo_de_espera:
+    "Quando adicionada essa ação no seu chatbot, ela liga ou desliga as mensagens de espera desta conversa: as que “Transferir para a equipe” e “Transferir p/ atendente” mandam enquanto ninguém responde.\n\nDesligar para as que estão programadas. Ligar volta a programá-las, se ainda faltarem vezes e ninguém da equipe tiver respondido.\n\nQuando um atendente aciona um fluxo, ou uma automação começa um, elas já param sozinhas: nesses fluxos, use “Ligar” para mantê-las.",
+  aguardar_intervalo:
+    "Quando adicionada essa ação no seu chatbot, o fluxo espera o tempo escolhido (segundos, minutos, horas ou dias) antes de seguir.\n\nVocê escolhe o que fazer se o contato mandar mensagem durante a espera: seguir o fluxo na hora, ou continuar esperando (a mensagem fica para a equipe ver).",
+  aguardar_ate:
+    "Quando adicionada essa ação no seu chatbot, o fluxo pausa até o próximo horário marcado (por exemplo, amanhã às 9h, só em dias úteis) e segue dali.\n\nEm “Numa data”, ele espera um dia certo: uma data que você escolhe, ou a que o contato respondeu (por exemplo, a data da consulta num Pedir para digitar, ou o horário marcado pelo Agendar horário). Dá para seguir alguns dias antes ou depois — “1 dia antes, às 9h” é o lembrete da véspera. Se a data já passou, faltou ou está a mais de um ano, o fluxo segue na hora por “Sem data válida”.\n\nUsa o fuso horário da empresa. Como em “Aguardar intervalo”, você escolhe o que fazer se o contato escrever durante a espera.",
+  bloquear_contato:
+    "Quando adicionada essa ação no seu chatbot, ele bloqueia o contato e finaliza a conversa: nem chatbot, nem agente de IA, nem campanha escrevem mais para ele.\n\nA mensagem, se houver, sai antes do bloqueio. O bloqueio fica registrado na auditoria e numa nota da conversa.",
+  excluir_contato:
+    "Quando adicionada essa ação no seu chatbot, ele abre o pedido de exclusão dos dados do contato (LGPD), que um administrador aprova em Configurações › LGPD.\n\nO chatbot nunca apaga dados sozinho: uma frase mal entendida não pode destruir o histórico de um cliente. Um pedido aberto por contato basta; repetir não abre outro.",
+  finalizar_conversa:
+    "Quando adicionada essa ação no seu chatbot, ele finaliza a conversa automaticamente, com uma mensagem de despedida opcional antes.\n\nUse no fim dos caminhos em que o cliente já foi atendido, para a conversa sair da fila da equipe.",
+  webhook:
+    "Quando adicionada essa ação no seu chatbot, ele chama um endereço de fora (n8n, Make, o sistema da sua loja) com os dados do contato e as respostas, e segue por “Deu certo” ou “Falhou”.\n\nVocê escolhe partes da resposta para guardar em variáveis, como pedido.status. Segredo e autorização ficam guardados cifrados.\n\nO endereço precisa começar com https://. Se o WebHook falhar e não houver ligação em “Falhou”, o fluxo termina ali.",
+  bloco_de_notas:
+    "Quando adicionado no seu chatbot, o bloco de notas serve só para documentar o fluxo: explicar um caminho, deixar um lembrete para a equipe.\n\nEle aparece só aqui no quadro. O contato nunca vê, e o fluxo não passa por ele.",
+};
+
+/** Parágrafos do texto da ajuda (já traduzido pela tela). */
+export function paragrafosDaAjuda(texto: string): string[] {
+  return texto
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+/** O que cada variável exportada guarda — textos fixos, traduzidos na tela. */
+export const DESCRICOES_DE_VARIAVEL = {
+  produto: "Nome do produto da venda (quando a automação vem de uma venda).",
+  link_checkout: "Link de pagamento ou do carrinho.",
+  valor: "Valor da venda ou do negócio.",
+  evento_da_venda: "O que aconteceu na plataforma de vendas (aprovada, abandonada…).",
+  pix_copia_e_cola: "O Pix copia e cola da compra que ainda não foi paga (quando a plataforma manda).",
+  agendamento: "Quando era o compromisso cancelado.",
+  agendamento_anterior: "Quando era o compromisso antes de mudar.",
+  digitado: "O que o contato digitou.",
+  resposta_do_formulario: "Resposta da pergunta:",
+  horario: "O horário marcado, como o contato leu.",
+  horario_inicio: "O mesmo horário, em formato de data e hora.",
+  agendamento_status: "“confirmado” ou “aguardando confirmação”.",
+  avaliacao: "A nota que o contato deu.",
+  feedback: "O comentário que o contato escreveu.",
+  webhook_status: "O código de resposta do endereço chamado (200, 404…).",
+  campo_do_webhook: "Valor deste caminho na resposta:",
+} as const;
+
+export type VariavelExportada = {
+  nome: string;
+  descricao: keyof typeof DESCRICOES_DE_VARIAVEL;
+  /** Dado que quem montou o fluxo escreveu (a pergunta, o caminho do JSON): mostrado como está, sem tradução. */
+  detalhe?: string;
+};
+
+/** As {{variáveis}} que o passo deixa guardadas, já com os nomes que quem montou escolheu. */
+export function variaveisDoPasso(tipo: TipoDePasso, dados: unknown): VariavelExportada[] {
+  switch (tipo) {
+    case "inicio_automacao":
+      return [
+        { nome: "produto", descricao: "produto" },
+        { nome: "link_checkout", descricao: "link_checkout" },
+        { nome: "valor", descricao: "valor" },
+        { nome: "evento_da_venda", descricao: "evento_da_venda" },
+        { nome: "pix_copia_e_cola", descricao: "pix_copia_e_cola" },
+      ];
+    case "pedir_digitar":
+      return [{ nome: lerConfig("pedir_digitar", dados).variavel, descricao: "digitado" }];
+    case "enviar_formulario":
+      return lerConfig("enviar_formulario", dados).perguntas.map((q) => ({
+        nome: q.variavel,
+        descricao: "resposta_do_formulario" as const,
+        ...(q.pergunta ? { detalhe: q.pergunta } : {}),
+      }));
+    case "cancelar_agendamento":
+      return [{ nome: "agendamento", descricao: "agendamento" }];
+    case "reagendar_horario":
+      return [
+        { nome: "horario", descricao: "horario" },
+        { nome: "agendamento_anterior", descricao: "agendamento_anterior" },
+        { nome: "agendamento_status", descricao: "agendamento_status" },
+      ];
+    case "agendar_horario":
+      return [
+        { nome: "horario", descricao: "horario" },
+        { nome: "horario_inicio", descricao: "horario_inicio" },
+        { nome: "agendamento_status", descricao: "agendamento_status" },
+      ];
+    case "pedir_avaliacao":
+      return [{ nome: "avaliacao", descricao: "avaliacao" }];
+    case "pedir_feedback":
+      return [{ nome: "feedback", descricao: "feedback" }];
+    case "webhook":
+      return [
+        { nome: "webhook_status", descricao: "webhook_status" },
+        ...lerConfig("webhook", dados).campos.map((c) => ({
+          nome: c.variavel,
+          descricao: "campo_do_webhook" as const,
+          detalhe: c.caminho,
+        })),
+      ];
+    default:
+      return [];
+  }
+}

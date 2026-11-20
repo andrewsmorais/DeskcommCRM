@@ -35,6 +35,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
+import { lerGuardarHistorico } from "@/lib/channels/acervo-do-historico";
 import { assertWahaConnectionIdle, ChannelConnectionError, renomearSessaoParaOTeto } from "@/lib/channels/connect-waha";
 import { nomeDaSessaoCabeNoWaha, podeRenomearSessaoDoWaha } from "@/lib/channels/nome-da-sessao";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -93,8 +94,8 @@ export async function POST(
   // arquivado, e exigir a coluna aqui derrubaria a reconexão inteira — que é o
   // socorro de quem está com o número fora do ar.
   const { data: sessionRaw } = await queryTolerantToMissingArchived(
-    () => buscar(`id, waha_session_name, status, phone_number, ${ARCHIVED_AT}`),
-    () => buscar("id, waha_session_name, status, phone_number"),
+    () => buscar(`id, waha_session_name, status, phone_number, metadata, ${ARCHIVED_AT}`),
+    () => buscar("id, waha_session_name, status, phone_number, metadata"),
   );
   const session = sessionRaw as {
     id: string;
@@ -102,6 +103,7 @@ export async function POST(
     status?: string | null;
     phone_number?: string | null;
     archived_at?: string | null;
+    metadata?: Record<string, unknown> | null;
   } | null;
   if (!session) return fail("not_found", t("Canal não encontrado."), 404, { requestId });
   if (session.archived_at) {
@@ -171,7 +173,12 @@ export async function POST(
     // Só no modo forçado: descartar a credencial é irreversível — obriga a
     // reescanear o QR mesmo que ela ainda estivesse boa.
     if (force) await waha.logoutSession(nomeParaOTransporte);
-    const remote = (await waha.startSession(nomeParaOTransporte)) as { status?: string };
+    // Com a opção de acervo ligada nesta conexão, o start também converge o
+    // store (é o caminho de ligar depois, sem re-parear o número).
+    const opcoesAcervo = lerGuardarHistorico(session.metadata) ? { guardarHistorico: true } : undefined;
+    const remote = (await (opcoesAcervo
+      ? waha.startSession(nomeParaOTransporte, opcoesAcervo)
+      : waha.startSession(nomeParaOTransporte))) as { status?: string };
     const nextStatus = remote.status ?? "STARTING";
     const patch = { status: nextStatus, status_reason: null, last_status_change_at: new Date().toISOString(), consecutive_health_fails: 0 };
     const { error: syncError } = await supabase.from("channel_sessions").update(patch).eq("organization_id", activeOrg.orgId).eq("id", id);

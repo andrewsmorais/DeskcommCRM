@@ -78,8 +78,11 @@ export function AuthProvider({
       refreshing,
       signOut: async () => {
         resetRealtimeAuthentication();
+        // O aviso deste navegador sai junto com a sessão (auditoria 18/11, nº 20).
+        const { encerrarPushDesteNavegador } = await import("@/lib/notifications/push_client");
+        const endpoint = await encerrarPushDesteNavegador();
         const { signOut } = await import("@/app/actions/auth/signOut");
-        await signOut();
+        await signOut(endpoint ?? undefined);
       },
     }),
     [user, activeOrg, refreshing],
@@ -94,6 +97,16 @@ export function useAuth(): AuthCtx {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
+}
+
+/** As capacidades da organização (`telefonia`, …). Fora do provider devolve vazio: oferecer a menos é o lado seguro. */
+export function useCapacidadesLigadas(): readonly string[] {
+  return useContext(Ctx)?.activeOrg?.capacidades_ligadas ?? [];
+}
+
+/** Id da organização ativa. Fora do provider devolve `null`: quem só enriquece a tela (sugestões, campos) some em vez de quebrar. */
+export function useOrgAtivaId(): string | null {
+  return useContext(Ctx)?.activeOrg?.orgId ?? null;
 }
 
 export function useUser(): AuthUser {
@@ -112,6 +125,14 @@ const ACTION_MIN_ROLE: Record<string, Role> = {
   "inbox.view": "viewer",
   "inbox.reply": "agent",
   "inbox.claim": "agent",
+  // Privar/liberar qualquer conversa; o atendente só a que é dele (a rota
+  // app/api/v1/conversations/[id]/privacy confere as duas coisas).
+  "inbox.privacy.any": "manager",
+  // Ocultar/mostrar a conversa na caixa de entrada (migration 0510); a rota
+  // app/api/v1/conversations/[id]/visibilidade exige o mesmo papel.
+  "inbox.visibility": "agent",
+  // Ler quem participa da conversa (atendimento conjunto, migration 0544).
+  "inbox.participantes.view": "agent",
   "contact.view": "viewer",
   "contact.create": "agent",
   "contact.update": "agent",

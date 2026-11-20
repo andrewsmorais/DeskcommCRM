@@ -3,12 +3,14 @@ import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { type Role } from "@/lib/auth/types";
 import {
   Bell,
+  DeviceMobile,
   BookOpen,
   Brain,
   Buildings,
   CalendarBlank,
   ChartBar,
   ChartLineUp,
+  ChatsCircle,
   ClipboardText,
   ClockCountdown,
   ClockCounterClockwise,
@@ -58,12 +60,14 @@ export { NAV_GROUPS, GRUPO_NO_RODAPE } from "./catalogo";
 export type { NavGroup, NavGroupId } from "./catalogo";
 const ICONS = {
   Bell,
+  DeviceMobile,
   BookOpen,
   Brain,
   Buildings,
   CalendarBlank,
   ChartBar,
   ChartLineUp,
+  ChatsCircle,
   ClipboardText,
   ClockCountdown,
   ClockCounterClockwise,

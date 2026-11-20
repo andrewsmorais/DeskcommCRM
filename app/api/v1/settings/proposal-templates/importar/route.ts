@@ -5,10 +5,15 @@ import { type NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { env } from "@/lib/env";
 import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/credentials";
-import { LlmBudgetExceededError, LlmModelNotEnabledError, LlmProviderUnknownError } from "@/lib/agent-engine/edge/llm/run-model-call";
+import {
+  LlmBudgetExceededError,
+  LlmModelNotEnabledError,
+  LlmProviderUnknownError,
+} from "@/lib/agent-engine/edge/llm/run-model-call";
 import { getSkillsPool } from "@/lib/ai/skills/db";
 import { PdfExtractError, extractPdfText } from "@/lib/ai/rag/extractors/pdf";
 import { extractMarkdownText } from "@/lib/ai/rag/extractors/markdown";
@@ -30,6 +35,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!authz.ok) return authz.response;
   const desligada = await sePropostasDesligadas(authz.org.orgId, requestId);
   if (desligada) return desligada;
+  // Chama o modelo da chave da plataforma: sem assinatura ativa, não chama.
+  const semAssinatura = await exigirAssinaturaAtiva(authz.org.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
 
   let form: FormData;
@@ -39,16 +47,28 @@ export async function POST(req: NextRequest): Promise<Response> {
     return fail("invalid_request", t("Falha ao processar o envio do arquivo."), 400, { requestId });
   }
   const arquivo = form.get("file");
-  if (!(arquivo instanceof File)) return fail("invalid_request", t("Nenhum arquivo foi enviado."), 400, { requestId });
-  if (arquivo.size > TAMANHO_MAXIMO) return fail("payload_too_large", t("O arquivo passa de 5 MB."), 413, { requestId });
+  if (!(arquivo instanceof File))
+    return fail("invalid_request", t("Nenhum arquivo foi enviado."), 400, { requestId });
+  if (arquivo.size > TAMANHO_MAXIMO)
+    return fail("payload_too_large", t("O arquivo passa de 5 MB."), 413, { requestId });
 
   const extensaoBruta = arquivo.name.split(".").pop()?.toLowerCase() ?? "";
   if (extensaoBruta === "docx" || extensaoBruta === "doc") {
-    return fail("unsupported_media_type", t("Não leio Word diretamente — no Word use \"Salvar como\" → PDF e envie o PDF."), 415, { requestId });
+    return fail(
+      "unsupported_media_type",
+      t('Não leio Word diretamente — no Word use "Salvar como" → PDF e envie o PDF.'),
+      415,
+      { requestId },
+    );
   }
   const extensao = resolverExtensao(arquivo.name, arquivo.type);
   if (extensao !== "pdf" && extensao !== "md" && extensao !== "txt") {
-    return fail("unsupported_media_type", t("Envie a proposta em PDF, Markdown (.md) ou texto (.txt)."), 415, { requestId });
+    return fail(
+      "unsupported_media_type",
+      t("Envie a proposta em PDF, Markdown (.md) ou texto (.txt)."),
+      415,
+      { requestId },
+    );
   }
 
   const buffer = Buffer.from(await arquivo.arrayBuffer());
@@ -57,12 +77,26 @@ export async function POST(req: NextRequest): Promise<Response> {
     texto = extensao === "pdf" ? await extractPdfText(buffer) : extractMarkdownText(buffer);
   } catch (erro) {
     if (erro instanceof PdfExtractError) {
-      return fail("validation_failed", t("Não encontrei texto neste arquivo. Se for um PDF escaneado, exporte a proposta original como PDF com texto."), 422, { requestId });
+      return fail(
+        "validation_failed",
+        t(
+          "Não encontrei texto neste arquivo. Se for um PDF escaneado, exporte a proposta original como PDF com texto.",
+        ),
+        422,
+        { requestId },
+      );
     }
     return fail("validation_failed", t("Não consegui ler este arquivo."), 422, { requestId });
   }
   if (texto.trim().length < 50) {
-    return fail("validation_failed", t("Não encontrei texto neste arquivo. Se for um PDF escaneado, exporte a proposta original como PDF com texto."), 422, { requestId });
+    return fail(
+      "validation_failed",
+      t(
+        "Não encontrei texto neste arquivo. Se for um PDF escaneado, exporte a proposta original como PDF com texto.",
+      ),
+      422,
+      { requestId },
+    );
   }
 
   try {
@@ -73,7 +107,12 @@ export async function POST(req: NextRequest): Promise<Response> {
       tenantId: authz.org.orgId,
     });
     if (!modelo) return ok({ disponivel: true, modelo: null, erros: [] }, { requestId });
-    const erros = validarModelo({ nome: modelo.nome, descricao: null, sections: modelo.sections, sectionOrder: modelo.sectionOrder });
+    const erros = validarModelo({
+      nome: modelo.nome,
+      descricao: null,
+      sections: modelo.sections,
+      sectionOrder: modelo.sectionOrder,
+    });
     void audit({
       action: "proposal_template.imported",
       actorUserId: authz.user.id,
@@ -85,7 +124,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
     return ok({ disponivel: true, modelo, erros }, { requestId });
   } catch (err) {
-    if (err instanceof LlmBudgetExceededError || err instanceof LlmProviderUnknownError || err instanceof LlmModelNotEnabledError) {
+    if (
+      err instanceof LlmBudgetExceededError ||
+      err instanceof LlmProviderUnknownError ||
+      err instanceof LlmModelNotEnabledError
+    ) {
       return ok({ disponivel: false, motivo: err.message }, { requestId });
     }
     throw err;

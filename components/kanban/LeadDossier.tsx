@@ -8,13 +8,17 @@ import { useActiveOrg, useUser } from "@/hooks/auth/AuthProvider";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLeadTimeline } from "@/hooks/leads/useLeadTimeline";
+import { useContatosRelacionados } from "@/hooks/leads/useContatosRelacionados";
 import type { Lead } from "@/lib/types/leads";
 import { ContatoDoNegocio } from "./ContatoDoNegocio";
+import { ConversasDosNumeros } from "./ConversasDosNumeros";
+import { PessoasRelacionadas } from "./PessoasRelacionadas";
 import { ConversaNoDossie } from "./ConversaNoDossie";
 import { LeadFieldsForm } from "./LeadFieldsForm";
 import { ScoreSlot } from "./ScoreSlot";
 import { LeadTimeline } from "./LeadTimeline";
 import { PropostasDoNegocio } from "./PropostasDoNegocio";
+import { TarefasDoNegocio } from "./TarefasDoNegocio";
 import { OwnerBadge } from "./OwnerBadge";
 import { resolveLeadOwner } from "@/lib/kanban/owner";
 import { formatValorDoNegocio, MOEDA_PADRAO } from "@/lib/money";
@@ -62,6 +66,11 @@ export function LeadDossier({
   const t = useT();
   const campos = useRef<HTMLDivElement | null>(null);
   const timeline = useLeadTimeline(open ? lead.id : null, lead.contact_id);
+  // As pessoas relacionadas decidem se a seção dos números existe. É o MESMO
+  // hook (mesma chave de cache) que a lista de "Pessoas relacionadas" usa:
+  // não é consulta a mais. Negócio de um número só fica igual ao de antes.
+  const relacionadas = useContatosRelacionados(open ? lead.id : null);
+  const temPessoaRelacionada = (relacionadas.data?.data.length ?? 0) > 0;
   const owner = resolveLeadOwner(lead, ownerNames);
   const score = lead.score ?? null;
   // N1 — o atalho "Nova proposta" é manager+ (mesmo gate do envio, mesma
@@ -71,6 +80,11 @@ export function LeadDossier({
   const activeOrg = useActiveOrg();
   const podeCriarProposta =
     user.is_platform_admin || (activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager) || false;
+  // Tarefas são `agent`+, a mesma régua da tela de Tarefas e da rota — e o
+  // suporte temporário só lê, como lá (`requireSupportWrite`).
+  const podeEditarTarefas =
+    (user.is_platform_admin && !user.support) ||
+    (activeOrg ? ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent : false);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -135,7 +149,7 @@ export function LeadDossier({
           </p>
         )}
 
-        <ConversaNoDossie conversa={lead.conversa} />
+        <ConversaNoDossie conversa={lead.conversa} contactId={lead.contact_id} phone={lead.contact_phone} />
 
         {/* Os dados do CLIENTE: telefone e e-mail numa aba, links (Instagram,
             site, Google Meu Negócio…) na outra. Vêm do contato, não do lead. */}
@@ -144,7 +158,28 @@ export function LeadDossier({
             {t("Contato")}
           </h3>
           <ContatoDoNegocio contactId={lead.contact_id} pipelineId={pipelineId} />
+          <PessoasRelacionadas leadId={open ? lead.id : null} />
         </section>
+
+        {/* Os OUTROS NÚMEROS DO CLIENTE: as conversas e as ligações das
+            "Pessoas relacionadas". Só aparece quando há relacionado. */}
+        {temPessoaRelacionada && (
+          <section className="border-b border-border py-3" data-secao="numeros-do-negocio">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+              {t("Conversas e ligações dos números")}
+            </h3>
+            <ConversasDosNumeros leadId={open ? lead.id : null} />
+          </section>
+        )}
+
+        {/* As tarefas ANTES da linha do tempo: a timeline conta o que já
+            aconteceu, a tarefa é o que ainda falta fazer. */}
+        <TarefasDoNegocio
+          leadId={lead.id}
+          contactId={lead.contact_id}
+          podeEditar={podeEditarTarefas}
+          aberto={open}
+        />
 
         {/* ② timeline */}
         <section className="flex-1 py-3">

@@ -46,6 +46,7 @@ import { devolverAtendimentoAoAgente } from "@/lib/escalacao/retomada";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { autorizaCron } from "@/lib/auth/cron-auth";
+import { recursoOcioso } from "@/lib/cron/piso-ocioso";
 
 export const dynamic = "force-dynamic";
 
@@ -184,6 +185,8 @@ export async function devolverHandoffsVencidos(
     // pé. Ninguém atende dos dois lados, e a rodada reportava `falhas: 0` sem
     // auditar nada: um defeito real com cara de disputa benigna.
     if (r.erro === "assignment_conflict" && r.detalhe === undefined) continue;
+    // "Sempre atendimento humano" (0540): recusa esperada, não falha.
+    if (r.erro === "contato_sempre_humano") continue;
     falhas++;
     logger.error("[handoff-devolucao] devolução falhou", {
       conversation_id: conversa.id,
@@ -203,6 +206,11 @@ async function handle(req: NextRequest): Promise<Response> {
   if (!autorizaCron(req)) {
     return fail("forbidden", "Cron secret missing or invalid.", 403, { requestId });
   }
+
+  // O PISO OCIOSO (#3731): sem trabalho deste recurso na instalação, a rodada
+  // sai antes de tocar o PostgREST. O retrato é UMA consulta por janela para
+  // todas as rotas (`lib/cron/piso-ocioso.ts`); na dúvida, a rota roda.
+  if (await recursoOcioso("devolucao_de_handoff")) return ok({ pulado: "recurso_ocioso" }, { requestId });
 
   let resultado: DevolucaoResultado;
   try {

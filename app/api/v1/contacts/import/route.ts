@@ -1,6 +1,7 @@
 import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
- * POST /api/v1/contacts/import — importa contatos de planilha CSV.
+ * POST /api/v1/contacts/import — importa contatos de planilha CSV ou de
+ * arquivo de contatos do celular (.vcf, vCard).
  *
  * Formato aceito: CSV RFC 4180 com linha de cabeçalho (delimitador detectado
  * automaticamente entre vírgula, ponto-e-vírgula e tabulação — Excel pt-BR
@@ -34,14 +35,18 @@ import {
   mapLinha,
   parseCsv,
 } from "@/lib/contacts/csv";
+import { pareceVcf, vcfParaLinhas } from "@/lib/contacts/vcf";
 import { contactCreateSchemaDoPais } from "@/lib/schemas";
 import { perfilDaOrganizacao } from "@/lib/legal/perfil-do-pais";
+import { contatosDonosDosExtras } from "@/lib/channels/contato-por-telefone";
 import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 const SOURCE_IMPORT_CSV = "import_csv";
+/** Contato que veio de um .vcf (o arquivo de contatos do celular). */
+const SOURCE_IMPORT_VCF = "import_vcf";
 
 interface LinhaErro {
   linha: number;
@@ -91,14 +96,19 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const nome = file.name ?? "";
+  // O .vcf vira as mesmas linhas da planilha (`lib/contacts/vcf.ts`) e segue
+  // pelo mesmo caminho: validação, duplicados, limite e resumo por linha.
+  const ehVcf = pareceVcf(nome, file.type);
+  const origem = ehVcf ? SOURCE_IMPORT_VCF : SOURCE_IMPORT_CSV;
   const tipoOk =
+    ehVcf ||
     nome.toLowerCase().endsWith(".csv") ||
     file.type === "text/csv" ||
     file.type === "application/vnd.ms-excel";
   if (!tipoOk) {
     return fail(
       "validation_failed",
-      t("Formato não suportado — envie um arquivo .csv. No Excel use 'Salvar como' → 'CSV UTF-8'."),
+      t("Formato não suportado — envie um arquivo .csv ou .vcf. No Excel use 'Salvar como' → 'CSV UTF-8'."),
       422,
       { requestId },
     );
@@ -119,9 +129,14 @@ export async function POST(req: NextRequest): Promise<Response> {
     return fail("validation_failed", t(decodificado.erro), 422, { requestId });
   }
   const text = decodificado.texto;
-  const rows = parseCsv(text);
+  const rows = ehVcf ? vcfParaLinhas(text) : parseCsv(text);
   if (rows.length < 2) {
-    return fail("validation_failed", t("CSV vazio ou sem linhas de dados."), 422, { requestId });
+    return fail(
+      "validation_failed",
+      ehVcf ? t("Nenhum contato encontrado no arquivo .vcf.") : t("CSV vazio ou sem linhas de dados."),
+      422,
+      { requestId },
+    );
   }
   const header = rows[0]!;
   const mapeado = mapHeader(header, t, doc);
@@ -161,7 +176,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       errors.push({ linha, motivo: t(doc.mensagemInvalido + ": ") + `"${contato.cpf}"` });
       continue;
     }
-    const parsed = schemaDoPais.safeParse({ ...contato, source: SOURCE_IMPORT_CSV });
+    const parsed = schemaDoPais.safeParse({ ...contato, source: origem });
     if (!parsed.success) {
       const primeiro = parsed.error.issues[0];
       errors.push({ linha, motivo: primeiro?.message ?? t("dados inválidos") });
@@ -182,7 +197,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // ─── Pré-filtro de duplicados contra o banco (uma query por identificador) ──
   //
-  // Os índices únicos são parciais (excluem mesclados/anonimizados), então a
+  // Os índices únicos são parciais (excluem mesclados), então a
   // busca espelha o WHERE do índice — filtrar pelo que o índice não cobre
   // produziria "duplicado" imaginário.
   const phones = candidatos
@@ -199,6 +214,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       .from("contacts")
       .select("phone_number")
       .eq("organization_id", orgId)
+      .is("is_merged_into", null)
       .not("phone_number", "is", null)
       .in("phone_number", lookup);
     for (const r of data ?? []) {
@@ -206,12 +222,19 @@ export async function POST(req: NextRequest): Promise<Response> {
         existentes.add(`tel:${v}`);
       }
     }
+    // Número que é EXTRA de uma ficha viva já é contato da org: conta como
+    // duplicado aqui, em vez de chegar ao insert e cair no 23505 do banco.
+    const donosDosExtras = await contatosDonosDosExtras(supabase, orgId, lookup);
+    for (const numero of donosDosExtras.keys()) {
+      for (const v of phoneLookupVariants(numero)) existentes.add(`tel:${v}`);
+    }
   }
   if (emails.length > 0) {
     const { data } = await supabase
       .from("contacts")
       .select("email_normalized")
       .eq("organization_id", orgId)
+      .is("is_merged_into", null)
       .in("email_normalized", emails.map((e) => e.toLowerCase()));
     for (const r of data ?? []) existentes.add(`email:${(r as { email_normalized: string }).email_normalized}`);
   }
@@ -243,7 +266,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       phone_number: contato.phone_number ?? null,
       birthdate: contato.birthdate ?? null,
       tags: contato.tags ?? [],
-      source: SOURCE_IMPORT_CSV,
+      source: origem,
       source_metadata: {},
       consent: {},
     };
@@ -283,7 +306,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         p_entity_kind: "contact",
         p_entity_id: (criado as { id: string }).id,
         p_payload: {
-          source: SOURCE_IMPORT_CSV,
+          source: origem,
           has_email: !!contato.email,
           has_phone: !!contato.phone_number,
           has_cpf: !!contato.cpf,

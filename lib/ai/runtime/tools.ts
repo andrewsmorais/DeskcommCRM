@@ -245,7 +245,12 @@ function wrapMcpTool(
           return { permitido: false, motivo: veredito.motivo, mensagem: explicacao };
         }
 
-        const result = await def.handler(argsRecord as never, input.ctx);
+        // O contato do turno entra no ctx aqui, o único ponto que tem `input`:
+        // quem não tem contato de turno (rota HTTP, MCP externo) segue igual.
+        const result = await def.handler(argsRecord as never, {
+          ...input.ctx,
+          ...(input.contatoDoTurno ? { contatoDoTurno: input.contatoDoTurno } : {}),
+        });
 
         // Capture handoff signal so the runtime can short-circuit the loop.
         if (def.name === HANDOFF_TOOL_NAME) {

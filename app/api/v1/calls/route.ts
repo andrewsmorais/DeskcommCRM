@@ -21,6 +21,7 @@
  * campo. A ponte WebRTC pro navegador do atendente não está implementada
  * neste esqueleto.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
@@ -28,11 +29,13 @@ import type { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { audit } from "@/lib/audit";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { requireRole } from "@/lib/auth/require-role";
 import { createCallSchema, listCallsQuerySchema } from "@/lib/schemas/calls";
 import { validateRequest } from "@/lib/schemas/_validate";
 import { createClient } from "@/lib/supabase/server";
 import { originateCall } from "@/lib/voip/ariClient";
+import { troncoDaInstalacaoLiberado } from "@/lib/voip/tronco-da-instalacao";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +137,15 @@ export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("manager", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
+  // Ligações e Cold Call são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user: authUser, org: activeOrg } = authz;
+
+  // A ligação abre uma sessão de voz da IA (chave da plataforma quando a
+  // organização não tem a dela): sem assinatura ativa, não origina.
+  const semAssinatura = await exigirAssinaturaAtiva(activeOrg.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
 
   let input;
   try {
@@ -151,15 +162,26 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const supabase = await createClient();
 
-  // Trunk da organização (Configurações > Trunk SIP) — fallback pro env pra
-  // quem ainda não cadastrou nada na tela.
+  // Trunk da organização (Configurações > Trunk SIP). O do env (o da
+  // instalação) só vale quando a instalação é de uma organização só, ou o
+  // operador ligou VOIP_TRUNK_COMPARTILHADO (lib/voip/tronco-da-instalacao.ts).
   const { data: trunkConfig } = await supabase
     .from("voip_trunk_settings")
     .select("endpoint_name, is_active")
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
+  // O nome salvo pela tela não traz a tecnologia ("org-<uuid>-trunk-endpoint"),
+  // e o originate precisa de "PJSIP/<endpoint>": sem o prefixo a ligação saía
+  // como "org-…/<número>@undefined" e falhava sempre.
+  const usaTroncoProprio = Boolean(trunkConfig && trunkConfig.is_active);
   const trunkEndpoint =
-    trunkConfig && trunkConfig.is_active ? trunkConfig.endpoint_name : process.env.VOIP_TRUNK_ENDPOINT;
+    trunkConfig && trunkConfig.is_active
+      ? trunkConfig.endpoint_name.includes("/")
+        ? trunkConfig.endpoint_name
+        : `PJSIP/${trunkConfig.endpoint_name}`
+      : (await troncoDaInstalacaoLiberado())
+        ? process.env.VOIP_TRUNK_ENDPOINT
+        : undefined;
   if (!trunkEndpoint) {
     return fail(
       "trunk_not_configured",
@@ -201,7 +223,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const channel = await originateCall({
       toNumber: input.toNumber,
-      fromNumber: process.env.VOIP_DEFAULT_CALLER_ID,
+      // O número de saída do .env é o da INSTALAÇÃO: só acompanha o tronco
+      // dela. No tronco próprio, quem identifica a chamada é o provedor da
+      // empresa (o bloco gerado em Configurações › Telefonia).
+      fromNumber: usaTroncoProprio ? undefined : process.env.VOIP_DEFAULT_CALLER_ID,
       trunkEndpoint,
       callerLabel: input.mode,
       channelId,

@@ -51,7 +51,10 @@ describe("a barra ocupa lugar, em vez de flutuar", () => {
   it("é `sticky` e ocupa a altura da tela", () => {
     // O efeito visual precisa continuar: a barra não rola com a página.
     expect(BARRA).toMatch(/\bsticky\b/);
-    expect(BARRA).toMatch(/h-screen/);
+    // `h-screen` (100vh), `h-svh` ou `h-dvh`: as três ocupam a altura da tela. A
+    // barra hoje usa `h-svh`, que no celular desconta a barra de endereço do
+    // navegador — `100vh` ali passa da tela e esconde o rodapé da barra.
+    expect(BARRA).toMatch(/\bh-(?:screen|svh|dvh)\b/);
   });
 
   it("não encolhe", () => {

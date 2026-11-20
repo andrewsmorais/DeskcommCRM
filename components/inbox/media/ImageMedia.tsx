@@ -10,16 +10,18 @@ import { MediaUnavailable } from "./MediaUnavailable";
 import { mediaSrc } from "./media-utils";
 
 interface Props {
+  /** Fonte alternativa: o anexo da NOTA interna (migration 0547) é servido pela rota da nota. */
+  src?: string;
   messageId: string;
   alt: string;
 }
 
 /** Miniatura na bolha + lightbox (Dialog) no clique. Padrão WhatsApp Web. */
-export function ImageMedia({ messageId, alt }: Props) {
+export function ImageMedia({ messageId, alt, src: fonte }: Props) {
   const t = useT();
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [open, setOpen] = useState(false);
-  const src = mediaSrc(messageId);
+  const src = fonte ?? mediaSrc(messageId);
 
   if (state === "error")
     return (

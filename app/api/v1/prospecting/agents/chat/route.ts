@@ -1,6 +1,8 @@
 import { enforceRateLimit, getIp } from "@/lib/rate-limit-helper";
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { requireRole } from "@/lib/auth/require-role";
+import { exigirAssinaturaAtiva } from "@/lib/billing/acesso";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
 import { ok, fail } from "@/lib/api/wrappers";
@@ -8,17 +10,27 @@ import { agentChatInputSchema } from "@/lib/prospecting/agent-chat-schema";
 import { chatAboutAgent } from "@/lib/prospecting/agent-chat";
 import { AgentSetupError } from "@/lib/prospecting/agent-setup";
 import { beginAgentChat, finishAgentChat } from "@/lib/prospecting/agent-session";
+import { seDisparoEmMassaDesligado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const requestId = randomUUID();
+  const desligado = await seDisparoEmMassaDesligado(requestId);
+  if (desligado) return desligado;
   const support = await requireSupportWrite();
   if (support) return support;
   const auth = await requireRole("admin", { requestId, resource: "prospecting" });
   if (!auth.ok) return auth.response;
-  const rl = await enforceRateLimit(req, "agent-chat", auth.user.id, 30, 60 * 1000); if (rl) return rl;
+  // Prospecção é EXTRA cobrado à parte: só a organização que o tem (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(auth.org.orgId, "prospeccao", { requestId });
+  if (semOExtra) return semOExtra;
+  // Chama o modelo da chave da plataforma: sem assinatura ativa, não chama.
+  const semAssinatura = await exigirAssinaturaAtiva(auth.org.orgId, { requestId });
+  if (semAssinatura) return semAssinatura;
+  const rl = await enforceRateLimit(req, "agent-chat", auth.user.id, 30, 60 * 1000);
+  if (rl) return rl;
   const parsed = agentChatInputSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success)
     return fail("validation_failed", "Confira a mensagem e o tamanho da conversa.", 422, {

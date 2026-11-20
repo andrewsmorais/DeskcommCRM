@@ -56,7 +56,7 @@ const signUpDoProvedor = vi.fn();
 /** Um e-mail novo por caso: o teto de `signup` é por IP e por janela. */
 let n = 0;
 const entrada = () => ({
-  org_name: "Plata Iphones",
+  full_name: "Plata Silva",
   email: `cadastro-${++n}-${Date.now()}@exemplo.test`,
   password: "SenhaForte!2026",
   password_confirm: "SenhaForte!2026",

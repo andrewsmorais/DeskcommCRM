@@ -9,11 +9,15 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { useHorariosLivres } from "@/hooks/agenda/useHorariosLivres";
+import { useHorariosLivresPorPessoa } from "@/hooks/agenda/useHorariosLivresPorPessoa";
 import { useRemarcarAgendamento } from "@/hooks/agenda/useRemarcarAgendamento";
 import type { MotivoDaGradeTravada } from "@/lib/agenda/grade-interativa";
 import { cn } from "@/lib/utils";
 
-import { GradeDaAgenda } from "./GradeDaAgenda";
+import { dataDeParede } from "@/lib/agenda/fuso";
+
+import { GradeDaAgenda, JANELA_DA_GRADE } from "./GradeDaAgenda";
+import { QuadroPorProfissional } from "./QuadroPorProfissional";
 import type { Agendamento, Pessoa, VisaoDaAgenda } from "./tipos";
 
 /**
@@ -51,6 +55,8 @@ export function AgendaInterativa({
   onEscolherTipo,
   onMarcarEm,
   onAbrirAgendamento,
+  donoId,
+  onMarcarComProfissional,
   className,
 }: {
   visao: VisaoDaAgenda;
@@ -98,12 +104,34 @@ export function AgendaInterativa({
    */
   onMarcarEm?: (instante: string) => void;
   onAbrirAgendamento?: (id: string) => void;
+  /** A pessoa isolada no filtro: no quadro, ela é a única linha. `null` = todas. */
+  donoId?: string | null;
+  /**
+   * O clique num bloco livre do QUADRO: ali a linha diz QUEM atende, e o painel
+   * abre com essa pessoa. `undefined` = quadro de leitura (quem não pode marcar).
+   */
+  onMarcarComProfissional?: (instante: string, pessoaId: string) => void;
   className?: string;
 }) {
   const localeDaData = useLocaleDeData();
   const t = useT();
+  const ehQuadro = visao === "quadro";
+  // O fuso do quadro é o do navegador, o mesmo com que a grade desenha as horas.
+  const fuso = React.useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+  // As linhas do quadro obedecem ao MESMO filtro de pessoas da grade.
+  const linhasDoQuadro = React.useMemo(
+    () => (donoId ? pessoas.filter((p) => p.id === donoId) : pessoas),
+    [pessoas, donoId],
+  );
+  const livresDoQuadro = useHorariosLivresPorPessoa(
+    ehQuadro && tipo ? tipo.id : null,
+    ehQuadro ? linhasDoQuadro.map((p) => p.id) : [],
+    recorte,
+  );
   const { data: horarios, isError: horariosFalharam } = useHorariosLivres(
-    tipo ? { event_type_id: tipo.id, de: recorte.de, ate: recorte.ate } : null,
+    // No quadro cada linha pergunta por si; a consulta única seria um pedido a
+    // mais que ninguém desenharia.
+    tipo && !ehQuadro ? { event_type_id: tipo.id, de: recorte.de, ate: recorte.ate } : null,
   );
 
   const horariosPorDia = React.useMemo(() => {
@@ -126,7 +154,18 @@ export function AgendaInterativa({
    * aviso nenhum. Por isso o erro é testado ANTES, e a ausência de resposta não
    * vira afirmação.
    */
-  const motivo: MotivoDaGradeTravada | null = horariosFalharam
+  const estadosDoQuadro = Object.values(livresDoQuadro);
+  const motivo: MotivoDaGradeTravada | null = ehQuadro
+    ? !tipo || estadosDoQuadro.length === 0
+      ? null
+      : estadosDoQuadro.some((e) => e.falhou)
+        ? "erro"
+        : estadosDoQuadro.every((e) => e.slots !== null && !e.publicou)
+          ? "sem-jornada"
+          : estadosDoQuadro.every((e) => e.slots !== null && e.slots.length === 0)
+            ? "sem-vaga"
+            : null
+    : horariosFalharam
     ? "erro"
     : horarios && !horarios.publicou_horarios
       ? "sem-jornada"
@@ -321,6 +360,27 @@ export function AgendaInterativa({
         </div>
       )}
 
+      {ehQuadro ? (
+        <QuadroPorProfissional
+          dia={ancora}
+          fuso={fuso}
+          pessoas={linhasDoQuadro}
+          agendamentos={desenhados}
+          livres={Object.fromEntries(
+            linhasDoQuadro.map((p) => [
+              p.id,
+              livresDoQuadro[p.id]?.slots?.map((s) => ({
+                instante: s.inicio,
+                rotulo: format(dataDeParede(new Date(s.inicio), fuso), "HH:mm"),
+              })),
+            ]),
+          )}
+          primeiraHora={JANELA_DA_GRADE.primeira}
+          ultimaHora={JANELA_DA_GRADE.ultima}
+          onMarcarEm={tipo ? onMarcarComProfissional : undefined}
+          onAbrirAgendamento={onAbrirAgendamento}
+        />
+      ) : (
       <GradeDaAgenda
         visao={visao}
         ancora={ancora}
@@ -352,6 +412,7 @@ export function AgendaInterativa({
             : undefined
         }
       />
+      )}
     </div>
   );
 }

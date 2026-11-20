@@ -13,7 +13,7 @@ import {
   type PacingKnobs,
 } from "@/lib/agent-engine/pacing/defaults";
 import { warmupCapFor } from "@/lib/agent-engine/pacing/engine";
-import { fusoDaJanela, parseWarmupCaps } from "@/lib/agent-engine/pacing/store";
+import { fusoDaJanela, parseDiasDaProspeccao, parseWarmupCaps } from "@/lib/agent-engine/pacing/store";
 
 function isValidTimezone(tz: string): boolean {
   try {
@@ -114,6 +114,12 @@ export const pacingKnobsUpdateSchema = z
     window_start_hour: z.number().int().min(0).max(KNOB_BOUNDS.hourLastStart).nullable().optional(),
     window_end_hour: z.number().int().min(1).max(KNOB_BOUNDS.hourEnd).nullable().optional(),
     allow_sunday: z.boolean().nullable().optional(),
+    /**
+     * Dias da prospecção (0=dom … 6=sáb). Omitido = mantém o gravado (linha
+     * nova nasce no padrão do banco: todos os dias). Sem `null`: o padrão É a
+     * lista cheia, e ela se declara marcando todos os dias na ficha.
+     */
+    prospeccao_dias: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
     timezone: z
       .string()
       .refine(isValidTimezone, "timezone IANA inválida (ex.: America/Sao_Paulo)")
@@ -164,6 +170,8 @@ export interface ChannelKnobsRow {
   window_start_hour: number | null;
   window_end_hour: number | null;
   allow_sunday: boolean | null;
+  /** Dias da prospecção. Ausente/null = padrão (todos os dias). */
+  prospeccao_dias?: number[] | null;
   timezone: string | null;
   warmup_daily_caps: unknown;
   /** idade do número p/ warm-up (linha ausente = engine trata como idade 0). */
@@ -192,6 +200,7 @@ export function effectiveKnobs(row: ChannelKnobsRow | null, fusoDaOrg?: string |
     windowStartHour: row?.window_start_hour ?? PACING_DEFAULTS.windowStartHour,
     windowEndHour: row?.window_end_hour ?? PACING_DEFAULTS.windowEndHour,
     allowSunday: row?.allow_sunday ?? PACING_DEFAULTS.allowSunday,
+    prospeccaoDias: parseDiasDaProspeccao(row?.prospeccao_dias) ?? PACING_DEFAULTS.prospeccaoDias,
     timezone: fusoDaJanela(row?.timezone, fusoDaOrg),
     warmupDailyCaps: parseWarmupCaps(row?.warmup_daily_caps) ?? PACING_DEFAULTS.warmupDailyCaps,
   };

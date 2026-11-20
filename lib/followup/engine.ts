@@ -1,6 +1,11 @@
 import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
+import { preencherCamposDoNegocio } from "./campos-no-texto";
+import { gatilhoParaOPlano } from "@/lib/billing/followup-pelo-chatbot";
+import { enviosJaFeitos, redacoesDoPasso, redacoesNaOrdemDaVez } from "./variacoes-do-passo";
 import type { JobClaim } from "@/lib/agent-engine/queue/claim";
 import { assertAgendaEffectSupabase } from "@/lib/agenda/efeito";
+import { AgendaPuladoError } from "@/lib/agenda/escolha-no-envio";
+import { escolhaDoFluxo } from "@/lib/agenda/escolha-no-envio-leitura";
 import { AgendaDeferredError } from "@/lib/agenda/protecao-followup";
 import type { ServiceBoundary } from "@/lib/atendimento/fronteira";
 import { isFollowupCasRecusado, StaleServiceBoundaryError } from "@/lib/atendimento/fronteira";
@@ -51,8 +56,15 @@ import {
 } from "./no-show-recuperacao-esgotada";
 import { interpolarDestino, persistirRespostaFollowupSupabase } from "./persistir-resposta";
 import { criarTarefaInterna as criarTarefaNoCrm } from "@/lib/tarefas/criar-tarefa";
+import { moveLeadHandler } from "@/app/api/v1/leads/_handler";
 import { quandoDoRetornoVivo, reavaliarDepoisDoRetorno } from "./retorno-segura-o-fluxo";
 import { triggerConfigSchema } from "./api-schemas";
+
+/**
+ * Quanto esperar quando a leitura do plano falhou (banco ou rede fora). NÃO é
+ * backoff: não conta tentativa, porque a falha não é deste follow-up.
+ */
+export const ADIAMENTO_SEM_PLANO_MS = 5 * 60_000;
 
 const MAX_STEPS = 80;
 const CLAIM_LEASE_SECONDS = 120;
@@ -94,6 +106,8 @@ export interface FollowupJobRequest {
     fallback_template_id?: string;
     /** action (mode 'text') — corpo pronto; o turno envia sem chamar o modelo. */
     fixed_body?: string;
+    /** action (mode 'text') — mídia OPCIONAL por URL; presente, o `fixed_body` vira a LEGENDA. */
+    fixed_media_url?: string;
     /**
      * action (mode 'template') — id em `message_templates` (texto pronto) OU em
      * `meta_templates` (modelo aprovado do canal, o único que sai com a janela de 24 h
@@ -123,6 +137,17 @@ export interface AdminClient {
   retornoQueSeguraOFluxo?(enrollment: EnrollmentRow): Promise<string | null>;
   claimDueEnrollments(limit: number, leaseSeconds: number): Promise<EnrollmentRow[]>;
   loadFlowGraph(orgId: string, versionId: string): Promise<FlowGraph | null>;
+  /**
+   * O `trigger_config.kind` do fluxo da inscrição. Com ele, o "follow-up só
+   * pelo chatbot" (`lib/billing/followup-pelo-chatbot.ts`) roda em qualquer
+   * plano. Ausente (dublês de teste antigos) = a régua de sempre.
+   */
+  gatilhoDoFluxo?(enrollment: EnrollmentRow): Promise<string | null>;
+  /**
+   * Fuso da organização (`organizations.timezone`), lido só quando o grafo tem
+   * espera com horário. Ausente (dublês antigos) = padrão do produto.
+   */
+  loadFusoDaOrganizacao?(orgId: string): Promise<string | null>;
   loadLeadFacts(orgId: string, contactId: string): Promise<{
     lead_stage: string | null;
     tags: string[];
@@ -158,6 +183,16 @@ export interface AdminClient {
    * criar tarefa (nunca trava o tick), e é isso que um teste de engine puro
    * deve poder observar.
    */
+  /**
+   * Nó `crm_update`: move o negócio do contato e/ou mexe nas etiquetas. Opcional
+   * pelo mesmo motivo de `criarTarefaInterna`.
+   */
+  atualizarCard?(item: {
+    organization_id: string;
+    contact_id: string;
+    enrollment_id: string;
+    config: Extract<FlowNode, { type: "crm_update" }>["config"];
+  }): Promise<void>;
   criarTarefaInterna?(item: {
     organization_id: string;
     contact_id: string;
@@ -275,6 +310,10 @@ function turnPayloadExtras(
   node: FlowNode,
   smartWaits: EsperaAdaptativa[],
   events: EnrollmentEventRef[] = [],
+  /** O contato: semente estável do ponto de partida da rotação de redações. */
+  semente?: string,
+  /** O negócio: `{{produto}}`, `{{link_checkout}}`… no texto (`campos-no-texto.ts`). */
+  lead?: LeadFacts,
 ): Partial<FollowupJobRequest["payload"]> {
   if (node.type === "action" && node.config.mode === "ai_message") {
     return {
@@ -283,7 +322,15 @@ function turnPayloadExtras(
     };
   }
   if (node.type === "action" && node.config.mode === "text") {
-    return { fixed_body: interpolarVolta(node.config.body, events) };
+    // QUAL REDAÇÃO SAI: a rotação anda um passo por mensagem já enviada nesta
+    // inscrição, partindo de um ponto diferente por contato. Passo com uma
+    // redação só — o de hoje — sai exatamente o `body`.
+    const redacoes = redacoesDoPasso(node.config);
+    const ordem = redacoesNaOrdemDaVez(redacoes, semente ?? "", enviosJaFeitos(events));
+    return {
+      fixed_body: preencherCamposDoNegocio(interpolarVolta(ordem[0]!, events), lead),
+      ...(node.config.media_url ? { fixed_media_url: node.config.media_url } : {}),
+    };
   }
   if (node.type === "action" && node.config.mode === "template") {
     const volta = latestRepeatIndex(events);
@@ -382,6 +429,7 @@ async function applyResult(
   smartWaits: EsperaAdaptativa[] = [],
   events: EnrollmentEventRef[] = [],
   respostaParaGravar: string | null = null,
+  lead?: LeadFacts,
 ): Promise<void> {
   const { db, clock, enqueueJob } = deps;
   await db.assertServiceBoundary?.(enrollment);
@@ -429,6 +477,25 @@ async function applyResult(
       // de novo no tick seguinte e tentaria a MESMA tarefa — a trava é o
       // evento, que já está gravado). O warn é o que o suporte lê.
       logger.warn("followup_internal_task_failed", {
+        organization_id: enrollment.organization_id,
+        enrollment_id: enrollment.id,
+        node_id: node.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Nó `crm_update`: mesma trava do lembrete interno (evento já gravado).
+  if (result.kind === "advance" && !isReplay && node.type === "crm_update") {
+    try {
+      await db.atualizarCard?.({
+        organization_id: enrollment.organization_id,
+        contact_id: enrollment.contact_id,
+        enrollment_id: enrollment.id,
+        config: node.config,
+      });
+    } catch (err) {
+      logger.warn("followup_crm_update_failed", {
         organization_id: enrollment.organization_id,
         enrollment_id: enrollment.id,
         node_id: node.id,
@@ -513,7 +580,7 @@ async function applyResult(
             node_id: node.id,
             source_step_key: idemKey,
             purpose: result.purpose,
-            ...turnPayloadExtras(node, smartWaits, events),
+            ...turnPayloadExtras(node, smartWaits, events, enrollment.contact_id, lead),
             ...(result.fixed_body ? { fixed_body: result.fixed_body } : {}),
           },
         });
@@ -599,7 +666,19 @@ async function processEnrollment(
   inboundBodyOverride?: string,
 ): Promise<void> {
   const { db, clock } = deps;
-  try { await db.assertServiceBoundary?.(enrollment); await db.assertAgenda?.(enrollment); }
+  try {
+    await db.assertServiceBoundary?.(enrollment);
+    try {
+      await db.assertAgenda?.(enrollment);
+    } catch (agendaErr) {
+      // Escolha do FLUXO em `nao_enviar`: a agenda não segura o PASSO. Quem pula
+      // é o ENVIO, que registra `skipped` com o motivo (texto fixo / turno do
+      // worker). Reagendar aqui mandaria a mensagem depois do compromisso — o
+      // oposto do que a escolha pediu. A guarda de moeda continua valendo: só o
+      // pulo por compromisso chega como `AgendaPuladoError`.
+      if (!(agendaErr instanceof AgendaPuladoError)) throw agendaErr;
+    }
+  }
   catch (error) {
     if(error instanceof AgendaDeferredError){
       if(error.protection.motivo === "leitura_indisponivel") throw error;
@@ -667,9 +746,26 @@ async function processEnrollment(
 
   const graph = await db.loadFlowGraph(enrollment.organization_id, enrollment.version_id);
   if (!graph) throw new Error("flow_version_not_found");
-  const acesso = await verificarGrafoDoPlano(enrollment.organization_id, graph);
+  const gatilho = db.gatilhoDoFluxo ? await db.gatilhoDoFluxo(enrollment) : null;
+  const acesso = await verificarGrafoDoPlano(enrollment.organization_id, graph, { gatilho });
   if (!acesso.ok) {
-    if (acesso.status === 503) throw new Error("billing_unavailable");
+    // LEITURA DO PLANO INDISPONÍVEL não é falha DESTE follow-up. Lançar aqui
+    // caía em `applyHandlerFailure`: gastava uma tentativa e, passado
+    // `max_attempts`, matava o enrollment — um banco fora do ar por uma hora
+    // apagava os follow-ups de cliente que paga. Adia sem gastar tentativa; a
+    // trava de plano é reavaliada no próximo tick, como no ramo do 403 abaixo.
+    if (acesso.status === 503) {
+      logger.warn("followup: plano indisponível — adiado sem gastar tentativa", {
+        organization_id: enrollment.organization_id,
+        enrollment_id: enrollment.id,
+      });
+      await db.updateEnrollment(enrollment.id, enrollment.organization_id, {
+        last_error: "billing_unavailable",
+        next_eval_at: new Date(clock().getTime() + ADIAMENTO_SEM_PLANO_MS).toISOString(),
+        claimed_until: null,
+      });
+      return;
+    }
     const aviso = `Plano: ${acesso.message}`;
     if (enrollment.last_error !== aviso) await db.insertDeadInboxItem({ organization_id: enrollment.organization_id,
       title: "Um processo aguarda a revisão do plano", body: acesso.message, ref_id: enrollment.id });
@@ -686,7 +782,17 @@ async function processEnrollment(
   }
 
   const leadRow = await db.loadLeadFacts(enrollment.organization_id, enrollment.contact_id);
+  // A espera com horário (`ate_o_horario`) pergunta pelo relógio da organização:
+  // "9h às 18h" sem fuso seria em UTC, e o toque sairia cedo demais.
+  const temEsperaComHorario = graph.nodes.some(
+    (n) => n.type === "wait" && n.config.mode === "fixed" && n.config.ate_o_horario !== undefined,
+  );
+  const fusoDaOrg =
+    temEsperaComHorario && db.loadFusoDaOrganizacao
+      ? await db.loadFusoDaOrganizacao(enrollment.organization_id)
+      : null;
   const lead: LeadFacts = {
+    fuso: fusoDaOrg,
     lead_stage: leadRow.lead_stage,
     tags: leadRow.tags,
     steps_taken: enrollment.steps_taken,
@@ -824,6 +930,7 @@ async function processEnrollment(
     smartWaits,
     events,
     node.type === "match_reply" && wokeEarly ? (lastInboundBody ?? "").trim() || null : null,
+    lead,
   );
 }
 
@@ -887,7 +994,12 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       if (!gatilho.success || gatilho.data.kind !== "silence") return null;
       return reavaliarDepoisDoRetorno(quando);
     },
-    async assertAgenda(enrollment){await assertAgendaEffectSupabase(admin,{organizationId:enrollment.organization_id,contactId:enrollment.contact_id,enrollmentId:enrollment.id,nodeId:enrollment.current_node_id});},
+    async assertAgenda(enrollment){
+      // A escolha do fluxo vale também no tick: sem ela o motor usava `adiar` e
+      // segurava todo passo de quem tem horário marcado, mesmo em `enviar`.
+      const escolha = await escolhaDoFluxo(admin, enrollment.organization_id, enrollment.id);
+      await assertAgendaEffectSupabase(admin,{organizationId:enrollment.organization_id,contactId:enrollment.contact_id,enrollmentId:enrollment.id,nodeId:enrollment.current_node_id,escolhaNoEnvio:escolha});
+    },
     async claimDueEnrollments(limit, leaseSeconds) {
       const { data, error } = await admin.rpc("fn_claim_due_followup_enrollments", {
         p_limit: limit,
@@ -896,6 +1008,31 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       if (error) throw new Error(error.message);
       for(const row of data??[]) revisions.set(row.id,Number(row.revision));
       return (data ?? []) as EnrollmentRow[];
+    },
+    async gatilhoDoFluxo(enrollment) {
+      const { data, error } = await admin
+        .from("followup_flow_pointers")
+        .select("trigger_config, surface")
+        .eq("organization_id", enrollment.organization_id)
+        .eq("id", enrollment.pointer_id)
+        .maybeSingle();
+      if (error) throw new Error(`pointer_query_failed: ${error.message}`);
+      // Roteiro de atendimento não é follow-up: a régua dele é a de sempre
+      // (`verificarGrafoDoPlano` sem gatilho), como na publicação.
+      if ((data as { surface?: unknown } | null)?.surface === "atendimento") return null;
+      const config = (data as { trigger_config?: { kind?: unknown; params?: { stage_id?: unknown } } } | null)
+        ?.trigger_config;
+      const kind = typeof config?.kind === "string" ? config.kind : "manual";
+      // Etapa de recuperação de venda vale em todos os planos: o nome decide.
+      if (kind !== "stage_change" || typeof config?.params?.stage_id !== "string") return kind;
+      const { data: etapa, error: etapaErr } = await admin
+        .from("crm_stages")
+        .select("name")
+        .eq("organization_id", enrollment.organization_id)
+        .eq("id", config.params.stage_id)
+        .maybeSingle();
+      if (etapaErr) throw new Error(`stage_query_failed: ${etapaErr.message}`);
+      return gatilhoParaOPlano(kind, (etapa as { name?: string } | null)?.name ?? null);
     },
     async loadFlowGraph(orgId, versionId) {
       const { data, error } = await admin
@@ -907,6 +1044,10 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
       if (error) throw new Error(error.message);
       if (!data) return null;
       return flowGraphSchema.parse(data.graph);
+    },
+    async loadFusoDaOrganizacao(orgId) {
+      const { data } = await admin.from("organizations").select("timezone").eq("id", orgId).maybeSingle();
+      return (data as { timezone?: string | null } | null)?.timezone ?? null;
     },
     async loadLeadFacts(orgId, contactId) {
       const [{ data: lead, error: leadErr }, { data: contact, error: contactErr }] = await Promise.all([
@@ -940,7 +1081,9 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
         .select("body")
         .eq("organization_id", orgId)
         .in("contact_id", ids)
-        .eq("direction", "inbound");
+        .eq("direction", "inbound")
+        // A reação (👍) é inbound sem `body` — se contasse, esconderia o "SIM" que ela segue.
+        .neq("type", "reaction");
       if (conversationId) q = q.eq("conversation_id", conversationId);
       if (naoAntesDe) q = q.gte("sent_at", naoAntesDe);
       const { data, error } = await q.order("sent_at", { ascending: false }).limit(1).maybeSingle();
@@ -1008,6 +1151,89 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
         ref_id: item.ref_id,
       });
       if (error) throw new Error(error.message);
+    },
+    async atualizarCard(item) {
+      // Mesmo negócio que o lembrete interno resolve: o mais recente do contato.
+      const { data: lead, error: leadErr } = await admin
+        .from("crm_leads")
+        .select("id, pipeline_id, stage_id, tags")
+        .eq("organization_id", item.organization_id)
+        .eq("contact_id", item.contact_id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (leadErr) throw new Error(leadErr.message);
+      const card = lead as { id: string; pipeline_id: string; stage_id: string; tags: string[] | null } | null;
+      if (!card) {
+        logger.warn("followup_crm_update_skipped", {
+          organization_id: item.organization_id,
+          enrollment_id: item.enrollment_id,
+          motivo: "sem_negocio",
+        });
+        return;
+      }
+
+      // 1) Etiquetas. Tirar usa a função do banco (a lista é refeita dentro do
+      //    UPDATE); pôr junta com o que está gravado agora.
+      if (item.config.remover_etiquetas.length) {
+        const { error } = await admin.rpc("fn_lead_remover_etiquetas", {
+          p_org: item.organization_id,
+          p_lead: card.id,
+          p_etiquetas: item.config.remover_etiquetas,
+        });
+        if (error) throw new Error(error.message);
+      }
+      if (item.config.adicionar_etiquetas.length) {
+        const { data: atual, error: tagsErr } = await admin
+          .from("crm_leads")
+          .select("tags")
+          .eq("id", card.id)
+          .eq("organization_id", item.organization_id)
+          .maybeSingle();
+        if (tagsErr) throw new Error(tagsErr.message);
+        const tags = ((atual as { tags: string[] | null } | null)?.tags ?? []).map(String);
+        const chaves = new Set(tags.map((t) => t.trim().toLowerCase()));
+        const novas = item.config.adicionar_etiquetas.filter((t) => !chaves.has(t.trim().toLowerCase()));
+        if (novas.length) {
+          const { error } = await admin
+            .from("crm_leads")
+            .update({ tags: [...tags, ...novas], updated_at: new Date().toISOString() })
+            .eq("id", card.id)
+            .eq("organization_id", item.organization_id);
+          if (error) throw new Error(error.message);
+        }
+      }
+
+      // 2) Etapa. Só dentro do mesmo funil: levar o card a outro funil é
+      //    decisão de outra ação (clonar), não de um passo de follow-up.
+      if (item.config.etapa_id && item.config.etapa_id !== card.stage_id) {
+        const { data: etapa, error: etapaErr } = await admin
+          .from("crm_stages")
+          .select("id, pipeline_id")
+          .eq("id", item.config.etapa_id)
+          .eq("organization_id", item.organization_id)
+          .maybeSingle();
+        if (etapaErr) throw new Error(etapaErr.message);
+        const destino = etapa as { id: string; pipeline_id: string } | null;
+        if (!destino || destino.pipeline_id !== card.pipeline_id) {
+          logger.warn("followup_crm_update_skipped", {
+            organization_id: item.organization_id,
+            enrollment_id: item.enrollment_id,
+            motivo: destino ? "outro_funil" : "etapa_inexistente",
+          });
+          return;
+        }
+        await moveLeadHandler(
+          admin,
+          {
+            organization_id: item.organization_id,
+            actor: { type: "webhook_source", id: item.enrollment_id },
+            requestId: `followup:${item.enrollment_id}`,
+          },
+          card.id,
+          { to_stage_id: destino.id },
+        );
+      }
     },
     async criarTarefaInterna(item) {
       // O negócio NÃO vem na inscrição (migration 0054 guarda o contato), então

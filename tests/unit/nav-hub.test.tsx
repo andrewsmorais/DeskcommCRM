@@ -58,7 +58,7 @@ describe("NavHub", () => {
   it("apresenta a IA nas três etapas da jornada, na ordem", () => {
     render(<NavHub modulosLigados={[]} group="ia" isPlatformAdmin role={null} title="Agente de IA" subtitle="" />);
     const secoes = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent?.trim());
-    expect(secoes).toEqual(["Montar o agente", "Ensinar o agente", "Acompanhar o agente"]);
+    expect(secoes).toEqual(["Montar o agente", "Ensinar o agente", "Acompanhar o agente", "Automatizar sem IA"]);
   });
 
   it("desenterra Conhecimento, que só existia atrás das abas", () => {
@@ -191,6 +191,7 @@ describe("NavHub", () => {
       "Configurar el agente",
       "Enseñar al agente",
       "Supervisar al agente",
+      "Automatizar sin IA",
     ]);
     expect(
       screen.getByRole("link", { name: /Credenciales.*La clave del proveedor de IA/ }),

@@ -168,15 +168,13 @@ export function PipelinesClient({
 }) {
   const t = useT();
   if (pipelines.length === 0) {
-    // ⚠️ NÃO PROMETA UM CAMINHO QUE NÃO EXISTE. Criar funil não é feito por
-    // nenhuma tela, rota ou action deste produto — só por script de instalação;
-    // e como o instalador não provisiona funil, ESTE é o estado de toda
-    // instalação nova. O texto anterior mandava "crie um no quadro", e o quadro
-    // vazio manda "Ir para Configurações": pingue-pongue fechado, com o usuário
-    // procurando um botão que não existe em lugar nenhum.
+    // Criar funil É feito pela tela Funis (`app/app/kanban/_client.tsx`,
+    // botões "Novo funil" e "Criar meu primeiro funil"). O texto antigo dizia
+    // que só o instalador criava, direto no banco — verdade de antes daquela
+    // tela existir, e mandava o cliente procurar quem instalou.
     return (
       <Card className="p-6 text-sm leading-relaxed text-muted-foreground">
-        {t("Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Criar o funil é feito por quem instalou o sistema, direto no banco; depois ele aparece aqui para você escolher a etapa de cada passo.")}
+        {t("Você ainda não tem nenhum funil. Enquanto for assim, o agente atende normalmente, mas não tem para onde levar o card de ninguém — não há etapas para onde mover. Crie o primeiro em Funis, no botão \"Novo funil\"; depois ele aparece aqui para você escolher a etapa de cada passo.")}
       </Card>
     );
   }
@@ -227,6 +225,13 @@ function PipelineEditor({
   );
   const [retomaComoNovo, setRetomaComoNovo] = useState(
     modoDeReabertura(pipeline.settings) === "novo_negocio",
+  );
+  const entradaSalva = (
+    pipeline.settings as { entrada_do_inbox?: { ativa?: unknown; stage_id?: unknown } } | null
+  )?.entrada_do_inbox;
+  const [entradaAtiva, setEntradaAtiva] = useState(entradaSalva?.ativa === true);
+  const [entradaEtapa, setEntradaEtapa] = useState(
+    typeof entradaSalva?.stage_id === "string" ? entradaSalva.stage_id : "",
   );
   const [fields, setFields] = useState<CustomFieldDef[]>(camposDoFunil(pipeline.settings));
   const [isPending, startTransition] = useTransition();
@@ -287,10 +292,12 @@ function PipelineEditor({
       won_reasons: wonReasons,
       won_reason_required: wonRequired,
       reabertura: retomaComoNovo ? "novo_negocio" : "mesmo_registro",
+      entrada_do_inbox: { ativa: entradaAtiva && entradaEtapa !== "", stage_id: entradaEtapa || null },
     };
     startTransition(async () => {
       const r = await updatePipelineConfig(pipeline.id, patch);
       if (r.ok) toast.success(`${pipeline.name} ${t("atualizado.")}`);
+      else if (r.error === "mfa_required") toast.error(t("Confirme o código do seu aplicativo de duas etapas e tente de novo."));
       else toast.error(`${t("Erro:")} ${r.error}`);
     });
   }
@@ -406,6 +413,39 @@ function PipelineEditor({
         </p>
       </div>
 
+      <div className="space-y-1">
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={entradaAtiva}
+            onChange={(e) => setEntradaAtiva(e.target.checked)}
+          />
+          {t("Conversa nova vira card numa etapa que eu escolho")}
+        </label>
+        {entradaAtiva && (
+          <select
+            aria-label={t("Etapa de entrada")}
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+            value={entradaEtapa}
+            onChange={(e) => setEntradaEtapa(e.target.value)}
+          >
+            <option value="">{t("Escolha a etapa")}</option>
+            {etapas
+              .filter((e) => !e.is_archived)
+              .map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+          </select>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Vale para o funil de entrada. Desligado, a conversa nova vira card na primeira etapa aberta.",
+          )}
+        </p>
+      </div>
+
       <div className="space-y-2">
         <Label className="text-xs">{t("Campos do lead neste funil")}</Label>
         <p className="text-xs text-muted-foreground">
@@ -490,6 +530,34 @@ function PipelineEditor({
                 }}
               />
             )}
+            {/* ── NO RESUMO DA PASSAGEM (issue #4303) ────────────────────────
+                O interruptor que leva o valor deste campo ao cartão de
+                passagem para humano. Desmarcar APAGA a chave, então o funil
+                que ninguém tocou continua idêntico ao de antes (ausente =
+                desligado, ver o schema). Aqui todo campo é do NEGÓCIO. */}
+            <div className="space-y-1 lg:col-span-4">
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  aria-label={`${t("Mostrar no resumo da passagem")} — ${f.label || i + 1}`}
+                  checked={f.mostrar_no_resumo_da_passagem === true}
+                  onChange={(ev) => {
+                    const next = [...fields];
+                    const { mostrar_no_resumo_da_passagem: _apagada, ...semOpcao } = f;
+                    next[i] = ev.target.checked
+                      ? { ...f, mostrar_no_resumo_da_passagem: true }
+                      : (semOpcao as CustomFieldDef);
+                    setFields(next);
+                  }}
+                />
+                {t("Mostrar no resumo da passagem")}
+              </label>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "Quando a conversa passa para uma pessoa, o valor que este campo tem no card aparece no resumo do cartão de passagem. Desligado por padrão.",
+                )}
+              </p>
+            </div>
             {/* ── QUANDO ESTE CAMPO OBRIGA (issue #1536) ────────────────────
                 O `obrigatorio_em` nasceu no schema sem nenhuma tela: quem
                 operava não conseguia ligar a régua principal do PR. As três

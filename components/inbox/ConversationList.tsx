@@ -1,18 +1,23 @@
 "use client";
 import { ehAFila } from "@/lib/inbox/comando-da-conversa";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useT } from "@/hooks/i18n/useT";
+import { Check } from "@/lib/ui/icons";
+import { useConversasComMencao } from "@/hooks/inbox/useConversasComMencao";
+import { desmarcarConversaMencionada } from "@/lib/notifications/mencao-na-lista";
 import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChannelSessions } from "@/hooks/channels/useChannelSessions";
 
 import { useAutomaticoAtivo } from "@/hooks/ai/useAutomaticoAtivo";
+import { useMarcarComoExemplo } from "@/hooks/inbox/useMarcarComoExemplo";
 
 import { ConversationListItem } from "./ConversationListItem";
 import { EmptyInbox } from "@/components/empty";
 import { EmptyPorFiltro } from "./EmptyPorFiltro";
 import { filtrosAuxiliaresAtivos } from "@/lib/inbox/filtros-ativos";
+import { textoDaFalhaDaLista } from "@/lib/inbox/falha-da-lista";
 import type {
   ConversationsFilters,
   ConversationWithContact,
@@ -33,6 +38,15 @@ interface Props {
   onLimparFiltros?: () => void;
   /** Notifies parent when the visible list changes (used by keyboard nav). */
   onVisibleChange?: (ids: string[]) => void;
+  /** Lote (vindo do produto original): sem `onAlternarSelecao`, nada de caixa. */
+  selecionados?: Set<string>;
+  onAlternarSelecao?: (id: string) => void;
+  onSelecionarTodosVisiveis?: () => void;
+  /**
+   * Quem a rota `usable-for-rag` aceita (atendente para cima). Sem isto a linha
+   * mostra o selo e não o controle: o leitor veria um botão que só devolve 403.
+   */
+  podeMarcarExemplo?: boolean;
 }
 
 export function ConversationList({
@@ -42,6 +56,10 @@ export function ConversationList({
   onSelect,
   onVisibleChange,
   onLimparFiltros,
+  selecionados,
+  onAlternarSelecao,
+  onSelecionarTodosVisiveis,
+  podeMarcarExemplo = false,
 }: Props) {
   const t = useT();
   // Só mostra POR ONDE a conversa entrou quando há mais de um número. Com um
@@ -50,6 +68,16 @@ export function ConversationList({
   //
   // `?? []` e não `undefined`: enquanto a lista de canais carrega, o certo é
   // NÃO mostrar. Mostrar e sumir depois é pior que aparecer um instante tarde.
+  // A conversa em que a pessoa foi mencionada fica marcada até ser ABERTA:
+  // abrir é o que a consome — por isso o clique passa por `abrirConversa`.
+  const mencionadas = useConversasComMencao();
+  const abrirConversa = useCallback(
+    (id: string) => {
+      desmarcarConversaMencionada(id);
+      onSelect(id);
+    },
+    [onSelect],
+  );
   const canais = useChannelSessions().data ?? [];
   const maisDeUmCanal = canais.length > 1;
 
@@ -62,6 +90,8 @@ export function ConversationList({
   // Uma leitura por lista, compartilhada por todas as linhas (react-query dedupa
   // com o cabeçalho, que faz a mesma pergunta).
   const automaticoDaOrg = useAutomaticoAtivo();
+  // O "exemplo para a IA" mora aqui, uma mutação por lista (a linha roda sem QueryClient em testes).
+  const { alternar: alternarExemplo } = useMarcarComoExemplo();
 
   // Sem filtro de cliente: TODO filtro é parâmetro do schema e roda no banco.
   // `clientFilter` era o mecanismo que permitia um filtro existir fora do contrato
@@ -123,17 +153,22 @@ export function ConversationList({
     );
   }
 
-  if (q.isError) {
+  // O erro só fala quando NÃO HÁ O QUE PRESERVAR: um refetch que falha com a
+  // lista na tela deixa a lista onde está. E ele DIZ QUAL FOI — tempo esgotado,
+  // servidor fora, sessão caída e pedido recusado pedem ações diferentes.
+  if (q.isError && q.data === undefined) {
     return (
-      <div className="p-4 text-center text-sm text-muted-foreground">
-        <p>{t("Erro ao carregar conversas.")}</p>
+      <div className="space-y-2 p-4 text-center text-sm text-muted-foreground" role="alert">
+        <p className="text-foreground">{textoDaFalhaDaLista(q.error, t)}</p>
+        {/* O banco continua com tudo: é a LEITURA que não voltou. */}
+        <p>{t("As conversas continuam salvas. Nada foi perdido.")}</p>
         <Button
           size="sm"
           variant="outline"
           className="mt-2"
           onClick={() => q.refetch()}
         >
-          Tentar novamente
+          {t("Tentar novamente")}
         </Button>
       </div>
     );
@@ -159,17 +194,41 @@ export function ConversationList({
         {items.length === 0 && filtrosAtivos.length > 0 && (
           <EmptyPorFiltro filtros={filtrosAtivos} onLimpar={onLimparFiltros} />
         )}
+        {/* Cabeça da seleção em lote: marca de uma vez tudo o que está na tela. */}
+        {onAlternarSelecao && items.length > 0 && (
+          <div className="flex items-center gap-2 border-b border-border/70 px-3 py-1.5">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={selecionados ? items.every((c) => selecionados.has(c.id)) : false}
+              aria-label={t("Selecionar todas as conversas visíveis")}
+              title={t("Selecionar todas")}
+              data-testid="selecionar-todas-visiveis"
+              onClick={onSelecionarTodosVisiveis}
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-muted-foreground bg-background transition-colors hover:bg-surface-elevated focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {selecionados && items.every((c) => selecionados.has(c.id)) && (
+                <Check size={12} weight="bold" aria-hidden />
+              )}
+            </button>
+            <span className="text-xs text-text-muted">{t("Selecionar todas")}</span>
+          </div>
+        )}
         {items.map((c, i) => (
           <ConversationListItem
             key={c.id}
             conversation={c}
             isSelected={c.id === selectedId}
-            onSelect={onSelect}
+            onSelect={abrirConversa}
+            mencionado={mencionadas.has(c.id)}
             queuePosition={isQueue ? i + 1 : undefined}
             mostrarCanal={maisDeUmCanal}
             mostrarAtendente={mostrarAtendente}
             mostrarAutomatico={mostrarAutomatico}
             automaticoDaOrg={automaticoDaOrg.data}
+            selecionado={selecionados?.has(c.id)}
+            onAlternarSelecao={onAlternarSelecao}
+            onAlternarExemplo={podeMarcarExemplo ? alternarExemplo : undefined}
           />
         ))}
         {q.hasNextPage && (

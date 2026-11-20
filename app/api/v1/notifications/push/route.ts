@@ -13,6 +13,7 @@ import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
 import { vapidPronto, vapidPublica } from "@/lib/notifications/vapid";
+import { endpointDePushSeguro } from "@/lib/notifications/web_push";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -29,10 +30,7 @@ export async function GET(): Promise<Response> {
   const requestId = randomUUID();
   const authz = await requireRole("viewer", { requestId, resource: "push_subscriptions" });
   if (!authz.ok) return authz.response;
-  return ok(
-    { enabled: vapidPronto(), public_key: vapidPublica() },
-    { requestId },
-  );
+  return ok({ enabled: vapidPronto(), public_key: vapidPublica() }, { requestId });
 }
 
 export async function PUT(req: NextRequest): Promise<Response> {
@@ -61,6 +59,14 @@ export async function PUT(req: NextRequest): Promise<Response> {
     });
   }
 
+  // O servidor vai fazer POST neste endereço a cada aviso: endereço interno ou
+  // de rede privada não vira inscrição (lib/notifications/web_push.ts).
+  if (!(await endpointDePushSeguro(parsed.data.endpoint))) {
+    return fail("validation_failed", t("Endereço de notificação não permitido."), 422, {
+      requestId,
+    });
+  }
+
   const { user, org } = authz;
   const supabase = await createClient();
   const { error } = await supabase.from("push_subscriptions" as never).upsert(
@@ -77,7 +83,9 @@ export async function PUT(req: NextRequest): Promise<Response> {
 
   if (error) {
     if (error.code === "PGRST205") {
-      return fail("unavailable", t("Web Push ainda não está no banco desta instalação."), 503, { requestId });
+      return fail("unavailable", t("Web Push ainda não está no banco desta instalação."), 503, {
+        requestId,
+      });
     }
     return fail("internal_error", error.message, 500, { requestId });
   }

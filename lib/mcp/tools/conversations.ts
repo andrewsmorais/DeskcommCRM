@@ -77,6 +77,11 @@ export const crmListConversations: McpToolDefinition<typeof listInputShape> = {
         // é erro de tipo. A tool do MCP não expõe filtro por comando (quem
         // pergunta é a tela), então ela não filtra por ele.
         comando: undefined,
+        // Mesma razão: o filtro de etiquetas virou `transform` e a chave é obrigatória.
+        tag: undefined,
+        // A integração enxerga a lista inteira, ocultas inclusive (migration
+        // 0510): ocultar é arrumação da caixa de entrada, não sigilo.
+        ocultas: "incluir",
         limit: input.limit,
         cursor: input.cursor,
       },

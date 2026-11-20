@@ -11,6 +11,7 @@
  *     função pura do conteúdo);
  *   - is_blocked lido DIRETO da fonte (contacts) — não existe mais cache.
  */
+import { lerRemetenteDeGrupo } from '@/lib/messaging/remetente-de-grupo';
 import type { Queryable } from '../../queue/queue';
 import type { CrmEdgeConfig } from './mcp-client';
 import { deriveLgpdFromContact, type LgpdInput } from '../../guardrails/lgpd/legal-basis';
@@ -55,6 +56,13 @@ export interface LeadContextMessage {
   type?: string;
   media_storage_path?: string | null;
   media_mime?: string | null;
+  /**
+   * Quem escreveu esta mensagem quando ela veio de um GRUPO (trazido do produto
+   * original, #2729). Num grupo há várias pessoas na mesma conversa, e sem este
+   * campo o modelo lê todas como "o cliente". AUSENTE nas conversas 1:1 e nas
+   * enviadas por nós. `lid` fica de fora: é identificador interno do WhatsApp.
+   */
+  sender?: { name: string | null; phone: string | null };
 }
 
 /**
@@ -199,6 +207,8 @@ interface HistoryRow {
   media_mime: string | null;
   media_derived_text: string | null;
   sent_at: Date;
+  /** `group_sender` do ingest de grupo — a única fonte de quem falou. */
+  metadata?: Record<string, unknown> | null;
 }
 
 export async function getLeadContext(
@@ -281,7 +291,7 @@ export async function getLeadContext(
     ? (
         await db.query<HistoryRow>(
           `select direction, type, body, media_url, media_storage_path, media_mime,
-                  media_derived_text, sent_at
+                  media_derived_text, sent_at, metadata
            from messages
            where organization_id = $1 and conversation_id = $2
              and direction in ('inbound', 'outbound')
@@ -402,12 +412,18 @@ function fitToBudget(
     // job passa pela mesma função. Duas receitas para a mesma linha foi o defeito
     // da #617 — o histórico mostrava o texto do áudio e a abertura dizia vazio.
     const body = corpoDaMensagem(m);
+    // Quem falou, quando há mais de uma pessoa na conversa: só o recebido de
+    // grupo traz `group_sender`; nas demais linhas o campo fica AUSENTE.
+    const remetente = m.direction === 'inbound' ? lerRemetenteDeGrupo(m.metadata) : null;
     return {
       direction: m.direction,
       body,
       // Hora de PAREDE do tenant, não UTC cru — ver o comentário de `sent_at` na
       // interface acima e o cabeçalho de `isoLocalComOffset`.
       sent_at: isoLocalComOffset(m.sent_at, fuso),
+      ...(remetente !== null && (remetente.name !== null || remetente.phone !== null)
+        ? { sender: { name: remetente.name, phone: remetente.phone } }
+        : {}),
       ...(hasMedia ? { type: m.type, media_storage_path: m.media_storage_path, media_mime: m.media_mime } : {}),
     };
   });

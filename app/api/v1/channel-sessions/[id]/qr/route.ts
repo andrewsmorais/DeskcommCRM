@@ -23,7 +23,8 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  */
 import { NextResponse } from "next/server";
 
-import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { requireRole } from "@/lib/auth/require-role";
+import { mfaEmDivida } from "@/lib/auth/server";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { createClient } from "@/lib/supabase/server";
 
@@ -37,10 +38,17 @@ export async function GET(
   if (supportDenied) return supportDenied;
   const { id } = await params;
 
-  const user = await loadAuthUser();
-  if (!user) return new NextResponse(null, { status: 401 });
-  const activeOrg = await resolveActiveOrg(user);
-  if (!activeOrg) return new NextResponse(null, { status: 403 });
+  // O QR É o pareamento: quem o escaneia primeiro liga o número da empresa ao
+  // próprio celular. Mesmo piso de quem inicia a conexão e de quem pede o
+  // código de pareamento (admin, com a MFA provada) — antes qualquer membro,
+  // até leitor, recebia a imagem (auditoria de 04/11/2026).
+  const authz = await requireRole("admin", {
+    resource: "channel_sessions",
+    allowPlatformAdmin: true,
+  });
+  if (!authz.ok) return new NextResponse(null, { status: authz.response.status });
+  if (await mfaEmDivida()) return new NextResponse(null, { status: 403 });
+  const activeOrg = authz.org;
 
   const supabase = await createClient();
   const buscar = (colunas: string) =>

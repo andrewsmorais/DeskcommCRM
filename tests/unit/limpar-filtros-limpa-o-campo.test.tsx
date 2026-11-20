@@ -49,6 +49,10 @@ vi.mock("@/hooks/contacts/useContactTagVocabulary", () => ({
 vi.mock("@/hooks/inbox/useConversationCounts", () => ({
   useConversationCounts: () => ({ data: undefined }),
 }));
+// Setores (migration 0496): sem setor nenhum a tela é a de antes.
+vi.mock("@/hooks/inbox/useSetores", () => ({
+  useSetores: () => ({ data: [] }),
+}));
 
 const { InboxFilters } = await import("@/components/inbox/InboxFilters");
 

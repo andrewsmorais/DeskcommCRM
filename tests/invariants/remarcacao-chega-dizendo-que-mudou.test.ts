@@ -23,6 +23,7 @@
  *
  * Recorte do PR #803, de @paulolimajr77 — o arquivo é acréscimo da triagem.
  */
+import { ehVistoAzul } from "../support/waha-visto-azul";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import pg from "pg";
@@ -124,6 +125,10 @@ async function entregar(f: Awaited<ReturnType<typeof cenario>>): Promise<string[
   expect(jid, "o gatilho não enfileirou — o defeito é antes do worker").toBeTruthy();
   const textos: string[] = [];
   const receiver = createServer(async (req, res) => {
+    if (ehVistoAzul(req.url)) {
+      res.end("{}");
+      return;
+    }
     let raw = "";
     for await (const chunk of req) raw += String(chunk);
     const corpo = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};

@@ -150,7 +150,11 @@ describe("GET /api/v1/attendants/availability", () => {
         "is_available",
         "last_heartbeat_at",
         "name",
+        // Telefone oculto por atendente (migration 0517) e reatribuição
+        // automática (0514): as duas colunas novas da tela Equipe.
+        "ocultar_telefone",
         "present",
+        "reatribuicao",
         "role",
         "schedule",
         "updated_at",

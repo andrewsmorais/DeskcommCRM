@@ -473,7 +473,7 @@ describe("POST /api/v1/webhooks/in/[token] (Task 6)", () => {
     const reqWithSig = new NextRequest(`http://localhost/api/v1/webhooks/in/${TOKEN_SECRET}`, {
       method: "POST",
       body: rawBody,
-      headers: { "content-type": "application/json", "x-deskcomm-signature": validSig },
+      headers: { "content-type": "application/json", "x-chatai-signature": validSig },
     });
     const resWithSig = await POST(reqWithSig, reqCtx(TOKEN_SECRET));
     expect(resWithSig.status).toBe(200);
@@ -1342,5 +1342,413 @@ describe("POST /api/v1/webhooks/in/[token] — RD Station (envelope leads[])", (
     const lead = rows(`select currency, organization_id from public.crm_leads where id = '${data.lead_id}'`)[0]!;
     expect(lead.organization_id).toBe(org);
     expect(lead.currency).toBe("EUR");
+  });
+});
+
+// ── Kiwify / Cakto: um negócio por pedido, que anda de etapa (23/10/2026) ──────
+const VENDAS_PIPELINE = "dddddddd-6666-4000-8000-000000000001";
+const VENDAS_NOVO = "dddddddd-6666-4000-8000-000000000002";
+const VENDAS_CARRINHO = "dddddddd-6666-4000-8000-000000000003";
+const VENDAS_AGUARDANDO = "dddddddd-6666-4000-8000-000000000004";
+const VENDAS_PAGO = "dddddddd-6666-4000-8000-000000000005";
+const WHIN_SOURCE_KIWIFY = "dddddddd-6666-4000-8000-000000000006";
+const WHIN_SOURCE_CAKTO = "dddddddd-6666-4000-8000-000000000007";
+const TOKEN_KIWIFY = "wh-in-kiwify-token-1234";
+const TOKEN_CAKTO = "wh-in-cakto-token-1234";
+const SEGREDO_CAKTO = "cakto-segredo-xyz";
+
+describe("POST /api/v1/webhooks/in/[token] — Kiwify e Cakto", () => {
+  beforeAll(() => {
+    sql(`
+      insert into public.crm_pipelines (id, organization_id, name, slug)
+        values ('${VENDAS_PIPELINE}', '${GOV_ORG}', 'Vendas', 'vendas-kiwify') on conflict do nothing;
+      insert into public.crm_stages (id, organization_id, pipeline_id, name, slug, position) values
+        ('${VENDAS_NOVO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Novo', 'novo', 1000),
+        ('${VENDAS_CARRINHO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Carrinho abandonado', 'carrinho', 2000),
+        ('${VENDAS_AGUARDANDO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Aguardando Pagamento', 'aguardando', 3000),
+        ('${VENDAS_PAGO}', '${GOV_ORG}', '${VENDAS_PIPELINE}', 'Pago', 'pago', 4000)
+        on conflict do nothing;
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id)
+        values ('${WHIN_SOURCE_KIWIFY}', '${GOV_ORG}', 'Kiwify', '${TOKEN_KIWIFY}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}')
+        on conflict do nothing;
+      select set_config('app.nuvemshop_oauth_key', 'test-guc-key-0123456789abcdef0123456789abcdef', false);
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id, secret_encrypted)
+        values ('${WHIN_SOURCE_CAKTO}', '${GOV_ORG}', 'Cakto', '${TOKEN_CAKTO}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}', public.fn_encrypt_oauth('${SEGREDO_CAKTO}'))
+        on conflict do nothing;
+    `);
+  });
+
+  const pedido = (evento: string, status: string) => ({
+    order_id: "kw-ord-777",
+    order_status: status,
+    webhook_event_type: evento,
+    checkout_link: "https://pay.kiwify.com.br/bolo",
+    Product: { product_name: "Curso de Bolos" },
+    Customer: { full_name: "Ana Kiwify", email: "ana.kiwify@exemplo.com", mobile: "11977770001" },
+  });
+  const lead = (id: string) => rows(`select * from public.crm_leads where id = '${id}'`)[0]!;
+  let leadId = "";
+
+  it("carrinho abandonado: negócio nasce na etapa 'Carrinho abandonado' com produto e link", async () => {
+    const res = await POST(
+      jsonReq(TOKEN_KIWIFY, {
+        status: "abandoned",
+        checkout_link: "https://pay.kiwify.com.br/bolo",
+        product_name: "Curso de Bolos",
+        name: "Ana Kiwify",
+        phone: "11977770001",
+        email: "ana.kiwify@exemplo.com",
+      }),
+      reqCtx(TOKEN_KIWIFY),
+    );
+    expect(res.status).toBe(200);
+    leadId = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+    const l = lead(leadId);
+    expect(l.stage_id).toBe(VENDAS_CARRINHO);
+    expect(l.title).toBe("Ana Kiwify · Curso de Bolos");
+    expect(l.custom_fields).toMatchObject({
+      plataforma: "kiwify",
+      evento_da_venda: "carrinho_abandonado",
+      produto: "Curso de Bolos",
+      link_checkout: "https://pay.kiwify.com.br/bolo",
+    });
+  });
+
+  it("Pix gerado do mesmo comprador e produto: herda o negócio do carrinho e vai para 'Aguardando pagamento'", async () => {
+    const res = await POST(jsonReq(TOKEN_KIWIFY, pedido("pix_created", "waiting_payment")), reqCtx(TOKEN_KIWIFY));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { lead_id: string } }).data.lead_id).toBe(leadId);
+    const l = lead(leadId);
+    expect(l.stage_id).toBe(VENDAS_AGUARDANDO);
+    expect(l.external_id).toBe("kiwify:kw-ord-777");
+    expect((l.custom_fields as Record<string, unknown>).evento_da_venda).toBe("aguardando_pagamento");
+  });
+
+  it("compra aprovada: o MESMO negócio vai para 'Pago' e emite lead.stage_changed (o gatilho do chatbot)", async () => {
+    const res = await POST(jsonReq(TOKEN_KIWIFY, pedido("order_approved", "paid")), reqCtx(TOKEN_KIWIFY));
+    expect(res.status).toBe(200);
+    expect(lead(leadId).stage_id).toBe(VENDAS_PAGO);
+    expect(rows(`select id from public.crm_leads where organization_id = '${GOV_ORG}' and title = 'Ana Kiwify · Curso de Bolos'`)).toHaveLength(1);
+    const mudancas = rows(
+      `select payload from public.event_log where event_type = 'lead.stage_changed' and entity_id = '${leadId}'`,
+    );
+    expect(mudancas.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("Cakto com segredo: secret errado no corpo é 401; o certo entra, e o segredo não fica no log", async () => {
+    const corpo = (secret: string) => ({
+      secret,
+      event: "purchase_approved",
+      data: {
+        id: "ck-ord-1",
+        customer: { name: "Bruno Cakto", phone: "21966660002", email: "bruno.cakto@exemplo.com" },
+        product: { name: "Mentoria" },
+        amount: 197,
+      },
+    });
+    expect((await POST(jsonReq(TOKEN_CAKTO, corpo("errado")), reqCtx(TOKEN_CAKTO))).status).toBe(401);
+    const res = await POST(jsonReq(TOKEN_CAKTO, corpo(SEGREDO_CAKTO)), reqCtx(TOKEN_CAKTO));
+    expect(res.status).toBe(200);
+    const id = ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+    const l = lead(id);
+    expect(l.stage_id).toBe(VENDAS_PAGO);
+    expect(Number(l.value_cents)).toBe(19700);
+    const log = rows(
+      `select raw_body from public.webhook_events_log where webhook_path_token = '${TOKEN_CAKTO}' order by received_at desc limit 1`,
+    )[0]!;
+    expect(String(log.raw_body)).not.toContain(SEGREDO_CAKTO);
+  });
+});
+
+const WHIN_SOURCE_SHOPIFY = "dddddddd-6666-4000-8000-000000000008";
+const WHIN_SOURCE_WOO = "dddddddd-6666-4000-8000-000000000009";
+const WHIN_SOURCE_YAMPI = "dddddddd-6666-4000-8000-00000000000a";
+const TOKEN_SHOPIFY = "wh-in-shopify-token-1234";
+const TOKEN_WOO = "wh-in-woocommerce-token-1234";
+const TOKEN_YAMPI = "wh-in-yampi-token-1234";
+const SEGREDO_SHOPIFY = "shopify-segredo-abc";
+
+/**
+ * Lojas (lib/webhooks/lojas.ts): o aviso de cada uma chega com o comprador
+ * aninhado, e antes caía em "nenhum campo mapeável". Agora segue o mesmo
+ * caminho da Kiwify — contato + negócio que anda de etapa.
+ */
+describe("POST /api/v1/webhooks/in/[token] — lojas (Shopify, WooCommerce, Yampi)", () => {
+  beforeAll(() => {
+    sql(`
+      select set_config('app.nuvemshop_oauth_key', 'test-guc-key-0123456789abcdef0123456789abcdef', false);
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id, secret_encrypted)
+        values ('${WHIN_SOURCE_SHOPIFY}', '${GOV_ORG}', 'Shopify', '${TOKEN_SHOPIFY}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}', public.fn_encrypt_oauth('${SEGREDO_SHOPIFY}'))
+        on conflict do nothing;
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id)
+        values ('${WHIN_SOURCE_WOO}', '${GOV_ORG}', 'WooCommerce', '${TOKEN_WOO}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}'),
+               ('${WHIN_SOURCE_YAMPI}', '${GOV_ORG}', 'Yampi', '${TOKEN_YAMPI}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}')
+        on conflict do nothing;
+    `);
+  });
+
+  const lead = (id: string) => rows(`select * from public.crm_leads where id = '${id}'`)[0]!;
+  const idDo = async (res: Response) => ((await res.json()) as { data: { lead_id: string } }).data.lead_id;
+  const assinado = (topico: string, corpo: Record<string, unknown>, segredo = SEGREDO_SHOPIFY) =>
+    jsonReq(TOKEN_SHOPIFY, corpo, {
+      "x-shopify-topic": topico,
+      "x-shopify-hmac-sha256": createHmac("sha256", segredo).update(JSON.stringify(corpo)).digest("base64"),
+    });
+  const comprador = {
+    customer: { first_name: "Lia", last_name: "Shopify" },
+    email: "lia.shopify@exemplo.com",
+    line_items: [{ title: "Mochila" }],
+    total_price: "259.00",
+  };
+  let leadShopify = "";
+
+  it("Shopify: assinatura errada é 401 e nada entra", async () => {
+    const res = await POST(
+      assinado("checkouts/create", { ...comprador, phone: "11944440001", completed_at: null }, "errado"),
+      reqCtx(TOKEN_SHOPIFY),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("Shopify: checkout vira negócio em 'Carrinho abandonado', com o link de recuperação", async () => {
+    const res = await POST(
+      assinado("checkouts/create", {
+        ...comprador,
+        phone: "11944440001",
+        completed_at: null,
+        abandoned_checkout_url: "https://loja.myshopify.com/recover/1",
+      }),
+      reqCtx(TOKEN_SHOPIFY),
+    );
+    expect(res.status).toBe(200);
+    leadShopify = await idDo(res);
+    const l = lead(leadShopify);
+    expect(l.stage_id).toBe(VENDAS_CARRINHO);
+    expect(l.custom_fields).toMatchObject({
+      plataforma: "shopify",
+      produto: "Mochila",
+      link_checkout: "https://loja.myshopify.com/recover/1",
+      valor: "R$ 259,00",
+    });
+  });
+
+  it("Shopify: o pedido Pix pendente herda o MESMO negócio e vai para 'Aguardando pagamento'; pago vai para 'Pago'", async () => {
+    const pedido = (financial_status: string) => ({
+      ...comprador,
+      id: 7770001,
+      financial_status,
+      billing_address: { phone: "11944440001" },
+      order_status_url: "https://loja.myshopify.com/orders/7770001",
+    });
+    const pendente = await POST(assinado("orders/create", pedido("pending")), reqCtx(TOKEN_SHOPIFY));
+    expect(pendente.status).toBe(200);
+    expect(await idDo(pendente)).toBe(leadShopify);
+    expect(lead(leadShopify).stage_id).toBe(VENDAS_AGUARDANDO);
+    expect(lead(leadShopify).external_id).toBe("shopify:7770001");
+
+    const pago = await POST(assinado("orders/paid", pedido("paid")), reqCtx(TOKEN_SHOPIFY));
+    expect(pago.status).toBe(200);
+    expect(lead(leadShopify).stage_id).toBe(VENDAS_PAGO);
+  });
+
+  it("WooCommerce: o ping de quando o webhook é salvo responde 200 e não cria nada", async () => {
+    const antes = rows(`select count(*)::int as n from public.crm_leads where organization_id = '${GOV_ORG}'`)[0]!.n;
+    const res = await POST(formReq(TOKEN_WOO, "webhook_id=42"), reqCtx(TOKEN_WOO));
+    expect(res.status).toBe(200);
+    const depois = rows(`select count(*)::int as n from public.crm_leads where organization_id = '${GOV_ORG}'`)[0]!.n;
+    expect(depois).toBe(antes);
+  });
+
+  it("WooCommerce: pedido 'on-hold' (boleto/Pix) vai para 'Aguardando pagamento' com valor", async () => {
+    const res = await POST(
+      jsonReq(
+        TOKEN_WOO,
+        {
+          id: 901,
+          status: "on-hold",
+          total: "120.50",
+          payment_url: "https://loja.com/checkout/order-pay/901/",
+          billing: { first_name: "Rui", last_name: "Woo", phone: "21944440002", email: "rui.woo@exemplo.com" },
+          line_items: [{ name: "Cafeteira" }],
+        },
+        { "x-wc-webhook-topic": "order.created" },
+      ),
+      reqCtx(TOKEN_WOO),
+    );
+    expect(res.status).toBe(200);
+    const l = lead(await idDo(res));
+    expect(l.stage_id).toBe(VENDAS_AGUARDANDO);
+    expect(Number(l.value_cents)).toBe(12050);
+    expect(l.external_id).toBe("woocommerce:901");
+  });
+
+  it("Yampi: carrinho abandonado (cart.reminder) com o link de retomada", async () => {
+    const res = await POST(
+      jsonReq(TOKEN_YAMPI, {
+        event: "cart.reminder",
+        merchant: { id: 1, alias: "minhaloja" },
+        resource: {
+          customer: { data: { name: "Bea Yampi", email: "bea.yampi@exemplo.com", phone: { full_number: "31944440003" } } },
+          totalizers: { total: 79.9 },
+          simulate_url: "https://seguro.minhaloja.com/cart/retomar",
+          items: { data: [{ sku: { data: { title: "Hidratante" } } }] },
+        },
+      }),
+      reqCtx(TOKEN_YAMPI),
+    );
+    expect(res.status).toBe(200);
+    const l = lead(await idDo(res));
+    expect(l.stage_id).toBe(VENDAS_CARRINHO);
+    expect((l.custom_fields as Record<string, unknown>).link_checkout).toBe(
+      "https://seguro.minhaloja.com/cart/retomar",
+    );
+  });
+});
+
+const WHIN_SOURCE_NUVEMSHOP = "dddddddd-5555-4000-8000-000000000031";
+const TOKEN_NUVEMSHOP = "wh-in-nuvemshop-token-1234";
+const NUVEMSHOP_INTEGRACAO = "dddddddd-5555-4000-8000-000000000032";
+const NUVEMSHOP_STORE = "990001";
+
+describe("Nuvemshop — pedido e carrinho pela Captação", () => {
+  beforeAll(() => {
+    sql(`
+      select set_config('app.nuvemshop_oauth_key', 'test-guc-key-0123456789abcdef0123456789abcdef', false);
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id)
+        values ('${WHIN_SOURCE_NUVEMSHOP}', '${GOV_ORG}', 'Nuvemshop', '${TOKEN_NUVEMSHOP}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}')
+        on conflict do nothing;
+      insert into public.tenant_integrations
+        (id, organization_id, provider, oauth_access_token_encrypted, webhook_secret_encrypted, status, store_metadata)
+        values ('${NUVEMSHOP_INTEGRACAO}', '${GOV_ORG}', 'nuvemshop', public.fn_encrypt_oauth('token-da-loja'),
+                public.fn_encrypt_oauth('segredo-do-app'), 'healthy',
+                jsonb_build_object('store_id', '${NUVEMSHOP_STORE}', 'fonte_id', '${WHIN_SOURCE_NUVEMSHOP}'))
+        on conflict do nothing;
+    `);
+  });
+
+  const lead = (id: string) => rows(`select * from public.crm_leads where id = '${id}'`)[0]!;
+  const telefone = "11944449001";
+  const produtos = [{ name: "Tênis Corrida", price: "399.00", quantity: 1 }];
+  let leadDoCarrinho = "";
+
+  it("carrinho abandonado vira negócio em 'Carrinho abandonado', com o link que retoma a compra", async () => {
+    const { lojaDaOrganizacao, fonteDaLoja, entregarNaCaptacao } = await import("@/lib/nuvemshop/captacao");
+    const { avisoDoCarrinho } = await import("@/lib/nuvemshop/venda");
+    const admin = createAdminClient();
+    const loja = await lojaDaOrganizacao(admin, GOV_ORG);
+    expect(loja?.storeId).toBe(NUVEMSHOP_STORE);
+    const fonte = await fonteDaLoja(admin, loja!);
+    expect(fonte?.id).toBe(WHIN_SOURCE_NUVEMSHOP);
+
+    const entrega = await entregarNaCaptacao(
+      admin,
+      fonte!,
+      avisoDoCarrinho({
+        id: 5550001,
+        contact_name: "Rui Nuvem",
+        contact_phone: telefone,
+        products: produtos,
+        total: "399.00",
+        abandoned_checkout_url: "https://loja.lojavirtualnuvem.com.br/checkout/v3/next/5550001/x",
+        completed_at: null,
+      })!,
+    );
+    expect(entrega).toEqual({ tipo: "entregue", status: 200 });
+    const [l] = rows(
+      `select id from public.crm_leads where organization_id = '${GOV_ORG}' and stage_id = '${VENDAS_CARRINHO}'
+         and custom_fields->>'plataforma' = 'nuvemshop'`,
+    );
+    leadDoCarrinho = String(l!.id);
+    expect(lead(leadDoCarrinho).custom_fields).toMatchObject({
+      produto: "Tênis Corrida",
+      link_checkout: "https://loja.lojavirtualnuvem.com.br/checkout/v3/next/5550001/x",
+      valor: "R$ 399,00",
+    });
+  });
+
+  it("o aviso do pedido é lido pela API: Pix pendente herda o negócio do carrinho, e o pago vai para 'Pago'", async () => {
+    const { tratarPedidoDaNuvemshop } = await import("@/lib/nuvemshop/pedido.handler");
+    let situacao = "pending";
+    const pedidos: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      pedidos.push(`${String(url)} ${(init.headers as Record<string, string>).Authentication}`);
+      return new Response(
+        JSON.stringify({
+          id: 8880001,
+          contact_name: "Rui Nuvem",
+          contact_phone: telefone,
+          products: produtos,
+          total: "399.00",
+          status: "open",
+          payment_status: situacao,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    try {
+      const evento = (tipo: string) => ({
+        id: randomUUID(),
+        organization_id: GOV_ORG,
+        event_type: tipo,
+        entity_kind: "nuvemshop_webhook",
+        entity_id: null,
+        payload: { store_id: Number(NUVEMSHOP_STORE), event: "order/created", id: 8880001 },
+        metadata: { store_id: NUVEMSHOP_STORE },
+        consumed_by: [],
+        attempts: 0,
+      });
+      const r1 = await tratarPedidoDaNuvemshop(evento("nuvemshop.order_created"));
+      expect(r1).toMatchObject({ status: "ok", detail: "aguardando_pagamento:200" });
+      expect(lead(leadDoCarrinho).stage_id).toBe(VENDAS_AGUARDANDO);
+      expect(lead(leadDoCarrinho).external_id).toBe("loja:nuvemshop-8880001");
+      // A organização e o token vêm da integração: a API foi chamada com o token decifrado.
+      expect(pedidos[0]).toBe(
+        `https://api.tiendanube.com/v1/${NUVEMSHOP_STORE}/orders/8880001 bearer token-da-loja`,
+      );
+
+      situacao = "paid";
+      const r2 = await tratarPedidoDaNuvemshop(evento("nuvemshop.order_paid"));
+      expect(r2.status).toBe("ok");
+      expect(lead(leadDoCarrinho).stage_id).toBe(VENDAS_PAGO);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("aviso de OUTRA loja não lê pedido nenhum", async () => {
+    const { tratarPedidoDaNuvemshop } = await import("@/lib/nuvemshop/pedido.handler");
+    const r = await tratarPedidoDaNuvemshop({
+      id: randomUUID(),
+      organization_id: GOV_ORG,
+      event_type: "nuvemshop.order_paid",
+      entity_kind: "nuvemshop_webhook",
+      entity_id: null,
+      payload: { store_id: 1, id: 1 },
+      metadata: { store_id: "1" },
+      consumed_by: [],
+      attempts: 0,
+    });
+    expect(r).toMatchObject({ status: "skipped", detail: "loja_trocada" });
+  });
+
+  it("sem fonte guardada, a primeira venda cria a fonte 'Nuvemshop' (visível em Receber dados) e a guarda", async () => {
+    const { lojaDaOrganizacao, fonteDaLoja } = await import("@/lib/nuvemshop/captacao");
+    sql(
+      `update public.tenant_integrations set store_metadata = store_metadata - 'fonte_id' where id = '${NUVEMSHOP_INTEGRACAO}'`,
+    );
+    const admin = createAdminClient();
+    const loja = await lojaDaOrganizacao(admin, GOV_ORG);
+    const fonte = await fonteDaLoja(admin, loja!);
+    expect(fonte?.id).toBeTruthy();
+    expect(fonte?.id).not.toBe(WHIN_SOURCE_NUVEMSHOP);
+    const [criada] = rows(`select name, is_active, last_change_actor_kind from public.webhook_sources where id = '${fonte!.id}'`);
+    expect(criada).toEqual({ name: "Nuvemshop", is_active: true, last_change_actor_kind: "system" });
+    const [meta] = rows(`select store_metadata from public.tenant_integrations where id = '${NUVEMSHOP_INTEGRACAO}'`);
+    expect(meta!.store_metadata).toMatchObject({ store_id: NUVEMSHOP_STORE, fonte_id: fonte!.id });
   });
 });

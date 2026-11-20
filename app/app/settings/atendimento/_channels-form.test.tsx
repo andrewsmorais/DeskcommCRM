@@ -5,7 +5,7 @@ vi.mock("next/navigation",()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock("@/hooks/i18n/useT",()=>({useT:()=>(s:string)=>s}));
 const fetcher=vi.fn();
 beforeEach(()=>{vi.stubGlobal("fetch",fetcher);fetcher.mockReset();fetcher.mockResolvedValue({ok:true,json:async()=>({data:{mode:"restricted_empty",user_ids:[]}})});});
-const initial={channels:[{id:"a",display_name:"Número A",phone_number:null,user_ids:["ana"],mode:"restricted" as const},{id:"b",display_name:"Número B",phone_number:null,user_ids:[],mode:"legacy_unconfigured" as const}],members:[{id:"ana",name:"Ana"},{id:"bruno",name:"Bruno"}]};
+const initial={channels:[{id:"a",display_name:"Número A",phone_number:null,user_ids:["ana"],routing_mode:null,mode:"restricted" as const},{id:"b",display_name:"Número B",phone_number:null,user_ids:[],routing_mode:null,mode:"legacy_unconfigured" as const}],members:[{id:"ana",name:"Ana"},{id:"bruno",name:"Bruno"}]};
 describe("responsáveis por número na tela",()=>{
  it("salvar lista vazia é explícito e não altera o número vizinho",async()=>{
   render(<ChannelRoutingForm initial={initial}/>);
@@ -22,5 +22,14 @@ describe("responsáveis por número na tela",()=>{
   await waitFor(()=>expect(screen.getByRole("status")).toHaveTextContent("A equipe mudou."));
   expect(JSON.parse(fetcher.mock.calls[0]![1].body).reset).toBe(true);
   expect(screen.queryByText("Responsáveis salvos.")).not.toBeInTheDocument();
+ });
+ it("cada número salva o próprio jeito de distribuir",async()=>{
+  render(<ChannelRoutingForm initial={initial}/>);
+  const b=within(screen.getByRole("group",{name:"Número B"}));
+  fireEvent.change(b.getByRole("combobox",{name:"Jeito de distribuir neste número"}),{target:{value:"least_load"}});
+  fireEvent.click(b.getByRole("button",{name:"Salvar jeito de distribuir"}));
+  await waitFor(()=>expect(screen.getByRole("status")).toHaveTextContent("Jeito de distribuir salvo."));
+  expect(fetcher.mock.calls[0]![0]).toBe("/api/v1/settings/routing/channels/modo");
+  expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({channel_session_id:"b",routing_mode:"least_load"});
  });
 });

@@ -4,6 +4,7 @@ import { useTenantDetail } from "@/hooks/useTenantDetail";
 import { TenantOverview } from "@/components/admin/tenants/TenantOverview";
 import { TenantActions } from "@/components/admin/tenants/TenantActions";
 import { SuspendedBanner } from "@/components/admin/tenants/SuspendedBanner";
+import { PlanoDoTenant } from "@/components/admin/tenants/PlanoDoTenant";
 import { useT } from "@/hooks/i18n/useT";
 
 interface TenantOverviewClientProps {
@@ -45,17 +46,15 @@ export function TenantOverviewClient({ id }: TenantOverviewClientProps) {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
-        <TenantOverview
-          organization={organization}
-          counts={counts}
-          integrations={integrations}
-        />
+        <TenantOverview organization={organization} counts={counts} integrations={integrations} />
         <TenantActions
           organizationId={organization.id}
           status={organization.status}
           displayName={organization.display_name}
         />
       </div>
+
+      <PlanoDoTenant organizationId={organization.id} />
     </div>
   );
 }

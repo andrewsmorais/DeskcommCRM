@@ -15,8 +15,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { modulosLigados, type ModuloOpcional } from "@/lib/instalacao/modulos";
 import { logger } from "@/lib/logger";
+import { telefoniaEmUso } from "@/lib/telefonia/em-uso";
 
-export const CAPACIDADES_DA_ORGANIZACAO = ["propostas"] as const;
+/**
+ * `telefonia`: a tela Chamadas e o gatilho "ligação não atendida" só aparecem
+ * para quem usa telefone (tronco salvo, tronco da instalação, número ativo ou
+ * ligação SIP registrada — `lib/telefonia/em-uso.ts`). Não tem módulo de
+ * instalação que o app leia: o sinal é da própria organização.
+ */
+export const CAPACIDADES_DA_ORGANIZACAO = ["propostas", "telefonia"] as const;
 export type CapacidadeDaOrganizacao = (typeof CAPACIDADES_DA_ORGANIZACAO)[number];
 
 /**
@@ -25,8 +32,9 @@ export type CapacidadeDaOrganizacao = (typeof CAPACIDADES_DA_ORGANIZACAO)[number
  * e é aqui, e não em cada consumidor, que as duas se somam: tela, menu, rota,
  * ferramenta do agente e cron leem a mesma resposta.
  */
-const MODULO_DA_CAPACIDADE: Record<CapacidadeDaOrganizacao, ModuloOpcional> = {
+const MODULO_DA_CAPACIDADE: Record<CapacidadeDaOrganizacao, ModuloOpcional | null> = {
   propostas: "propostas",
+  telefonia: null,
 };
 
 function objeto(v: unknown): Record<string, unknown> | null {
@@ -40,10 +48,16 @@ function objeto(v: unknown): Record<string, unknown> | null {
 export function capacidadesLigadas(
   settings: unknown,
   modulos: readonly ModuloOpcional[],
+  telefoniaEmUsoDaOrganizacao = false,
 ): CapacidadeDaOrganizacao[] {
+  const daEmpresa: CapacidadeDaOrganizacao[] = [];
   const propostas = objeto(objeto(settings)?.proposals);
-  const daEmpresa: CapacidadeDaOrganizacao[] = propostas?.enabled === true ? ["propostas"] : [];
-  return daEmpresa.filter((c) => modulos.includes(MODULO_DA_CAPACIDADE[c]));
+  const moduloDePropostas = MODULO_DA_CAPACIDADE.propostas;
+  if (propostas?.enabled === true && moduloDePropostas && modulos.includes(moduloDePropostas)) {
+    daEmpresa.push("propostas");
+  }
+  if (telefoniaEmUsoDaOrganizacao) daEmpresa.push("telefonia");
+  return daEmpresa;
 }
 
 /** Lê a linha da organização. Nunca lança: erro = nenhuma capacidade. */
@@ -52,9 +66,10 @@ export async function capacidadesDaOrganizacao(
   organizationId: string,
 ): Promise<CapacidadeDaOrganizacao[]> {
   try {
-    const [{ data, error }, modulos] = await Promise.all([
+    const [{ data, error }, modulos, telefonia] = await Promise.all([
       db.from("organizations").select("settings").eq("id", organizationId).maybeSingle(),
       modulosLigados(db),
+      telefoniaEmUso(db, organizationId),
     ]);
     if (error) {
       logger.warn("capacidades da organização: leitura recusada — tratando todas como desligadas", {
@@ -63,7 +78,7 @@ export async function capacidadesDaOrganizacao(
       });
       return [];
     }
-    return capacidadesLigadas((data as { settings?: unknown } | null)?.settings, modulos);
+    return capacidadesLigadas((data as { settings?: unknown } | null)?.settings, modulos, telefonia);
   } catch (erro) {
     logger.warn("capacidades da organização: leitura falhou — tratando todas como desligadas", {
       organization_id: organizationId,

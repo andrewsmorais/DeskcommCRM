@@ -58,6 +58,12 @@ const DIR = join(process.cwd(), "lib", "followup");
  * `agenda` = 'nenhum' → menciona a coluna sem agendar (leitura, tradução).
  */
 const ESCRITORES: Record<string, { agenda: "agora" | "futuro" | "nenhum"; nota: string }> = {
+  "encerrar-pela-recusa.ts": {
+    agenda: "nenhum",
+    nota:
+      "Só DESAGENDA: o \"não tenho interesse\" na prospecção cancela a inscrição da prospecção " +
+      "gravando `next_eval_at = null`. Mesmo caso de `saida-da-etapa.ts` — `null` não tem relógio.",
+  },
   "enroll.ts": {
     agenda: "agora",
     nota: "o enrollment nasce vencido — o insert omite next_eval_at e o default now() do banco decide (0147).",
@@ -84,6 +90,12 @@ const ESCRITORES: Record<string, { agenda: "agora" | "futuro" | "nenhum"; nota: 
       "O INSERT omite a coluna (default now() do banco, igual ao gatilho de etapa). A única " +
       "menção é `next_eval_at: null` no cancelamento por caso fechado — desagendar não é agendar, " +
       "e `null` não tem relógio para escolher errado.",
+  },
+  "saida-da-etapa.ts": {
+    agenda: "nenhum",
+    nota:
+      "Só DESAGENDA: cancelar a inscrição quando o negócio SAI da etapa que a armou grava " +
+      "`next_eval_at = null` — `null` não tem relógio para escolher errado.",
   },
   "atendimento.ts": {
     agenda: "nenhum",

@@ -57,6 +57,7 @@ import { ehNomeDeSessaoE2E } from "@/lib/channels/sessoes-e2e";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { autorizaCron } from "@/lib/auth/cron-auth";
+import { recursoOcioso } from "@/lib/cron/piso-ocioso";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,11 @@ async function handle(req: NextRequest): Promise<Response> {
   if (!autorizaCron(req)) {
     return fail("forbidden", "Cron secret missing or invalid.", 403, { requestId });
   }
+
+  // O PISO OCIOSO (#3731): sem trabalho deste recurso na instalação, a rodada
+  // sai antes de tocar o PostgREST. O retrato é UMA consulta por janela para
+  // todas as rotas (`lib/cron/piso-ocioso.ts`); na dúvida, a rota roda.
+  if (await recursoOcioso("canal_vigiado")) return ok({ pulado: "recurso_ocioso" }, { requestId });
 
   const admin = createAdminClient();
 

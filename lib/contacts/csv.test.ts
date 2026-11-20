@@ -9,6 +9,7 @@ import {
   normalizaTelefone,
   parseCsv,
 } from "./csv";
+import { vcfParaLinhas } from "./vcf";
 
 describe("parseCsv", () => {
   it("parseia linhas simples com vírgula", () => {
@@ -273,6 +274,41 @@ describe("mapLinha", () => {
   it("e-mail malformado gera erro nominal da linha", () => {
     const { motivo } = mapLinha(["Ana", "", "nao-e-email", ""], indices);
     expect(motivo).toMatch(/e-mail inválido/);
+  });
+
+  /**
+   * Auditoria de 18/11, achado 8: a regex do e-mail voltava atrás a cada ponto
+   * depois do `@`, e uma célula `a@....@` de 1 MB travava o processo do app por
+   * minutos. Sabotagem: tirar o teto de 254 antes da regex faz estes dois casos
+   * estourarem o tempo.
+   */
+  it("e-mail de 1 MB é recusado em milissegundos, pelo CSV e pelo vCard", () => {
+    const enorme = `a@${".".repeat(1_000_000)}@`;
+    const rows = parseCsv(`nome,email\nTeste,${enorme}\n`);
+    const pelaPlanilha = mapHeader(rows[0]!).indices;
+    let t0 = performance.now();
+    const csv = mapLinha(rows[1]!, pelaPlanilha);
+    expect(performance.now() - t0).toBeLessThan(250);
+    expect(csv.motivo).toMatch(/e-mail inválido/);
+    // O motivo não ecoa o megabyte de volta na resposta.
+    expect(csv.motivo!.length).toBeLessThan(150);
+
+    const vcf = vcfParaLinhas(`BEGIN:VCARD\nFN:Teste\nEMAIL:${enorme}\nEND:VCARD\n`);
+    const peloVcf = mapHeader(vcf[0]!).indices;
+    t0 = performance.now();
+    expect(mapLinha(vcf[1]!, peloVcf).motivo).toMatch(/e-mail inválido/);
+    expect(performance.now() - t0).toBeLessThan(250);
+  });
+
+  it("e-mail no limite de 254 caracteres continua aceito; 255 não", () => {
+    const local = "a".repeat(64);
+    const dominio = (n: number) => `${"b".repeat(n - local.length - 1 - 4)}.com`;
+    const ok = `${local}@${dominio(254)}`;
+    expect(ok).toHaveLength(254);
+    expect(mapLinha(["Ana", "", ok, ""], indices).contato.email).toBe(ok);
+    const longo = `${local}@${dominio(255)}`;
+    expect(longo).toHaveLength(255);
+    expect(mapLinha(["Ana", "", longo, ""], indices).motivo).toMatch(/e-mail inválido/);
   });
 
   it("células faltando no fim da linha não derrubam o mapeamento", () => {

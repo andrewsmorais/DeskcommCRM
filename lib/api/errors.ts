@@ -33,6 +33,8 @@ export const ApiErrorCodes = {
   forbidden: "forbidden",
   forbidden_role: "forbidden_role",
   forbidden_tenant: "forbidden_tenant",
+  /** A plataforma suspendeu a organização: toda porta fecha, não só a tela. */
+  org_suspended: "org_suspended",
   lgpd_anonymization_irreversible: "lgpd_anonymization_irreversible",
 
   // 404

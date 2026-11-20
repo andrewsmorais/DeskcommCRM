@@ -11,7 +11,7 @@
  */
 
 /** As três visões da grade. A semana é o padrão de quem atende. */
-export type VisaoDaAgenda = "dia" | "semana" | "mes";
+export type VisaoDaAgenda = "dia" | "semana" | "mes" | "quadro";
 
 /**
  * Índice da trilha de cor, 1..8 — casa com `--agenda-pessoa-N` no globals.css.
@@ -59,6 +59,8 @@ export type Agendamento = {
   titulo: string;
   /** Quem vai ser atendido. Ausente em ocupação vinda do Google. */
   quemSeraAtendido?: string;
+  /** Pessoas da equipe convidadas além do responsável (ids). */
+  convidadosDaEquipe?: string[];
   /** Quem atende — é dele a cor do bloco. */
   responsavelId: string;
   /** ISO-8601. */

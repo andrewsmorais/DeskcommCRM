@@ -66,6 +66,8 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   // cobranças.
   crm_close_demand: "funil_vem_do_lead",
   crm_manage_tags: "alvo_polimorfico",
+  // O7: passar a conversa para um setor não mexe em negócio nenhum.
+  crm_set_conversation_sector: "sem_funil",
   // Não muda o card, mas pendura uma decisão humana nele — encher o funil da
   // Andrea de sugestões da IA é ocupar a atenção de quem cuida dele.
   crm_propose_reactivation: "funil_vem_do_lead",

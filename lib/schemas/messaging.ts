@@ -5,9 +5,11 @@
  * /api/v1/messages. Validações compartilhadas entre rota REST e webhooks
  * (quando o payload entra na pipeline pós-verificação HMAC).
  */
+import { FILTROS_DE_OCULTAS } from "@/lib/inbox/visibilidade";
 import { z } from "zod";
 import { COMANDOS_DO_BANCO, type ComandoDoBanco } from "@/lib/inbox/comando-da-conversa";
 import { PISO_DA_BUSCA, buscaValeConsulta } from "@/lib/inbox/termo-de-busca";
+import { MAXIMO_DE_ETIQUETAS_NO_FILTRO, MODOS_DE_ETIQUETA } from "@/lib/inbox/marcador-da-conversa";
 
 /**
  * O que a API aceita ESCREVER. Cinco valores, e a ausência de `pending`/`resolved`
@@ -107,6 +109,13 @@ export const sendMessageSchema = z
      * linha do token e o membership, no banco.
      */
     on_behalf_of_user_id: z.string().uuid().optional(),
+    /**
+     * A chave "Assinar" do campo de mensagem: o atendente quer o nome dele antes
+     * do texto. É só um PEDIDO — o nome vem do perfil da sessão e a empresa pode
+     * forçar ou proibir (`lib/conversas/preferencias.ts`). Só a rota REST com
+     * sessão de navegador lê este campo; token, MCP e automação o ignoram.
+     */
+    assinar: z.boolean().optional(),
   })
   .refine(
     (d) => {
@@ -177,6 +186,28 @@ export const patchConversationSchema = z
   });
 
 export type PatchConversationInput = z.infer<typeof patchConversationSchema>;
+
+/**
+ * POST /conversations/bulk — a mesma ação em várias conversas de uma vez
+ * (vindo do produto original). Cada id passa pela rota da conversa única,
+ * com as mesmas regras de permissão, auditoria e estado.
+ */
+export const bulkConversationActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("close"), ids: z.array(z.string().uuid()).min(1) }),
+  z.object({ action: z.literal("archive"), ids: z.array(z.string().uuid()).min(1) }),
+  z.object({ action: z.literal("mark-read"), ids: z.array(z.string().uuid()).min(1) }),
+  z.object({ action: z.literal("pause-ai"), ids: z.array(z.string().uuid()).min(1) }),
+  z.object({ action: z.literal("reactivate-bot"), ids: z.array(z.string().uuid()).min(1) }),
+  z.object({
+    action: z.literal("transfer"),
+    ids: z.array(z.string().uuid()).min(1),
+    // Mesmo contrato do `transferConversationSchema`.
+    to_user_id: z.string().uuid(),
+    reason: z.string().trim().min(1).max(500).optional(),
+  }),
+]);
+
+export type BulkConversationActionInput = z.infer<typeof bulkConversationActionSchema>;
 
 /** POST /conversations/open-with-contact — abrir inbox a partir de cartão de contato. */
 export const openConversationWithContactSchema = z
@@ -323,9 +354,30 @@ export const listConversationsQuerySchema = z.object({
    * significar "meu trabalho" para virar "tudo que já toquei".
    */
   exclude_finished: z.boolean().optional(),
+  /**
+   * Só as ENCERRADAS a partir deste instante (`service_closed_at >= …`). É a
+   * coluna "Atendidos hoje" do Painel de atendimento (vindo do produto original).
+   */
+  closed_since: z.string().datetime({ offset: true }).optional(),
   assigned_to: z.union([z.string().uuid(), z.literal("me"), z.literal("unassigned")]).optional(),
   channel_session_id: z.string().uuid().optional(),
-  tag: conversationTagSchema.optional(),
+  /** Só as do setor (migration 0496). Igualdade em `conversations.setor_id`. */
+  setor_id: z.string().uuid().optional(),
+  /**
+   * Uma etiqueta ou VÁRIAS (vindo do produto original). `?tag=vip` continua
+   * valendo igual; `?tag=vip&tag=orcamento` filtra pelas duas, com `modo`.
+   * Lista vazia vira `undefined` (sem filtro), nunca um filtro que não casa nada.
+   */
+  tag: z
+    .union([conversationTagSchema, z.array(conversationTagSchema).max(MAXIMO_DE_ETIQUETAS_NO_FILTRO)])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      const lista = Array.isArray(v) ? v : [v];
+      return lista.length > 0 ? lista : undefined;
+    }),
+  /** E (padrão) ou OU entre as etiquetas escolhidas. */
+  modo: z.enum(MODOS_DE_ETIQUETA).optional(),
   /**
    * A aba "Grupos" do inbox (Task 10). `"true"`/`"false"` como STRING — vem de
    * `searchParams`, que só conhece texto — e não `z.coerce.boolean()`, que
@@ -334,6 +386,12 @@ export const listConversationsQuerySchema = z.object({
    * `.eq("is_group", …)` no handler.
    */
   is_group: z.enum(["true", "false"]).optional(),
+  /**
+   * Conversas ocultas (migration 0510): `excluir` (padrão — a caixa de
+   * entrada), `so` (o filtro "Ocultas") ou `incluir` (tudo). Régua em
+   * `lib/inbox/visibilidade.ts`, a mesma da contagem das abas.
+   */
+  ocultas: z.enum(FILTROS_DE_OCULTAS).default("excluir"),
   /**
    * Só as que têm mensagem não lida para o dono.
    *

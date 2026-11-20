@@ -12,6 +12,12 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
  * se draft_graph ausente ou reprovado na validação estrutural/semântica.
  */
 import { randomUUID } from "node:crypto";
+import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import {
+  gatilhoParaOPlano,
+  mensagemDoFollowupPeloChatbot,
+  problemasDoFollowupPeloChatbot,
+} from "@/lib/billing/followup-pelo-chatbot";
 import { verificarGrafoDoPlano } from "@/lib/billing/grafo";
 import type { NextRequest } from "next/server";
 
@@ -69,6 +75,16 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // recusa (`trg_enrollment_superficie_coerente`, 0394); a recusa é AQUI, com
   // uma pessoa na tela para corrigir.
   const surface = (pointer.surface ?? "followup") as FollowupFlowSurface;
+  // Follow-up automático é do Impulso em diante (card da página de vendas).
+  // Fora dele, o follow-up existe só pelo chatbot (decisão do dono, 03/11/2026):
+  // a recusa espera o grafo, abaixo, para dizer o que tirar.
+  let soPeloChatbot = false;
+  if (surface !== "atendimento") {
+    const acesso = await verificarRecursoDoPlano(activeOrg.orgId, "follow_up");
+    if (!acesso.ok && acesso.code !== "billing_feature")
+      return fail(acesso.code, acesso.message, acesso.status, { requestId });
+    soPeloChatbot = !acesso.ok;
+  }
   if (surface === "atendimento") {
     if (!(await moduloLigado(admin, "fluxos_atendimento"))) {
       return fail("not_found", t("Fluxo não encontrado."), 404, { requestId });
@@ -130,6 +146,9 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
   // arquivada ou de outra org, o pointer fica `active` e nunca enrolla ninguém —
   // exatamente o desfecho que o bloqueio acima existe para evitar. A recusa é
   // aqui, no momento em que há um humano na tela para corrigir.
+  // O nome da etapa decide se o gatilho é de RECUPERAÇÃO DE VENDA, que vale em
+  // todos os planos (`gatilhoParaOPlano`).
+  let nomeDaEtapaDoGatilho: string | null = null;
   if (triggerKind === "stage_change") {
     const stageId = trigger.params?.stage_id;
     if (!stageId || !UUID_RX.test(stageId)) {
@@ -155,6 +174,7 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
         { requestId },
       );
     }
+    nomeDaEtapaDoGatilho = stage.name as string;
     if (stage.is_archived) {
       return fail(
         "trigger_stage_archived",
@@ -186,7 +206,18 @@ export async function POST(_req: NextRequest, ctx: RouteCtx): Promise<Response> 
       requestId,
     });
   const graph = parsedGraph.data;
-  const acesso = await verificarGrafoDoPlano(activeOrg.orgId, graph);
+  if (soPeloChatbot) {
+    const problemas = problemasDoFollowupPeloChatbot(
+      graph,
+      gatilhoParaOPlano(triggerKind, nomeDaEtapaDoGatilho),
+    );
+    if (problemas.length)
+      // Montada com os nomes dos passos: frase dinâmica não passa pelo dicionário.
+      return fail("billing_feature", mensagemDoFollowupPeloChatbot(problemas), 403, { requestId });
+  }
+  const acesso = await verificarGrafoDoPlano(activeOrg.orgId, graph, {
+    gatilho: surface === "atendimento" ? null : gatilhoParaOPlano(triggerKind, nomeDaEtapaDoGatilho),
+  });
   if (!acesso.ok) return fail(acesso.code, acesso.message, acesso.status, { requestId });
   // A regra de etapa guarda o `stage_id`, e só o banco diz se a etapa existe e
   // está ativa — sem esta leitura, uma regra que nunca decide publicaria calada.

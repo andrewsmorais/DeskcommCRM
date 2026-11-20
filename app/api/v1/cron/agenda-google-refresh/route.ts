@@ -40,6 +40,7 @@ import { classificarErroDoGoogle, estadoDaConexaoApos } from "@/lib/agenda/googl
 import { fundirTokens, precisaRenovar, type TokenDoGoogle } from "@/lib/agenda/google/oauth";
 import { renovarToken } from "@/lib/agenda/google/token";
 import { autorizaCron } from "@/lib/auth/cron-auth";
+import { recursoOcioso } from "@/lib/cron/piso-ocioso";
 
 export const dynamic = "force-dynamic";
 
@@ -207,6 +208,11 @@ async function executar(req: NextRequest): Promise<Response> {
   if (!autorizaCron(req)) {
     return NextResponse.json({ error: { code: "unauthenticated", message: "cron secret inválido" } }, { status: 401 });
   }
+
+  // O PISO OCIOSO (#3731): sem trabalho deste recurso na instalação, a rodada
+  // sai antes de tocar o PostgREST. O retrato é UMA consulta por janela para
+  // todas as rotas (`lib/cron/piso-ocioso.ts`); na dúvida, a rota roda.
+  if (await recursoOcioso("agenda_google")) return NextResponse.json({ data: { pulado: "recurso_ocioso" } });
   const resumo = await renovarAgendasDoGoogle(createAdminClient(), { agora: new Date() });
   return NextResponse.json({ data: resumo });
 }

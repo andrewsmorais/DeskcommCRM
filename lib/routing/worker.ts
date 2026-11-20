@@ -16,9 +16,10 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { decideRouting } from "@/lib/routing/decide";
+import { lerQualificacaoDaIA } from "@/lib/routing/qualificacao-da-ia";
 import { loadEligibleAttendants, InvalidRoutingChannel } from "@/lib/routing/eligibles";
-import { routingConfigSchema } from "@/lib/schemas/routing";
-import { verificarRecursoDoPlano } from "@/lib/billing/acesso";
+import { ROUTING_MODES, modoDistribuiSozinho, routingConfigSchema, type RoutingMode } from "@/lib/schemas/routing";
+import { recursoNegadoAoMotor, verificarRecursoDoPlano } from "@/lib/billing/acesso";
 
 export const ROUTING_WORKER_KEY = "worker.routing.v1";
 export const ROUTING_EVENT_TYPE = "conversation.routing_requested";
@@ -35,6 +36,8 @@ export type RoutingOutcome =
   | "skipped_conv_missing"
   | "skipped_invalid_payload"
   | "assign_lost_race"
+  /** #3966: a IA ainda está qualificando — a fila espera a passagem para humano. */
+  | "skipped_ia_qualificando"
   | "error";
 
 export interface RoutingSummary {
@@ -63,6 +66,7 @@ const EMPTY_OUTCOMES = (): Record<RoutingOutcome, number> => ({
   skipped_conv_missing: 0,
   skipped_invalid_payload: 0,
   assign_lost_race: 0,
+  skipped_ia_qualificando: 0,
   error: 0,
 });
 
@@ -70,6 +74,31 @@ export interface RoutingWorkerOptions {
   batchSize?: number;
   /** Relógio injetável (testes) — usado na elegibilidade (horário) e no backoff. */
   now?: Date;
+}
+
+/**
+ * O modo que vale para a conversa: o do número, se ele tiver um, senão o da
+ * organização. Falha de leitura cai no da organização — é o comportamento de
+ * antes da 0559, nunca uma atribuição às cegas.
+ */
+async function modoDoNumero(
+  admin: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  channelSessionId: string | null,
+  modoDaOrganizacao: RoutingMode,
+): Promise<RoutingMode> {
+  if (!channelSessionId) return modoDaOrganizacao;
+  const { data, error } = await admin
+    .from("channel_sessions")
+    .select("routing_mode")
+    .eq("organization_id", orgId)
+    .eq("id", channelSessionId)
+    .maybeSingle();
+  if (error || !data) return modoDaOrganizacao;
+  const proprio = (data as { routing_mode?: unknown }).routing_mode;
+  return (ROUTING_MODES as readonly string[]).includes(String(proprio))
+    ? (proprio as RoutingMode)
+    : modoDaOrganizacao;
 }
 
 export async function runRoutingWorker(opts: RoutingWorkerOptions = {}): Promise<RoutingSummary> {
@@ -144,7 +173,7 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
 
   const { data: conv, error: convError } = await admin
     .from("conversations")
-    .select("id, organization_id, contact_id, channel_session_id, assigned_to_user_id, status")
+    .select("id, organization_id, contact_id, channel_session_id, assigned_to_user_id, status, setor_id, bot_silenced_until, last_handoff_at, active_ai_agent_id")
     .eq("id", conversationId)
     .eq("organization_id", orgId)
     .maybeSingle();
@@ -166,7 +195,18 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
   const settings = (org?.settings ?? {}) as { routing?: unknown };
   const config = routingConfigSchema.parse(settings.routing ?? {});
 
-  if (config.mode !== "manual") {
+  // Cada número pode ter o seu jeito de distribuir (migration 0559):
+  // `channel_sessions.routing_mode` preenchido vence o da organização.
+  // O jeito POR NÚMERO é "Distribuição por número e por time" (Escala): num
+  // plano que não o inclui, vale o da organização, mesmo com a coluna gravada
+  // (direto pelo banco, ou antes de descer de plano).
+  const porNumero = await modoDoNumero(admin, orgId, conv.channel_session_id, config.mode);
+  const modo =
+    porNumero !== config.mode && (await recursoNegadoAoMotor(orgId, "distribuicao_avancada"))
+      ? config.mode
+      : porNumero;
+
+  if (modo !== "manual") {
     const acesso = await verificarRecursoDoPlano(orgId, "distribuicao_automatica");
     if (!acesso.ok) {
       if (acesso.status === 503) throw new Error("billing_unavailable");
@@ -177,11 +217,32 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
   }
 
   const alreadyAssigned = Boolean(conv.assigned_to_user_id);
+
+  // A IA AINDA ESTÁ QUALIFICANDO? (#3966) — só pergunta quando há distribuição
+  // automática e a conversa não tem dono; antes da leitura de elegíveis, que
+  // seria pagar caro para nada. A leitura é fail-open (`qualificacao-da-ia.ts`).
+  const iaQualificando =
+    !alreadyAssigned && modo !== "manual"
+      ? await lerQualificacaoDaIA(
+          admin,
+          orgId,
+          {
+            channel_session_id: conv.channel_session_id,
+            active_ai_agent_id: conv.active_ai_agent_id,
+            bot_silenced_until: conv.bot_silenced_until,
+            last_handoff_at: conv.last_handoff_at,
+            assigned_to_user_id: conv.assigned_to_user_id,
+          },
+          now,
+        )
+      : false;
+
   let eligibles: Awaited<ReturnType<typeof loadEligibleAttendants>> = [];
-  if (!alreadyAssigned && config.mode === "round_robin") {
+  if (!alreadyAssigned && !iaQualificando && modoDistribuiSozinho(modo)) {
     try {
       eligibles = await loadEligibleAttendants(admin, orgId, now, {
         kind: "conversation_channel", channelSessionId: conv.channel_session_id,
+        setorId: conv.setor_id ?? null,
       });
     } catch (error) {
       if (!(error instanceof InvalidRoutingChannel)) throw error;
@@ -192,12 +253,13 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
   }
 
   const action = decideRouting({
-    mode: config.mode,
+    mode: modo,
     alreadyAssigned,
     eligibles,
     config,
     attempts: event.attempts,
     now,
+    iaQualificando,
   });
 
   switch (action.kind) {
@@ -237,11 +299,13 @@ async function processEvent(event: EventRow, now: Date): Promise<RoutingOutcome>
           ? "skipped_manual"
           : action.reason === "already_assigned"
             ? "skipped_already_assigned"
-            : "skipped_unsupported_mode";
+            : action.reason === "ia_qualificando"
+              ? "skipped_ia_qualificando"
+              : "skipped_unsupported_mode";
       if (action.reason.startsWith("unsupported_mode")) {
         logger.warn("[routing-worker] modo não suportado (post-MVP) — no-op", {
           organization_id: orgId,
-          mode: config.mode,
+          mode: modo,
         });
       }
       await markDone(event, outcome);

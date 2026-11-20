@@ -3,6 +3,7 @@ import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { audit } from "@/lib/audit";
 import { createMcpAgentDraft } from "@/lib/ai/agents/create-draft";
+import { conferirCotaDeAgentes } from "@/lib/billing/cota-de-agentes";
 import { publishAgentVersion } from "@/lib/ai/agents/publish";
 import { escolherModeloDoProvedor } from "@/lib/ai/agents/escolher-modelo";
 import { capacidadesPadraoDoOnboarding } from "@/lib/ai/agents/capacidades-padrao";
@@ -180,15 +181,21 @@ interface SetupMetadata {
   proposal_hash?: string;
   prepared_only?: boolean;
 }
+// Colunas em que `null` na linha do banco é o mesmo que ausente na versão montada: o hash
+// gravado na criação parte do objeto parseado (sem a chave), e a conferência parte da
+// linha lida (com `null`). Sem esta lista os dois hashes divergem e o setup recusa com
+// "O rascunho foi alterado" — o que a 0498 (inbound_debounce_ms) fez nas 5 specs de
+// tests/invariants/prospecting-agent-setup.test.ts.
+// ponytail: lista explícita; coluna nullable nova em ai_agent_versions entra aqui (#2004).
+const NULO_E_AUSENTE = new Set(["trigger_config", "inbound_debounce_ms"]);
+
 function versionHash(row: Record<string, unknown>) {
   const keys = Object.keys(versionCreateSchema.shape);
   return hash(
     versionCreateSchema.parse(
       Object.fromEntries(
         keys
-          .filter(
-            (key) => row[key] !== undefined && !(key === "trigger_config" && row[key] === null),
-          )
+          .filter((key) => row[key] !== undefined && !(NULO_E_AUSENTE.has(key) && row[key] === null))
           .map((key) => [key, row[key]]),
       ),
     ),
@@ -198,7 +205,7 @@ function versionHash(row: Record<string, unknown>) {
 export async function setupProspectingAgent(
   pool: pg.Pool,
   admin: SupabaseClient,
-  context: { orgId: string; userId: string; requestId: string },
+  context: { orgId: string; userId: string; requestId: string; isento?: boolean },
   raw: unknown,
   options: { prepareOnly?: boolean } = {},
 ) {
@@ -296,6 +303,11 @@ export async function setupProspectingAgent(
         );
       }
     } else {
+      // Agente NOVO conta na cota do plano como qualquer outro: a Prospecção é
+      // uma segunda porta de criação e cobrava nada. Retomar o agente desta
+      // mesma campanha (ramo de cima) não cria vaga nova e não confere.
+      const cota = await conferirCotaDeAgentes(admin, context.orgId, { isento: context.isento });
+      if (!cota.ok) throw new AgentSetupError(cota.message, cota.status);
       await preflight(db, context.orgId, input, agentId, options.prepareOnly);
       const model = await resolveSetupModel(db, context.orgId, input.channel_session_id);
       const version = versionCreateSchema.parse({

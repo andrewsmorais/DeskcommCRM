@@ -21,6 +21,10 @@ interface LinhaDeElegibilidade {
   bot_silenced_until: Date | string | null;
   ai_authorized_at: Date | string | null;
   phone_number: string | null;
+  /** `contacts.tags` — a régua de contato interno (vindo do produto original). */
+  contact_tags: string[] | null;
+  /** `organizations.settings` — a lista interna mora em `.crm.internal_contact_tags`. */
+  org_settings: unknown;
 }
 
 /**
@@ -34,16 +38,21 @@ export async function decidirElegibilidadeDaConversa(
   const { rows } = await pool.query<LinhaDeElegibilidade>(
     `select
        cs.metadata                  as channel_metadata,
-       ct.force_human               as force_human,
+       -- As marcas permanentes (0540) barram a IA como a trava de handoff.
+       (ct.force_human or coalesce(ct.ai_opt_out, false) or coalesce(ct.is_personal, false)) as force_human,
        cv.assignee_kind             as assignee_kind,
        cv.bot_silenced_until        as bot_silenced_until,
        ct.ai_authorized_at          as ai_authorized_at,
-       ct.phone_number              as phone_number
+       ct.phone_number              as phone_number,
+       ct.tags                      as contact_tags,
+       o.settings                   as org_settings
      from conversations cv
      join contacts ct
        on ct.id = cv.contact_id and ct.organization_id = cv.organization_id
      join channel_sessions cs
        on cs.id = cv.channel_session_id and cs.organization_id = cv.organization_id
+     join organizations o
+       on o.id = cv.organization_id
      where cv.organization_id = $1 and cv.id = $2`,
     [input.organizationId, input.conversationId],
   );
@@ -57,6 +66,8 @@ export async function decidirElegibilidadeDaConversa(
       aiTestPhoneNumbers: r.channel_metadata?.ai_test_phone_numbers,
       contactPhoneNumber: r.phone_number,
       forceHuman: r.force_human,
+      contactTags: r.contact_tags,
+      orgSettings: r.org_settings,
       assigneeKind: r.assignee_kind,
       botSilencedUntil: r.bot_silenced_until,
       aiAuthorizedAt: r.ai_authorized_at,

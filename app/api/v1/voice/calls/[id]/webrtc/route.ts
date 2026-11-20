@@ -3,6 +3,7 @@
  * e o WaCalls (§4.1 da spec). A MÍDIA em si (ICE/SRTP) não passa por aqui —
  * só a troca inicial de oferta/resposta.
  */
+import { exigirExtra } from "@/lib/billing/extras";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
@@ -41,6 +42,9 @@ export async function POST(
 
   const authz = await requireRole("agent", { requestId, resource: "voice_calls" });
   if (!authz.ok) return authz.response;
+  // Ligações são EXTRA cobrado à parte (lib/billing/extras.ts).
+  const semOExtra = await exigirExtra(authz.org.orgId, "ligacoes", { requestId });
+  if (semOExtra) return semOExtra;
   const { user, org: activeOrg } = authz;
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));

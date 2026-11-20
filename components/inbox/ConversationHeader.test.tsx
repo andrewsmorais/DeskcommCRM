@@ -17,11 +17,24 @@ const closeMutate = vi.hoisted(() => vi.fn());
 const arquivarMutate = vi.hoisted(() => vi.fn());
 const startCall = vi.hoisted(() => vi.fn());
 
+vi.mock("@/components/inbox/ParticipantesDaConversa", () => ({
+  ParticipantesDaConversa: () => null,
+}));
+vi.mock("@/hooks/inbox/useEnderecoDaResposta", () => ({
+  useEnderecoDaResposta: () => ({ data: undefined }),
+}));
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ user: { id: "u1", support: null } }),
+  // O cadeado da conversa privada (migration 0495) pergunta por "inbox.privacy.any".
+  usePermission: () => false,
 }));
 vi.mock("@/hooks/inbox/useClaimConversation", () => ({
   useClaimConversation: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+// Setores (migration 0496): sem setor nenhum a tela é a de antes.
+vi.mock("@/hooks/inbox/useSetores", () => ({
+  useSetores: () => ({ data: [] }),
+  useMudarSetorDaConversa: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@/hooks/inbox/useReleaseConversation", () => ({
   useReleaseConversation: () => ({ mutate: vi.fn(), isPending: false }),
@@ -43,6 +56,29 @@ vi.mock("@/hooks/ai/useAutomaticoAtivo", () => ({
 vi.mock("@/components/kanban/OwnerBadge", () => ({ OwnerBadge: () => null }));
 vi.mock("@/components/inbox/ReassignDialog", () => ({ ReassignDialog: () => null }));
 vi.mock("@/components/inbox/SnoozeButton", () => ({ SnoozeButton: () => null }));
+vi.mock("@/components/inbox/IniciarChatbotButton", () => ({ IniciarChatbotButton: () => null }));
+vi.mock("@/components/inbox/FavoritasButton", () => ({ FavoritasButton: () => null }));
+vi.mock("@/components/inbox/QuemEstaVendo", () => ({ QuemEstaVendo: () => null }));
+// Configurações › Conversas: o comportamento do Fechar muda por teste.
+let comportamentoDoFechar = "atendente_escolhe";
+vi.mock("@/hooks/inbox/usePreferenciasDeConversa", () => ({
+  usePreferenciasDeConversa: () => ({
+    data: {
+      assinatura: "atendente_escolhe",
+      finalizar: {
+        comportamento: comportamentoDoFechar,
+        mensagem_padrao: "Obrigado! Até a próxima.",
+        chatbot_padrao: null,
+      },
+      meu: { nome: "Ana", assinatura: null, mensagem_de_finalizacao: null },
+    },
+  }),
+  lerAssinarLembrado: () => false,
+}));
+// Os chatbots de início manual (o chatbot de encerramento do Fechar).
+vi.mock("@/hooks/inbox/useChatbotManual", () => ({
+  useChatbotsManuais: () => ({ data: [{ id: "fluxo-1", name: "Pesquisa de satisfação", is_active: true }] }),
+}));
 vi.mock("@/components/inbox/JanelaSelo", () => ({ JanelaSelo: () => null }));
 vi.mock("@/components/inbox/ChannelLogo", () => ({ ChannelLogo: () => null }));
 vi.mock("@/hooks/voice/useVoiceSessionStatus", () => ({
@@ -82,6 +118,7 @@ function conversa(status: string): ConversationWithContact {
 }
 
 beforeEach(() => {
+  comportamentoDoFechar = "atendente_escolhe";
   closeMutate.mockReset();
   arquivarMutate.mockReset();
   startCall.mockReset();
@@ -120,6 +157,80 @@ describe("ConversationHeader — chamada de voz na Inbox", () => {
     };
     render(<ConversationHeader conversation={atual} />);
     expect(screen.queryByRole("button", { name: "Chamar" })).toBeNull();
+  });
+});
+
+describe("ConversationHeader — Fechar com despedida ou chatbot de encerramento", () => {
+  it("despedida: o botão só libera com texto, e o Fechar leva a mensagem junto", async () => {
+    const user = userEvent.setup();
+    render(<ConversationHeader conversation={conversa("open")} />);
+    await user.click(screen.getByRole("button", { name: "Fechar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+
+    await user.click(within(dialogo).getByTestId("encerramento-mensagem"));
+    // Abre com a despedida padrão da empresa; apagada, o botão trava.
+    expect((within(dialogo).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Obrigado! Até a próxima.");
+    await user.clear(within(dialogo).getByRole("textbox"));
+    const fechar = within(dialogo).getByRole("button", { name: "Fechar" });
+    expect((fechar as HTMLButtonElement).disabled).toBe(true);
+
+    await user.type(within(dialogo).getByRole("textbox"), "Obrigado pelo contato!");
+    await user.click(within(dialogo).getByRole("button", { name: "Fechar" }));
+
+    await waitFor(() => expect(closeMutate).toHaveBeenCalledTimes(1));
+    expect(closeMutate).toHaveBeenCalledWith({
+      conversation_id: "conv-1",
+      expected_revision: 3,
+      encerramento: { tipo: "mensagem", texto: "Obrigado pelo contato!" },
+    });
+  });
+
+  it("chatbot de encerramento: escolhe o fluxo e o botão vira Acionar chatbot", async () => {
+    const user = userEvent.setup();
+    render(<ConversationHeader conversation={conversa("open")} />);
+    await user.click(screen.getByRole("button", { name: "Fechar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+
+    await user.click(within(dialogo).getByTestId("encerramento-chatbot"));
+    expect((within(dialogo).getByRole("button", { name: "Acionar chatbot" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    await user.selectOptions(within(dialogo).getByRole("combobox"), "fluxo-1");
+    await user.click(within(dialogo).getByRole("button", { name: "Acionar chatbot" }));
+
+    await waitFor(() => expect(closeMutate).toHaveBeenCalledTimes(1));
+    expect(closeMutate.mock.calls[0]?.[0]).toEqual({
+      conversation_id: "conv-1",
+      expected_revision: 3,
+      encerramento: { tipo: "chatbot", chatbot_flow_id: "fluxo-1" },
+    });
+  });
+});
+
+describe("ConversationHeader — o Fechar obedece a Configurações › Conversas", () => {
+  it("empresa exige despedida: a janela já abre com a mensagem padrão e sem opções", async () => {
+    comportamentoDoFechar = "mensagem";
+    const user = userEvent.setup();
+    render(<ConversationHeader conversation={conversa("open")} />);
+    await user.click(screen.getByRole("button", { name: "Fechar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).queryByTestId("encerramento-nenhum")).toBeNull();
+    expect((within(dialogo).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Obrigado! Até a próxima.");
+    await user.click(within(dialogo).getByRole("button", { name: "Fechar" }));
+    await waitFor(() => expect(closeMutate).toHaveBeenCalledTimes(1));
+    expect(closeMutate.mock.calls[0]?.[0]).toMatchObject({
+      encerramento: { tipo: "mensagem", texto: "Obrigado! Até a próxima." },
+    });
+  });
+
+  it("empresa só finaliza: nenhuma opção de despedida ou chatbot", async () => {
+    comportamentoDoFechar = "so_finalizar";
+    const user = userEvent.setup();
+    render(<ConversationHeader conversation={conversa("open")} />);
+    await user.click(screen.getByRole("button", { name: "Fechar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    expect(within(dialogo).queryByTestId("encerramento-mensagem")).toBeNull();
+    expect(within(dialogo).queryByTestId("encerramento-chatbot")).toBeNull();
   });
 });
 

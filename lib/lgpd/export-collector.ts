@@ -22,6 +22,12 @@ export interface ContactSnapshot {
   id: string;
   name: string | null;
   display_name: string | null;
+  /**
+   * O nome que a equipe salvou na agenda do celular (migration 0546). Só a
+   * equipe o vê na tela, mas é dado pessoal do titular: a anonimização o apaga
+   * (`trg_contato_anonimizado_esquece_a_agenda`), então o acesso o entrega.
+   */
+  address_book_name: string | null;
   email: string | null;
   phone_number: string | null;
   cpf_present: boolean;
@@ -37,6 +43,12 @@ export interface ContactSnapshot {
   /** Primeiro atendimento marcado. Sobrevive à anonimização: é registro de operação. */
   first_service_at: string | null;
   /**
+   * Os telefones EXTRAS da ficha (Spec 31, B1), com o `lid` do WhatsApp de cada
+   * número. Ausente quando a ficha não tem extra: o `data.json` dela sai como saía
+   * antes (a chave só aparece quando há o que entregar).
+   */
+  additional_phones?: ContactPhoneSnapshot[];
+  /**
    * Campos personalizados — onde os roteiros de atendimento gravam o que o
    * cliente respondeu (CPF inclusive). A anonimização já os zera; sem esta
    * linha o titular pedia acesso e não recebia o que o roteiro coletou.
@@ -46,6 +58,18 @@ export interface ContactSnapshot {
   campos_legiveis: CampoLegivel[];
   /** Um roteiro guardou o CPF nos campos (texto, não a coluna cifrada). */
   cpf_informado_na_conversa: boolean;
+}
+
+/** Um telefone extra da ficha, como o titular o recebe (Spec 31, B1). */
+export interface ContactPhoneSnapshot {
+  phone_number: string;
+  tipo: string;
+  whatsapp: string;
+  rotulo: string | null;
+  origem: string;
+  /** O `lid` do WhatsApp DAQUELE número: é o que casa a mensagem de grupo dele. */
+  wa_lid: string | null;
+  created_at: string;
 }
 
 export interface ConsentRow {
@@ -465,6 +489,12 @@ export interface VoiceCallRow {
   answered_at: string | null;
   ended_at: string | null;
   duration_ms: number | null;
+  /**
+   * A transcrição da ligação com o agente de voz (a fala dos dois lados). A
+   * anonimização a apaga (0348, restaurada pela 0509); por isso o titular a
+   * recebe aqui. Opcional: o tipo é montado à mão nos testes de PDF.
+   */
+  transcript?: unknown;
 }
 
 /** Pesquisa e resultado da abordagem ligados ao titular (redação: migration 0370). */
@@ -655,6 +685,77 @@ export interface ExportPayload {
     consumed_at: string | null;
     created_at: string;
   }>;
+  /**
+   * O que o agente de IA escreveu sobre o titular (migration 0509, que passou a
+   * redigir tudo isto na anonimização): as notas duráveis do contato, o estado
+   * do funil com a qualificação e a próxima ação, e o motivo de cada mudança de
+   * etapa. Opcional como `reply_drafts`: o tipo é montado à mão nos testes de PDF.
+   */
+  memoria_do_agente?: {
+    notas: Array<{ id: string; headline: string; body: string; created_at: string }>;
+    estado: {
+      stage: string;
+      qualification: Record<string, unknown>;
+      next_action: string | null;
+      updated_at: string;
+    } | null;
+    transicoes: Array<{
+      id: string;
+      from_stage: string;
+      to_stage: string;
+      reason: string | null;
+      created_at: string;
+    }>;
+  };
+  /**
+   * Notas internas da equipe nas conversas do titular (redigidas pela 0509) e o
+   * ANEXO de cada uma (migration 0547), que a anonimização também apaga — o que
+   * se apaga a pedido dele é o que se entrega a pedido dele (Art. 18 II). A
+   * mídia vem como METADADO (caminho, MIME, bytes): nenhum binário trafega aqui.
+   */
+  conversation_notes?: Array<{
+    id: string;
+    conversation_id: string;
+    body: string;
+    created_by_name: string | null;
+    created_at: string;
+    media_storage_path: string | null;
+    media_mime: string | null;
+    media_size_bytes: number | null;
+  }>;
+  /**
+   * Mensagens, notas e chatbots agendados nas conversas do titular (migration
+   * 0511). A anonimização as apaga; antes disso, o pedido de acesso as entrega.
+   */
+  mensagens_agendadas?: Array<{
+    id: string;
+    conversation_id: string;
+    tipo: string;
+    texto: string | null;
+    enviar_em: string;
+    status: string;
+    created_at: string;
+  }>;
+  /** Respostas que o titular deu ao chatbot (esvaziadas pela 0509). */
+  chatbot_sessions?: Array<{
+    id: string;
+    conversation_id: string;
+    status: string;
+    collected_data: Record<string, unknown>;
+    started_at: string;
+    ended_at: string | null;
+  }>;
+  /**
+   * A prévia (até 280 caracteres) que o barramento de eventos guarda de cada
+   * mensagem do titular (a 0509 a retira na anonimização). É cópia de
+   * `messages.body`, mas é uma cópia GUARDADA, então entra no relatório.
+   */
+  eventos_com_previa?: Array<{
+    id: string;
+    event_type: string;
+    body_preview: string | null;
+    created_at: string;
+  }>;
   /** Propostas de campo do contato (0123), também APAGADAS na anonimização. */
   contact_field_proposals?: Array<{
     id: string;
@@ -833,7 +934,7 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     const { data, error } = await admin
       .from("contacts")
       .select(
-        "id, name, display_name, email, phone_number, wa_lid, cpf_encrypted, birthdate, is_blocked, is_anonymized, consent, tags, source, source_metadata, custom_fields, created_at, last_activity_at, first_service_at",
+        "id, name, display_name, address_book_name, email, phone_number, wa_lid, cpf_encrypted, birthdate, is_blocked, is_anonymized, consent, tags, source, source_metadata, custom_fields, created_at, last_activity_at, first_service_at",
       )
       .eq("organization_id", organizationId)
       .eq("id", contactId)
@@ -887,6 +988,7 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
         id: data.id,
         name: data.name ?? null,
         display_name: data.display_name ?? null,
+        address_book_name: data.address_book_name ?? null,
         email: data.email ?? null,
         phone_number: data.phone_number ?? null,
         cpf_present: Boolean(data.cpf_encrypted),
@@ -906,6 +1008,35 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
       };
     }
   }
+
+  // (9041) Os telefones extras da ficha, com o `lid` de cada número. Vêm ANTES da
+  // busca de mensagens de grupo, que casa pelo número e pelo `lid` de cada um. A
+  // consulta filtra organização e ficha: o cliente é o administrador (sem RLS).
+  let telefonesExtras: ContactPhoneSnapshot[] = [];
+  if (contactId) {
+    const { data, error } = await admin
+      .from("contact_phones")
+      .select("phone_number, tipo, whatsapp, rotulo, origem, wa_lid, created_at")
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: true });
+    if (error) {
+      logger.warn("[lgpd-export-worker] contact phones load failed", {
+        request_id: requestId,
+        error: error.message,
+      });
+    }
+    telefonesExtras = (data ?? []).map((t) => ({
+      phone_number: t.phone_number,
+      tipo: t.tipo,
+      whatsapp: t.whatsapp,
+      rotulo: t.rotulo ?? null,
+      origem: t.origem,
+      wa_lid: t.wa_lid ?? null,
+      created_at: t.created_at,
+    }));
+  }
+  if (contact && telefonesExtras.length > 0) contact.additional_phones = telefonesExtras;
 
   // No `consents` table in current schema; legal basis is in contacts.consent JSONB.
   const consents: ConsentRow[] = [];
@@ -1140,6 +1271,71 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     }
   }
 
+  // Memória do agente sobre o titular — contact_id direto nas três tabelas.
+  // A 0509 passou a apagar as notas e a zerar qualificação, próxima ação e
+  // motivos na anonimização; o que se apaga a pedido dele é o que se entrega a
+  // pedido dele. Paginada, e falha que vira exceção: um relatório que omitisse
+  // a memória por um soluço do banco diria ao titular que ela não existe.
+  const memoria_do_agente: NonNullable<ExportPayload["memoria_do_agente"]> = {
+    notas: [],
+    estado: null,
+    transicoes: [],
+  };
+  if (contactId) {
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await admin
+        .from("lead_notes")
+        .select("id, headline, body, created_at")
+        .eq("organization_id", organizationId)
+        .eq("contact_id", contactId)
+        .order("id")
+        .range(offset, offset + 499);
+      if (error) throw error;
+      memoria_do_agente.notas.push(...(data ?? []));
+      if (!data || data.length < 500) break;
+    }
+    const { data: estado, error: erroEstado } = await admin
+      .from("lead_state")
+      .select("stage, qualification, next_action, updated_at")
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId)
+      .maybeSingle();
+    if (erroEstado) throw erroEstado;
+    memoria_do_agente.estado = estado ?? null;
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await admin
+        .from("lead_state_transitions")
+        .select("id, from_stage, to_stage, reason, created_at")
+        .eq("organization_id", organizationId)
+        .eq("contact_id", contactId)
+        .order("id")
+        .range(offset, offset + 499);
+      if (error) throw error;
+      memoria_do_agente.transicoes.push(...(data ?? []));
+      if (!data || data.length < 500) break;
+    }
+  }
+
+  // A prévia das mensagens que o barramento de eventos guarda, casada pelo
+  // `contact_id` do payload — a mesma chave que a anonimização usa.
+  const eventos_com_previa: NonNullable<ExportPayload["eventos_com_previa"]> = [];
+  if (contactId) {
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await admin
+        .from("event_log")
+        .select("id, event_type, body_preview:payload->>body_preview, created_at")
+        .eq("organization_id", organizationId)
+        .eq("payload->>contact_id", contactId)
+        .order("id")
+        .range(offset, offset + 499);
+      if (error) throw error;
+      // Só os eventos que GUARDAM a prévia: os demais não têm texto da pessoa.
+      for (const evento of (data ?? []) as NonNullable<ExportPayload["eventos_com_previa"]>)
+        if (evento.body_preview !== null) eventos_com_previa.push(evento);
+      if (!data || data.length < 500) break;
+    }
+  }
+
   // Agenda — contact_id direto em calendar_appointments.
   //
   // ⚠️ ESTA METADE FALTAVA, e a outra tinha gate. A migration 0184 declarou esta
@@ -1304,7 +1500,7 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     const { data, error } = await admin
       .from("voice_calls")
       .select(
-        "id, direction, peer_phone, status, end_reason, started_at, answered_at, ended_at, duration_ms",
+        "id, direction, peer_phone, status, end_reason, started_at, answered_at, ended_at, duration_ms, transcript",
       )
       .eq("organization_id", organizationId)
       .eq("contact_id", contactId)
@@ -1390,10 +1586,22 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
   // Duas consultas (telefone, lid) em vez de um `or` sobre caminho JSON: cada
   // uma é um filtro simples, e a união por id desfaz a mensagem que casa as duas.
   const porId = new Map<string, MessageRow>();
-  const telefones = contact?.phone_number ? phoneLookupVariants(contact.phone_number) : [];
+  // (9041) O principal E os extras, cada um com as variantes do nono dígito; e o
+  // `lid` do principal junto com o de cada extra. Sem extra, é a busca de antes.
+  const telefones = [
+    ...new Set([
+      ...(contact?.phone_number ? phoneLookupVariants(contact.phone_number) : []),
+      ...telefonesExtras.flatMap((t) => phoneLookupVariants(t.phone_number)),
+    ]),
+  ];
+  const lids = [
+    ...new Set(
+      [contactLid, ...telefonesExtras.map((t) => t.wa_lid)].filter((l): l is string => Boolean(l)),
+    ),
+  ];
   const buscas = [
     telefones.length > 0 ? { campo: "metadata->group_sender->>phone", valores: telefones } : null,
-    contactLid ? { campo: "metadata->group_sender->>lid", valores: [contactLid] } : null,
+    lids.length > 0 ? { campo: "metadata->group_sender->>lid", valores: lids } : null,
   ];
   for (const busca of buscas) {
     if (!busca) continue;
@@ -1555,6 +1763,9 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
   const passagens: PassagemDeAtendimentoRow[] = [];
   const avisos_de_caso: AvisoDeCasoEntregaRow[] = [];
   const conversation_drafts: NonNullable<ExportPayload["conversation_drafts"]> = [];
+  const conversation_notes: NonNullable<ExportPayload["conversation_notes"]> = [];
+  const chatbot_sessions: NonNullable<ExportPayload["chatbot_sessions"]> = [];
+  const mensagens_agendadas: NonNullable<ExportPayload["mensagens_agendadas"]> = [];
   if (contactId) {
     const pageSize = 500;
     const refBatchSize = 100; // Mantém o filtro IN abaixo dos limites de URL dos proxies.
@@ -1622,6 +1833,25 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
         case_events.push(...(data ?? []));
         if (!data || data.length < pageSize) break;
       }
+    }
+    // Mensagens agendadas (migration 0511): FK direta para o contato.
+    for (let offset = 0; ; offset += pageSize) {
+      const { data: pagina, error: erro } = await admin
+        .from("mensagens_agendadas")
+        .select("id, conversation_id, tipo, texto, enviar_em, status, created_at")
+        .eq("organization_id", organizationId)
+        .eq("contact_id", contactId)
+        .order("id")
+        .range(offset, offset + pageSize - 1);
+      if (erro) {
+        logger.warn("[lgpd-export-worker] mensagens agendadas load failed", {
+          request_id: requestId,
+          error: erro.message,
+        });
+        break;
+      }
+      mensagens_agendadas.push(...(pagina ?? []));
+      if (!pagina || pagina.length < pageSize) break;
     }
     // Demanda tem FK direta para o contato (`contact_id` é `not null`).
     const { data, error } = await admin
@@ -1702,6 +1932,35 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
           .range(offset, offset + pageSize - 1);
         if (error) throw error;
         conversation_drafts.push(...(data ?? []));
+        if (!data || data.length < pageSize) break;
+      }
+    }
+    // Notas internas e respostas ao chatbot das conversas do titular — o MESMO
+    // escopo (os ids já paginados acima) que a anonimização da 0509 usa: as duas
+    // tabelas pendem da conversa, não do contato.
+    for (let batch = 0; batch < conversationIds.length; batch += refBatchSize) {
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await admin
+          .from("conversation_notes")
+          .select("id, conversation_id, body, created_by_name, created_at, media_storage_path, media_mime, media_size_bytes")
+          .eq("organization_id", organizationId)
+          .in("conversation_id", conversationIds.slice(batch, batch + refBatchSize))
+          .order("id")
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        conversation_notes.push(...(data ?? []));
+        if (!data || data.length < pageSize) break;
+      }
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await admin
+          .from("chatbot_sessions")
+          .select("id, conversation_id, status, collected_data, started_at, ended_at")
+          .eq("organization_id", organizationId)
+          .in("conversation_id", conversationIds.slice(batch, batch + refBatchSize))
+          .order("id")
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        chatbot_sessions.push(...(data ?? []));
         if (!data || data.length < pageSize) break;
       }
     }
@@ -1872,6 +2131,11 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     group_messages_authored,
     conversation_drafts,
     contact_field_proposals,
+    memoria_do_agente,
+    conversation_notes,
+    chatbot_sessions,
+    mensagens_agendadas,
+    eventos_com_previa,
     b2b,
   };
 }

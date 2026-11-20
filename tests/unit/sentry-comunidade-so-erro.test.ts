@@ -206,6 +206,11 @@ describe("o init do cliente honra a política", () => {
     expect(fonte).toContain("integracoesDoCliente(padraoDoSdk, community)");
     expect(fonte).toContain("isCommunityDsn(sentryDsn)");
   });
+  it("no Sentry da comunidade não sai nem o replay de erro", () => {
+    // O replay não passa por `beforeSend` (que só vale para evento de erro) e
+    // levava URLs com token e nomes de contato; o instalador promete "sem replay".
+    expect(fonte).toMatch(/replaysOnErrorSampleRate:\s*community\s*\?\s*0\s*:/);
+  });
 });
 
 /**

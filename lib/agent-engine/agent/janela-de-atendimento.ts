@@ -32,6 +32,8 @@
  * config quebrada não pode virar mordaça.
  */
 
+import { ehFeriado } from '@/lib/chatbot/feriados';
+
 export interface JanelaDeAtendimento {
   /** IANA (`America/Sao_Paulo`). Inválido ⇒ a janela inteira é descartada. */
   timezone: string;
@@ -152,4 +154,73 @@ export function msAteAJanelaAbrir(janela: JanelaDeAtendimento, agora: Date): num
   }
 
   return null; // inalcançável com weekdays não-vazio; falha aberta por precaução
+}
+
+/**
+ * "Não atender em feriado nacional" (vindo do produto original):
+ * `trigger_config.filters.business_hours.fechado_em_feriado_nacional`.
+ *
+ * DESLIGADA de fábrica: só `=== true` liga. Muita operação atende em feriado
+ * (delivery, plantão, loja de shopping); calar o agente delas por padrão seria
+ * a mordaça que este arquivo não pode criar.
+ */
+export function lerFechadoEmFeriadoNacional(triggerConfig: unknown): boolean {
+  if (typeof triggerConfig !== 'object' || triggerConfig === null) return false;
+  const filters = (triggerConfig as { filters?: unknown }).filters;
+  if (typeof filters !== 'object' || filters === null) return false;
+  const bh = (filters as { business_hours?: unknown }).business_hours;
+  if (typeof bh !== 'object' || bh === null) return false;
+  return (bh as { fechado_em_feriado_nacional?: unknown }).fechado_em_feriado_nacional === true;
+}
+
+/**
+ * Como `msAteAJanelaAbrir`, mas uma abertura que cai em FERIADO não conta: o
+ * turno espera a abertura do próximo dia da janela que não seja feriado.
+ * Dentro da janela num feriado ⇒ espera (nunca `null`). Sem feriado ⇒ idêntica
+ * a `msAteAJanelaAbrir`. No máximo 31 saltos; sem achar dia útil, falha ABERTA
+ * para a janela semanal pura.
+ */
+export function msAteAJanelaAbrirPulandoFeriado(
+  janela: JanelaDeAtendimento,
+  agora: Date,
+  ehFeriado: (instante: Date) => boolean,
+): number | null {
+  const semFeriado = msAteAJanelaAbrir(janela, agora);
+  const fim = minutosDe(janela.end);
+  if (fim === null) return semFeriado;
+
+  let referencia = agora;
+  for (let tentativas = 0; tentativas < 31; tentativas += 1) {
+    const espera = msAteAJanelaAbrir(janela, referencia);
+    const abertura = espera === null ? referencia : new Date(referencia.getTime() + espera);
+    if (!ehFeriado(abertura)) {
+      const ms = abertura.getTime() - agora.getTime();
+      return ms > 0 ? ms : null;
+    }
+    // A abertura é num feriado: o próximo candidato vem depois do FECHAMENTO.
+    let local: { dia: number; minutos: number };
+    try {
+      local = relogioLocal(janela.timezone, abertura);
+    } catch {
+      return semFeriado;
+    }
+    referencia = new Date(abertura.getTime() + (fim - local.minutos) * 60_000);
+  }
+  return semFeriado;
+}
+
+/** O dia civil de `instante`, no fuso da janela, é feriado nacional? */
+export function ehFeriadoNacionalNoFuso(instante: Date, fuso: string): boolean {
+  let data: string;
+  try {
+    data = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: fuso,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(instante);
+  } catch {
+    return false;
+  }
+  return ehFeriado(data, { feriados_nacionais: true, pontos_facultativos: false, datas: [] });
 }

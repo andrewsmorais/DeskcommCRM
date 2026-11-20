@@ -44,6 +44,13 @@ export const SUFIXO_ANONIMIZADO = " (anonimizado)";
 export const TITULO_PRESERVADO = 20;
 
 /** O payload que substitui o conteúdo de uma atividade. */
+/**
+ * O body que a anonimização do BANCO grava em toda mensagem redigida
+ * (`fn_lgpd_cascade_redact_contact`). Só ela o escreve — por isso ele é o
+ * marcador de "esta mensagem já passou pela anonimização".
+ */
+export const MENSAGEM_REDIGIDA = "[mensagem anonimizada]";
+
 export const PAYLOAD_REDIGIDO: Record<string, unknown> = { redacted: true };
 
 /**

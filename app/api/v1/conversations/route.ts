@@ -39,6 +39,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const qsParsed = listConversationsQuerySchema.safeParse({
     status: url.searchParams.get("status") ?? undefined,
     exclude_finished: url.searchParams.get("exclude_finished") === "true" ? true : undefined,
+    closed_since: url.searchParams.get("closed_since") ?? undefined,
     assigned_to: url.searchParams.get("assigned_to") ?? undefined,
     // QUEM MANDA na conversa (migration 0203) — o filtro das abas Fila e
     // Automático. Faltar aqui é a MESMA rotura que o `tag` teve logo abaixo: o
@@ -54,14 +55,19 @@ export async function GET(req: NextRequest): Promise<Response> {
     // meio: `InboxFilters` mostra o select "Filtrar por tag" sempre que a org tem
     // vocabulário, o browser manda `?tag=vip`, e a lista voltava inteira, sem erro.
     // Achado por @jmpo, no cabeçalho do teste que ele escreveu no PR #199.
-    tag: url.searchParams.get("tag") ?? undefined,
+    // `getAll`: várias etiquetas viajam como `?tag=a&tag=b`.
+    tag: url.searchParams.getAll("tag"),
+    modo: url.searchParams.get("modo") ?? undefined,
     unread: url.searchParams.get("unread") ?? undefined,
     channel_session_id: url.searchParams.get("channel_session_id") ?? undefined,
+    setor_id: url.searchParams.get("setor_id") ?? undefined,
     // A aba "Grupos" (Task 10) — mesma rotura que `tag`/`comando` já tiveram
     // aqui: schema aceita, hook serializa, handler filtra, e esta linha é o
     // único lugar que pode esquecer sem erro nenhum. `rota-le-todo-filtro-do-schema`
     // cobra a chave.
     is_group: url.searchParams.get("is_group") ?? undefined,
+    // Conversas ocultas (migration 0510): ausente = sem as ocultas.
+    ocultas: url.searchParams.get("ocultas") ?? undefined,
     search: url.searchParams.get("search") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
     limit: url.searchParams.get("limit") ?? undefined,

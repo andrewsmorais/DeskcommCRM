@@ -16,16 +16,17 @@ import { guardServiceTools } from "@/lib/atendimento/fronteira-server";
  * cacheWriteTokens}. Validado no ai@7 via scripts/smoke-llm.sh (modelo real) —
  * upgrade de major re-valida esses paths pelo mesmo gate (regra dura 16).
  */
-import { generateText, stepCountIs, type ModelMessage, type ToolSet } from 'ai';
+import { generateText, stepCountIs, type ModelMessage, type StopCondition, type ToolSet } from 'ai';
 import type pg from 'pg';
 import { z } from 'zod';
 
 import { PONTO_POR_ID } from '@/lib/ai/pontos/registro';
+import { configTecnicaDaPlataforma } from '@/lib/ai/agents/config-tecnica';
 import { scrubMessage } from '@/lib/sentry/scrub';
 
 import type { Logger } from '../../obs/logger';
 import { decidirParaOSeam } from './binding-do-ponto';
-import { resolveOrgLlmConfig, type LlmEdgeConfig, type OrcamentoDaOrg } from './credentials';
+import { LlmNotConfiguredError, resolveOrgLlmConfig, type LlmEdgeConfig, type OrcamentoDaOrg } from './credentials';
 import {
   AVISO_CORPO,
   AVISO_TITULO,
@@ -219,7 +220,7 @@ export interface RunModelCallInput {
    * chamou `send_message` — um envio vetado devolve o erro ao modelo para ele
    * reescrever na etapa seguinte, e parar ali entregava rascunho vazio.
    */
-  pararQuando?: () => boolean;
+  pararQuando?: StopCondition<ToolSet>;
   /** Teto por chamada auxiliar; nunca aumenta o limite configurado pela organização. */
   maxOutputTokens?: number;
   /** Cancelamento propagado pelo chamador; a falha continua registrada em llm_calls. */
@@ -291,7 +292,30 @@ interface LinhaDoOrcamento {
  * agente porque uma query falhou. Mas a causa vai para o log, nomeada — a frase
  * tranquilizadora sozinha é o que faz um defeito viver meses.
  */
-async function aplicarOrcamento(d: {
+/**
+ * O que `registrarFalha` de fato lê de `input` no caminho de recusa — nunca
+ * `messages`/`tools`/`system`. Exportado para o gate poder ser chamado por um
+ * eixo que não é turno de CHAT (síntese de voz — `lib/agent-engine/agent/
+ * voz-do-turno.ts`): exigir `RunModelCallInput` inteiro ali obrigaria a
+ * inventar um array de mensagens vazio só para satisfazer o tipo, e um valor
+ * inventado numa chamada de orçamento é o tipo de atalho que esconde o
+ * próximo bug. `RunModelCallInput` continua satisfazendo este tipo — é
+ * estritamente MAIS campos — então o call site de chat abaixo não muda.
+ */
+export type OrcamentoCallInput = Pick<
+  RunModelCallInput,
+  'tenantId' | 'leadId' | 'jobId' | 'variantId' | 'agentId'
+>;
+
+/**
+ * O GATE, exportado: síntese de voz passa pelo MESMO orçamento mensal que
+ * todo modelo de chat — sem isto, a organização via o aviso/bloqueio parar o
+ * agente de ESCREVER e a voz continuava chamando o ElevenLabs sem parar e
+ * sem avisar, contradizendo a própria promessa do recurso ("entra no mesmo
+ * orçamento"). Achado na revisão de código, antes de qualquer tela usar voz
+ * em produção.
+ */
+export async function aplicarOrcamento(d: {
   db: pg.Pool;
   organizationId: string;
   /** Só para o atalho de custo. A decisão usa o snapshot de `SQL_ORCAMENTO`. */
@@ -302,7 +326,7 @@ async function aplicarOrcamento(d: {
   provider: string;
   model: string;
   origem: string;
-  input: RunModelCallInput;
+  input: OrcamentoCallInput;
   log?: Logger;
 }): Promise<void> {
   const comum = { organization_id: d.organizationId, purpose: d.purpose };
@@ -507,6 +531,25 @@ async function registrarRecusaDeEnderecoSemChave(d: {
   return erro;
 }
 
+/**
+ * O modelo padrão do catálogo da plataforma para um provedor, ou `null`.
+ * Falha de leitura vira `null`: quem chama trata como "sem padrão" e mantém a
+ * recusa — nunca inventa um id.
+ */
+async function modeloPadraoDoCatalogo(db: pg.Pool, provider: string): Promise<string | null> {
+  try {
+    const { rows } = await db.query<{ model_id: string }>(
+      `select model_id from ai_models
+        where provider = $1 and is_default_for_provider and deprecated_at is null
+        limit 1`,
+      [provider],
+    );
+    return rows[0]?.model_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunModelCallInput, deps: RunModelCallDeps = {}) {
   // O knob do raciocínio da DeepSeek entra pela fábrica: `deepseekThinking` só é
   // lido pela fábrica `deepseek`, então os outros provedores não têm como mudar.
@@ -521,7 +564,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   // só um rótulo de custo e virar decisão. Sem binding configurado, `decisao`
   // reproduz exatamente o comportamento anterior — a origem volta como
   // 'variavel_de_ambiente' ou 'padrao_da_organizacao'.
-  const decisao = await decidirParaOSeam(db, {
+  let decisao = await decidirParaOSeam(db, {
     organizationId: input.tenantId,
     purpose,
     modeloDoCallSite: input.model,
@@ -552,12 +595,83 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
     decisao.provider !== padrao.provider ||
     (decisao.credentialId !== null && decisao.credentialId !== credencialJaCarregada);
 
-  const config = precisaOutraCredencial
+  let config = precisaOutraCredencial
     ? await resolveOrgLlmConfig(db, cfg, input.tenantId, {
         provider: decisao.provider,
         credentialId: decisao.credentialId,
       })
     : padrao;
+
+  // ═══ NA CHAVE DA PLATAFORMA, QUEM ESCOLHE O MODELO É A PLATAFORMA ═══
+  //
+  // O binding do ponto e o padrão da organização são escritos por quem
+  // administra a ORGANIZAÇÃO. Com credencial própria, a escolha é dela e ela
+  // paga. Sem credencial, a escada cai na chave da instalação — e o modelo
+  // escolhido pela empresa (qualquer id, até fora do catálogo e sem preço, que
+  // o gasto do mês conta como zero) rodava na conta do dono da plataforma. A
+  // trava de `config-tecnica.ts` cobria só a versão do agente.
+  //
+  // Então, nesse par, a decisão inteira é descartada e vale a da plataforma
+  // (`configTecnicaDaPlataforma`): provedor, modelo e chave do MESMO lugar, re-
+  // resolvidos juntos — trocar só o id do modelo mandaria um id de um provedor
+  // para o endpoint de outro (a lição do PR #151). Endereço próprio fica de
+  // fora: a chave da instalação com endereço da empresa já tem a recusa dela,
+  // logo abaixo.
+  const plataforma = configTecnicaDaPlataforma();
+  if (
+    config.origemDaChave === 'chave_da_instalacao' &&
+    !decisao.baseUrl &&
+    (decisao.origem === 'binding' || decisao.origem === 'padrao_da_organizacao') &&
+    // A escolha que já É a da plataforma segue como está, com a origem dela.
+    (decisao.provider !== plataforma.provider || decisao.modelId !== plataforma.model)
+  ) {
+    deps.log?.warn('llm: escolha da organização ignorada na chave da instalação — vale a da plataforma', {
+      tenant_id: input.tenantId,
+      purpose,
+      origem_descartada: decisao.origem,
+      modelo_descartado: decisao.modelId,
+      modelo_da_plataforma: plataforma.model,
+    });
+    const configDaChaveQueExiste = config;
+    decisao = {
+      ...decisao,
+      provider: plataforma.provider,
+      modelId: plataforma.model,
+      credentialId: null,
+      baseUrl: null,
+      origem: 'variavel_de_ambiente',
+    };
+    try {
+      config = await resolveOrgLlmConfig(db, cfg, input.tenantId, {
+        provider: plataforma.provider,
+        credentialId: null,
+      });
+    } catch (err) {
+      if (!(err instanceof LlmNotConfiguredError)) throw err;
+      // A instalação não tem a chave do provedor que ELA MESMA declara como o
+      // da plataforma (`PLATAFORMA_IA_PROVEDOR`, padrão `openai`) — típico de
+      // quem só tem a chave Anthropic e nunca mexeu nessa variável. Recusar o
+      // turno faria a atualização exigir edição do `.env` (proibido pela
+      // doutrina de packaging); voltar à escolha da empresa reabriria a conta do
+      // dono. O meio-termo continua sendo escolha da PLATAFORMA: o modelo padrão
+      // do catálogo (`ai_models`, que só o servidor grava) no provedor cuja chave
+      // a instalação tem. Sem padrão no catálogo, a recusa de antes.
+      const doCatalogo = await modeloPadraoDoCatalogo(db, configDaChaveQueExiste.provider);
+      deps.log?.warn(
+        'llm: a instalação não tem a chave do provedor da plataforma — usando o modelo padrão do catálogo no provedor que tem chave; confira PLATAFORMA_IA_PROVEDOR no .env',
+        {
+          tenant_id: input.tenantId,
+          purpose,
+          provedor_da_plataforma: plataforma.provider,
+          provedor_usado: configDaChaveQueExiste.provider,
+          modelo_usado: doCatalogo,
+        },
+      );
+      if (doCatalogo === null) throw err;
+      config = configDaChaveQueExiste;
+      decisao = { ...decisao, provider: configDaChaveQueExiste.provider, modelId: doCatalogo };
+    }
+  }
 
   const model = decisao.modelId;
   if (model === null || model === undefined) {
@@ -911,7 +1025,7 @@ export function redigirMensagemDoProvedor(bruto: string): string {
 async function registrarFalha(
   db: pg.Pool,
   d: {
-    input: RunModelCallInput;
+    input: OrcamentoCallInput;
     purpose: string;
     provider: string;
     model: string;

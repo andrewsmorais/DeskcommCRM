@@ -135,8 +135,8 @@ describe("o elo que some sem barulho", () => {
     ).toMatch(/withMarcadoresDoContato\(\s*supabase,[\s\S]*?leadsComConversa\.leads/);
     expect(
       fonte,
-      "a resposta não sai da última etapa (cadeia: withConversas → withMarcadoresDoContato → resposta)",
-    ).toMatch(/leads:\s*leadsComMarcadores\.leads/);
+      "a resposta não sai da última etapa (cadeia: withConversas → withMarcadoresDoContato → withTarefas → resposta)",
+    ).toMatch(/leads:\s*leadsComTarefas\.leads/);
   });
 
   it("a mais RECENTE por contato — não a primeira que o banco devolver", () => {
@@ -146,6 +146,9 @@ describe("o elo que some sem barulho", () => {
 
   it("o card renderiza o slot", () => {
     const fonte = readFileSync("components/kanban/KanbanCard.tsx", "utf8");
-    expect(fonte).toContain("<ConversaSlot conversa={lead.conversa} />");
+    // A prévia E a ação "Abrir conversa" (#1993) saem do mesmo slot.
+    expect(fonte).toMatch(/<ConversaSlot\s+conversa=\{lead\.conversa\}/);
+    expect(fonte).toContain("contactId={lead.contact_id}");
+    expect(fonte).toContain("phone={lead.contact_phone}");
   });
 });

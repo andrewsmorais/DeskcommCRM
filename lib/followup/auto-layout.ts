@@ -46,6 +46,7 @@ const TYPE_ORDER: Record<NodeType, number> = {
   // Lembrete interno (#1540) entra DEPOIS de tudo que o cliente vê — o layout
   // automático ordena por papel no fluxo, e este nó é o epílogo.
   internal_task: 10,
+  crm_update: 10,
   action: 8,
   end: 9,
 };

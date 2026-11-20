@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 
+import { recursoForaDoPlano } from "@/lib/billing/acesso";
 import { rascunhoDoFluxo } from "@/lib/followup/rascunho";
+import { AvisoFollowupPeloChatbot } from "../_components/AvisoFollowupPeloChatbot";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
@@ -61,8 +63,17 @@ export default async function FollowupFlowBuilderPage({
     previous_version_id: versionRows?.[1]?.id ?? null,
   };
 
+  // Plano sem "Follow-up automático": o aviso diz o que cabe; quem recusa o
+  // resto é o publicar (`lib/billing/followup-pelo-chatbot.ts`).
+  const soPeloChatbot = await recursoForaDoPlano(activeOrg.orgId, "follow_up");
+
   return (
     <div className="flex h-full flex-col">
+      {soPeloChatbot ? (
+        <div className="px-4 pt-3">
+          <AvisoFollowupPeloChatbot />
+        </div>
+      ) : null}
       <FlowBuilder flowId={id} initialData={flow} />
     </div>
   );

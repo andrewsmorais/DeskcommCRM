@@ -21,12 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useMcpToolCatalog, type McpToolMeta } from "@/hooks/ai/useMcpToolCatalog";
 import { useT } from "@/hooks/i18n/useT";
-import {
-  PACOTES,
-  riscoMeta,
-  type ToolBundle,
-  type ToolRisk,
-} from "@/lib/mcp/tools/pacotes";
+import { PACOTES, riscoMeta, type ToolBundle, type ToolRisk } from "@/lib/mcp/tools/pacotes";
 import {
   TETO_TOOLS_POR_AGENTE,
   capacidadesAutomaticasDoPacote,
@@ -68,7 +63,11 @@ function BadgeRisco({ risco }: { risco: ToolRisk }) {
   const t = useT();
   const meta = riscoMeta(risco);
   return (
-    <Badge variant="outline" className={`text-[11px] ${CLASSE_RISCO[risco]}`} title={t(meta.explicacao)}>
+    <Badge
+      variant="outline"
+      className={`text-[11px] ${CLASSE_RISCO[risco]}`}
+      title={t(meta.explicacao)}
+    >
       {t(meta.rotulo)}
     </Badge>
   );
@@ -164,6 +163,22 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
     [valorSalvo, ocultar],
   );
   const [avancado, setAvancado] = React.useState(false);
+  // "Agente que organiza o CRM sozinho" é do Impulso em diante: o pacote
+  // "Organizar a operação" ganha o selo quando o plano não o inclui. O runtime
+  // tira as capacidades só deste pacote (`lib/billing/ferramentas-do-plano.ts`).
+  const [organizarForaDoPlano, setOrganizarForaDoPlano] = React.useState(false);
+  React.useEffect(() => {
+    let vivo = true;
+    fetch("/api/v1/billing/recursos")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((corpo) => {
+        if (vivo && corpo?.data?.recursos?.organizar_crm === false) setOrganizarForaDoPlano(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, []);
   // `pacote` diz ONDE a recusa aconteceu. O aviso nascia só no topo do seletor,
   // e quem clicava num pacote lá embaixo (com a tela rolada) via o interruptor
   // não mudar e nada mais — o aviso ficava fora da tela e o clique parecia
@@ -182,10 +197,7 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
     () => new Set(query.data?.desligadas ?? []),
     [query.data],
   );
-  const porNome = React.useMemo(
-    () => new Map(catalogo.map((c) => [c.name, c])),
-    [catalogo],
-  );
+  const porNome = React.useMemo(() => new Map(catalogo.map((c) => [c.name, c])), [catalogo]);
 
   const vagas = vagasRestantes(value);
   const cheio = vagas <= 0;
@@ -251,9 +263,7 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
       return;
     }
     aplicar(
-      [...catalogo.map((c) => c.name), ...orfas].filter(
-        (n) => value.includes(n) || n === name,
-      ),
+      [...catalogo.map((c) => c.name), ...orfas].filter((n) => value.includes(n) || n === name),
       `${t("Você já ligou")} ${TETO_TOOLS_POR_AGENTE} ${t("capacidades. Desligue uma antes de ligar outra.")}`,
     );
   }
@@ -295,9 +305,7 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
           const criticas = capacidadesCriticasDoPacote(catalogo, pacote.id);
           const estado = estadoDoPacote(value, catalogo, pacote.id);
           const total = automaticas.length + criticas.length;
-          const ligadas = [...automaticas, ...criticas].filter((n) =>
-            value.includes(n),
-          ).length;
+          const ligadas = [...automaticas, ...criticas].filter((n) => value.includes(n)).length;
           const vazio = total === 0;
 
           return (
@@ -329,9 +337,24 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
                         {t("parcial")}
                       </Badge>
                     ) : null}
+                    {pacote.id === "organizar" && organizarForaDoPlano ? (
+                      <Badge className="text-[11px]" data-testid="pacote-organizar-fora-do-plano">
+                        {t("Plano Impulso")}
+                      </Badge>
+                    ) : null}
                   </div>
                   <p className="text-xs text-muted-foreground">{t(pacote.explicacao)}</p>
-                  <p className="text-xs text-muted-foreground" data-testid={`contagem-${pacote.id}`}>
+                  {pacote.id === "organizar" && organizarForaDoPlano ? (
+                    <p className="text-xs text-primary">
+                      {t(
+                        "No seu plano, o agente só usa as capacidades deste pacote que também servem para vender e atender. O agente que organiza o CRM sozinho é do plano Impulso.",
+                      )}
+                    </p>
+                  ) : null}
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid={`contagem-${pacote.id}`}
+                  >
                     {textoDaContagem(total, ligadas, t)}
                   </p>
                 </div>

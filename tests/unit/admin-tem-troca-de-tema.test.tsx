@@ -52,6 +52,9 @@ afterEach(() => {
   }
 });
 
+/** O rótulo do `ThemeToggle`, nos dois estados. */
+const CONTROLE_DE_TEMA = /^Ativar tema (claro|escuro)$/i;
+
 const tarja = () =>
   render(
     <ThemeProvider>
@@ -62,10 +65,11 @@ const tarja = () =>
 describe("Admin Plataforma — troca de tema", () => {
   it("a tarja do Modo Plataforma oferece o controle de tema", () => {
     tarja();
-    // O `aria-label` do `ThemeToggle` começa por "Tema: " e traz o estado
-    // atual. Casar pelo prefixo em vez do texto inteiro evita que renomear o
-    // estado ("system" → "sistema") derrube a guarda por motivo errado.
-    expect(screen.getByRole("button", { name: /^Tema: /i })).toBeInTheDocument();
+    // O `aria-label` do `ThemeToggle` diz a AÇÃO ("Ativar tema claro" /
+    // "Ativar tema escuro") — o botão é de dois estados; antes era "Tema: <estado>"
+    // com três. Casar pelo prefixo comum evita que trocar a palavra do estado
+    // derrube a guarda por motivo errado.
+    expect(screen.getByRole("button", { name: CONTROLE_DE_TEMA })).toBeInTheDocument();
   });
 
   it("o controle CICLA de fato — não é um botão decorativo", async () => {
@@ -74,13 +78,13 @@ describe("Admin Plataforma — troca de tema", () => {
     const usuario = userEvent.setup();
     tarja();
 
-    const botao = screen.getByRole("button", { name: /^Tema: /i });
+    const botao = screen.getByRole("button", { name: CONTROLE_DE_TEMA });
     const antes = botao.getAttribute("aria-label");
 
     await usuario.click(botao);
 
     const depois = screen
-      .getByRole("button", { name: /^Tema: /i })
+      .getByRole("button", { name: CONTROLE_DE_TEMA })
       .getAttribute("aria-label");
     expect(depois).not.toBe(antes);
   });

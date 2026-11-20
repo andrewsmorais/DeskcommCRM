@@ -493,7 +493,10 @@ async function upsertContact(
   // `is null` no filtro: só preenche o que está vazio. Sobrescrever apagaria
   // uma correção feita à mão na tela por um valor que a plataforma pode mandar
   // diferente entre eventos.
-  if (msg.identity.phone) {
+  // Achada pelo EXTRA (`contact_phones`, migration 0541): o número não é o
+  // principal da ficha, e gravá-lo aqui o promoveria a principal — o banco
+  // recusaria com 23505. Ficha dona de extra sem principal é caso raro; não grava.
+  if (msg.identity.phone && !existente?.achado_pelo_extra) {
     await admin
       .from("contacts")
       .update({ phone_number: canonicalPhoneBR(msg.identity.phone) })

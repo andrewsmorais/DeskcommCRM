@@ -33,6 +33,13 @@ _I18N_TABELA=0
 if [ $((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1])) -ge "${I18N_BASH_MINIMO:-404}" ]; then
 _I18N_TABELA=1
 declare -A _ES=(
+  ["  ⚠ Só uma das duas chaves dos avisos com o app fechado (VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY) está no .env. Não gerei a outra, para não quebrar o par."]="  ⚠ Solo una de las dos claves de los avisos con la app cerrada (VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY) está en el .env. No generé la otra, para no romper el par."
+  ["  ⚠ Não criei as chaves dos avisos com o app fechado: não consigo escrever no .env. Confira a permissão do arquivo e rode a atualização de novo."]="  ⚠ No creé las claves de los avisos con la app cerrada: no puedo escribir en el .env. Revisa el permiso del archivo y ejecuta la actualización de nuevo."
+  ["    Para o kit gerar um par novo, apague as duas linhas e rode: bash hostgator-setup-kit/update.sh"]="    Para que el kit genere un par nuevo, borra las dos líneas y ejecuta: bash hostgator-setup-kit/update.sh"
+  ["  ⚠ Não consegui gerar as chaves dos avisos com o app fechado; o resto segue normal. Para tentar de novo: bash hostgator-setup-kit/update.sh"]="  ⚠ No pude generar las claves de los avisos con la app cerrada; lo demás sigue normal. Para intentarlo de nuevo: bash hostgator-setup-kit/update.sh"
+  ["✓ app e worker reiniciados para ligar os avisos com o app fechado"]="✓ app y worker reiniciados para activar los avisos con la app cerrada"
+  ["⚠ Criei as chaves dos avisos com o app fechado, mas não consegui reiniciar o app e o worker. Os avisos ligam quando eles reiniciarem, o que acontece sozinho na próxima atualização."]="⚠ Creé las claves de los avisos con la app cerrada, pero no pude reiniciar la app y el worker. Los avisos se activan cuando se reinicien, lo que ocurre solo en la próxima actualización."
+  ["✓ chaves dos avisos com o app fechado criadas (uma vez só: não troque, trocar desliga os avisos de todo aparelho já inscrito)"]="✓ claves de los avisos con la app cerrada creadas (una sola vez: no las cambies, cambiarlas apaga los avisos de todo dispositivo ya suscrito)"
   ["Este servidor usa arquitetura '{1}', mas as imagens publicadas do DeskcommCRM hoje são linux/amd64."]="Este servidor usa arquitectura '{1}', pero las imágenes publicadas de DeskcommCRM hoy son linux/amd64."
   ["  Use uma VPS x86_64/amd64. Repetir o download não resolve; ARM64 só será suportado quando houver imagens multi-arquitetura."]="  Usa una VPS x86_64/amd64. Repetir la descarga no soluciona nada; ARM64 solo se admitirá cuando existan imágenes multiarquitectura."
   ["Este servidor usa arquitetura '{1}', e as imagens publicadas do DeskcommCRM são só linux/amd64."]="Este servidor usa arquitectura '{1}', y las imágenes publicadas de DeskcommCRM son solo linux/amd64."

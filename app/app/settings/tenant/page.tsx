@@ -7,8 +7,10 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import { moedaServidaOu } from "@/lib/money";
 import { createClient } from "@/lib/supabase/server";
 import { ZonaDePerigoDaOrganizacao } from "./_danger-zone";
+import { ExportarDados } from "./_exportar-dados";
 import { TenantForm } from "./_form";
 import { InterfaceDaEmpresaForm } from "./_interface";
+import { InboxDaEmpresaForm } from "./_inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,7 @@ interface OrgRow {
   locale: string;
   currency: string;
   media_retention_days: number;
+  media_retention_enforced: boolean;
   dpo_email: string | null;
   privacy_policy_url: string | null;
   /** Portas escolhidas pela EMPRESA (issue #1341). Opaco aqui: quem lê é `lerInterface`. */
@@ -39,7 +42,7 @@ export default async function TenantSettingsPage() {
   const { data } = await supabase
     .from("organizations")
     .select(
-      "display_name, legal_name, cnpj, country, timezone, locale, currency, media_retention_days, dpo_email, privacy_policy_url, interface_settings",
+      "display_name, legal_name, cnpj, country, timezone, locale, currency, media_retention_days, media_retention_enforced, dpo_email, privacy_policy_url, interface_settings",
     )
     .eq("id", activeOrg.orgId)
     .maybeSingle();
@@ -73,6 +76,7 @@ export default async function TenantSettingsPage() {
             locale: normalizarIdioma(row.locale),
             currency: moedaServidaOu(row.currency),
             media_retention_days: row.media_retention_days,
+            media_retention_enforced: row.media_retention_enforced,
             dpo_email: row.dpo_email,
             privacy_policy_url: row.privacy_policy_url,
           }}
@@ -84,6 +88,8 @@ export default async function TenantSettingsPage() {
           role={activeOrg.role}
         />
       )}
+      {row && <InboxDaEmpresaForm initial={row.interface_settings} />}
+      {row && <ExportarDados />}
       {row && <ZonaDePerigoDaOrganizacao displayName={row.display_name} />}
     </div>
   );

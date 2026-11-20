@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api/client";
 import type { VisibilityMode } from "@/lib/auth/types";
 import { PRAZO_MAX_MINUTOS, PRAZO_MIN_MINUTOS } from "@/lib/escalacao/devolucao-automatica";
-import { ROUTING_MODES, VISIBILITY_MODES, type RoutingMode } from "@/lib/schemas/routing";
+import { ROUTING_MODES, VISIBILITY_MODES, modoDistribuiSozinho, type RoutingMode } from "@/lib/schemas/routing";
 import { useT } from "@/hooks/i18n/useT";
 
 export interface AtendimentoConfig {
@@ -27,6 +27,8 @@ export interface AtendimentoConfig {
   visibility_mode: VisibilityMode;
   /** `null` = nunca devolve sozinho (o padrão do produto). */
   handoff_return_after_minutes: number | null;
+  /** `null` = a conversa sem resposta nunca volta sozinha para a fila (o padrão). */
+  unanswered_return_after_minutes: number | null;
   /** "A conversa fica com quem atendeu" — desligado é o padrão do produto. */
   conversation_stays_with_attendant: boolean;
 }
@@ -44,6 +46,14 @@ const MODO_COPY: Record<RoutingMode, { titulo: string; corpo: string }> = {
       "Cliente 1 vai para o atendente A, cliente 2 para o B, e ao acabar a lista volta ao " +
       "primeiro. Quem recebe é sempre quem está há mais tempo sem receber — entre os que " +
       "estão disponíveis e dentro do horário. Ninguém escolhe, então não há fila furada.",
+  },
+  least_load: {
+    titulo: "Menor carga: quem tem menos conversas abertas",
+    corpo:
+      "Cada cliente novo vai para o atendente que está com menos conversas abertas naquele " +
+      "momento — entre os que estão disponíveis e dentro do horário. Se dois estiverem " +
+      "empatados, vai para quem está há mais tempo sem receber. Bom quando as conversas " +
+      "duram tempos muito diferentes.",
   },
 };
 
@@ -63,6 +73,13 @@ const VISIBILIDADE_COPY: Record<VisibilityMode, { titulo: string; corpo: string 
     corpo:
       "O atendente vê apenas o que foi direcionado a ele — nem a fila. Combine com o " +
       "rodízio: sem alguém distribuindo, ninguém recebe nada e as telas ficam vazias.",
+  },
+  own_and_sector: {
+    titulo: "Os seus e os do seu setor",
+    corpo:
+      "O atendente vê a própria carteira e as conversas que estão no setor dele, inclusive as " +
+      "que estão com um colega do mesmo setor — bom para cobrir férias e ausências. As " +
+      "conversas dos outros setores continuam fora do alcance dele.",
   },
 };
 
@@ -164,7 +181,7 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
           ))}
         </div>
 
-        {form.mode === "round_robin" ? (
+        {modoDistribuiSozinho(form.mode) ? (
           <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="max_retries">{t("Tentativas antes de desistir")}</Label>
@@ -228,6 +245,17 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
           ))}
         </div>
 
+        {form.visibility_mode === "own_and_sector" ? (
+          <p
+            data-testid="aviso-modo-do-setor"
+            className="rounded-md border border-border bg-muted/40 p-3 text-xs"
+          >
+            {t(
+              "Este modo usa os setores (Configurações › Setores): quem não está em nenhum setor vê só as conversas que são dele. Conversa privada continua só de quem já podia ver. No funil, os negócios continuam restritos aos seus.",
+            )}
+          </p>
+        ) : null}
+
         {combinacaoMorta ? (
           <p
             data-testid="aviso-combinacao-morta"
@@ -289,6 +317,56 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
             <p className="text-xs text-muted-foreground">
               {t("Entre 5 minutos e 24 horas. Sessenta minutos é a ordem de grandeza de um atendimento humano.")}
             </p>
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="space-y-4 p-4" data-testid="volta-para-a-fila">
+        <div>
+          <h2 className="text-sm font-semibold">{t("Cliente esperando e ninguém responde?")}</h2>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Se a conversa está com um atendente e o cliente fica sem resposta, ela pode voltar para a fila e ser distribuída de novo.",
+            )}
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            data-testid="voltar-para-a-fila"
+            checked={form.unanswered_return_after_minutes !== null}
+            disabled={isPending}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, unanswered_return_after_minutes: e.target.checked ? 30 : null }))
+            }
+            className="mt-1 h-4 w-4 shrink-0 accent-primary"
+          />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium">
+              {t("Devolver para a fila a conversa que o atendente não respondeu")}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {t(
+                "O tempo conta da última mensagem do cliente ou de quando o atendente assumiu, o que for mais recente. Desligado, a conversa fica com o atendente até alguém mexer.",
+              )}
+            </span>
+          </span>
+        </label>
+        {form.unanswered_return_after_minutes !== null ? (
+          <div className="max-w-xs space-y-1 border-t pt-4">
+            <Label htmlFor="unanswered_return_after_minutes">{t("Minutos sem resposta")}</Label>
+            <Input
+              id="unanswered_return_after_minutes"
+              type="number"
+              min={PRAZO_MIN_MINUTOS}
+              max={PRAZO_MAX_MINUTOS}
+              value={form.unanswered_return_after_minutes}
+              disabled={isPending}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, unanswered_return_after_minutes: Number(e.target.value) }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">{t("Entre 5 minutos e 24 horas.")}</p>
           </div>
         ) : null}
       </Card>

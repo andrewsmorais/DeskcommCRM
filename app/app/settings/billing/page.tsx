@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
-import { ptBR, es, enUS } from "date-fns/locale";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
@@ -8,21 +7,35 @@ import { emailDeSuporte } from "@/lib/branding/saida";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { traduzir } from "@/lib/i18n/dicionario";
+import { localeDeData } from "@/lib/i18n/datas";
 import { getOrganizationBilling } from "@/lib/billing";
+import { enderecoDosPlanos } from "@/lib/billing/pagina-de-planos";
+import { faturaEmAberto } from "@/lib/billing/fatura-em-aberto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CancelSubscription } from "@/components/app/CancelSubscription";
+import { TrocarPlano, type OpcaoDeTroca } from "@/components/app/TrocarPlano";
+import {
+  PLANOS_TROCAVEIS,
+  cicloValido,
+  decidirTroca,
+  ehPlanoTrocavel,
+  precoDoCiclo,
+  type PrecosDoPlano,
+} from "@/lib/billing/troca-de-plano";
 import { FalhaNaLeituraDoPlano } from "@/components/app/EstadoDoPlano";
-import { RECURSOS_DO_PLANO, planoInclui, type RecursoDoPlano } from "@/lib/billing/catalogo";
+import {
+  EXTRAS_COBRADOS_A_PARTE,
+  LISTA_DE_EXTRAS,
+  PLANOS_COMERCIAIS,
+  RECURSOS_DO_PLANO,
+  planoInclui,
+  type RecursoDoPlano,
+} from "@/lib/billing/catalogo";
 import { consultarCotaDaEquipe } from "@/lib/billing/equipe";
-import { CANAIS_CONTADOS_NO_PLANO } from "@/lib/channels/cota-do-plano";
+import { contarCanaisDoPlano } from "@/lib/channels/cota-do-plano";
+import { disparoEmMassaLigado } from "@/lib/instalacao/disparo-em-massa";
 
 export const dynamic = "force-dynamic";
-
-function getLocale(idioma: string) {
-  if (idioma === "en-US") return enUS;
-  if (idioma === "es") return es;
-  return ptBR;
-}
 
 export default async function BillingPage() {
   const user = await requireAuth();
@@ -34,27 +47,106 @@ export default async function BillingPage() {
   const idioma = user.idioma;
   const admin = createAdminClient();
   const leituraDoPlano = await getOrganizationBilling(activeOrg.orgId);
+  // Campanhas só aparecem na lista de recursos quando o disparo em massa está
+  // ligado na instalação; desligado, o recurso não existe para ninguém.
+  const comDisparo = await disparoEmMassaLigado();
   const billing = leituraDoPlano.ok ? leituraDoPlano.billing : null;
+  // Assinatura parada: o caminho de volta é pagar a cobrança aberta no Asaas.
+  const fatura = billing && !billing.is_active ? await faturaEmAberto(activeOrg.orgId) : null;
   const equipe = billing
     ? await consultarCotaDaEquipe(admin, activeOrg.orgId).catch(() => null)
     : null;
 
+  // Troca de plano (entre os três): a prévia da mesma conta que a rota faz.
+  let opcoesDeTroca: OpcaoDeTroca[] | null = null;
+  if (
+    billing &&
+    billing.status !== "canceled" &&
+    ehPlanoTrocavel(billing.plan_slug) &&
+    !billing.escala_com_proposta
+  ) {
+    const { data: precos } = await admin
+      .from("plans")
+      .select("slug, price_monthly, price_quarterly, price_yearly")
+      .in("slug", [...PLANOS_TROCAVEIS]);
+    const porSlug = new Map(
+      ((precos ?? []) as Array<PrecosDoPlano & { slug: string }>).map((p) => [p.slug, p]),
+    );
+    const atual = porSlug.get(billing.plan_slug);
+    if (atual && cicloValido(billing.billing_cycle)) {
+      const ciclo = billing.billing_cycle;
+      opcoesDeTroca = PLANOS_TROCAVEIS.filter((slug) => slug !== billing.plan_slug).flatMap(
+        (slug) => {
+          const novo = porSlug.get(slug);
+          if (!novo) return [];
+          return [
+            {
+              slug,
+              nome: PLANOS_COMERCIAIS[slug].nome,
+              valorDoCicloCents: precoDoCiclo(novo, ciclo),
+              decisao: decidirTroca({
+                planoAtual: billing.plan_slug,
+                planoNovo: slug,
+                ciclo,
+                status: billing.status,
+                canceladaEm: billing.canceled_at ?? null,
+                inicioDoPeriodo: billing.current_period_start ?? null,
+                fimDoPeriodo: billing.current_period_end,
+                precoAtual: atual,
+                precoNovo: novo,
+                agora: new Date(),
+              }),
+            },
+          ];
+        },
+      );
+    }
+  }
+
   // Conta uso atual
-  const { count: whatsappCount, error: whatsappError } = await admin
-    .from("channel_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", activeOrg.orgId)
-    .is("archived_at", null)
-    .in("provider", CANAIS_CONTADOS_NO_PLANO);
-  const { count: pipelinesCount, error: pipelinesError } = await admin
-    .from("crm_pipelines")
-    .select("id", { count: "exact", head: true })
-    .eq("organization_id", activeOrg.orgId)
-    .eq("is_archived", false);
+  // A mesma conta que a cota aplica (`lib/channels/cota-do-plano.ts`).
+  const { count: whatsappCount, error: whatsappError } = await contarCanaisDoPlano(
+    admin,
+    activeOrg.orgId,
+  );
+  const [
+    { count: pipelinesCount, error: pipelinesError },
+    { count: agentesCount, error: agentesError },
+    { count: chatbotsCount, error: chatbotsError },
+  ] = await Promise.all([
+    admin
+      .from("crm_pipelines")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false),
+    // As mesmas contas que as cotas aplicam (cota-de-agentes, chatbot/plano).
+    admin
+      .from("ai_agents")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", activeOrg.orgId)
+      .is("archived_at", null),
+    admin
+      .from("chatbot_flows")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_active", true),
+  ]);
 
   const t = (texto: string) => traduzir(texto, idioma);
+  // Rótulos literais em t(): a cerca de i18n recusa t() sobre variável.
+  const rotuloDoExtra: Record<keyof typeof EXTRAS_COBRADOS_A_PARTE, string> = {
+    prospeccao: t("Prospecção automática"),
+    ligacoes: t("Ligações por IA e Cold Call"),
+    nota_de_voz: t("Respostas da IA em nota de voz"),
+  };
   const formatDate = (date: string) =>
-    format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: getLocale(idioma) });
+    format(new Date(date), "dd 'de' MMMM 'de' yyyy", { locale: localeDeData(idioma) });
+
+  const ciclos: Record<string, string> = {
+    monthly: "Mensal",
+    quarterly: "Trimestral",
+    yearly: "Anual",
+  };
 
   const statusColors: Record<string, string> = {
     active: "bg-green-100 text-green-800",
@@ -110,7 +202,7 @@ export default async function BillingPage() {
               <div>
                 <p className="text-xl font-semibold">{billing.plan_name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {billing.seats} {t("atendente(s)")} • {t("Ciclo")} {billing.billing_cycle}
+                  {t("Ciclo")} {t(ciclos[billing.billing_cycle] ?? billing.billing_cycle)}
                 </p>
               </div>
               <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeColor}`}>
@@ -129,8 +221,24 @@ export default async function BillingPage() {
             )}
 
             <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-              <Button asChild>
-                <a href="https://chataionline.io/#precos" target="_blank" rel="noopener noreferrer">
+              {fatura ? (
+                <Button asChild>
+                  <a
+                    href={fatura.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="fatura-em-aberto"
+                  >
+                    {t("Pagar a fatura em aberto")}
+                  </a>
+                </Button>
+              ) : null}
+              <Button asChild variant={fatura ? "outline" : "default"}>
+                <a
+                  href={enderecoDosPlanos(activeOrg.orgId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   {t("Ver outros planos")}
                 </a>
               </Button>
@@ -141,56 +249,97 @@ export default async function BillingPage() {
             <h2 className="text-lg font-medium">{t("Limites do Plano")}</h2>
             <div className="mt-4 space-y-4">
               <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">Atendentes humanos</span>
-                <span className="text-sm text-muted-foreground">
-                  {equipe
-                    ? `${equipe.ocupados} ativos + ${equipe.reservados} vagas reservadas / ${billing.seats} contratados`
-                    : "Não foi possível confirmar a ocupação"}
-                </span>
-              </div>
-              <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">{t("WhatsApps (Canais)")}</span>
+                <span className="text-sm font-medium">{t("Números de WhatsApp")}</span>
                 <span className="text-sm text-muted-foreground">
                   {whatsappError || whatsappCount === null
-                    ? "Não confirmado"
+                    ? t("Não confirmado")
                     : getLimitLabel(billing.limits?.whatsapp, whatsappCount)}
                 </span>
               </div>
               <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">{t("Pipelines")}</span>
+                <span className="text-sm font-medium">{t("Agentes de IA")}</span>
+                <span className="text-sm text-muted-foreground">
+                  {agentesError || agentesCount === null
+                    ? t("Não confirmado")
+                    : getLimitLabel(billing.limits?.agentes_ia, agentesCount)}
+                </span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-sm font-medium">{t("Chatbots ligados")}</span>
+                <span className="text-sm text-muted-foreground">
+                  {chatbotsError || chatbotsCount === null
+                    ? t("Não confirmado")
+                    : getLimitLabel(billing.limits?.chatbots, chatbotsCount)}
+                </span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-sm font-medium">{t("Funis")}</span>
                 <span className="text-sm text-muted-foreground">
                   {pipelinesError || pipelinesCount === null
-                    ? "Não confirmado"
+                    ? t("Não confirmado")
                     : getLimitLabel(billing.limits?.pipelines, pipelinesCount)}
                 </span>
               </div>
               <div className="flex justify-between border-b pb-2">
-                <span className="text-sm font-medium">{t("Setores")}</span>
+                <span className="text-sm font-medium">{t("Usuários da equipe")}</span>
                 <span className="text-sm text-muted-foreground">
-                  {getLimitLabel(billing.limits?.sectors)}
+                  {equipe
+                    ? `${equipe.ocupados} ${t("ativos")} + ${equipe.reservados} ${t("vagas reservadas")} / ${getLimitLabel(billing.limits?.usuarios)}`
+                    : t("Não foi possível confirmar a ocupação")}
                 </span>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-sm font-medium">{t("Uso de IA")}</span>
+                <span className="text-sm text-muted-foreground">{t("Sem limite")}</span>
               </div>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Agentes de IA não ocupam vagas de atendentes humanos. Convites válidos reservam uma
-              vaga até serem aceitos, revogados ou expirarem.
+              {t(
+                "Agentes de IA não ocupam vagas de usuários. Convites válidos reservam uma vaga até serem aceitos, revogados ou expirarem. Para mudar para um plano menor, primeiro deixe a conta dentro dele: arquive ou desligue o que sobra. Nada é apagado.",
+              )}
             </p>
-            <h3 className="mt-6 text-base font-medium">Recursos do plano</h3>
+            <h3 className="mt-6 text-base font-medium">{t("Recursos do plano")}</h3>
             <ul className="mt-3 space-y-2 text-sm">
-              {Object.entries(RECURSOS_DO_PLANO).map(([key, oferta]) => (
-                <li key={key} className="flex justify-between gap-3">
-                  <span>{oferta.nome}</span>
+              {Object.entries(RECURSOS_DO_PLANO)
+                .filter(([key]) => comDisparo || key !== "campanhas")
+                .map(([key, oferta]) => (
+                  <li key={key} className="flex justify-between gap-3">
+                    <span>{oferta.nome}</span>
+                    <span className="text-muted-foreground">
+                      {planoInclui(billing.plan_slug, key as RecursoDoPlano)
+                        ? billing.is_active
+                          ? t("Incluído")
+                          : t("Assinatura inativa")
+                        : `${t("A partir de")} ${PLANOS_COMERCIAIS[oferta.desde].nome}`}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+            <h3 className="mt-6 text-base font-medium">{t("Extras cobrados à parte")}</h3>
+            <ul className="mt-3 space-y-2 text-sm">
+              {LISTA_DE_EXTRAS.map((extra) => (
+                <li key={extra} className="flex justify-between gap-3">
+                  <span>{rotuloDoExtra[extra]}</span>
                   <span className="text-muted-foreground">
-                    {planoInclui(billing.plan_slug, key as RecursoDoPlano)
-                      ? billing.is_active
-                        ? "Incluído"
-                        : "Assinatura inativa"
-                      : `A partir de ${oferta.desde === "impulso" ? "Impulso" : "Escala"}`}
+                    {(billing.extras ?? []).includes(extra)
+                      ? t("Contratado")
+                      : t("Fale com o suporte")}
                   </span>
                 </li>
               ))}
             </ul>
           </Card>
+
+          {opcoesDeTroca ? (
+            <TrocarPlano
+              idioma={idioma}
+              planoAtual={billing.plan_slug}
+              cicloRotulo={t(ciclos[billing.billing_cycle] ?? billing.billing_cycle)}
+              troca={billing.troca ?? null}
+              opcoes={opcoesDeTroca}
+              suporteUrl={suporteEmail ? `mailto:${suporteEmail}` : "https://wa.me/5511999999999"}
+            />
+          ) : null}
 
           <CancelSubscription
             status={statusStr}
@@ -207,7 +356,11 @@ export default async function BillingPage() {
           </p>
           <div className="mt-6">
             <Button asChild>
-              <a href="https://chataionline.io/#precos" target="_blank" rel="noopener noreferrer">
+              <a
+                href={enderecoDosPlanos(activeOrg.orgId)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {t("Escolher um plano")}
               </a>
             </Button>

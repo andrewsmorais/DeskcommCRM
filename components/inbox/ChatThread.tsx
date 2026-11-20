@@ -1,14 +1,18 @@
 "use client";
 
+import { EncaminharDialog } from "@/components/inbox/EncaminharDialog";
+import { useFavoritar, useFavoritas } from "@/hooks/inbox/useMensagemFavoritaEncaminhar";
+import { useSalvarFigurinha } from "@/hooks/inbox/useFigurinhas";
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 
 import type { Locale } from "date-fns";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { format, isToday, isYesterday } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageBubble } from "./MessageBubble";
+import { separarReacoes } from "@/lib/inbox/reacoes-no-fio";
 import { NoteCard } from "./NoteCard";
 import { PassagemCard } from "./PassagemCard";
 import { useMessagesRealtime } from "@/hooks/inbox/useMessagesRealtime";
@@ -23,9 +27,12 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { capabilitiesOf, transportaMensagem, type ChannelProvider } from "@/lib/channels/capabilities";
 import { montarCartoesDaPassagem, type CartaoDaPassagem } from "@/lib/escalacao/cartao-da-passagem";
 import type { Message, Note } from "@/lib/types/messaging";
+import { termoSemAcento } from "@/lib/inbox/termo-de-busca";
 
 interface Props {
   conversationId: string | null;
+  /** O fio mora numa página que rola (a tela do Cold Call): acompanhar o fim não pode arrastar a página. */
+  soNaCaixa?: boolean;
   searchTerm?: string;
   provider?: string | null;
   /** Escolher uma mensagem para responder. Sobe até o composer. */
@@ -43,6 +50,8 @@ interface Props {
    */
   dono?: { userId: string | null; nome: string | null } | null;
   contatoId?: string | null;
+  /** Contato bloqueado (opt-out): a rota recusa a reação, então o menu não a oferece. */
+  contatoRecusaEnvio?: boolean;
 }
 
 /**
@@ -87,7 +96,9 @@ export function ChatThread({
   onResponder,
   dono,
   contatoId,
+  contatoRecusaEnvio = false,
   searchTerm = "",
+  soNaCaixa = false,
 }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
@@ -109,10 +120,19 @@ export function ChatThread({
   const activeOrg = useActiveOrg();
   const currentUser = useUser();
   const deleteNote = useDeleteNote(conversationId ?? "");
-  const { editar, apagar, ocultar, restaurar } = useAlterarMensagem(conversationId);
+  const { editar, apagar, ocultar, restaurar, reenviar, reagir } = useAlterarMensagem(conversationId);
   const canManage = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
+  // Favoritar e encaminhar (paridade Umbler): atendente para cima.
+  const podeAgir = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent;
+  const listaDeFavoritas = useFavoritas(conversationId);
+  const favoritas = useMemo(() => new Set((listaDeFavoritas.data ?? []).map((f) => f.id)), [listaDeFavoritas.data]);
+  const favoritar = useFavoritar(conversationId ?? "");
+  const salvarFigurinha = useSalvarFigurinha(t("Figurinha salva."), t("Essa figurinha já estava salva."));
+  const [encaminhando, setEncaminhando] = useState<string | null>(null);
   const canalAlteraEnviada = transportaMensagem(provider)
     && capabilitiesOf(provider as ChannelProvider).alteraMensagemEnviada;
+  const canalPermiteReacao = transportaMensagem(provider)
+    && capabilitiesOf(provider as ChannelProvider).podeReagir;
   const { enabled: debugCitations } = useDebugToggle(activeOrg?.role ?? null);
 
   const messages: Message[] = useMemo(
@@ -126,7 +146,9 @@ export function ChatThread({
    * existe na conversa". Apagada e oculta ficam de fora — o texto delas não
    * aparece na bolha, e marcar uma bolha sem o termo visível seria mentir.
    */
-  const termo = searchTerm.trim().toLocaleLowerCase();
+  // Os dois lados sem acento (`termoSemAcento`): `toLocaleLowerCase` dobra a
+  // caixa e não o acento, e "orcamento" não achava "orçamento".
+  const termo = termoSemAcento(searchTerm.trim());
   const resultados = useMemo(
     () =>
       new Set(
@@ -136,7 +158,7 @@ export function ChatThread({
               termo &&
               !m.revoked_at &&
               !m.metadata?.crm_hidden_at &&
-              m.body?.toLocaleLowerCase().includes(termo),
+              termoSemAcento(m.body ?? "").includes(termo),
           )
           .map((m) => m.id),
       ),
@@ -170,9 +192,12 @@ export function ChatThread({
     [passagens, currentUser.id, dono?.userId, dono?.nome],
   );
 
+  // A reação não é balão: vira marca no balão da mensagem reagida.
+  const { falas, reacoesPorAlvo } = useMemo(() => separarReacoes(messages), [messages]);
+
   const items: ThreadItem[] = useMemo(
-    () => mergeThreadItems(messages, notes, cartoes),
-    [messages, notes, cartoes],
+    () => mergeThreadItems(falas, notes, cartoes),
+    [falas, notes, cartoes],
   );
 
   const paginas = q.data?.pages.length ?? 0;
@@ -235,11 +260,13 @@ export function ChatThread({
     // da pintura em branco, que é exatamente o defeito acima.
     if (items.length > 0) jaAncorou.current = true;
 
-    bottomRef.current?.scrollIntoView({
-      behavior: primeiraAncoragem ? "auto" : "smooth",
-      block: "end",
-    });
-  }, [items.length, conversationId, paginas]);
+    const behavior = primeiraAncoragem ? "auto" : "smooth";
+    if (soNaCaixa && scrollerRef.current) {
+      scrollerRef.current.scrollTo({ top: scrollerRef.current.scrollHeight, behavior });
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+    }
+  }, [items.length, conversationId, paginas, soNaCaixa]);
 
   /**
    * O ESTADO DO CANAL DESTE THREAD, PUBLICADO SEMPRE — inclusive quando não há
@@ -393,6 +420,12 @@ export function ChatThread({
                   // citada é antiga demais e ficou fora da página, o fio some —
                   // que é melhor que segurar a conversa esperando.
                   citada={porId.get(item.data.reply_to_message_id ?? "") ?? null}
+                  reacoes={reacoesPorAlvo.get(item.data.id)}
+                  onReagir={podeAgir && canalPermiteReacao && !contatoRecusaEnvio
+                    && Boolean(item.data.external_id) && item.data.type !== "reaction"
+                    && !item.data.metadata?._optimistic
+                    ? (emoji) => reagir.mutateAsync({ id: item.data.id, emoji }).then(() => undefined)
+                    : undefined}
                   // Sem isto o balão diz "Você" em toda mensagem digitada no
                   // CRM — inclusive nas do colega, porque `sent_via='user'` só
                   // registra que um humano digitou, nunca qual.
@@ -409,6 +442,14 @@ export function ChatThread({
                   onRestaurar={canManage && item.data.direction === "inbound"
                     ? () => restaurar.mutateAsync(item.data.id).then(() => undefined)
                     : undefined}
+                  favorita={favoritas.has(item.data.id)}
+                  onFavoritar={podeAgir ? (f) => favoritar.mutate({ id: item.data.id, favorita: f }) : undefined}
+                  onEncaminhar={podeAgir ? () => setEncaminhando(item.data.id) : undefined}
+                  onSalvarFigurinha={podeAgir ? () => salvarFigurinha.mutate({ message_id: item.data.id }) : undefined}
+                  onReenviar={podeAgir
+                    ? (confirmado) => reenviar.mutateAsync({ id: item.data.id, confirmado }).then(() => undefined)
+                    : undefined}
+                  podeReenviarDeOutros={canManage}
                 />
               ),
             )}
@@ -417,6 +458,13 @@ export function ChatThread({
 
         <div ref={bottomRef} />
       </div>
+      {conversationId ? (
+        <EncaminharDialog
+          mensagemId={encaminhando}
+          conversaAtual={conversationId}
+          onClose={() => setEncaminhando(null)}
+        />
+      ) : null}
     </div>
   );
 }

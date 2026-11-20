@@ -37,14 +37,21 @@ import {
 } from "@/lib/automation/gatilhos-de-tempo";
 import { camposDoFunil } from "@/lib/leads/campos-do-funil";
 import {
+  horasDoIntervaloDaTela,
+  horasDoIntervaloNaConfig,
+  INTERVALO_POR_CONTATO_MAX_HORAS,
+} from "@/lib/automation/limite-por-contato";
+import {
   useCreateAutomationRule,
   useUpdateAutomationRule,
   type AutomationRuleRow,
 } from "@/hooks/webhooks/useAutomationRules";
 import { usePipelines, usePipelineStages } from "@/hooks/webhooks/useWebhookSources";
-import { TRIGGER_LABELS, ACTION_LABELS, type TriggerEvent, type ActionType } from "./labels";
+import { useCapacidadesLigadas } from "@/hooks/auth/AuthProvider";
+import { TRIGGER_LABELS, ACTION_LABELS, gatilhoOferecido, type TriggerEvent, type ActionType } from "./labels";
 import { ActionConfigForm, defaultActionConfig, type ActionItem } from "./ActionConfigForm";
 import { useT } from "@/hooks/i18n/useT";
+import { OPS_SEM_VALOR, type ConditionOp } from "@/lib/automation/conditions";
 
 interface Props {
   open: boolean;
@@ -52,7 +59,7 @@ interface Props {
   rule: AutomationRuleRow | null;
 }
 
-type Op = "eq" | "neq" | "contains";
+type Op = ConditionOp;
 
 interface ConditionRow {
   field: string;
@@ -140,6 +147,8 @@ const CURATED_FIELDS: Record<TriggerEvent, CuratedField[]> = {
     { value: "contact.tags", label: "Tags do contato", op: "contains", lista: true },
   ],
   "lead.tag_added": [...LEAD_FIELDS, TAG_ADDED_FIELD],
+  "lead.won": LEAD_FIELDS,
+  "lead.lost": LEAD_FIELDS,
   "contact.tag_added": [TAG_ADDED_FIELD],
   "appointment.created": AGENDAMENTO_FIELDS,
   "appointment.confirmed": AGENDAMENTO_FIELDS,
@@ -166,9 +175,20 @@ const CURATED_FIELDS: Record<TriggerEvent, CuratedField[]> = {
   // funil (via etapa/tags) e tags do contato.
   "lead.silent_for": LEAD_FIELDS,
   "lead.stage_stale": [...LEAD_FIELDS, STAGE_FIELD],
+  // As condições são as do CONTATO que ligou (é ele que recebe a mensagem).
+  "voice_call.missed": CONTACT_FIELDS,
 };
 
-const OP_LABELS: Record<Op, string> = { eq: "é", neq: "não é", contains: "contém" };
+const OP_LABELS: Record<Op, string> = {
+  eq: "é",
+  neq: "não é",
+  contains: "contém",
+  not_contains: "não contém",
+  gt: "maior que",
+  lt: "menor que",
+  is_set: "está preenchido",
+  is_empty: "está vazio",
+};
 
 function emptyCondition(): ConditionRow {
   return { field: "", op: "eq", value: "" };
@@ -204,6 +224,7 @@ interface ConfigDoTempo {
 export function RuleEditor({ open, onOpenChange, rule }: Props) {
   const t = useT();
   const isEdit = !!rule;
+  const capacidadesLigadas = useCapacidadesLigadas();
   const [name, setName] = React.useState("");
   const [triggerEvent, setTriggerEvent] = React.useState<TriggerEvent | "">("");
   const [conditions, setConditions] = React.useState<ConditionRow[]>([]);
@@ -219,6 +240,11 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
     direcao: "da_equipe",
     proteger_pela_agenda: false,
   });
+
+  // Limite por contato (vindo do produto original): "uma vez" OU "só depois de
+  // N horas" — a tela não deixa as duas ao mesmo tempo.
+  const [umaVezPorContato, setUmaVezPorContato] = React.useState(false);
+  const [repetirAposHoras, setRepetirAposHoras] = React.useState("");
 
   const create = useCreateAutomationRule();
   const update = useUpdateAutomationRule();
@@ -260,6 +286,9 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
       direcao: silencioGuardado ? silencioGuardado.direcao : "da_equipe",
       proteger_pela_agenda: tempoGuardado ? tempoGuardado.proteger_pela_agenda : false,
     });
+    setUmaVezPorContato(rule?.trigger_config?.uma_vez_por_contato === true);
+    const horasGuardadas = horasDoIntervaloNaConfig(rule?.trigger_config);
+    setRepetirAposHoras(horasGuardadas === null ? "" : String(horasGuardadas));
   }, [open, rule]);
 
   const curatedFields = triggerEvent ? CURATED_FIELDS[triggerEvent] : [];
@@ -305,12 +334,29 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
   };
 
   const onSubmit = async () => {
+    // O que este formulário não edita no `trigger_config`, ele CONSERVA; as duas
+    // chaves do limite são reescritas sempre (desligar tem de chegar ao banco).
+    const { uma_vez_por_contato: _u, repetir_apos_horas: _r, ...configGuardada } =
+      (rule?.trigger_config ?? {}) as Record<string, unknown>;
+    const horas = horasDoIntervaloDaTela(repetirAposHoras, umaVezPorContato);
+    if (!umaVezPorContato && repetirAposHoras.trim() !== "" && horas === null) {
+      toast.error(t("O intervalo por contato é um número inteiro de horas, de 1 a 720."));
+      return;
+    }
+    const limite = {
+      ...(umaVezPorContato ? { uma_vez_por_contato: true } : {}),
+      ...(horas !== null ? { repetir_apos_horas: horas } : {}),
+    };
     const payload = {
       name,
       trigger_event: triggerEvent,
       conditions: conditions
-        .filter((c) => c.field.trim() && c.value.trim())
-        .map((c) => ({ field: c.field.trim(), op: c.op, value: c.value.trim() })),
+        .filter((c) => c.field.trim() && (OPS_SEM_VALOR.includes(c.op) || c.value.trim()))
+        .map((c) => ({
+          field: c.field.trim(),
+          op: c.op,
+          value: OPS_SEM_VALOR.includes(c.op) ? "" : c.value.trim(),
+        })),
       actions,
       // `Number("")` é 0 — o que gravaria "avisar no dia" para quem não
       // digitou nada. O campo vazio vira `NaN`, que o schema recusa com a
@@ -329,8 +375,9 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
               ...(triggerEvent === GATILHO_SILENCIO ? { direcao: configDoTempo.direcao } : {}),
               proteger_pela_agenda: configDoTempo.proteger_pela_agenda,
             }
-          : undefined,
+          : configGuardada,
     };
+    payload.trigger_config = { ...payload.trigger_config, ...limite };
     const parsed = createAutomationRuleSchema.safeParse(payload);
     if (!parsed.success) {
       toast.error(t(parsed.error.issues[0]?.message ?? "Revise os campos da automação."));
@@ -388,7 +435,7 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
                 <SelectValue placeholder={t("Escolha o gatilho")} />
               </SelectTrigger>
               <SelectContent>
-                {TRIGGER_EVENTS.map((ev) => (
+                {TRIGGER_EVENTS.filter((ev) => gatilhoOferecido(ev, capacidadesLigadas, triggerEvent)).map((ev) => (
                   <SelectItem key={ev} value={ev}>
                     {t(TRIGGER_LABELS[ev])}
                   </SelectItem>
@@ -558,6 +605,37 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
             ) : null}
           </section>
 
+          <section className="space-y-2 rounded-sm border border-border p-3" data-testid="limite-por-contato">
+            <p className="text-sm font-medium text-text">{t("Para o mesmo contato")}</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={umaVezPorContato}
+                onChange={(e) => setUmaVezPorContato(e.target.checked)}
+              />
+              {t("Rodar no máximo uma vez por contato")}
+            </label>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Label htmlFor="repetir-apos-horas" className={umaVezPorContato ? "opacity-50" : ""}>
+                {t("Não repetir para o mesmo contato por")}
+              </Label>
+              <Input
+                id="repetir-apos-horas"
+                inputMode="numeric"
+                className="w-20"
+                placeholder="—"
+                value={umaVezPorContato ? "" : repetirAposHoras}
+                disabled={umaVezPorContato}
+                onChange={(e) => setRepetirAposHoras(e.target.value)}
+              />
+              <span className={umaVezPorContato ? "opacity-50" : ""}>{t("horas")}</span>
+            </div>
+            <p className="text-xs text-text-muted">
+              {t("Em branco, a automação roda toda vez que o gatilho acontecer. Máximo:")}{" "}
+              {INTERVALO_POR_CONTATO_MAX_HORAS} {t("horas")}.
+            </p>
+          </section>
+
           <section className="space-y-3">
             <h3 className="text-lg font-semibold text-text">{t("SE (opcional)")}</h3>
             {conditions.map((cond, idx) => {
@@ -602,7 +680,7 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
                       value={cond.op}
                       onValueChange={(v) => updateCondition(idx, { op: v as Op })}
                     >
-                      <SelectTrigger className="w-28">
+                      <SelectTrigger className="w-36">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -617,7 +695,7 @@ export function RuleEditor({ open, onOpenChange, rule }: Props) {
                         ))}
                       </SelectContent>
                     </Select>
-                    {curated?.kind === "stage" ? (
+                    {OPS_SEM_VALOR.includes(cond.op) ? null : curated?.kind === "stage" ? (
                       <Select
                         value={cond.value}
                         onValueChange={(v) => updateCondition(idx, { value: v })}

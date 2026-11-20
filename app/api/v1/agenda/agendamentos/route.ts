@@ -17,6 +17,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { listaAgendamentos, type AgendamentoListado } from "@/lib/agenda/consulta";
+import { MAXIMO_DE_CONVIDADOS_DA_EQUIPE } from "@/lib/agenda/convidados-da-equipe";
 import { donosDaAgenda } from "@/lib/agenda/donos-da-agenda";
 import { lerOcupacaoExterna } from "@/lib/agenda/ocupacao-externa";
 import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
@@ -80,6 +81,18 @@ const emailDoConvidado = z.preprocess(
   z.union([z.literal(""), z.string().email().max(320)]),
 );
 
+/**
+ * OS CONVIDADOS DA EQUIPE (migration 0561) — ids de membros desta organização.
+ *
+ * `[]` limpa a lista; AUSENTE não mexe. A distinção é a mesma do e-mail do
+ * convidado: um PATCH de remarcação não pode desconvidar a equipe só porque a
+ * tela não mandou o campo. O teto é a MESMA constante que o handler aplica.
+ */
+const convidadosDaEquipe = z
+  .array(z.string().uuid())
+  .max(MAXIMO_DE_CONVIDADOS_DA_EQUIPE)
+  .optional();
+
 const marcarSchema = z.object({
   event_type_id: z.string().uuid(),
   starts_at: z.string().datetime({ offset: true }),
@@ -91,6 +104,7 @@ const marcarSchema = z.object({
   description: z.string().max(2000).optional(),
   location_details: z.string().max(300).optional(),
   guest_email: emailDoConvidado.optional(),
+  team_guest_user_ids: convidadosDaEquipe,
 });
 
 const alterarSchema = z
@@ -108,6 +122,7 @@ const alterarSchema = z
     status: z.enum(["confirmed", "completed", "no_show"]).optional(),
     notes: z.string().max(2000).optional(),
     guest_email: emailDoConvidado.optional(),
+    team_guest_user_ids: convidadosDaEquipe,
   })
   .refine(
     (c) =>
@@ -115,7 +130,8 @@ const alterarSchema = z
       c.starts_at !== undefined ||
       c.status !== undefined ||
       c.notes !== undefined ||
-      c.guest_email !== undefined,
+      c.guest_email !== undefined ||
+      c.team_guest_user_ids !== undefined,
     {
       message: "Informe pelo menos um campo para alterar.",
     },
