@@ -159,6 +159,7 @@
 | 18/11 | **Cada número com seu jeito de distribuir (S5)**. Migration **0559**: coluna `channel_sessions.routing_mode` (NULL = segue a organização) e função `fn_set_channel_distribution_mode` (gerente+, suporte com escrita, MFA). O worker (`lib/routing/worker.ts`, `modoDoNumero`) usa o modo do número antes do da organização. Rota `PATCH /api/v1/settings/routing/channels/modo`; escolha por número em Configurações › Atendimento › Responsáveis por número. Invariantes `tests/invariants/jeito-de-distribuir-por-numero.test.ts` (função e worker, nos dois sentidos) e `tests/invariants/atualizar-card-e-fila-sem-resposta.test.ts` (prova contra banco real do passo "Atualizar o card" e da chamada do cron de fila) | `chataionline/seguranca-auditoria` |
 | 19/11 | **Planos (Opus 5.5 alto)**: Escala pelo checkout com 7 dias grátis e troca de plano entre os três; recursos novos distribuídos por plano com trava na rota e no motor (`ia_em_grupo`, `automacoes_avancadas`, `jev`; telefone oculto em `permissoes_avancadas`); extras à parte (`lib/billing/extras.ts`, migration **0562**); descer exige caber (`lib/billing/uso-do-plano.ts`); cron `troca-de-plano-vencida`; e-mails `troca_agendada`/`troca_aguardando_pagamento`. Auditoria das travas (2 auditores): 23 achados, 17 consertados, 3 a decidir, 3 pendentes (o maior: limites passáveis gravando direto no banco). Planilha, aba "Auditoria planos 19/11". Página de vendas: ramo `chataionline/escala-no-checkout` | `.changes/planos-escala-no-checkout-e-extras.md` |
 | 19/11 | **Limites do plano dentro do banco (migration 0563, Opus 5.5 alto)**: gatilho `fn_cota_do_plano_na_escrita` em chatbots, funis, agentes, equipe e números (só para a escrita como `authenticated`; o servidor já conta antes); `fn_limite_do_plano`/`fn_plano_alcanca` espelham o catálogo (`tests/unit/limites-do-plano-no-banco.test.ts` confere); distribuição por número exige Escala nas funções do banco. Achados 5 e 21 da auditoria de planos consertados | `.changes/planos-escala-no-checkout-e-extras.md` |
+| 19/11 | **As 3 decisões e os 2 baixos da auditoria de planos (Opus 5.5 alto)**. (12) Teste grátis de 7 dias **só no cartão de crédito**, nos três planos; Pix e boleto pagam na hora (`temDireitoAoTeste` em `src/lib/teste-gratis.ts` da página de vendas, textos do checkout, cards, termos e `llms`). (13) Sem clientes ainda: nada a fazer. (20) Webhook de saída fica liberado no Essencial: é só um envio do servidor, sem custo. (17b) `emit_event` recusa de login os 5 eventos que mandam e-mail de cobrança (migration **0564**, `reserved_billing_event`; a definição em vigor é a do bloco da 0554 no baseline). (22) `sendTurnMessage` confere o extra de nota de voz na hora de enviar (`lib/agent-engine/edge/crm/send-message.ts`); sem ele sai em texto. Testes: `tests/invariants/endurecimento-pos-auditoria.test.ts` (0564), `tests/unit/send-turn-message-voz.test.ts`, `tests/checkout*.test.ts` da página de vendas | `.changes/planos-escala-no-checkout-e-extras.md` |
 
 - **O5b — Público do agente (dois agentes no mesmo número)** — porta do upstream #3722 (fa05a7f2b, c1118f652, 98ab14938): etiquetas, funis e origem do contato decidem qual agente do número atende; ninguém aceita = silêncio com a mensagem na caixa de entrada. A fatia 2 (o roteador respeitar o público, 80f94fc03) **não** foi portada: depende do contexto do CRM no roteador (#3917) e das regras de remetente, que o fork não tem. Prova: `evidence/publico-do-agente/1-publico-do-agente-na-tela-do-gatilho.png`.
 
@@ -178,9 +179,6 @@
 
 ## 5. O que falta / pendências conhecidas
 
-- **Decidir** (aba "Auditoria planos 19/11"): teste grátis do Escala (só com cartão?), ligar extras de
-  quem já usa, webhook de saída no Essencial.
-
 - **Conferir na VPS de teste** os 2 pontos "Conferir" da auditoria de 18/11 (push depois de sair; DNS na busca do site do prospecto) e auditar o ponto adiado (conferência "tem WhatsApp?" da prospecção). Os 9 achados baixos (9 a 16 e 19) já foram consertados, ver a linha logo acima.
 - **Nunca foi testado pela tela, numa instalação limpa, depois das duas auditorias:** criar conta →
   escolher plano → conectar WhatsApp → primeiro lead → IA e chatbot respondendo. Prioridade 1.
@@ -198,7 +196,7 @@
 
 ## 6. Dia de subir para a VPS (checklist)
 
-Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0563**). A página de vendas nova
+Banco: o `update.sh` aplica o `baseline.sql` (migrations até a **0564**). A página de vendas nova
 (Qwen, ramo `chataionline/escala-no-checkout`) só sobe DEPOIS do `update.sh`: ela grava colunas da 0562. Depois de atualizar, a rotina `contact-names` começa a preencher o nome da agenda do celular aos poucos (5 contatos a cada 10 min); ela só funciona se o número tiver a opção de guardar o histórico ligada no WhatsApp.
 
 No `.env` da instalação (achar a pasta com `docker compose ls`):
