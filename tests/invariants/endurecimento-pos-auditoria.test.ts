@@ -150,6 +150,32 @@ describe("0499 — emit_event: comando é do servidor", () => {
   });
 });
 
+describe("0564 — evento que manda e-mail de cobrança é do servidor (achado 17b)", () => {
+  it.each([
+    "reembolso.confirmado",
+    "plano.alterado",
+    "plano.troca_pedida",
+    "assinatura.cancelada",
+    "conta.criada",
+  ])("nem o admin da organização emite %s pelo login", (tipo) => {
+    for (const quem of [ADMIN, LEITOR]) {
+      const r = como(
+        quem,
+        `select public.emit_event('${tipo}', 'subscription', '${ORG}', '{"value": 99999}'::jsonb, '{}'::jsonb, '${ORG}');`,
+      );
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.erro).toContain("reserved_billing_event");
+    }
+  });
+
+  it("controle: o servidor (sem login) continua emitindo", () => {
+    const out = sql(
+      `select public.emit_event('reembolso.confirmado', 'subscription', '${ORG}', '{}'::jsonb, '{"source":"teste"}'::jsonb, '${ORG}') is not null;`,
+    );
+    expect(lastLine(out)).toBe("t");
+  });
+});
+
 describe("0499 — atribuir conversa exige poder vê-la", () => {
   it("atendente A não toma para si a conversa de B (escopo padrão: as suas e as sem dono)", () => {
     const r = como(

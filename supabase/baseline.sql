@@ -42934,7 +42934,8 @@ grant execute on function public.fn_can_view_conversation(uuid, uuid, boolean)
 -- vem ANTES da varredura é curado (tests/unit/varredura-anon-e-o-ultimo-bloco).
 -- Políticas, gatilhos e revogações ficam nos blocos rotulados de cada
 -- migration, no fim do arquivo. Nenhuma destas definições é seguida por outra
--- da mesma função: são as que o banco instala.
+-- da mesma função: são as que o banco instala. EXCEÇÃO: `emit_event`, que a
+-- 0554 redefine mais abaixo (e a 0564 com ela) — a que vale é aquela.
 
 -- (0499) emit_event: tipos de comando reservados ao servidor.
 CREATE OR REPLACE FUNCTION public.emit_event(p_event_type text, p_entity_kind text, p_entity_id uuid, p_payload jsonb DEFAULT '{}'::jsonb, p_metadata jsonb DEFAULT '{}'::jsonb, p_organization_id uuid DEFAULT NULL::uuid)
@@ -48141,10 +48142,11 @@ grant execute on function public.fn_importar_blueprint_de_respostas_rapidas(uuid
 -- Assinatura nova no schema exposto: sem isto a RPC só aparece no próximo reload.
 notify pgrst, 'reload schema';
 
--- ---- eventos de agendamento só do que aconteceu (migration 0554) ----
+-- ---- eventos de agendamento só do que aconteceu (migrations 0554 e 0564) ----
 -- Auditoria de 18/11, achado 4: `emit_event` confere, para chamador logado, os
 -- eventos `appointment.created/.rescheduled/.cancelled` (atendente+, situação
 -- gravada que confere, uma linha por mudança). Ver o cabeçalho da migration.
+-- A 0564 acrescenta a recusa dos eventos que mandam e-mail de cobrança.
 CREATE OR REPLACE FUNCTION public.emit_event(p_event_type text, p_entity_kind text, p_entity_id uuid, p_payload jsonb DEFAULT '{}'::jsonb, p_metadata jsonb DEFAULT '{}'::jsonb, p_organization_id uuid DEFAULT NULL::uuid)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -48181,6 +48183,20 @@ begin
     or p_event_type = 'user.mentioned'
   ) then
     raise exception 'reserved_command_event' using errcode='42501';
+  end if;
+  -- Eventos que mandam E-MAIL DE COBRANÇA ao cliente também são do servidor
+  -- (0564). Quem os produz de verdade é sempre a service role: o cadastro
+  -- (`conta.criada`), o gatilho de `subscriptions` (`plano.alterado`), a rota
+  -- da troca (`plano.troca_pedida`), o webhook do Asaas na página de vendas
+  -- (`reembolso.confirmado`) e o cancelamento (`assinatura.cancelada`). Vindo
+  -- de login, um leitor emitia `reembolso.confirmado` com o valor que quisesse
+  -- e recebia da plataforma um e-mail de "reembolso de R$ X confirmado" — uma
+  -- prova forjada (auditoria de planos de 19/11, achado 17b).
+  if auth.uid() is not null and p_event_type in (
+    'conta.criada','plano.alterado','plano.troca_pedida',
+    'reembolso.confirmado','assinatura.cancelada'
+  ) then
+    raise exception 'reserved_billing_event' using errcode='42501';
   end if;
   -- Estes campos autorizam efeitos operacionais; não são payload público.
   if auth.uid() is not null and (
