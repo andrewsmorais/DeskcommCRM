@@ -13,6 +13,7 @@ import { traduzir } from "@/lib/i18n/dicionario";
 import type { Idioma } from "@/lib/i18n/idiomas";
 import {
   mensagemComRef,
+  PARAMETROS_POR_PLATAFORMA,
   SUFIXO_GOOGLE,
   type LinkInput,
   type LinkRastreavel,
@@ -305,6 +306,24 @@ export function LinksRastreaveis({
           <Button variant="outline" onClick={() => copy(url)}>
             {t("Copiar link")}
           </Button>
+          <h3 className="font-medium">{t("Link pronto para cada plataforma de anúncio")}</h3>
+          <p className="text-sm">
+            {t(
+              "Cole no destino do anúncio. A plataforma troca o marcador pelo nome da campanha no clique, e a venda aparece em Análise › Vendas por campanha.",
+            )}
+          </p>
+          {PARAMETROS_POR_PLATAFORMA.map((item) => {
+            const pronto = `${url}?${item.parametros}`;
+            return (
+              <div key={item.plataforma} className="space-y-1">
+                <p className="text-sm font-medium">{item.plataforma}</p>
+                <code className="block text-xs break-all">{pronto}</code>
+                <Button variant="outline" onClick={() => copy(pronto)}>
+                  {t("Copiar link desta plataforma")}
+                </Button>
+              </div>
+            );
+          })}
           <h3 className="font-medium">{t("Script para instalar no site")}</h3>
           <code className="block text-xs break-all">{snippet}</code>
           <Button variant="outline" onClick={() => copy(snippet)}>

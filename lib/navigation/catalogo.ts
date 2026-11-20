@@ -853,6 +853,19 @@ export const NAV_CATALOG = [
     section: "Os números do período",
   },
   {
+    // A pergunta que fecha a conta da mídia: das pessoas que cada campanha
+    // trouxe, quantas COMPRARAM — nas quatro plataformas (Meta, Google, TikTok,
+    // Pinterest). Não lê a plataforma: a origem é o primeiro toque que o
+    // próprio CRM gravou (fn_vendas_por_campanha, migration 0566).
+    href: "/app/ads/campanhas",
+    label: "Vendas por campanha",
+    description: "De qual campanha vieram os clientes e quantos compraram: Facebook, Instagram, Google, TikTok e Pinterest.",
+    icon: "Megaphone",
+    group: "analise",
+    section: "Os números do período",
+    minRole: "manager",
+  },
+  {
     // Logo abaixo de Desempenho porque responde a metade da MESMA pergunta: lá
     // está o que aconteceu depois que a pessoa chegou; aqui, quanto custou
     // trazê-la. Ler as duas juntas é o que fecha a conta do custo por cliente.
