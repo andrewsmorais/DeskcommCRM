@@ -9,7 +9,7 @@ import {
   mapearAvisoDaLoja,
   type Cabecalhos,
 } from "./lojas";
-import { mapearAvisoDeVenda } from "./plataformas-de-venda";
+import { EVENTOS_DA_VENDA, mapearAvisoDeVenda } from "./plataformas-de-venda";
 
 const cab = (h: Record<string, string> = {}): Cabecalhos => ({
   get: (n) => h[n.toLowerCase()] ?? null,
@@ -267,5 +267,15 @@ describe("lojas — assinatura", () => {
 
   it("sem cabeçalho, não se prova (CartPanda é protegida pelo endereço secreto)", () => {
     expect(avisoDaLojaAutentico(corpo, cab(), "segredo")).toBe(false);
+  });
+});
+
+describe("formato ChatAI aceita todo nome canônico de evento", () => {
+  it.each(EVENTOS_DA_VENDA)("%s", (evento) => {
+    const aviso = mapearAvisoDaLoja(
+      { evento_da_venda: evento, telefone: "11987654321", produto: "Curso" },
+      { get: () => null },
+    );
+    expect(aviso?.evento).toBe(evento);
   });
 });

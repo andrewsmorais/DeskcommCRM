@@ -49,6 +49,8 @@ export const AUDIT_ACTIONS = [
   "nuvemshop.oauth_failed",
   "nuvemshop.webhook_received",
   "nuvemshop.webhook_invalid_signature",
+  /** Rodada que trouxe carrinhos abandonados das lojas Nuvemshop (cron nuvemshop-checkouts). */
+  "nuvemshop.checkouts_run",
   "lead.created",
   "lead.updated",
   "lead.deleted",

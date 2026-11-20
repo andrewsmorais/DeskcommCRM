@@ -79,6 +79,9 @@ CRONS="
 # A descida de plano agendada pelo cliente vale no dia: a assinatura passa a
 # dizer o plano novo e o e-mail de "plano reduzido" sai, mesmo sem a renovação paga.
 */10 * * * *|60|api/v1/cron/troca-de-plano-vencida
+# Carrinho abandonado da Nuvemshop: a loja não avisa, o CRM lê pela API. O
+# carrinho precisa estar parado há 30 min, então 15 min de cadência basta.
+*/15 * * * *|120|api/v1/cron/nuvemshop-checkouts
 # A CAMPANHA. Minuto a minuto, e a rodada manda no máximo uma mensagem por
 # número: é o cron que dá a cadência base, e o ritmo da campanha e do canal
 # (channel_knobs + pacing_ledger) só sabem torná-la mais lenta.

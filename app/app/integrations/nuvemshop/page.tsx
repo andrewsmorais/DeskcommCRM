@@ -67,7 +67,10 @@ export default async function NuvemshopIntegrationPage() {
         <div>
           <h1 className="text-xl font-semibold">Nuvemshop</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {traduzir("Sincroniza pedidos, produtos e clientes via OAuth + webhooks.", idioma)}
+            {traduzir(
+              "Pedidos, Pix e boleto gerados, pagamentos e carrinhos abandonados da loja viram contato e negócio no funil, em todos os planos.",
+              idioma,
+            )}
           </p>
         </div>
       </header>
@@ -136,6 +139,12 @@ export default async function NuvemshopIntegrationPage() {
             {isAdmin ? <DisconnectButton /> : null}
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              {traduzir(
+                "Os pedidos entram pela fonte “Nuvemshop” em Webhooks › Receber dados (ela nasce na primeira venda); lá você troca o funil e a etapa. Os carrinhos abandonados são lidos a cada 15 minutos.",
+                idioma,
+              )}
+            </p>
             <div>
               <span className="font-medium">{traduzir("Escopos:", idioma)}</span>{" "}
               {integration.scopes.length > 0 ? (

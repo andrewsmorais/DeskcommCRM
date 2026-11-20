@@ -7847,8 +7847,11 @@ export const DICIONARIO: Traducoes = {
   "Nuvemshop desconectada.": { es: "Nuvemshop desconectada." },
   "Desconectando…": { es: "Desconectando…" },
   "Nuvemshop conectada com sucesso.": { es: "Nuvemshop conectada con éxito." },
-  "Sincroniza pedidos, produtos e clientes via OAuth + webhooks.": {
-    es: "Sincroniza pedidos, productos y clientes vía OAuth + webhooks.",
+  "Pedidos, Pix e boleto gerados, pagamentos e carrinhos abandonados da loja viram contato e negócio no funil, em todos os planos.": {
+    es: "Pedidos, Pix y boleto generados, pagos y carritos abandonados de la tienda se convierten en contacto y negocio en el embudo, en todos los planes.",
+  },
+  "Os pedidos entram pela fonte “Nuvemshop” em Webhooks › Receber dados (ela nasce na primeira venda); lá você troca o funil e a etapa. Os carrinhos abandonados são lidos a cada 15 minutos.": {
+    es: "Los pedidos entran por la fuente “Nuvemshop” en Webhooks › Recibir datos (nace con la primera venta); allí cambias el embudo y la etapa. Los carritos abandonados se leen cada 15 minutos.",
   },
   "Integração não configurada": { es: "Integración no configurada" },
   Configure: { es: "Configura" },

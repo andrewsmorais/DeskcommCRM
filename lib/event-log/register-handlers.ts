@@ -33,6 +33,7 @@ import { avisoDeAgendamentoNoWhatsAppHandler } from "@/lib/agenda/aviso-de-agend
 import { emailsTransacionaisHandler } from "@/lib/emails-transacionais/handler";
 import { reatribuicaoHandler } from "@/lib/conversas/reatribuicao.handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
+import { nuvemshopPedidoHandler } from "@/lib/nuvemshop/pedido.handler";
 
 let _registered = false;
 
@@ -73,6 +74,8 @@ export function ensureHandlersRegistered(): void {
   // longe do aviso ao suporte, que sai por rede de terceiro.
   registerHandler(casoNaCentralHandler);
   registerHandler(followupGatilhoPresencaHandler);
+  // Pedido da Nuvemshop → contato + negócio pela Captação (uma ida à API da loja).
+  registerHandler(nuvemshopPedidoHandler);
   registerHandler(mediaPersistHandler);
   registerHandler(mediaDeriveHandler);
   registerHandler(webPushInboundHandler);

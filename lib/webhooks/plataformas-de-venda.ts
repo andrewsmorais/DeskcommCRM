@@ -107,7 +107,12 @@ const SINONIMOS: Record<EventoDaVenda, string[]> = {
 export function eventoDaVenda(bruto: unknown): EventoDaVenda | null {
   if (typeof bruto !== "string") return null;
   const v = bruto.trim().toLowerCase();
-  for (const evento of EVENTOS_DA_VENDA) if (SINONIMOS[evento].includes(v)) return evento;
+  // O nome canônico vale por si: o formato ChatAI (Wix, Make, Zapier e a
+  // Nuvemshop) manda exatamente `aguardando_pagamento`, `reembolso`… — e seis
+  // dos dez não constavam dos próprios sinônimos, então o aviso era descartado
+  // (medido: `lib/webhooks/lojas.test.ts`, "aceita todo nome canônico").
+  for (const evento of EVENTOS_DA_VENDA)
+    if (evento === v || SINONIMOS[evento].includes(v)) return evento;
   return null;
 }
 

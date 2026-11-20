@@ -1608,3 +1608,147 @@ describe("POST /api/v1/webhooks/in/[token] — lojas (Shopify, WooCommerce, Yamp
     );
   });
 });
+
+const WHIN_SOURCE_NUVEMSHOP = "dddddddd-5555-4000-8000-000000000031";
+const TOKEN_NUVEMSHOP = "wh-in-nuvemshop-token-1234";
+const NUVEMSHOP_INTEGRACAO = "dddddddd-5555-4000-8000-000000000032";
+const NUVEMSHOP_STORE = "990001";
+
+describe("Nuvemshop — pedido e carrinho pela Captação", () => {
+  beforeAll(() => {
+    sql(`
+      select set_config('app.nuvemshop_oauth_key', 'test-guc-key-0123456789abcdef0123456789abcdef', false);
+      insert into public.webhook_sources
+        (id, organization_id, name, path_token, default_pipeline_id, default_stage_id)
+        values ('${WHIN_SOURCE_NUVEMSHOP}', '${GOV_ORG}', 'Nuvemshop', '${TOKEN_NUVEMSHOP}', '${VENDAS_PIPELINE}', '${VENDAS_NOVO}')
+        on conflict do nothing;
+      insert into public.tenant_integrations
+        (id, organization_id, provider, oauth_access_token_encrypted, webhook_secret_encrypted, status, store_metadata)
+        values ('${NUVEMSHOP_INTEGRACAO}', '${GOV_ORG}', 'nuvemshop', public.fn_encrypt_oauth('token-da-loja'),
+                public.fn_encrypt_oauth('segredo-do-app'), 'healthy',
+                jsonb_build_object('store_id', '${NUVEMSHOP_STORE}', 'fonte_id', '${WHIN_SOURCE_NUVEMSHOP}'))
+        on conflict do nothing;
+    `);
+  });
+
+  const lead = (id: string) => rows(`select * from public.crm_leads where id = '${id}'`)[0]!;
+  const telefone = "11944449001";
+  const produtos = [{ name: "Tênis Corrida", price: "399.00", quantity: 1 }];
+  let leadDoCarrinho = "";
+
+  it("carrinho abandonado vira negócio em 'Carrinho abandonado', com o link que retoma a compra", async () => {
+    const { lojaDaOrganizacao, fonteDaLoja, entregarNaCaptacao } = await import("@/lib/nuvemshop/captacao");
+    const { avisoDoCarrinho } = await import("@/lib/nuvemshop/venda");
+    const admin = createAdminClient();
+    const loja = await lojaDaOrganizacao(admin, GOV_ORG);
+    expect(loja?.storeId).toBe(NUVEMSHOP_STORE);
+    const fonte = await fonteDaLoja(admin, loja!);
+    expect(fonte?.id).toBe(WHIN_SOURCE_NUVEMSHOP);
+
+    const entrega = await entregarNaCaptacao(
+      admin,
+      fonte!,
+      avisoDoCarrinho({
+        id: 5550001,
+        contact_name: "Rui Nuvem",
+        contact_phone: telefone,
+        products: produtos,
+        total: "399.00",
+        abandoned_checkout_url: "https://loja.lojavirtualnuvem.com.br/checkout/v3/next/5550001/x",
+        completed_at: null,
+      })!,
+    );
+    expect(entrega).toEqual({ tipo: "entregue", status: 200 });
+    const [l] = rows(
+      `select id from public.crm_leads where organization_id = '${GOV_ORG}' and stage_id = '${VENDAS_CARRINHO}'
+         and custom_fields->>'plataforma' = 'nuvemshop'`,
+    );
+    leadDoCarrinho = String(l!.id);
+    expect(lead(leadDoCarrinho).custom_fields).toMatchObject({
+      produto: "Tênis Corrida",
+      link_checkout: "https://loja.lojavirtualnuvem.com.br/checkout/v3/next/5550001/x",
+      valor: "R$ 399,00",
+    });
+  });
+
+  it("o aviso do pedido é lido pela API: Pix pendente herda o negócio do carrinho, e o pago vai para 'Pago'", async () => {
+    const { tratarPedidoDaNuvemshop } = await import("@/lib/nuvemshop/pedido.handler");
+    let situacao = "pending";
+    const pedidos: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      pedidos.push(`${String(url)} ${(init.headers as Record<string, string>).Authentication}`);
+      return new Response(
+        JSON.stringify({
+          id: 8880001,
+          contact_name: "Rui Nuvem",
+          contact_phone: telefone,
+          products: produtos,
+          total: "399.00",
+          status: "open",
+          payment_status: situacao,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    try {
+      const evento = (tipo: string) => ({
+        id: randomUUID(),
+        organization_id: GOV_ORG,
+        event_type: tipo,
+        entity_kind: "nuvemshop_webhook",
+        entity_id: null,
+        payload: { store_id: Number(NUVEMSHOP_STORE), event: "order/created", id: 8880001 },
+        metadata: { store_id: NUVEMSHOP_STORE },
+        consumed_by: [],
+        attempts: 0,
+      });
+      const r1 = await tratarPedidoDaNuvemshop(evento("nuvemshop.order_created"));
+      expect(r1).toMatchObject({ status: "ok", detail: "aguardando_pagamento:200" });
+      expect(lead(leadDoCarrinho).stage_id).toBe(VENDAS_AGUARDANDO);
+      expect(lead(leadDoCarrinho).external_id).toBe("loja:nuvemshop-8880001");
+      // A organização e o token vêm da integração: a API foi chamada com o token decifrado.
+      expect(pedidos[0]).toBe(
+        `https://api.tiendanube.com/v1/${NUVEMSHOP_STORE}/orders/8880001 bearer token-da-loja`,
+      );
+
+      situacao = "paid";
+      const r2 = await tratarPedidoDaNuvemshop(evento("nuvemshop.order_paid"));
+      expect(r2.status).toBe("ok");
+      expect(lead(leadDoCarrinho).stage_id).toBe(VENDAS_PAGO);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("aviso de OUTRA loja não lê pedido nenhum", async () => {
+    const { tratarPedidoDaNuvemshop } = await import("@/lib/nuvemshop/pedido.handler");
+    const r = await tratarPedidoDaNuvemshop({
+      id: randomUUID(),
+      organization_id: GOV_ORG,
+      event_type: "nuvemshop.order_paid",
+      entity_kind: "nuvemshop_webhook",
+      entity_id: null,
+      payload: { store_id: 1, id: 1 },
+      metadata: { store_id: "1" },
+      consumed_by: [],
+      attempts: 0,
+    });
+    expect(r).toMatchObject({ status: "skipped", detail: "loja_trocada" });
+  });
+
+  it("sem fonte guardada, a primeira venda cria a fonte 'Nuvemshop' (visível em Receber dados) e a guarda", async () => {
+    const { lojaDaOrganizacao, fonteDaLoja } = await import("@/lib/nuvemshop/captacao");
+    sql(
+      `update public.tenant_integrations set store_metadata = store_metadata - 'fonte_id' where id = '${NUVEMSHOP_INTEGRACAO}'`,
+    );
+    const admin = createAdminClient();
+    const loja = await lojaDaOrganizacao(admin, GOV_ORG);
+    const fonte = await fonteDaLoja(admin, loja!);
+    expect(fonte?.id).toBeTruthy();
+    expect(fonte?.id).not.toBe(WHIN_SOURCE_NUVEMSHOP);
+    const [criada] = rows(`select name, is_active, last_change_actor_kind from public.webhook_sources where id = '${fonte!.id}'`);
+    expect(criada).toEqual({ name: "Nuvemshop", is_active: true, last_change_actor_kind: "system" });
+    const [meta] = rows(`select store_metadata from public.tenant_integrations where id = '${NUVEMSHOP_INTEGRACAO}'`);
+    expect(meta!.store_metadata).toMatchObject({ store_id: NUVEMSHOP_STORE, fonte_id: fonte!.id });
+  });
+});
