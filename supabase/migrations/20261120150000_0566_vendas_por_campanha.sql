@@ -1,11 +1,11 @@
--- Vendas por campanha: de qual campanha (Meta, Google Ads, TikTok, Pinterest)
+-- Vendas por campanha: de qual campanha (Meta, Google Ads, TikTok, Pinterest, Taboola)
 -- vieram os contatos do período, e o que eles viraram no funil.
 --
 -- A ORIGEM de cada contato, nesta ordem (primeiro toque):
 --   1. o primeiro clique no link rastreável (`meta_ads_click_refs`, que guarda a
 --      UTM de QUALQUER origem — o nome é histórico): `utm_source` diz a
 --      plataforma e `utm_campaign` a campanha. TikTok e Pinterest preenchem a
---      campanha sozinhos (`__CAMPAIGN_NAME__`, `{campaignname}`);
+--      campanha sozinhos (`__CAMPAIGN_NAME__`, `{campaignname}`, `{campaign_name}`);
 --   2. o clique do Google Ads (`google_ads_click_refs`, gclid);
 --   3. o anúncio de clique para o WhatsApp gravado no contato
 --      (`source_metadata.ad_platform/ad_id`), com o nome da campanha do
@@ -60,6 +60,7 @@ language sql stable security definer set search_path = public as $$
                  when cl.fonte in ('google', 'google_ads', 'googleads', 'adwords', 'gads', 'youtube') then 'google'
                  when cl.fonte in ('tiktok', 'tiktok_ads', 'tiktokads') then 'tiktok'
                  when cl.fonte in ('pinterest', 'pinterest_ads', 'pin') then 'pinterest'
+                 when cl.fonte in ('taboola', 'taboola_ads') then 'taboola'
                  else 'outra'
                end
              when cg.contact_id is not null then 'google'

@@ -4,12 +4,12 @@
  *
  * O banco devolve uma linha por (plataforma, campanha); aqui elas viram grupos
  * por plataforma, na ordem em que o dono anuncia (Meta, Google, TikTok,
- * Pinterest), com o total de cada grupo. A taxa de venda é vendas ÷ contatos:
+ * Pinterest, Taboola), com o total de cada grupo. A taxa de venda é vendas ÷ contatos:
  * "de cada 100 pessoas que esta campanha trouxe, quantas compraram".
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const PLATAFORMAS_DA_TELA = ["meta", "google", "tiktok", "pinterest", "outra", "sem_origem"] as const;
+export const PLATAFORMAS_DA_TELA = ["meta", "google", "tiktok", "pinterest", "taboola", "outra", "sem_origem"] as const;
 export type PlataformaDaTela = (typeof PLATAFORMAS_DA_TELA)[number];
 
 export const NOME_DA_PLATAFORMA: Record<PlataformaDaTela, string> = {
@@ -17,6 +17,7 @@ export const NOME_DA_PLATAFORMA: Record<PlataformaDaTela, string> = {
   google: "Google Ads",
   tiktok: "TikTok Ads",
   pinterest: "Pinterest Ads",
+  taboola: "Taboola Ads",
   outra: "Outras origens",
   sem_origem: "Sem campanha rastreada",
 };

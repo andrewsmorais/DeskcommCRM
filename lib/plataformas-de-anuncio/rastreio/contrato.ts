@@ -49,7 +49,8 @@ export const MODELO_GOOGLE = `{lpurl}?${SUFIXO_GOOGLE}`;
  * Marcadores conferidos na ajuda de cada plataforma em 20/11/2026:
  *  - Meta: `{{campaign.name}}`, `{{ad.name}}` (parâmetros dinâmicos de URL);
  *  - TikTok: `__CAMPAIGN_NAME__`, `__CID_NAME__`;
- *  - Pinterest: `{campaignname}`, `{adid}`.
+ *  - Pinterest: `{campaignname}`, `{adid}`;
+ *  - Taboola: `{campaign_name}`, `{site}` (o site onde o anúncio apareceu).
  * O Google Ads usa o sufixo de URL final (`SUFIXO_GOOGLE`), não o link.
  */
 export const PARAMETROS_POR_PLATAFORMA = [
@@ -64,5 +65,9 @@ export const PARAMETROS_POR_PLATAFORMA = [
   {
     plataforma: "Pinterest Ads",
     parametros: "utm_source=pinterest&utm_medium=paid&utm_campaign={campaignname}&utm_content={adid}",
+  },
+  {
+    plataforma: "Taboola Ads",
+    parametros: "utm_source=taboola&utm_medium=referral&utm_campaign={campaign_name}&utm_content={site}",
   },
 ] as const;

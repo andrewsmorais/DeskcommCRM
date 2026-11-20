@@ -4,7 +4,7 @@ import { sql } from "./gov-helpers";
 
 /**
  * `fn_vendas_por_campanha` (migration 0566): de qual campanha vieram os
- * contatos do período, e o que eles viraram no funil — nas quatro plataformas.
+ * contatos do período, e o que eles viraram no funil — nas cinco plataformas.
  *
  * Fixture própria (namespace `abab…`), com uma SEGUNDA organização cujo contato
  * vem da mesma campanha: o número da primeira não pode contá-lo.
@@ -63,6 +63,7 @@ describe("fn_vendas_por_campanha", () => {
         ('${c(5)}', '${ORG}', 'Google clique', '{}'),
         ('${c(6)}', '${ORG}', 'Sem origem', '{}'),
         ('${c(7)}', '${ORG}', 'Instagram pela UTM', '{}'),
+        ('${c(8)}', '${ORG}', 'Taboola', '{}'),
         ('${c(9)}', '${ORG_B}', 'Outra organização', '{}')
         on conflict do nothing;
 
@@ -75,6 +76,7 @@ describe("fn_vendas_por_campanha", () => {
         ('${ORG}', 'VPC002', '{"utm_source":"TikTok","utm_campaign":"Black Friday TikTok"}', '${c(2)}', now()),
         ('${ORG}', 'VPC003', '{"utm_source":"pinterest","utm_campaign":"Decoração"}', '${c(3)}', now()),
         ('${ORG}', 'VPC007', '{"utm_source":"instagram","utm_campaign":"Stories"}', '${c(7)}', now()),
+        ('${ORG}', 'VPC008', '{"utm_source":"Taboola","utm_campaign":"Matéria patrocinada"}', '${c(8)}', now()),
         ('${ORG_B}', 'VPC009', '{"utm_source":"tiktok","utm_campaign":"Black Friday TikTok"}', '${c(9)}', now())
         on conflict do nothing;
       insert into public.google_ads_click_refs (organization_id, token, gclid, query_raw, contact_id, matched_at) values
@@ -90,7 +92,7 @@ describe("fn_vendas_por_campanha", () => {
     `);
   });
 
-  it("separa as quatro plataformas e a campanha de cada contato", () => {
+  it("separa as cinco plataformas e a campanha de cada contato", () => {
     const r = relatorio(ORG);
     const linha = (p: string, camp: string | null) => r.find((l) => l.plataforma === p && l.campanha === camp);
 
@@ -107,6 +109,7 @@ describe("fn_vendas_por_campanha", () => {
     // UTM de Instagram conta como Meta.
     expect(linha("meta", "Stories")).toMatchObject({ contatos: 1, negocios: 0 });
     expect(linha("google", "Pesquisa marca")).toMatchObject({ contatos: 1 });
+    expect(linha("taboola", "Matéria patrocinada")).toMatchObject({ contatos: 1 });
     expect(linha("sem_origem", null)).toMatchObject({ contatos: 1 });
   });
 

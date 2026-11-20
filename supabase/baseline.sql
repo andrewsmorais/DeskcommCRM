@@ -52202,15 +52202,15 @@ update public.plans set
   features = '["2 números de WhatsApp","1 agente de IA","1 chatbot","CRM com 2 funis","Agendamento pela IA e pelo chatbot","Agenda com Google Meet e aviso no seu WhatsApp","Chatbot completo com modelos prontos","Recuperação de carrinho e Pix das lojas (Shopify, Yampi, Kiwify…)","Respostas rápidas com foto e áudio","Caixa de entrada compartilhada e chat da equipe","Radar de conversas e painel ao vivo","Base de conhecimento para a IA","IA que entende áudio e foto","IA passa a conversa para o atendente","Chat no site e aplicativo no celular","Relatórios essenciais"]'::jsonb
 where slug = 'essencial';
 
--- ---- vendas por campanha: Meta, Google Ads, TikTok e Pinterest (migration 0566) ----
--- Vendas por campanha: de qual campanha (Meta, Google Ads, TikTok, Pinterest)
+-- ---- vendas por campanha: Meta, Google Ads, TikTok, Pinterest e Taboola (migration 0566) ----
+-- Vendas por campanha: de qual campanha (Meta, Google Ads, TikTok, Pinterest, Taboola)
 -- vieram os contatos do período, e o que eles viraram no funil.
 --
 -- A ORIGEM de cada contato, nesta ordem (primeiro toque):
 --   1. o primeiro clique no link rastreável (`meta_ads_click_refs`, que guarda a
 --      UTM de QUALQUER origem — o nome é histórico): `utm_source` diz a
 --      plataforma e `utm_campaign` a campanha. TikTok e Pinterest preenchem a
---      campanha sozinhos (`__CAMPAIGN_NAME__`, `{campaignname}`);
+--      campanha sozinhos (`__CAMPAIGN_NAME__`, `{campaignname}`, `{campaign_name}`);
 --   2. o clique do Google Ads (`google_ads_click_refs`, gclid);
 --   3. o anúncio de clique para o WhatsApp gravado no contato
 --      (`source_metadata.ad_platform/ad_id`), com o nome da campanha do
@@ -52265,6 +52265,7 @@ language sql stable security definer set search_path = public as $$
                  when cl.fonte in ('google', 'google_ads', 'googleads', 'adwords', 'gads', 'youtube') then 'google'
                  when cl.fonte in ('tiktok', 'tiktok_ads', 'tiktokads') then 'tiktok'
                  when cl.fonte in ('pinterest', 'pinterest_ads', 'pin') then 'pinterest'
+                 when cl.fonte in ('taboola', 'taboola_ads') then 'taboola'
                  else 'outra'
                end
              when cg.contact_id is not null then 'google'

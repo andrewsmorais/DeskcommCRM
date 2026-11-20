@@ -859,7 +859,7 @@ export const NAV_CATALOG = [
     // próprio CRM gravou (fn_vendas_por_campanha, migration 0566).
     href: "/app/ads/campanhas",
     label: "Vendas por campanha",
-    description: "De qual campanha vieram os clientes e quantos compraram: Facebook, Instagram, Google, TikTok e Pinterest.",
+    description: "De qual campanha vieram os clientes e quantos compraram: Facebook, Instagram, Google, TikTok, Pinterest e Taboola.",
     icon: "Megaphone",
     group: "analise",
     section: "Os números do período",

@@ -84,7 +84,7 @@ export default async function VendasPorCampanhaPage({
         <h1 className="text-2xl font-semibold tracking-tight">{t("Vendas por campanha")}</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
           {t(
-            "De qual campanha vieram as pessoas que chegaram no período, e quantas compraram. Vale para Facebook e Instagram, Google Ads, TikTok Ads e Pinterest Ads.",
+            "De qual campanha vieram as pessoas que chegaram no período, e quantas compraram. Vale para Facebook e Instagram, Google Ads, TikTok Ads, Pinterest Ads e Taboola Ads.",
           )}
         </p>
       </header>
@@ -159,7 +159,7 @@ export default async function VendasPorCampanhaPage({
         <h2 className="text-base font-medium text-text">{t("Como cada campanha é reconhecida")}</h2>
         <p>
           {t(
-            "O anúncio de clique para o WhatsApp do Facebook e do Instagram é reconhecido sozinho. Para Google Ads, TikTok Ads e Pinterest Ads, use o link rastreável em Configurações › Conversões: lá está o link pronto para cada plataforma, que preenche o nome da campanha no clique.",
+            "O anúncio de clique para o WhatsApp do Facebook e do Instagram é reconhecido sozinho. Para Google Ads, TikTok Ads, Pinterest Ads e Taboola Ads, use o link rastreável em Configurações › Conversões: lá está o link pronto para cada plataforma, que preenche o nome da campanha no clique.",
           )}
         </p>
         <p>
