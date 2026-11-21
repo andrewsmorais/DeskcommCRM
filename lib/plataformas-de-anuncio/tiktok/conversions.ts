@@ -28,7 +28,14 @@ import type {
   TransporteDeConversao,
 } from "../types";
 
-export const URL_DO_TIKTOK = "https://business-api.tiktok.com/open_api/v1.3/event/track/";
+/**
+ * Versão da Events API do TikTok — NÃO é a versão da Graph da Meta (essa mora
+ * só em `lib/graph-version.ts`, e a catraca `versao-da-graph-num-lugar-so`
+ * reprova literal `vN.N` fora de lá). Separada em número para as duas nunca se
+ * confundirem.
+ */
+const VERSAO_DA_EVENTS_API = "1.3";
+export const URL_DO_TIKTOK = `https://business-api.tiktok.com/open_api/v${VERSAO_DA_EVENTS_API}/event/track/`;
 
 export function corpoDoTiktok(credencial: CredencialDeConversao, conversao: ConversaoOffline) {
   const usuario: Record<string, string> = { ttclid: conversao.cliqueDeOrigem };

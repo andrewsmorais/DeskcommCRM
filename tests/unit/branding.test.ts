@@ -854,6 +854,21 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "endpoint da Google Ads API, para onde `lib/plataformas-de-anuncio/google/conversions.ts` reporta a venda de volta ao anúncio que trouxe o lead. Irmão de `graph.facebook.com` no eixo da Meta: é contrato do fornecedor, não escolha nossa — a conta de anúncios é do cliente, o domínio é do Google.",
   },
+  "business-api.tiktok.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint da Events API do TikTok, para onde `lib/plataformas-de-anuncio/tiktok/conversions.ts` devolve a venda ganha ao pixel do anunciante (0567). Contrato do fornecedor: o pixel é do cliente, o domínio é do TikTok.",
+  },
+  "api.pinterest.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint da Conversions API do Pinterest, para onde `lib/plataformas-de-anuncio/pinterest/conversions.ts` devolve a venda ganha à conta de anúncios do cliente (0567).",
+  },
+  "trc.taboola.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint do postback servidor-a-servidor do Taboola, para onde `lib/plataformas-de-anuncio/taboola/conversions.ts` devolve a venda ganha (0567). O endereço é o que a documentação do Taboola fixa.",
+  },
   "accounts.google.com": {
     categoria: "FORNECEDOR",
     motivo:
