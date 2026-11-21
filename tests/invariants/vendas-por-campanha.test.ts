@@ -64,6 +64,7 @@ describe("fn_vendas_por_campanha", () => {
         ('${c(6)}', '${ORG}', 'Sem origem', '{}'),
         ('${c(7)}', '${ORG}', 'Instagram pela UTM', '{}'),
         ('${c(8)}', '${ORG}', 'Taboola', '{}'),
+        ('${c(10)}', '${ORG}', 'TikTok sem UTM', '{"ad_platform":"tiktok_ads","ad_source_id":"E.C.P.semutm"}'),
         ('${c(9)}', '${ORG_B}', 'Outra organização', '{}')
         on conflict do nothing;
 
@@ -110,11 +111,13 @@ describe("fn_vendas_por_campanha", () => {
     expect(linha("meta", "Stories")).toMatchObject({ contatos: 1, negocios: 0 });
     expect(linha("google", "Pesquisa marca")).toMatchObject({ contatos: 1 });
     expect(linha("taboola", "Matéria patrocinada")).toMatchObject({ contatos: 1 });
+    // 0567: contato marcado pelo código de clique, sem UTM, cai na plataforma certa.
+    expect(linha("tiktok", "(sem nome)")).toMatchObject({ contatos: 1 });
     expect(linha("sem_origem", null)).toMatchObject({ contatos: 1 });
   });
 
   it("o contato de outra organização da mesma campanha não entra na conta", () => {
-    const tiktok = relatorio(ORG).find((l) => l.plataforma === "tiktok")!;
+    const tiktok = relatorio(ORG).find((l) => l.plataforma === "tiktok" && l.campanha === "Black Friday TikTok")!;
     expect(tiktok.contatos).toBe(2);
     expect(relatorio(ORG_B)).toEqual([
       expect.objectContaining({ plataforma: "tiktok", campanha: "Black Friday TikTok", contatos: 1 }),
@@ -131,5 +134,22 @@ describe("fn_vendas_por_campanha", () => {
        || ',' || has_function_privilege('anon', 'public.fn_vendas_por_campanha(uuid, timestamptz, timestamptz)', 'execute')::text;`,
     );
     expect(out.trim().split("\n").at(-1)).toBe("false,false");
+  });
+
+  it("a conexão de conversões aceita TikTok, Pinterest e Taboola, e recusa plataforma desconhecida (0567)", () => {
+    sql(`
+      insert into public.ad_platform_connections (organization_id, platform, dataset_id, enabled) values
+        ('${ORG}', 'tiktok_ads', 'C4PIXEL123', true),
+        ('${ORG}', 'pinterest_ads', '549755813599', true),
+        ('${ORG}', 'taboola_ads', 'purchase', true)
+        on conflict do nothing;
+    `);
+    const n = sql(
+      `select count(*) from public.ad_platform_connections where organization_id = '${ORG}' and platform in ('tiktok_ads','pinterest_ads','taboola_ads');`,
+    );
+    expect(n.trim().split("\n").at(-1)).toBe("3");
+    expect(() =>
+      sql(`insert into public.ad_platform_connections (organization_id, platform) values ('${ORG}', 'kwai_ads');`),
+    ).toThrow();
   });
 });

@@ -128,6 +128,16 @@ export async function lerCredencial(
     };
   }
 
+  // Taboola (0567): o postback não usa token. O "para onde" é o NOME do evento
+  // cadastrado no Taboola Ads, que mora em `dataset_id`.
+  if (plataforma === "taboola_ads") {
+    if (!linha.dataset_id) return { ok: false, motivo: "credencial_incompleta" };
+    return {
+      ok: true,
+      credencial: { datasetId: linha.dataset_id, accessToken: "", testEventCode: null },
+    };
+  }
+
   if (!linha.dataset_id || !linha.access_token_encrypted) {
     return { ok: false, motivo: "credencial_incompleta" };
   }

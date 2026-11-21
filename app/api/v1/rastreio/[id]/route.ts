@@ -24,7 +24,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     .eq("enabled", true)
     .maybeSingle();
   if (error || !data) return paginaDeSaida(null);
-  const destino = await destinoDoLink(admin, data as LinkRastreavel, new URL(req.url).searchParams);
+  const destino = await destinoDoLink(admin, data as LinkRastreavel, new URL(req.url).searchParams, {
+    ip,
+    userAgent: req.headers.get("user-agent"),
+  });
   const response = paginaDeSaida(destino);
   response.headers.set("Cache-Control", "no-store");
   response.headers.set("Referrer-Policy", "no-referrer");

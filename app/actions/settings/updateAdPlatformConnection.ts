@@ -56,28 +56,45 @@ export type UpdateAdPlatformConnectionResult =
       details?: unknown;
     };
 
-const entradaSchema = z.object({
-  /**
-   * Só `meta_ads`. `google_ads` fica FORA do enum porque a credencial dele não
-   * é colada: chega pelo OAuth, e o cadastro de para onde reportar mora em
-   * `updateGoogleAdsConnection.ts`.
-   */
-  platform: z.literal("meta_ads"),
-  dataset_id: z.string().trim().min(5).max(64).regex(/^\d+$/, "só dígitos"),
-  /**
-   * OPCIONAL: permite corrigir o dataset sem redigitar o token, que a tela nunca
-   * mostra de volta. Vazio = "mantenha o que está gravado", NUNCA "apague" — um
-   * salvamento distraído não pode derrubar o reporte de vendas.
-   *
-   * Para PARAR de enviar existe o switch `enabled`, que pausa e preserva a
-   * credencial. Remover a conexão de vez ainda não tem caminho pela tela (ver a
-   * lacuna anotada em `app/app/settings/conversoes/_form.tsx`).
-   */
-  access_token: z.string().trim().min(20).max(1000).optional(),
-  /** Enquanto preenchido, os eventos vão como teste e não contam. */
-  test_event_code: z.string().trim().max(64).nullable().optional(),
-  enabled: z.boolean(),
-});
+/**
+ * O "para onde" de cada plataforma, como a tela o pede (0567):
+ *   - Meta: id do conjunto de dados (só dígitos);
+ *   - TikTok: código do pixel (letras e números, ex.: `C4ABCD1234EFGH`);
+ *   - Pinterest: id da conta de anúncios (só dígitos);
+ *   - Taboola: NOME do evento cadastrado no Taboola Ads (sem token).
+ * `google_ads` fica FORA: a credencial dele chega pelo OAuth
+ * (`updateGoogleAdsConnection.ts`).
+ */
+const DESTINO_POR_PLATAFORMA = {
+  meta_ads: /^\d{5,64}$/,
+  tiktok_ads: /^[A-Za-z0-9]{6,64}$/,
+  pinterest_ads: /^\d{5,64}$/,
+  taboola_ads: /^[A-Za-z0-9 _.\-]{1,64}$/,
+} as const;
+
+const entradaSchema = z
+  .object({
+    platform: z.enum(["meta_ads", "tiktok_ads", "pinterest_ads", "taboola_ads"]),
+    dataset_id: z.string().trim().min(1).max(64),
+    /**
+     * OPCIONAL: permite corrigir o destino sem redigitar o token, que a tela nunca
+     * mostra de volta. Vazio = "mantenha o que está gravado", NUNCA "apague" — um
+     * salvamento distraído não pode derrubar o reporte de vendas.
+     *
+     * Para PARAR de enviar existe o switch `enabled`, que pausa e preserva a
+     * credencial. O Taboola não usa token: enviar um para ele é recusado.
+     */
+    access_token: z.string().trim().min(20).max(1000).optional(),
+    /** Enquanto preenchido, os eventos vão como teste e não contam. */
+    test_event_code: z.string().trim().max(64).nullable().optional(),
+    enabled: z.boolean(),
+  })
+  .superRefine((v, ctx) => {
+    if (!DESTINO_POR_PLATAFORMA[v.platform].test(v.dataset_id))
+      ctx.addIssue({ code: "custom", path: ["dataset_id"], message: "formato do destino inválido" });
+    if (v.platform === "taboola_ads" && v.access_token)
+      ctx.addIssue({ code: "custom", path: ["access_token"], message: "o Taboola não usa token" });
+  });
 
 export type AdPlatformConnectionInput = z.infer<typeof entradaSchema>;
 

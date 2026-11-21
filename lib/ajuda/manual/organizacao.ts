@@ -319,12 +319,14 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
 
   "/app/settings/conversoes": {
     oQueE:
-      "Devolve ao anúncio as vendas que ele trouxe: quando um negócio que veio de anúncio é marcado como ganho, o valor volta para a plataforma (Meta ou Google Ads). Isso ensina o anúncio a procurar mais gente parecida com quem comprou. Também marca a origem de quem chega pelo site.",
+      "Devolve ao anúncio as vendas que ele trouxe: quando um negócio que veio de anúncio é marcado como ganho, o valor volta para a plataforma (Meta, Google Ads, TikTok Ads, Pinterest Ads ou Taboola Ads). Isso ensina o anúncio a procurar mais gente parecida com quem comprou. Também marca a origem de quem chega pelo site.",
     comoUsar: [
       "A tela tem quatro abas: “Configuração”, “Histórico de envios”, “Diagnóstico” e “Links rastreáveis”.",
       "Para a Meta, em “Configuração”, preencha “Identificador do destino de conversões” (só números, vem do gerenciador de anúncios) e “Token de acesso”, deixe “Reportar vendas automaticamente” ligado e clique em “Salvar conexão”.",
       "Para testar sem contaminar o anúncio, preencha “Código de teste (opcional)”. As vendas vão marcadas como teste. Apague o código quando terminar de conferir.",
       "Para o Google Ads, clique em “Conectar com Google” e autorize. Depois informe “Conta de anúncios (Customer ID)” e a “Ação de conversão da venda (ID)”, ligue “Enviar conversões para o Google Ads” e salve.",
+      "Para TikTok, Pinterest e Taboola, use a seção “TikTok, Pinterest e Taboola”: no TikTok, “Código do pixel” e “Token de acesso”; no Pinterest, “ID da conta de anúncios” e “Token de acesso”; no Taboola, só o “Nome do evento de conversão” que você criou no Taboola Ads. Ligue “Reportar vendas automaticamente” e clique em “Salvar conexão” em cada uma.",
+      "Para a venda voltar ao TikTok, ao Pinterest ou ao Taboola, a pessoa precisa chegar pelo link rastreável usando o link pronto daquela plataforma (aba “Links rastreáveis”): é ele que traz o código do clique.",
       "Em “Histórico de envios” você filtra por período, status, evento, plataforma ou nome do negócio e vê o que foi enviado. Em “Diagnóstico” aparece a saúde da integração com o Google Ads.",
       "Em “Conversões que não foram reportadas”, corrija a pendência e use o botão de reprocessamento da linha.",
       "Em “Links rastreáveis”, clique em “Novo link” para criar um link por campanha ou botão, com número de WhatsApp (com código do país), mensagem inicial e nome da campanha. A tela gera o link e o script para instalar no site (“Copiar link”, “Copiar script do site”), e “Verificar instalação” confere o site.",
@@ -339,6 +341,7 @@ export const MANUAL_ORGANIZACAO: ManualDoGrupo = {
       "“Enviar vendas pelo canal da conversa” vem desligado e envia valor, moeda, telefone do cliente e a conversa ao provedor do canal. Ligue só se a sua política de privacidade cobre isso.",
       "O código de origem do site vale só na primeira mensagem do contato e nunca sobrescreve uma origem já gravada. Nenhum dado pessoal viaja nele.",
       "Só envia conversão de negócio que veio de anúncio.",
+      "No Pinterest, o sistema guarda o IP e o navegador de quem clicou, porque o Pinterest recusa a venda sem eles quando não há e-mail. As outras plataformas não recebem esses dados.",
     ],
   },
 

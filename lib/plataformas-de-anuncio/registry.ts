@@ -26,11 +26,19 @@
  */
 import { transporteMeta } from "./meta/conversions";
 import { transporteGoogle } from "./google/conversions";
+import { transportePinterest } from "./pinterest/conversions";
+import { transporteTaboola } from "./taboola/conversions";
+import { transporteTiktok } from "./tiktok/conversions";
 import type { PlataformaDeAnuncio, TransporteDeConversao } from "./types";
 
 const TRANSPORTES: Record<PlataformaDeAnuncio, TransporteDeConversao | null> = {
   meta_ads: transporteMeta,
   google_ads: transporteGoogle,
+  // Migration 0567: chegam pelo link rastreável com o código de clique que a
+  // própria plataforma põe no endereço (`ttclid`, `epik`, `tblci`).
+  tiktok_ads: transporteTiktok,
+  pinterest_ads: transportePinterest,
+  taboola_ads: transporteTaboola,
 };
 
 /** O transporte da plataforma, ou `null` quando ela é conhecida e não tem um. */

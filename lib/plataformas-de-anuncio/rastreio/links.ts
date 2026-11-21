@@ -4,6 +4,7 @@ export type { LinkRastreavel } from "./contrato";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { criarClickRef } from "../captura-de-clique";
 import { lerIdentificadoresGoogle } from "../google/identificadores";
+import { cliqueDaPlataforma, clienteParaGuardar } from "./clique-da-plataforma";
 import { textoSemRef, whatsAppUrl } from "../pagina-de-captura";
 
 export async function listarLinks(admin: SupabaseClient, org: string): Promise<LinkRastreavel[]> {
@@ -25,9 +26,15 @@ export async function destinoDoLink(
   admin: SupabaseClient,
   link: LinkRastreavel,
   search: URLSearchParams,
+  /** IP e navegador do clique; só viram dado guardado quando o clique é do Pinterest. */
+  cliente?: { ip: string | null; userAgent: string | null },
 ): Promise<string> {
   const ids = lerIdentificadoresGoogle(Object.fromEntries(search.entries()));
   const utm = utmsDoLink(link, search);
+  // TikTok, Pinterest e Taboola (0567): o código de clique vai junto da UTM, em
+  // `query_raw`, para a venda poder voltar à plataforma.
+  const clique = ids ? null : cliqueDaPlataforma(search);
+  const doCliente = clienteParaGuardar(clique, cliente);
   const campos = ids
     ? {
         gclid: ids.gclid ?? null,
@@ -35,7 +42,14 @@ export async function destinoDoLink(
         wbraid: ids.wbraid ?? null,
         query_raw: { ...utm, ...ids },
       }
-    : { utm, query_raw: utm };
+    : {
+        utm,
+        query_raw: {
+          ...utm,
+          ...(clique ? { clique } : {}),
+          ...(doCliente ? { cliente: doCliente } : {}),
+        },
+      };
   let ref = null;
   try {
     ref = await criarClickRef(

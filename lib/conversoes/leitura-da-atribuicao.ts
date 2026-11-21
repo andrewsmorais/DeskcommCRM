@@ -26,6 +26,8 @@ export interface AtribuicaoParaEnvio {
   cliqueDeOrigem: string;
   telefone: string | null;
   identificadoresGoogle?: IdentificadoresGoogle;
+  /** IP e navegador do clique no link — só o Pinterest exige, só ele recebe (0567). */
+  clienteDoClique?: { ip: string | null; userAgent: string | null };
 }
 
 export type LeituraDeAtribuicao =
@@ -84,11 +86,24 @@ export async function lerAtribuicao(
   if (meta.ad_platform === "google_ads" && !ids)
     return { temAtribuicao: false, motivo: "sem_atribuicao" };
 
+  const cliente =
+    meta.ad_platform === "pinterest_ads" && bruto.cliente && typeof bruto.cliente === "object"
+      ? (bruto.cliente as { ip?: unknown; user_agent?: unknown })
+      : null;
+
   return {
     temAtribuicao: true,
     atribuicao: {
       plataforma: meta.ad_platform,
       ...(ids ? { identificadoresGoogle: ids } : {}),
+      ...(cliente
+        ? {
+            clienteDoClique: {
+              ip: typeof cliente.ip === "string" ? cliente.ip : null,
+              userAgent: typeof cliente.user_agent === "string" ? cliente.user_agent : null,
+            },
+          }
+        : {}),
       cliqueDeOrigem: clique,
       // Só dígitos: a plataforma exige E.164 sem `+` nem separadores ANTES do
       // hash. Normalizar depois do hash seria tarde — o hash já estaria errado.

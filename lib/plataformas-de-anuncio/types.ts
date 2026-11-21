@@ -46,7 +46,14 @@ import type { IdentificadoresGoogle } from "./google/identificadores";
  */
 export type ApiDeConversaoGoogle = "google_ads" | "data_manager";
 
-export type PlataformaDeAnuncio = "meta_ads" | "google_ads";
+export type PlataformaDeAnuncio =
+  | "meta_ads"
+  | "google_ads"
+  // As três de baixo chegam pelo link rastreável, com o código do clique que a
+  // própria plataforma põe no endereço (`ttclid`, `epik`, `tblci`) — migration 0567.
+  | "tiktok_ads"
+  | "pinterest_ads"
+  | "taboola_ads";
 
 /**
  * Venda, qualificação e cada etapa configurada são resultados distintos e
@@ -84,6 +91,12 @@ export interface ConversaoOffline {
   identificadoresGoogle?: IdentificadoresGoogle;
   /** E.164 sem `+`, ainda EM CLARO: o hash é responsabilidade do transporte. */
   telefone: string | null;
+  /**
+   * IP e navegador de quem clicou no link rastreável, como a rota do clique os
+   * viu. Só o Pinterest exige (sem e-mail, a API dele recusa evento sem
+   * `client_ip_address` + `client_user_agent`), e só ele os recebe.
+   */
+  clienteDoClique?: { ip: string | null; userAgent: string | null };
   valorCentavos: number | null;
   moeda: string;
 }

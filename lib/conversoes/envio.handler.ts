@@ -135,6 +135,8 @@ export async function processarConversao(
     "identificadoresGoogle" in leitura.atribuicao
       ? leitura.atribuicao.identificadoresGoogle
       : undefined;
+  const clienteDoClique =
+    "clienteDoClique" in leitura.atribuicao ? leitura.atribuicao.clienteDoClique : undefined;
   if (qualificacao && plataforma !== "google_ads")
     return ok("skipped", "qualificacao_sem_origem_google");
 
@@ -303,6 +305,7 @@ export async function processarConversao(
     ),
     cliqueDeOrigem,
     identificadoresGoogle,
+    ...(clienteDoClique ? { clienteDoClique } : {}),
     telefone,
     // A coluna tem `DEFAULT 'BRL'` e um CHECK de ISO-4217; o fallback só cobre a
     // linha que teve a moeda apagada à mão.

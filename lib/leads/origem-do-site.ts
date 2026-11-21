@@ -200,16 +200,28 @@ export async function estamparOrigemDaPagina(
   organizationId: string,
   contactId: string,
   origem: OrigemDaPagina,
+  /**
+   * Código de clique de TikTok, Pinterest ou Taboola trazido pelo link (0567).
+   * Com ele, o contato é marcado com a PLATAFORMA (e não "site"), e o código
+   * vira o `ad_source_id` que a venda leva de volta ao anúncio.
+   */
+  clique?: {
+    plataforma: "tiktok_ads" | "pinterest_ads" | "taboola_ads";
+    id: string;
+    cliente?: { ip: string; user_agent: string };
+  },
 ): Promise<boolean> {
+  const plataforma = clique?.plataforma ?? "site";
   const { error } = await admin.rpc("fn_estampar_atribuicao_de_anuncio", {
     p_org: organizationId,
     p_contact: contactId,
-    p_platform: "site",
+    p_platform: plataforma,
     p_metadata: {
-      ad_platform: "site",
-      ad_source_id: null,
+      ad_platform: plataforma,
+      ad_source_id: clique?.id ?? null,
       origem: "site",
       origem_capturada_em: origem.capturadaEm,
+      ...(clique?.cliente ? { ad_raw: { cliente: clique.cliente } } : {}),
       ...origem.utm,
     },
   });

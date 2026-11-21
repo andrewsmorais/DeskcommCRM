@@ -621,11 +621,9 @@ async function guardarOrigemDaPagina(admin: Admin, entrada: EntradaDeMensagem): 
       return;
     }
 
-    const utm = achada
-      ? achada.utm
-      : ref
-        ? (await casarClickRef(admin, entrada.organizationId, ref, entrada.contactId))?.utm
-        : undefined;
+    const casado =
+      !achada && ref ? await casarClickRef(admin, entrada.organizationId, ref, entrada.contactId) : null;
+    const utm = achada ? achada.utm : casado?.utm;
     if (!utm) {
       // Ref que não casa é sinal NOSSO que não fechou: já consumido, de outra
       // organização, ou de um clique que nunca foi gravado. Não é tráfego
@@ -639,7 +637,13 @@ async function guardarOrigemDaPagina(admin: Admin, entrada: EntradaDeMensagem): 
 
     const origem = { utm, capturadaEm: new Date().toISOString() };
 
-    const gravou = await estamparOrigemDaPagina(admin, entrada.organizationId, entrada.contactId, origem);
+    const gravou = await estamparOrigemDaPagina(
+      admin,
+      entrada.organizationId,
+      entrada.contactId,
+      origem,
+      casado?.clique ? { ...casado.clique, ...(casado.cliente ? { cliente: casado.cliente } : {}) } : undefined,
+    );
     if (!gravou) {
       logger.warn("pos-entrada: origem da página NÃO gravada (a mensagem entra assim mesmo)", {
         contactId: entrada.contactId,

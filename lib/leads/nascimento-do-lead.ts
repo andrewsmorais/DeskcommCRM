@@ -75,6 +75,10 @@ import { emitLeadActivity } from "./activity-emitter";
 const ROTULO_DE_ANUNCIO: Record<string, string> = {
   meta_ads: "Meta_ads",
   google_ads: "Google_ads",
+  // 0567: chegam pelo link rastreável com o código de clique de cada plataforma.
+  tiktok_ads: "TikTok_ads",
+  pinterest_ads: "Pinterest_ads",
+  taboola_ads: "Taboola_ads",
   // #924: a origem de site/landing page. Sem esta linha o contato fica com
   // `source = "site"` e o CARD nasce sem rótulo nenhum — o dado sobrevive no
   // contato, que é justamente onde ninguém olha.

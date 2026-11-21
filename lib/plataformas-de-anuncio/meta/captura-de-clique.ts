@@ -19,6 +19,27 @@ import { logger } from "@/lib/logger";
 export interface ClickRefDaPaginaCasado {
   /** Só chaves de `CHAVES_DE_UTM`, como a rota as normalizou antes de gravar. */
   utm: Record<string, string>;
+  /** Código de clique de TikTok, Pinterest ou Taboola, quando o link trouxe (0567). */
+  clique?: { plataforma: "tiktok_ads" | "pinterest_ads" | "taboola_ads"; id: string };
+  /** IP e navegador do clique — só existe para o Pinterest. */
+  cliente?: { ip: string; user_agent: string };
+}
+
+const PLATAFORMAS_POR_CLIQUE = new Set(["tiktok_ads", "pinterest_ads", "taboola_ads"]);
+
+function lerExtrasDoClique(bruto: unknown): Pick<ClickRefDaPaginaCasado, "clique" | "cliente"> {
+  const q = bruto && typeof bruto === "object" ? (bruto as Record<string, unknown>) : {};
+  const c = q.clique as { plataforma?: unknown; id?: unknown } | undefined;
+  const clique =
+    c && typeof c.id === "string" && c.id && PLATAFORMAS_POR_CLIQUE.has(String(c.plataforma))
+      ? { plataforma: c.plataforma as "tiktok_ads" | "pinterest_ads" | "taboola_ads", id: c.id }
+      : undefined;
+  const k = q.cliente as { ip?: unknown; user_agent?: unknown } | undefined;
+  const cliente =
+    clique?.plataforma === "pinterest_ads" && k && typeof k.ip === "string" && typeof k.user_agent === "string"
+      ? { ip: k.ip, user_agent: k.user_agent }
+      : undefined;
+  return { ...(clique ? { clique } : {}), ...(cliente ? { cliente } : {}) };
 }
 
 /**
@@ -42,7 +63,7 @@ export async function casarClickRef(
     .eq("organization_id", organizationId)
     .eq("token", token)
     .is("matched_at", null)
-    .select("utm")
+    .select("utm, query_raw")
     .maybeSingle();
 
   if (error) {
@@ -55,9 +76,10 @@ export async function casarClickRef(
   }
   if (!data) return null;
 
-  const utm = (data as { utm: Record<string, string> | null }).utm;
+  const linha = data as { utm: Record<string, string> | null; query_raw: unknown };
+  const utm = linha.utm;
   // A coluna é `not null` com `check (utm <> '{}')`, então isto é defesa de
   // borda, não caso esperado: linha sem UTM não teria o que estampar.
   if (!utm || Object.keys(utm).length === 0) return null;
-  return { utm };
+  return { utm, ...lerExtrasDoClique(linha.query_raw) };
 }

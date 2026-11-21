@@ -65,6 +65,7 @@ import { lerDiagnosticoGoogle, lerFiltros, lerHistorico } from "@/lib/conversoes
 import { FormularioDeCapturaDeUtm } from "./_formCapturaDeUtm";
 import { FormularioDeConversoes } from "./_form";
 import { FormularioDeConversoesGoogle } from "./_formGoogle";
+import { FormularioDeOutraPlataforma } from "./_formOutrasPlataformas";
 import { VendaPeloCanal } from "./_vendaPeloCanal";
 import { vendaPeloCanalLigada } from "@/lib/conversoes/venda-pelo-canal";
 import { RegrasDeConversaoGoogle, type EtapaAberta } from "./_regrasGoogle";
@@ -167,6 +168,14 @@ export default async function ConversoesPage({
       vistosOsFunis.add(e.pipelineId);
       return { id: e.id, nome: e.nome, funil: e.funil, primeira };
     });
+  // TikTok, Pinterest e Taboola (0567): mesma leitura da Meta, uma por plataforma.
+  const outrasPlataformas = await Promise.all(
+    (["tiktok_ads", "pinterest_ads", "taboola_ads"] as const).map(async (plataforma) => ({
+      plataforma,
+      estado: await lerEstadoDaConexao(admin, activeOrg.orgId, plataforma),
+    })),
+  );
+
   // As abas de leitura só consultam o que mostram: a de configuração não paga
   // o histórico, e o histórico não paga o diagnóstico.
   const filtrosDoHistorico = lerFiltros(parametros);
@@ -333,6 +342,20 @@ export default async function ConversoesPage({
               }
             />
           )}
+
+          <section className="flex flex-col gap-3" aria-labelledby="outras-plataformas">
+            <h2 id="outras-plataformas" className="text-lg font-semibold">
+              {t("TikTok, Pinterest e Taboola")}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {t(
+                "A venda volta para estas plataformas quando a pessoa chegou pelo link rastreável com o link pronto de cada uma (aba Links rastreáveis). O código do clique vem no próprio link e liga a venda ao anúncio.",
+              )}
+            </p>
+            {outrasPlataformas.map(({ plataforma, estado: e }) => (
+              <FormularioDeOutraPlataforma key={plataforma} plataforma={plataforma} estado={e} idioma={idioma} />
+            ))}
+          </section>
 
           {slug && (
             <FormularioDeCapturaDeUtm
